@@ -63,6 +63,12 @@ from the pause menu to see your score.
 
 ## Run it
 
+Play it online at **https://sequoia-hope.github.io/midnight-racer/**. GitHub Pages
+serves `main` as-is (there is no build step), so every push to `main` goes live
+within a minute or two.
+
+To run it locally:
+
 ```sh
 proj up midnight-racer      # or ./serve.sh — both use the registered port
 proj url midnight-racer     # prints the URL to open
