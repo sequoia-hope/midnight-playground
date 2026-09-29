@@ -1,0 +1,15 @@
+{
+  "name": "midnight-racer",
+  "private": true,
+  "type": "module",
+  "description": "Browser street-racing game (three.js, no build step)",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "check-track": "node tools/check-track.js",
+    "app": "electron .",
+    "app:smoke": "electron . --smoke-test"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5"
+  }
+}

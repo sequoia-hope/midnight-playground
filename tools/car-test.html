@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vehicle Lineup</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1b1d2a; overflow: hidden; }
+  #info { position: fixed; left: 12px; top: 10px; color: #cfd3dc; font: 13px/1.4 ui-monospace, monospace; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/build/three.module.js", "three/addons/": "../vendor/three/addons/" } }
+</script>
+</head>
+<body>
+<div id="info"></div>
+<script type="module">
+// Lineup of every vehicle kind for eyeballing the procedural models.
+// ?view=close   close-up of the sports car (?car=kind for another)
+// ?view=rear    rear three-quarter of the racers (?car=kind to centre one)
+// ?view=side    close side view (?car=kind), ?kinds=a,b to filter, ?lod=low|high
+// ?noenv=1 / ?noshadow=1 to isolate reflection or shadow artefacts
+// ?view=chase   game-style chase camera behind ?car=kind (default sports)
+// ?view=front   low front three-quarter of ?car=kind
+// ?lights=0|1   headlights (default 1), ?brake=1 brake lights, ?spin=1 turntable
+// ?view=orbit   around ?car=kind: &yaw=deg (0 = from behind, 90 = its left
+//               side) &dist=m &h=m &look=m (aim height) &fov=deg
+// ?solo=1       hide every vehicle but ?car
+// ?night=1      dark sky / dim environment to judge the light units and bloom
+// ?steer=rad    front-wheel steer angle (default 0.35)
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { buildVehicle, VEHICLE_KINDS, triangleCount } from '../src/vehicles/CarModel.js';
+import { CAR_SPECS } from '../src/vehicles/CarPhysics.js';
+
+const q = new URLSearchParams(location.search);
+const view = q.get('view') || 'lineup';
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+const night = q.get('night') === '1';
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(night ? 0x06070d : 0x2a2c44);
+scene.fog = new THREE.Fog(night ? 0x06070d : 0x2a2c44, 40, 120);
+
+// Dusk gradient environment for paint reflections.
+{
+  const envScene = new THREE.Scene();
+  const g = new THREE.SphereGeometry(10, 32, 16);
+  const cols = [];
+  const pos = g.attributes.position;
+  const top = new THREE.Color(night ? 0x05060c : 0x1b2346), hor = new THREE.Color(night ? 0x2a2c3a : 0xf09a5a), bot = new THREE.Color(0x151515);
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i) / 10;
+    const c = y > 0 ? hor.clone().lerp(top, Math.pow(y, 0.5)) : hor.clone().lerp(bot, Math.min(1, -y * 4));
+    cols.push(c.r, c.g, c.b);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  envScene.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+  const pm = new THREE.PMREMGenerator(renderer);
+  if (q.get('noenv') !== '1') scene.environment = pm.fromScene(envScene, 0.02).texture;
+  scene.environmentIntensity = night ? 0.5 : 0.8;
+}
+
+scene.add(new THREE.HemisphereLight(0x8fa0d0, 0x3a2e28, night ? 0.08 : 0.8));
+const sun = new THREE.DirectionalLight(night ? 0x9fb0ff : 0xffc89a, night ? 0.25 : 2.2);
+sun.position.set(-20, 18, 14);
+sun.castShadow = q.get('noshadow') !== '1';
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 20, bottom: -20, near: 1, far: 80 });
+sun.shadow.bias = -0.0004;
+scene.add(sun);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x3a3b40, roughness: 0.85 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+for (let i = -20; i <= 20; i++) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 3), new THREE.MeshStandardMaterial({ color: 0xd8d2b8, roughness: 0.7 }));
+  m.rotation.x = -Math.PI / 2; m.position.set(i * 6, 0.01, -5);
+  scene.add(m);
+}
+
+const colors = Object.fromEntries(Object.entries(CAR_SPECS).map(([k, v]) => [k, v.color]));
+const kinds = q.get('kinds') ? q.get('kinds').split(',') : VEHICLE_KINDS;
+const cars = [];
+const info = [];
+// Racers in the front row, traffic behind, each row centred.
+const rows = [[], []];
+kinds.forEach((kind, i) => {
+  const v = buildVehicle(kind, { color: colors[kind], seed: i, lod: q.get('lod') || undefined, stripes: kind === 'super' ? true : undefined });
+  v.setHeadlights(q.get('lights') === '0' ? 0 : 1);
+  v.setBrake(q.get('brake') === '1' ? 1 : 0);
+  v.steerPivots.forEach((p) => (p.rotation.y = +(q.get('steer') ?? 0.35)));
+  scene.add(v.root);
+  cars.push(v);
+  rows[colors[kind] ? 0 : 1].push(v);
+  let calls = 0;
+  v.root.traverse((o) => { if (o.isMesh) calls += o.geometry.groups.length || 1; });
+  info.push(`${kind}: ${Math.round(triangleCount(v.root))} tris/${calls} calls`);
+});
+rows.forEach((row, r) => {
+  let x = 0;
+  row.forEach((v) => { x -= v.dims.width / 2 + 0.9; v.root.position.set(x, 0, -r * 9); x -= v.dims.width / 2 + 0.9; });
+  row.forEach((v) => (v.root.position.x -= x / 2));
+});
+document.getElementById('info').textContent = info.join('  ·  ');
+window.__tris = info;
+
+const camera = new THREE.PerspectiveCamera(+(q.get('fov') || 40), innerWidth / innerHeight, 0.1, 500);
+const focus = cars.find((c) => c.kind === (q.get('car') || 'sports')) || cars[0];
+if (q.get('solo') === '1') cars.forEach((c) => (c.root.visible = c === focus));
+if (view === 'close') {
+  const c = cars.find((c) => c.kind === (q.get('car') || 'sports')) || cars[0];
+  const p = c.root.position;
+  camera.position.set(p.x - 4.2, 1.7, p.z + 5.2);
+  camera.lookAt(p.x, 0.55, p.z);
+} else if (view === 'side') {
+  const c = cars.find((c) => c.kind === (q.get('car') || 'sports')) || cars[0];
+  const p = c.root.position;
+  camera.position.set(p.x + 3.2, 1.3, p.z + 1.2);
+  camera.lookAt(p.x, 0.8, p.z - 0.3);
+} else if (view === 'orbit') {
+  const p = focus.root.position;
+  const yaw = (+(q.get('yaw') ?? 30) * Math.PI) / 180, dist = +(q.get('dist') ?? 6);
+  camera.position.set(p.x + Math.sin(yaw) * dist, +(q.get('h') ?? 1.6), p.z - Math.cos(yaw) * dist);
+  camera.lookAt(p.x, +(q.get('look') ?? 0.6), p.z);
+} else if (view === 'chase') {
+  const c = cars.find((c) => c.kind === (q.get('car') || 'sports')) || cars[0];
+  const p = c.root.position;
+  camera.fov = 62; camera.updateProjectionMatrix();
+  camera.position.set(p.x + 0.6, 2.3, p.z - 6.6);
+  camera.lookAt(p.x, 0.9, p.z + 4);
+} else if (view === 'front') {
+  const c = cars.find((c) => c.kind === (q.get('car') || 'sports')) || cars[0];
+  const p = c.root.position;
+  camera.position.set(p.x - 2.6, 1.0, p.z + 5.0);
+  camera.lookAt(p.x, 0.55, p.z + 0.6);
+} else if (view === 'rear') {
+  const p = (cars.find((c) => c.kind === q.get('car')) || cars[1]).root.position;
+  camera.position.set(p.x - 3.5, 1.9, p.z - 6.5);
+  camera.lookAt(p.x, 0.6, p.z);
+} else {
+  camera.position.set(-9, 6.5, 15);
+  camera.lookAt(0, 0.6, -4);
+}
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.6, 0.4, 0.85));
+composer.addPass(new OutputPass());
+
+const spin = q.get('spin') === '1';
+window.__ready = true;
+let t = 0;
+renderer.setAnimationLoop(() => {
+  t += 1 / 60;
+  if (spin) cars.forEach((c) => (c.root.rotation.y = t * 0.5));
+  cars.forEach((c) => c.wheels.forEach((w) => (w.rotation.x = t * 2)));
+  composer.render();
+});
+</script>
+</body>
+</html>

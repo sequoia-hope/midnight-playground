@@ -1,0 +1,15 @@
+{
+  "name": "Midnight Racer",
+  "short_name": "Midnight Racer",
+  "description": "A street racer that runs in the browser.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#05060a",
+  "theme_color": "#05060a",
+  "icons": [
+    { "src": "desktop/icon.png", "sizes": "256x256", "type": "image/png" },
+    { "src": "desktop/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

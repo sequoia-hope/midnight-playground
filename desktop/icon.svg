@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="glow" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#ff3860"/>
+      <stop offset="1" stop-color="#ff9a3c"/>
+    </linearGradient>
+    <radialGradient id="haze" cx="0.5" cy="0.62" r="0.55">
+      <stop offset="0" stop-color="#ff3860" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#ff3860" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" rx="52" fill="#05060a"/>
+  <ellipse cx="128" cy="150" rx="120" ry="70" fill="#ff3860" opacity="0.18"/>
+  <!-- road -->
+  <path d="M104 256 L122 150 L134 150 L152 256 Z" fill="#141826"/>
+  <path d="M127 250 L127.5 232 M128 214 L128 200 M128 186 L128 176" stroke="#f2c230" stroke-width="3" stroke-linecap="round"/>
+  <!-- car rear silhouette -->
+  <path d="M52 150 C52 122 70 104 92 98 L102 78 C106 70 112 66 122 66 L134 66 C144 66 150 70 154 78 L164 98 C186 104 204 122 204 150 L204 170 C204 176 200 180 194 180 L62 180 C56 180 52 176 52 170 Z" fill="#1c2130"/>
+  <path d="M104 80 C106 74 110 72 118 72 L138 72 C146 72 150 74 152 80 L160 100 L96 100 Z" fill="#0b0e16"/>
+  <!-- spoiler -->
+  <rect x="58" y="112" width="140" height="7" rx="3" fill="#2a3042"/>
+  <!-- tail lights -->
+  <rect x="62" y="128" width="50" height="12" rx="6" fill="#ff3860"/>
+  <rect x="70" y="131" width="34" height="5" rx="2.5" fill="#ff9a3c"/>
+  <rect x="144" y="128" width="50" height="12" rx="6" fill="#ff3860"/>
+  <rect x="152" y="131" width="34" height="5" rx="2.5" fill="#ff9a3c"/>
+  <rect x="112" y="131" width="32" height="6" rx="3" fill="#ff3860" opacity="0.7"/>
+  <!-- plate + tyres -->
+  <rect x="112" y="150" width="32" height="12" rx="2" fill="#d9dde6"/>
+  <rect x="58" y="176" width="30" height="16" rx="5" fill="#0b0e16"/>
+  <rect x="168" y="176" width="30" height="16" rx="5" fill="#0b0e16"/>
+</svg>

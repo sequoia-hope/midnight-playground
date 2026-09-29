@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>City View</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05060a; color: #ddd; font: 13px system-ui, sans-serif; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #info { position: fixed; left: 8px; top: 6px; text-shadow: 0 1px 3px #000; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/build/three.module.js", "three/addons/": "../vendor/three/addons/" } }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info">loading…</div>
+<script type="module">
+// Scenery preview for the city zone: builds the world (city scenery only
+// unless ?all=1) and parks a camera along the track, like the game's debug
+// fly camera. ?s= ?h= ?back= ?lat= ?yaw= ?pitch= ?t= (time of day 0..1)
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { World } from '../src/world/World.js';
+import City from '../src/world/City.js';
+import { levelById } from '../src/levels/index.js';
+
+const params = new URLSearchParams(location.search);
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+renderer.setPixelRatio(1);
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.info.autoReset = false;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(Number(params.get('fov') ?? 62), innerWidth / innerHeight, 0.3, 9000);
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.38, 0.35, 0.92));
+composer.addPass(new OutputPass());
+composer.setSize(innerWidth, innerHeight);
+
+const level = levelById(params.get('level') || 'sierra');
+const world = new World(scene, renderer, level);
+const cityZone = level.zones.findIndex((z) => z.scenery === 'City');
+if (params.has('none')) world.loadScenery = async () => [];
+else if (!params.has('all')) world.loadScenery = async () => (cityZone >= 0 ? [new City({ zone: cityZone, key: level.zones[cityZone].key, level })] : []);
+const t0 = performance.now();
+await world.build((label, f) => { document.getElementById('info').textContent = `${label} ${(f * 100) | 0}%`; });
+const buildMs = performance.now() - t0;
+window.__world = world;
+window.__camera = camera;
+window.__THREE = THREE;
+const track = world.track;
+if (params.has('t')) world.sky.override = Number(params.get('t'));
+const P = (k, d) => Number(params.get(k) ?? d);
+const s = P('s', 7000), h = P('h', 5), back = P('back', 14), lat = P('lat', 0), yaw = P('yaw', 0), pitch = P('pitch', -0.08);
+const clock = new THREE.Clock();
+let frames = 0;
+function frame() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const f = track.frame(track.loop ? s - back : Math.max(0, s - back));
+  const a = track.frame(track.loop ? s + 20 : Math.min(track.length - 1, s + 20));
+  camera.position.set(f.x + f.rx * lat, f.y + h, f.z + f.rz * lat);
+  camera.lookAt(a.x + a.rx * lat, a.y + h * 0.4, a.z + a.rz * lat);
+  camera.rotateY(yaw);
+  camera.rotateX(pitch);
+  world.update(dt, s, new THREE.Vector3(f.x, f.y, f.z), camera);
+  renderer.info.reset();
+  composer.render();
+  frames++;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+setTimeout(() => {
+  const info = renderer.info;
+  window.__stats = { buildMs: Math.round(buildMs), calls: info.render.calls, tris: info.render.triangles };
+  document.getElementById('info').textContent = `build ${buildMs | 0} ms · calls ${info.render.calls} · tris ${info.render.triangles}`;
+  window.__ready = true;
+}, 600);
+</script>
+</body>
+</html>

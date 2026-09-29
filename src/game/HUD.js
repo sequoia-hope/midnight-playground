@@ -1,0 +1,262 @@
+import { clamp } from '../util/math.js';
+
+const $ = (id) => document.getElementById(id);
+const ORD = (n) => (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th');
+
+export function fmtTime(t) {
+  if (t == null || !isFinite(t)) return '--:--.--';
+  const m = Math.floor(t / 60), s = t - m * 60;
+  return `${m}:${s.toFixed(2).padStart(5, '0')}`;
+}
+
+export class HUD {
+  constructor(track, level) {
+    this.track = track;
+    this.level = level;
+    this.cruise = level.mode === 'cruise';
+    this.root = $('hud');
+    this.el = {
+      pos: $('hud-pos'), suf: $('hud-pos-suf'), of: $('hud-of'), time: $('hud-time'), zone: $('hud-zone'),
+      speed: $('hud-speed'), unit: $('hud-unit'), gear: $('hud-gear'), nitro: $('hud-nitro'), center: $('hud-center'),
+      toast: $('hud-toast'), zoneCard: $('zone-card'), dots: $('route-dots'), speedlines: $('speedlines'),
+    };
+    this.el.nitroBox = this.el.nitro.parentElement;
+    this.tach = $('tach').getContext('2d');
+    this.mini = $('minimap').getContext('2d');
+    this.mph = true;
+    this.lastZone = -1;
+    this.toastTimer = 0;
+    this.centerTimer = 0;
+    // Route bar: one segment per zone, widths follow the real zone lengths.
+    const bar = $('route-bar');
+    bar.querySelectorAll('.route-seg').forEach((e) => e.remove());
+    track.zones.forEach((z, i) => {
+      const seg = document.createElement('div');
+      seg.className = 'route-seg';
+      seg.style.flex = `${Math.max(1, z.s1 - z.s0)} 0 0`;
+      seg.style.background = z.color || '#888';
+      if (i === 0) seg.style.borderRadius = '4px 0 0 4px';
+      if (i === track.zones.length - 1) { seg.style.borderRadius = i === 0 ? '4px' : '0 4px 4px 0'; seg.style.borderRight = '0'; }
+      seg.innerHTML = `<span>${z.name.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())}</span>`;
+      bar.insertBefore(seg, this.el.dots);
+    });
+    // Race vs cruise furniture.
+    document.querySelector('.hud-route').classList.toggle('hidden', this.cruise);
+    document.querySelector('.hud-tl .pos').classList.toggle('hidden', this.cruise);
+    $('hud-cruise').classList.toggle('hidden', !this.cruise);
+    this.cruiseEl = { score: $('hud-score'), mult: $('hud-mult'), fill: $('hud-mult-fill'), dist: $('hud-dist'), best: $('hud-best') };
+    this.bestScore = 0;
+    this.dots = [];
+    this.last = {};
+  }
+
+  show(on) { this.root.classList.toggle('hidden', !on); }
+
+  setRacers(racers) {
+    this.el.dots.innerHTML = '';
+    this.dots = racers.map((r) => {
+      const d = document.createElement('div');
+      d.className = 'rdot' + (r.player ? ' me' : '');
+      d.style.background = '#' + r.color.toString(16).padStart(6, '0');
+      this.el.dots.appendChild(d);
+      return d;
+    });
+    this.el.of.textContent = racers.length;
+  }
+
+  center(text, cls = 'pop', dur = 1) {
+    const c = this.el.center;
+    c.className = '';
+    c.textContent = text;
+    void c.offsetWidth; // restart animation
+    c.className = cls;
+    this.centerTimer = dur;
+  }
+
+  toast(text, dur = 1.6) {
+    this.el.toast.textContent = text;
+    this.el.toast.classList.add('show');
+    this.toastTimer = dur;
+  }
+
+  zoneCard(z) {
+    const c = this.el.zoneCard;
+    c.querySelector('.zc-name').textContent = z.name;
+    c.querySelector('.zc-sub').textContent = z.sub;
+    c.classList.remove('show');
+    void c.offsetWidth;
+    c.classList.add('show');
+  }
+
+  set(key, el, val) {
+    if (this.last[key] !== val) { this.last[key] = val; el.textContent = val; }
+  }
+
+  update(dt, st) {
+    const e = this.el;
+    this.set('pos', e.pos, st.position);
+    this.set('suf', e.suf, ORD(st.position));
+    this.set('time', e.time, fmtTime(st.time));
+    const spd = st.speed * (this.mph ? 2.23694 : 3.6);
+    this.set('speed', e.speed, Math.round(Math.abs(spd)));
+    this.set('unit', e.unit, this.mph ? 'MPH' : 'KM/H');
+    this.set('gear', e.gear, st.gear === -1 ? 'R' : st.gear === 0 ? 'N' : st.electric ? 'D' : String(st.gear));
+    e.nitro.style.width = (st.nitro * 100).toFixed(1) + '%';
+    e.nitroBox.classList.toggle('active', !!st.nitroActive);
+    e.speedlines.style.opacity = clamp((st.speed - 45) / 35, 0, 1) * (st.nitroActive ? 1 : 0.6);
+
+    const z = this.track.zone[this.track.idx(st.s)];
+    if (z !== this.lastZone) {
+      this.lastZone = z;
+      const zone = this.track.zones[z];
+      this.set('zone', e.zone, zone.name);
+      if (st.started) this.zoneCard(zone);
+    }
+
+    // Route dots.
+    const L = this.track.finishS;
+    st.racers.forEach((r, i) => {
+      const d = this.dots[i];
+      if (d) d.style.left = (clamp(r.s / L, 0, 1) * 100).toFixed(2) + '%';
+    });
+
+    if (st.cruise) {
+      const c = this.cruiseEl, cr = st.cruise;
+      this.set('score', c.score, Math.floor(cr.score).toLocaleString());
+      this.set('mult', c.mult, `×${cr.mult}`);
+      c.fill.style.width = (cr.mult > 1 ? clamp(cr.multTimer / 6, 0, 1) * 100 : 0).toFixed(1) + '%';
+      const km = cr.dist / 1000;
+      this.set('dist', c.dist, this.mph ? `${(km / 1.60934).toFixed(1)} mi` : `${km.toFixed(1)} km`);
+      this.set('best', c.best, Math.floor(Math.max(this.bestScore, cr.score)).toLocaleString());
+    }
+    if (this.toastTimer > 0) { this.toastTimer -= dt; if (this.toastTimer <= 0) e.toast.classList.remove('show'); }
+    if (st.electric) this.drawPower(st.power ?? 0);
+    else this.drawTach(st.rpm, st.speed);
+    this.drawMinimap(st);
+  }
+
+  drawTach(rpm, speed) {
+    const g = this.tach, W = 260, cx = 130, cy = 130, R = 112;
+    g.clearRect(0, 0, W, W);
+    const a0 = Math.PI * 0.75, a1 = Math.PI * 2.25;
+    const maxR = 8000;
+    // Backplate.
+    g.beginPath(); g.arc(cx, cy, R + 10, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(8,10,18,0.5)'; g.fill();
+    // Track.
+    g.lineWidth = 10; g.lineCap = 'butt';
+    g.beginPath(); g.arc(cx, cy, R, a0, a1); g.strokeStyle = 'rgba(255,255,255,0.12)'; g.stroke();
+    // Redline zone.
+    g.beginPath(); g.arc(cx, cy, R, a0 + (a1 - a0) * (7000 / maxR), a1); g.strokeStyle = 'rgba(255,56,96,0.55)'; g.stroke();
+    // Fill.
+    const f = clamp(rpm / maxR, 0, 1);
+    const grad = g.createLinearGradient(0, W, W, 0);
+    grad.addColorStop(0, '#3ad7ff'); grad.addColorStop(0.7, '#b36bff'); grad.addColorStop(1, '#ff3860');
+    g.beginPath(); g.arc(cx, cy, R, a0, a0 + (a1 - a0) * f); g.strokeStyle = grad; g.lineWidth = 10; g.stroke();
+    // Ticks.
+    g.fillStyle = 'rgba(255,255,255,0.7)'; g.font = '600 13px Rajdhani, Arial Narrow, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (let k = 0; k <= 8; k++) {
+      const a = a0 + (a1 - a0) * (k / 8);
+      g.fillText(String(k), cx + Math.cos(a) * (R - 22), cy + Math.sin(a) * (R - 22));
+      g.beginPath();
+      g.moveTo(cx + Math.cos(a) * (R - 9), cy + Math.sin(a) * (R - 9));
+      g.lineTo(cx + Math.cos(a) * (R - 14), cy + Math.sin(a) * (R - 14));
+      g.strokeStyle = 'rgba(255,255,255,0.5)'; g.lineWidth = 2; g.stroke();
+    }
+    // Needle.
+    const na = a0 + (a1 - a0) * f;
+    g.beginPath(); g.moveTo(cx + Math.cos(na) * 30, cy + Math.sin(na) * 30); g.lineTo(cx + Math.cos(na) * (R - 4), cy + Math.sin(na) * (R - 4));
+    g.strokeStyle = '#ff3860'; g.lineWidth = 3; g.stroke();
+  }
+
+  // Electric: a power meter in place of the rev counter — regen in green
+  // below zero, drive power up to 1000 kW.
+  drawPower(kw) {
+    const g = this.tach, W = 260, cx = 130, cy = 130, R = 112;
+    g.clearRect(0, 0, W, W);
+    const a0 = Math.PI * 0.75, a1 = Math.PI * 2.25;
+    const lo = -250, hi = 1000;
+    const at = (v) => a0 + (a1 - a0) * ((clamp(v, lo, hi) - lo) / (hi - lo));
+    g.beginPath(); g.arc(cx, cy, R + 10, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(8,10,18,0.5)'; g.fill();
+    g.lineWidth = 10; g.lineCap = 'butt';
+    g.beginPath(); g.arc(cx, cy, R, a0, a1); g.strokeStyle = 'rgba(255,255,255,0.12)'; g.stroke();
+    g.beginPath(); g.arc(cx, cy, R, a0, at(0)); g.strokeStyle = 'rgba(77,255,138,0.28)'; g.stroke();
+    if (kw >= 0) {
+      const grad = g.createLinearGradient(0, W, W, 0);
+      grad.addColorStop(0, '#3ad7ff'); grad.addColorStop(0.75, '#9ff3ff'); grad.addColorStop(1, '#ffffff');
+      g.beginPath(); g.arc(cx, cy, R, at(0), at(kw)); g.strokeStyle = grad; g.stroke();
+    } else {
+      g.beginPath(); g.arc(cx, cy, R, at(kw), at(0)); g.strokeStyle = '#4dff8a'; g.stroke();
+    }
+    g.fillStyle = 'rgba(255,255,255,0.7)'; g.font = '600 13px Rajdhani, Arial Narrow, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (let v = 0; v <= hi; v += 200) {
+      const a = at(v);
+      g.fillText(String(v / 100), cx + Math.cos(a) * (R - 22), cy + Math.sin(a) * (R - 22));
+      g.beginPath();
+      g.moveTo(cx + Math.cos(a) * (R - 9), cy + Math.sin(a) * (R - 9));
+      g.lineTo(cx + Math.cos(a) * (R - 14), cy + Math.sin(a) * (R - 14));
+      g.strokeStyle = 'rgba(255,255,255,0.5)'; g.lineWidth = 2; g.stroke();
+    }
+    g.font = '700 10px Rajdhani, Arial Narrow, sans-serif';
+    g.fillStyle = 'rgba(77,255,138,0.85)';
+    g.fillText('REGEN', cx + Math.cos(a0) * (R - 26) + 10, cy + Math.sin(a0) * (R - 26) + 4);
+    g.fillStyle = 'rgba(255,255,255,0.55)';
+    g.fillText('kW ×100', cx + Math.cos(a1) * (R - 30) - 10, cy + Math.sin(a1) * (R - 30) + 4);
+    const na = at(kw);
+    g.beginPath(); g.moveTo(cx + Math.cos(na) * 30, cy + Math.sin(na) * 30); g.lineTo(cx + Math.cos(na) * (R - 4), cy + Math.sin(na) * (R - 4));
+    g.strokeStyle = kw < 0 ? '#4dff8a' : '#3ad7ff'; g.lineWidth = 3; g.stroke();
+  }
+
+  drawMinimap(st) {
+    const g = this.mini, S = 220, c = S / 2;
+    const t = this.track;
+    g.clearRect(0, 0, S, S);
+    g.save();
+    g.beginPath(); g.arc(c, c, c - 2, 0, Math.PI * 2); g.clip();
+    const scale = 0.28; // px per metre
+    const p = st.player;
+    g.translate(c, c + 30);
+    g.rotate(-p.yaw - Math.PI / 2);
+    g.scale(scale, scale);
+    g.translate(-p.x, -p.z);
+    // Road near the player.
+    const s0 = t.loop ? Math.floor(st.s - 500) : Math.max(0, Math.floor(st.s - 500));
+    const s1 = t.loop ? Math.ceil(st.s + 900) : Math.min(t.n - 1, Math.ceil(st.s + 900));
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const [w, col] of [[26, 'rgba(0,0,0,0.5)'], [14, 'rgba(230,236,255,0.85)']]) {
+      g.beginPath();
+      for (let i = s0; i <= s1; i += 6) { const k = t.idx(i); if (i === s0) g.moveTo(t.px[k], t.pz[k]); else g.lineTo(t.px[k], t.pz[k]); }
+      // The straight runout past the last sample.
+      if (!t.loop && t.runout > 0 && st.s + 900 > t.n - 1) {
+        const a = t.frame(Math.max(s0, t.n - 1)), e = t.frame(Math.min(t.roadEnd, st.s + 900));
+        if (s0 > s1) g.moveTo(a.x, a.z);
+        g.lineTo(e.x, e.z);
+      }
+      g.lineWidth = w; g.strokeStyle = col; g.stroke();
+    }
+    // Finish marker.
+    if (!t.loop) {
+      const fi = t.idx(t.finishS);
+      g.fillStyle = '#4dff8a';
+      g.beginPath(); g.arc(t.px[fi], t.pz[fi], 22, 0, Math.PI * 2); g.fill();
+    }
+    // Traffic.
+    g.fillStyle = 'rgba(180,190,210,0.8)';
+    for (const o of st.traffic) { g.beginPath(); g.arc(o.x, o.z, 10, 0, Math.PI * 2); g.fill(); }
+    // Rivals.
+    for (const r of st.racersFull) {
+      if (r.player) continue;
+      g.fillStyle = '#' + r.color.toString(16).padStart(6, '0');
+      g.beginPath(); g.arc(r.v.x, r.v.z, 16, 0, Math.PI * 2); g.fill();
+      g.lineWidth = 4; g.strokeStyle = '#000'; g.stroke();
+    }
+    g.restore();
+    // Player arrow (screen space, always pointing up).
+    g.save();
+    g.translate(c, c + 30);
+    g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(0, -9); g.lineTo(6.5, 7); g.lineTo(0, 3.5); g.lineTo(-6.5, 7); g.closePath(); g.fill(); g.stroke();
+    g.restore();
+  }
+}
