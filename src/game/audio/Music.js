@@ -29,6 +29,8 @@ const LOOKAHEAD = 0.2;
 // The kit buffers are normalised near full scale; this sits them under the synths.
 const DRUM_TRIM = 0.16;
 const TICK_MS = 25;
+// Instrument shorthands in tracks.js → OscillatorType.
+const OSC_TYPE = { saw: 'sawtooth', tri: 'triangle' };
 
 // ── Notes, chords, voicings ──────────────────────────────────────
 const PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
@@ -665,7 +667,7 @@ export class Music {
       const f = mtof(m + 12 * (P.oct ?? 0));
       for (let v = 0; v < nv; v++) {
         const o = ctx.createOscillator();
-        if (P.type === 'pulse') o.setPeriodicWave(this.pulse); else o.type = P.type === 'tri' ? 'triangle' : P.type || 'sawtooth';
+        if (P.type === 'pulse') o.setPeriodicWave(this.pulse); else o.type = OSC_TYPE[P.type] || P.type || 'sawtooth';
         o.frequency.value = f;
         o.detune.value = nv > 1 ? (v / (nv - 1) - 0.5) * spread : 0;
         this._bend(o, t, f, P, glideFrom);
