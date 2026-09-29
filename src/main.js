@@ -174,9 +174,15 @@ for (const t of GameAudio.tracks) trackSel.add(new Option(`${t.title} (${t.style
 if (![...trackSel.options].some((o) => o.value === settings.track)) settings.track = 'auto';
 trackSel.value = settings.track;
 trackSel.onchange = () => { settings.track = trackSel.value; store.set('track', settings.track); if (audio.ready) pickMusic(); };
-// Menu buttons click. The first touch anywhere also wakes the audio up
-// (browsers only allow it inside a gesture).
-document.addEventListener('pointerdown', () => { audio.init(); }, { once: true, capture: true });
+// Audio only starts inside a user gesture, and on a phone the pointerdown
+// of a tap isn't one (its pointerup, touchend and click are). So the first
+// touch builds the audio, and every gesture restarts it until it runs.
+// Nothing waits for it: a race starts whether or not the sound has.
+function wakeAudio() { audio.init(); audio.unlock(); }
+for (const t of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  document.addEventListener(t, wakeAudio, { capture: true, passive: true });
+}
+// Menu buttons click.
 document.addEventListener('click', (e) => {
   const b = e.target.closest?.('button');
   if (b) audio.uiClick(['btn-start', 'btn-again', 'btn-restart'].includes(b.id) ? 'start' : 'click');
@@ -274,28 +280,38 @@ function enterFullscreen() {
 
 // ── Session flow ──────────────────────────────────────────────────
 let mode = 'loading';
+window.__game = { get mode() { return mode; } }; // test hook
+let starting = false;
 async function startRace() {
-  enterFullscreen();
-  await audio.init();
-  pickMusic();
-  applyVolume();
-  audio.setCar?.(settings.car);
-  await loadLevel(settings.level);
-  race?.dispose();
-  race = new Race({
-    world, scene, camera, renderer, input, audio, buildVehicle, carKind: settings.car,
-    onFinish: showResults,
-  });
-  race.hud.mph = settings.mph;
-  race.hud.bestScore = store.get('bestScore.' + world.level.id, 0);
-  // Compile the new cars' shaders up front so the countdown doesn't stutter.
-  try { await renderer.compileAsync(scene, camera); } catch { /* optional */ }
-  race.effects.resize(window.innerHeight * renderer.getPixelRatio(), camera.fov);
-  input.enabled = true;
-  mode = 'race';
-  showScreen(null);
-  $('btn-end').classList.toggle('hidden', !race.cruise);
-  window.__race = race;
+  if (starting) return; // a double tap starts one race
+  starting = true;
+  try {
+    enterFullscreen();
+    wakeAudio();
+    pickMusic();
+    applyVolume();
+    audio.setCar?.(settings.car);
+    await loadLevel(settings.level);
+    race?.dispose();
+    race = new Race({
+      world, scene, camera, renderer, input, audio, buildVehicle, carKind: settings.car,
+      onFinish: showResults,
+    });
+    race.hud.mph = settings.mph;
+    race.hud.bestScore = store.get('bestScore.' + world.level.id, 0);
+    // Compile the new cars' shaders up front so the countdown doesn't
+    // stutter, but never hold the start on it.
+    const compiled = Promise.resolve().then(() => renderer.compileAsync(scene, camera)).catch(() => {});
+    await Promise.race([compiled, new Promise((r) => setTimeout(r, 3000))]);
+    race.effects.resize(window.innerHeight * renderer.getPixelRatio(), camera.fov);
+    input.enabled = true;
+    mode = 'race';
+    showScreen(null);
+    $('btn-end').classList.toggle('hidden', !race.cruise);
+    window.__race = race;
+  } finally {
+    starting = false;
+  }
 }
 function pause(on) {
   if (!race || (on && mode !== 'race')) return;

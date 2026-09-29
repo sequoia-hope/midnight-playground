@@ -160,6 +160,21 @@ To check a route after editing its level file, run `node tools/check-track.js <l
 reports each zone's length and height, the tightest corner, the steepest
 grade, and any place where two parts of the road overlap.
 
+## Tests
+
+```sh
+npm install        # once: puppeteer-core, which drives the Chrome you have installed
+npm test
+```
+
+The browser tests in `test/e2e/` play the real game in headless Chrome on the
+GPU, both as a desktop and as a phone (touch, in landscape and portrait). They
+tap and click the way a player does, with the browser's real rules for when
+audio and fullscreen may start. The working tree is served through request
+interception, so the tests need no server and no port. Set `MR_BASE_URL` to test a running copy
+instead (for example the GitHub Pages build), `CHROME_PATH` if Chrome isn't at
+`/usr/bin/google-chrome`, and `MR_HEADFUL=1` to watch.
+
 ## Desktop app
 
 The game can also run in its own window, with no browser and no web server.

@@ -215,6 +215,11 @@ export class GameAudio {
   get environment() { return this._env; }
 
   // opts.context: run on a given context (tests render an OfflineAudioContext).
+  //
+  // Never waits for the context to start. One made outside a user gesture
+  // (on a phone, a tap's pointerdown doesn't count) starts suspended, and a
+  // resume() made there doesn't settle until a later one succeeds. The graph
+  // builds fine on a suspended context; unlock() starts it from a gesture.
   async init(opts = {}) {
     if (this._initPromise) return this._initPromise;
     this._initPromise = (async () => {
@@ -222,15 +227,24 @@ export class GameAudio {
       if (!AC && !opts.context) return;
       const ctx = opts.context || new AC({ latencyHint: 'interactive' });
       this.ctx = ctx;
-      if (ctx.state === 'suspended') { try { await ctx.resume(); } catch { /* gesture-less */ } }
       this._build();
       this._built = true;
       this.setCar(this._car);
       this.setEnvironment(this._env, true);
       if (this._track) this.music.play(this._track);
       if (this._musicWanted) this.setMusic(true);
+      if (!opts.context) this.unlock();
     })();
     return this._initPromise;
+  }
+
+  // Start the context if it isn't running (it can also be interrupted later,
+  // e.g. by a phone call on iOS). Call it from inside a user gesture: a tap's
+  // pointerup, touchend or click, or a key. While paused it stays suspended.
+  unlock() {
+    const ctx = this.ctx;
+    if (!ctx || this._paused || ctx.state === 'running' || ctx.state === 'closed') return;
+    ctx.resume().catch(() => {});
   }
 
   // Independent 0..1 volumes. sfx covers the engine and every effect.

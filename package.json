@@ -7,9 +7,12 @@
   "scripts": {
     "check-track": "node tools/check-track.js",
     "app": "electron .",
-    "app:smoke": "electron . --smoke-test"
+    "app:smoke": "electron . --smoke-test",
+    "test": "npm run test:e2e",
+    "test:e2e": "node --test --test-concurrency=2 'test/e2e/*.test.js'"
   },
   "devDependencies": {
-    "electron": "^44.4.5"
+    "electron": "^44.4.5",
+    "puppeteer-core": "^25.12.0"
   }
 }
