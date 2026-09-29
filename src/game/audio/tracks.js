@@ -52,6 +52,9 @@ const P = {
   flute: { type: 'tri', cutoff: 3200, a: 0.05, s: 0.85, r: 0.22, vib: 16, vibDelay: 0.25, gain: 0.14, glide: 0.05 },
 };
 
+// The music player (music.html) shows each part's patch by name.
+export { P as PATCHES };
+
 // ── Songs ────────────────────────────────────────────────────────
 export const TRACKS = [
   {

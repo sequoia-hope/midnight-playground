@@ -255,6 +255,17 @@ export class Music {
     this._begin(T, start, bar);
   }
 
+  // Start a track at a bar right now, even the one already playing (the
+  // music player's restart and seek). A hard cut, no fade.
+  seek(id, bar = 0) {
+    const T = TRACKS.find((t) => t.id === id) || TRACKS[0];
+    this.wanted = T.id;
+    if (!this.on) { this._pending = { T, bar }; return; }
+    const t = this.ctx.currentTime;
+    if (this.song) this._retire(this.song, t, 0.02);
+    this._begin(T, t + 0.05, bar);
+  }
+
   next() {
     const cur = this.song?.T.id ?? this._pending?.T.id ?? this.wanted;
     const i = this.playlist.indexOf(cur);

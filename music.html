@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05060a">
+<title>Midnight Racer · Music</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111'/%3E%3Cpath d='M6 20h20l-3-6H12z' fill='%23ff3860'/%3E%3Ccircle cx='11' cy='21' r='3' fill='%23fff'/%3E%3Ccircle cx='22' cy='21' r='3' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap">
+<style>
+/* The soundtrack player: every song in src/game/audio/tracks.js, played
+   through the game's own music bus (GameAudio), so it sounds as it does in
+   a race. Same palette as the game's menu (src/game/hud.css). */
+:root {
+  --bg: #05060a;
+  --fg: #f4f6fb;
+  --dim: rgba(244, 246, 251, .62);
+  --faint: rgba(244, 246, 251, .36);
+  --line: rgba(255, 255, 255, .12);
+  --card: rgba(255, 255, 255, .05);
+  --accent: #ff3860;
+  --accent2: #3ad7ff;
+  --warm: #ff9a3c;
+  --font: "Rajdhani", "Barlow Condensed", "Arial Narrow", ui-sans-serif, system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; min-height: 100vh; color: var(--fg); font: 500 16px/1.35 var(--font);
+  background: radial-gradient(ellipse at 50% -10%, rgba(40, 20, 60, .7), transparent 60%) fixed, var(--bg);
+  padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  -webkit-tap-highlight-color: transparent; }
+button { font: inherit; color: inherit; }
+a { color: var(--accent2); }
+
+header { max-width: 1040px; margin: 0 auto 14px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.back { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px 8px 10px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--card); color: var(--fg); text-decoration: none; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 14px; }
+.back:hover { border-color: var(--accent); }
+.back svg { width: 16px; height: 16px; }
+.logo { font-size: 30px; font-weight: 700; font-style: italic; letter-spacing: -.01em; line-height: .9;
+  background: linear-gradient(180deg, #fff 30%, #9aa4c0); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.logo span { font-size: .55em; letter-spacing: .4em; margin-left: .5em;
+  background: linear-gradient(90deg, var(--accent), var(--warm)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+.wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 860px) {
+  .wrap { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); align-items: start; }
+  .main-col { grid-column: 1; }
+  .side-col { grid-column: 2; }
+}
+/* Keep the track list in view while scrolling, where it fits on screen. */
+@media (min-width: 860px) and (min-height: 700px) { .side-col { position: sticky; top: 14px; } }
+.main-col, .side-col { display: grid; gap: 14px; min-width: 0; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+h2 { margin: 0 0 10px; font-size: 12px; font-weight: 700; letter-spacing: .3em; text-transform: uppercase; color: var(--accent); }
+h2 small { color: var(--faint); letter-spacing: .1em; text-transform: none; font-size: 13px; font-weight: 600; margin-left: 6px; }
+
+/* Now playing */
+.np-num { font-size: 12px; font-weight: 700; letter-spacing: .3em; color: var(--accent); text-transform: uppercase; }
+.np-title { font-size: clamp(28px, 6vw, 40px); font-weight: 700; font-style: italic; line-height: 1.05; margin-top: 2px; }
+.np-sub { color: var(--dim); margin-top: 2px; }
+.np-levels { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+.badge { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent2);
+  border: 1px solid rgba(58, 215, 255, .35); border-radius: 999px; padding: 1px 9px; }
+
+.timeline { position: relative; margin: 16px 0 6px; height: 40px; cursor: pointer; touch-action: manipulation; }
+.segs { position: absolute; inset: 0; display: flex; gap: 2px; }
+.seg { position: relative; min-width: 0; border-radius: 4px; overflow: hidden; background: rgba(255, 56, 96, var(--e, .2));
+  display: flex; align-items: flex-end; padding: 0 0 3px 5px; font-size: 11px; font-weight: 700; color: rgba(255, 255, 255, .8); }
+.seg.cur { outline: 1px solid rgba(255, 255, 255, .7); }
+.head { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: #fff; border-radius: 1px;
+  box-shadow: 0 0 10px rgba(255, 255, 255, .8); left: 0; pointer-events: none; }
+.times { display: flex; justify-content: space-between; gap: 10px; color: var(--dim); font-size: 14px; font-variant-numeric: tabular-nums; }
+.times #t-where { text-align: center; color: var(--fg); }
+
+.transport { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 14px 0 8px; }
+.tbtn { width: 52px; height: 52px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); display: grid; place-items: center; cursor: pointer; }
+.tbtn:hover { border-color: rgba(255, 255, 255, .4); }
+.tbtn svg { width: 22px; height: 22px; fill: currentColor; }
+.tbtn.play { width: 70px; height: 70px; border: 0; background: linear-gradient(90deg, var(--accent), #ff7a3c); box-shadow: 0 8px 30px rgba(255, 56, 96, .35); }
+.tbtn.play svg { width: 28px; height: 28px; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 18px; color: var(--dim); font-size: 15px; }
+.controls label { display: inline-flex; align-items: center; gap: 8px; }
+input[type=range] { accent-color: var(--accent); width: 140px; }
+.toggle { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 14px; cursor: pointer; font-weight: 700;
+  font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+.toggle[aria-pressed="true"] { color: #fff; border-color: var(--accent); background: rgba(255, 56, 96, .18); }
+.hint { text-align: center; color: var(--faint); font-size: 14px; margin-top: 8px; min-height: 1.35em; }
+
+/* Level meter and spectrum */
+.meter { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; font-size: 14px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.bar { position: relative; height: 10px; border-radius: 5px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 5px; background: linear-gradient(90deg, var(--accent2), #4dff8a 70%, #ffcf4d 88%, var(--accent)); }
+.bar b { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; left: 0; }
+.readout { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.readout span b { color: var(--fg); font-weight: 700; }
+#spectrum { display: block; width: 100%; height: 84px; margin-top: 10px; }
+
+/* Parts (solo) */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 6px 12px; cursor: pointer; text-align: left; line-height: 1.15; }
+.chip b { display: block; font-size: 16px; }
+.chip small { color: var(--faint); font-size: 12px; letter-spacing: .04em; }
+.chip.idle { opacity: .5; }
+.chip[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 20px rgba(255, 56, 96, .25); opacity: 1; }
+
+/* Sections and tracks */
+ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.row { width: 100%; display: grid; align-items: center; gap: 2px 12px; padding: 8px 12px; border-radius: 10px; border: 1px solid transparent;
+  background: rgba(255, 255, 255, .03); cursor: pointer; text-align: left; }
+.row:hover { border-color: var(--line); }
+.row.cur { border-color: var(--accent); background: rgba(255, 56, 96, .1); }
+.row .n { color: var(--faint); font-weight: 700; font-variant-numeric: tabular-nums; }
+.row .t { color: var(--dim); font-size: 14px; font-variant-numeric: tabular-nums; text-align: right; }
+.sec { grid-template-columns: 26px minmax(0, 1fr) auto; }
+.sec .what { min-width: 0; }
+.sec .what b { font-weight: 700; }
+.sec .what small { display: block; color: var(--dim); font-size: 13px; }
+.tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; vertical-align: 1px; }
+.tag { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--warm); border: 1px solid rgba(255, 154, 60, .4); border-radius: 4px; padding: 0 4px; }
+.trk { grid-template-columns: 26px minmax(0, 1fr) auto; }
+.trk .name b { font-size: 18px; font-weight: 700; }
+.trk .name small { display: block; color: var(--dim); font-size: 13px; }
+.trk .name .badge { font-size: 10px; padding: 0 6px; margin-left: 6px; vertical-align: 2px; }
+.eq { display: none; width: 16px; height: 14px; gap: 2px; align-items: flex-end; }
+.eq i { flex: 1; background: var(--accent); border-radius: 1px; animation: eq .9s ease-in-out infinite; }
+.eq i:nth-child(2) { animation-delay: -.3s; } .eq i:nth-child(3) { animation-delay: -.6s; }
+@keyframes eq { 0%, 100% { height: 30%; } 50% { height: 100%; } }
+.row.cur.on .eq { display: inline-flex; }
+.row.cur.on .n .num { display: none; }
+@media (prefers-reduced-motion: reduce) { .eq i { animation: none; height: 70%; } }
+.keys { color: var(--faint); font-size: 13px; text-align: center; margin-top: 4px; }
+@media (pointer: coarse) { .keys { display: none; } }
+.error { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="index.html" id="back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4 7 12l8 8"/></svg>Back to the game</a>
+  <div class="logo">MIDNIGHT<span>RACER</span></div>
+</header>
+
+<div class="wrap">
+  <div class="main-col">
+    <section class="card" id="now" aria-label="Now playing">
+      <div class="np-num" id="np-num">Track 1 of 7</div>
+      <div class="np-title" id="np-title">—</div>
+      <div class="np-sub" id="np-sub"></div>
+      <div class="np-levels" id="np-levels"></div>
+      <div class="timeline" id="timeline" title="Tap to jump to that bar">
+        <div class="segs" id="segs"></div>
+        <div class="head" id="head"></div>
+      </div>
+      <div class="times"><span id="t-pos">0:00</span><span id="t-where">Section 1</span><span id="t-len">0:00</span></div>
+      <div class="transport">
+        <button class="tbtn" id="prev" aria-label="Previous track" title="Previous track"><svg viewBox="0 0 24 24"><path d="M6 5h2.5v14H6zM20 5v14L9.5 12z"/></svg></button>
+        <button class="tbtn play" id="play" aria-label="Play" title="Play"><svg viewBox="0 0 24 24"><path id="play-icon" d="M8 5v14l11-7z"/></svg></button>
+        <button class="tbtn" id="next" aria-label="Next track" title="Next track"><svg viewBox="0 0 24 24"><path d="M15.5 5H18v14h-2.5zM4 5v14l10.5-7z"/></svg></button>
+      </div>
+      <div class="controls">
+        <label>Volume <input type="range" id="vol" min="0" max="100"></label>
+        <button class="toggle" id="repeat" aria-pressed="false" title="Loop this track instead of moving on through the playlist">Repeat track</button>
+      </div>
+      <div class="hint" id="hint">Tap the bar above, or a section, to jump there.</div>
+    </section>
+
+    <section class="card" aria-label="Level">
+      <h2>Output <small>after the game's music bus and limiter</small></h2>
+      <div class="meter">
+        <span>Level</span><div class="bar" id="lvl"><i></i><b></b></div>
+        <div class="readout">
+          <span>Now <b id="m-rms">—</b> RMS · peak <b id="m-peak">—</b></span>
+          <span>This play <b id="m-avg">—</b> avg · max peak <b id="m-max">—</b></span>
+        </div>
+      </div>
+      <canvas id="spectrum" aria-label="Spectrum"></canvas>
+    </section>
+
+    <section class="card" aria-label="Parts">
+      <h2>Parts <small>tap to solo · dimmed = not in this section</small></h2>
+      <div class="chips" id="parts"></div>
+    </section>
+
+    <section class="card" aria-label="Sections">
+      <h2>Sections <small>tap to jump</small></h2>
+      <ol id="sections"></ol>
+    </section>
+  </div>
+
+  <div class="side-col">
+    <section class="card" aria-label="All tracks">
+      <h2>Soundtrack <small>in playlist order</small></h2>
+      <ol id="tracks"></ol>
+      <div class="keys">Space play/pause · ← → section · N / P track · R repeat</div>
+    </section>
+  </div>
+</div>
+
+<script type="module">
+import { GameAudio } from './src/game/Audio.js';
+import { TRACKS, PLAYLIST, LEVEL_TRACK, PATCHES } from './src/game/audio/tracks.js';
+import { LEVELS } from './src/levels/index.js';
+
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('mr.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('mr.' + k, JSON.stringify(v)); } catch { /* private mode */ } },
+};
+
+// ── The songs ─────────────────────────────────────────────────────
+const ORDER = PLAYLIST.map((id) => TRACKS.find((t) => t.id === id)).filter(Boolean);
+for (const t of TRACKS) if (!ORDER.includes(t)) ORDER.push(t);
+const byId = (id) => ORDER.find((t) => t.id === id);
+const totalBars = (T) => T.sections.reduce((a, s) => a + s.bars, 0);
+const barSecs = (T) => 240 / T.bpm; // 16 sixteenths
+const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const levelsFor = (T) => LEVELS.filter((l) => LEVEL_TRACK[l.id] === T.id);
+const patchName = (inst) => Object.keys(PATCHES).find((k) => PATCHES[k] === inst) || inst?.type || '';
+const secStart = (T, i) => T.sections.slice(0, i).reduce((a, s) => a + s.bars, 0);
+function secTags(s) {
+  const t = [];
+  if (s.crash) t.push('crash');
+  if (s.drop) t.push('drop');
+  if (s.riser) t.push('riser');
+  if (s.swell) t.push('swell');
+  if (s.down) t.push('downlifter');
+  if (s.lp) t.push(s.lp[0] < s.lp[1] ? 'filter up' : 'filter down');
+  if (s.gap) t.push('gap');
+  if (s.fill) t.push(s.fill + ' fill');
+  return t;
+}
+
+// ── Player state ──────────────────────────────────────────────────
+let cur = byId(store.get('player.track', PLAYLIST[0])) || ORDER[0];
+let playing = false;
+let solo = null;
+let repeat = !!store.get('player.repeat', false);
+let vol = store.get('player.vol', store.get('musicVol', 0.7));
+
+const audio = new GameAudio();
+let analyser = null, tbuf = null, fbuf = null;
+// Build the audio on the first gesture that needs it; like the game, keep
+// restarting it from every gesture until it runs (phones only allow that
+// inside a tap's pointerup/touchend/click).
+function wake() {
+  if (!analyser) {
+    audio.init();
+    if (!audio.ready) { $('hint').innerHTML = '<span class="error">This browser has no Web Audio.</span>'; return false; }
+    audio.setVolume({ master: 1, sfx: 0, music: vol });
+    audio.onTrackChange = onTrackStart;
+    analyser = audio.ctx.createAnalyser();
+    analyser.fftSize = 4096;
+    analyser.smoothingTimeConstant = 0.7;
+    audio.limiter.connect(analyser);
+    tbuf = new Float32Array(analyser.fftSize);
+    fbuf = new Uint8Array(analyser.frequencyBinCount);
+  }
+  audio.unlock();
+  return true;
+}
+for (const t of ['pointerup', 'touchend', 'click', 'keydown']) {
+  document.addEventListener(t, () => { if (analyser) audio.unlock(); }, { capture: true, passive: true });
+}
+
+// Play a track from a bar, now (a hard cut: this is for listening closely).
+function play(T = cur, bar = 0) {
+  if (!wake()) return;
+  select(T);
+  audio.setPaused(false);
+  audio.music.playlist = repeat ? [T.id] : PLAYLIST.slice();
+  audio.music.solo = solo;
+  audio.music.seek(T.id, bar);
+  audio.setMusic(true);
+  playing = true;
+  resetStats();
+  renderPlaying();
+}
+function pause() {
+  if (!playing) return;
+  audio.setPaused(true);
+  playing = false;
+  renderPlaying();
+}
+function togglePlay() {
+  if (playing) return pause();
+  if (analyser && audio.music.song?.T === cur) {
+    wake();
+    audio.setPaused(false);
+    playing = true;
+    renderPlaying();
+  } else play(cur, 0);
+}
+function step(d) {
+  const i = ORDER.indexOf(cur);
+  play(ORDER[(i + d + ORDER.length) % ORDER.length], 0);
+}
+function jumpSection(d) {
+  const p = position();
+  if (!p) return play(cur, 0);
+  const i = Math.max(0, Math.min(cur.sections.length - 1, p.sec + d));
+  play(cur, secStart(cur, i));
+}
+
+// The engine moved on by itself (the song ended and the playlist advanced).
+function onTrackStart(info) {
+  const T = byId(info.id);
+  if (T && T !== cur) select(T);
+  resetStats();
+}
+
+function select(T) {
+  if (T === cur && $('np-title').textContent === T.title) return;
+  cur = T;
+  store.set('player.track', T.id);
+  if (solo && solo !== 'drums' && !T.parts[solo]) setSolo(null);
+  renderNow();
+  renderTracks();
+}
+
+function setSolo(name) {
+  solo = name;
+  if (analyser) audio.music.solo = name;
+  for (const b of $('parts').children) b.setAttribute('aria-pressed', String((b.dataset.part || null) === name));
+}
+
+// Where the sequencer is (it schedules ~0.2 s ahead of what you hear).
+function position() {
+  const m = analyser && audio.music, S = m?.song;
+  if (!S || S.T !== cur) return null;
+  const bar = secStart(cur, m.pos.sec) + m.pos.bar;
+  return { sec: m.pos.sec, barInSec: m.pos.bar, bar, time: (bar + m.pos.step / 16) * barSecs(cur) };
+}
+
+// ── Rendering ─────────────────────────────────────────────────────
+function renderNow() {
+  const T = cur, i = ORDER.indexOf(T), bars = totalBars(T);
+  $('np-num').textContent = `Track ${i + 1} of ${ORDER.length}`;
+  $('np-title').textContent = T.title;
+  $('np-sub').textContent = `${T.style} · ${T.bpm} BPM${T.swing ? ` · swing ${Math.round(T.swing * 100)}%` : ''} · ${bars} bars`;
+  $('np-levels').replaceChildren(...levelsFor(T).map((l) => Object.assign(document.createElement('span'), { className: 'badge', textContent: `${l.num} · ${l.title}` })));
+  $('t-len').textContent = fmt(bars * barSecs(T));
+  document.title = `${T.title} · Midnight Racer`;
+
+  // Timeline: one block per section, brighter the more that plays in it.
+  $('segs').replaceChildren(...T.sections.map((s, k) => {
+    const d = document.createElement('div');
+    d.className = 'seg';
+    d.style.flex = String(s.bars);
+    const busy = Object.keys(s.p || {}).length + (s.drums ? 1 : 0);
+    d.style.setProperty('--e', (0.12 + 0.13 * busy).toFixed(2));
+    d.textContent = k + 1;
+    return d;
+  }));
+
+  // Sections.
+  $('sections').replaceChildren(...T.sections.map((s, k) => {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.className = 'row sec';
+    b.dataset.sec = k;
+    const parts = Object.keys(s.p || {});
+    const tags = secTags(s).map((t) => `<span class="tag">${t}</span>`).join('');
+    b.innerHTML = `<span class="n">${k + 1}</span><span class="what"><b>${s.bars} bars</b><span class="tags">${tags}</span>`
+      + `<small>drums: ${s.drums || '—'} · ${parts.length ? parts.join(', ') : 'no parts'}</small></span>`
+      + `<span class="t">${fmt(secStart(T, k) * barSecs(T))}</span>`;
+    b.onclick = () => play(cur, secStart(cur, k));
+    li.append(b);
+    return li;
+  }));
+
+  // Parts to solo.
+  const chip = (name, label, sub) => {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    if (name) b.dataset.part = name;
+    b.setAttribute('aria-pressed', String(solo === name));
+    b.innerHTML = `<b>${label}</b><small>${sub}</small>`;
+    b.onclick = () => setSolo(solo === name ? null : name);
+    return b;
+  };
+  $('parts').replaceChildren(
+    chip(null, 'Full mix', 'everything'),
+    chip('drums', 'Drums', 'kit and fills'),
+    ...Object.entries(T.parts).map(([name, p]) => chip(name, name, `${p.type} · ${patchName(p.inst)}`)),
+  );
+  lastSec = -1;
+}
+
+function renderTracks() {
+  $('tracks').replaceChildren(...ORDER.map((T, k) => {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.className = 'row trk' + (T === cur ? ' cur' : '') + (T === cur && playing ? ' on' : '');
+    b.dataset.track = T.id;
+    const lv = levelsFor(T).map((l) => `<span class="badge">${l.num === 'ENDLESS' ? 'Cruise' : l.num.replace('LEVEL ', 'L')}</span>`).join('');
+    b.innerHTML = `<span class="n"><span class="num">${k + 1}</span><span class="eq"><i></i><i></i><i></i></span></span>`
+      + `<span class="name"><b>${T.title}</b>${lv}<small>${T.style} · ${T.bpm} BPM</small></span>`
+      + `<span class="t">${fmt(totalBars(T) * barSecs(T))}</span>`;
+    b.onclick = () => play(T, 0);
+    li.append(b);
+    return li;
+  }));
+}
+
+function renderPlaying() {
+  $('play-icon').setAttribute('d', playing ? 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z' : 'M8 5v14l11-7z');
+  $('play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  $('play').title = playing ? 'Pause' : 'Play';
+  for (const b of $('tracks').querySelectorAll('.row')) b.classList.toggle('on', playing && b.dataset.track === cur.id);
+  $('repeat').setAttribute('aria-pressed', String(repeat));
+}
+
+// ── Meter ─────────────────────────────────────────────────────────
+const stats = { e: 0, n: 0, max: 0 };
+function resetStats() { stats.e = 0; stats.n = 0; stats.max = 0; }
+const db = (x) => (x > 1e-6 ? 20 * Math.log10(x) : -Infinity);
+const fdb = (x) => (Number.isFinite(x) ? `${x.toFixed(1)} dB` : '−∞');
+const pct = (d) => Math.max(0, Math.min(100, ((d + 48) / 48) * 100)); // −48…0 dBFS
+let peakHold = -Infinity, peakT = 0;
+
+const canvas = $('spectrum'), g = canvas.getContext('2d');
+function drawSpectrum() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  g.clearRect(0, 0, w, h);
+  if (!analyser) return;
+  analyser.getByteFrequencyData(fbuf);
+  // 56 log-spaced bands from 30 Hz to 16 kHz.
+  const N = 56, nyq = audio.ctx.sampleRate / 2, gap = Math.max(1, Math.round(dpr * 2)), bw = (w - gap * (N - 1)) / N;
+  const grad = g.createLinearGradient(0, h, 0, 0);
+  grad.addColorStop(0, '#3ad7ff'); grad.addColorStop(0.6, '#ff3860'); grad.addColorStop(1, '#ff9a3c');
+  g.fillStyle = grad;
+  for (let k = 0; k < N; k++) {
+    const f0 = 30 * Math.pow(16000 / 30, k / N), f1 = 30 * Math.pow(16000 / 30, (k + 1) / N);
+    const i0 = Math.floor((f0 / nyq) * fbuf.length), i1 = Math.max(i0 + 1, Math.ceil((f1 / nyq) * fbuf.length));
+    let v = 0;
+    for (let i = i0; i < i1 && i < fbuf.length; i++) v = Math.max(v, fbuf[i]);
+    const bh = Math.max(1, (v / 255) * h);
+    g.fillRect(k * (bw + gap), h - bh, bw, bh);
+  }
+}
+
+function meter(now) {
+  if (!analyser) return;
+  analyser.getFloatTimeDomainData(tbuf);
+  let e = 0, pk = 0;
+  for (let i = 0; i < tbuf.length; i++) { const v = tbuf[i]; e += v * v; pk = Math.max(pk, Math.abs(v)); }
+  const rms = Math.sqrt(e / tbuf.length);
+  const live = playing && audio.ctx.state === 'running';
+  if (live) { stats.e += rms * rms; stats.n++; stats.max = Math.max(stats.max, pk); }
+  const pdb = db(pk);
+  if (pdb > peakHold || now - peakT > 1200) { peakHold = pdb; peakT = now; }
+  $('lvl').firstElementChild.style.width = pct(db(rms)) + '%';
+  $('lvl').lastElementChild.style.left = `calc(${pct(peakHold)}% - 2px)`;
+  $('m-rms').textContent = fdb(db(rms));
+  $('m-peak').textContent = fdb(pdb);
+  $('m-avg').textContent = stats.n ? fdb(db(Math.sqrt(stats.e / stats.n))) : '—';
+  $('m-max').textContent = stats.n ? fdb(db(stats.max)) : '—';
+}
+
+// ── Frame loop: playhead, current section and part, meter ────────
+let lastSec = -1;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const p = position(), bars = totalBars(cur);
+  const bar = p ? p.bar + (p.time / barSecs(cur) - p.bar) : 0;
+  $('head').style.left = `${Math.min(100, (bar / bars) * 100)}%`;
+  $('t-pos').textContent = fmt(p ? p.time : 0);
+  const sec = p ? p.sec : -1;
+  $('t-where').textContent = p ? `Section ${p.sec + 1} of ${cur.sections.length} · bar ${p.barInSec + 1}/${cur.sections[p.sec].bars}` : `${cur.sections.length} sections`;
+  if (sec !== lastSec) {
+    lastSec = sec;
+    [...$('segs').children].forEach((d, k) => d.classList.toggle('cur', k === sec));
+    [...$('sections').querySelectorAll('.row')].forEach((b, k) => b.classList.toggle('cur', k === sec));
+    const inSec = sec >= 0 ? cur.sections[sec] : null;
+    for (const b of $('parts').children) {
+      const name = b.dataset.part;
+      const idle = inSec && name && (name === 'drums' ? !inSec.drums : !(inSec.p && name in inSec.p));
+      b.classList.toggle('idle', !!idle);
+    }
+  }
+  meter(now);
+  drawSpectrum();
+}
+
+// ── Wiring ────────────────────────────────────────────────────────
+$('play').onclick = togglePlay;
+$('prev').onclick = () => step(-1);
+$('next').onclick = () => step(1);
+$('timeline').onclick = (e) => {
+  const r = $('timeline').getBoundingClientRect();
+  const f = Math.max(0, Math.min(0.999, (e.clientX - r.left) / r.width));
+  play(cur, Math.floor(f * totalBars(cur)));
+};
+$('vol').value = Math.round(vol * 100);
+$('vol').oninput = () => {
+  vol = $('vol').value / 100;
+  store.set('player.vol', vol);
+  if (analyser) audio.setVolume({ music: vol });
+};
+$('repeat').onclick = () => {
+  repeat = !repeat;
+  store.set('player.repeat', repeat);
+  if (analyser) audio.music.playlist = repeat ? [cur.id] : PLAYLIST.slice();
+  renderPlaying();
+};
+window.addEventListener('keydown', (e) => {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.target.closest?.('input, select, textarea')) return;
+  const onButton = !!e.target.closest?.('button');
+  if (e.code === 'Space' && !onButton) { e.preventDefault(); togglePlay(); }
+  else if (e.code === 'ArrowRight') { e.preventDefault(); jumpSection(1); }
+  else if (e.code === 'ArrowLeft') { e.preventDefault(); jumpSection(-1); }
+  else if (e.code === 'KeyN') step(1);
+  else if (e.code === 'KeyP') step(-1);
+  else if (e.code === 'KeyR') $('repeat').click();
+});
+
+renderNow();
+renderTracks();
+renderPlaying();
+requestAnimationFrame(frame);
+
+// Test hooks.
+window.__audio = audio;
+window.__player = {
+  get track() { return cur.id; },
+  get playing() { return playing; },
+  get solo() { return solo; },
+  get repeat() { return repeat; },
+  position,
+};
+window.__ready = true;
+</script>
+</body>
+</html>

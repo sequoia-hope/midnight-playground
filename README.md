@@ -142,6 +142,7 @@ src/
 vendor/three/          three.js r180 (the build plus the few add-ons used)
 tools/                 check-track.js, car-test.html, audio-test.html, serve.py
 test/unit/, test/e2e/  the tests (see Tests below)
+music.html             the soundtrack player
 ```
 
 ## Dev hooks (URL parameters)
@@ -160,6 +161,14 @@ To check a route after editing its level file, run `node tools/check-track.js <l
 (or `npm run check-track`, which checks Level 1). It
 reports each zone's length and height, the tightest corner, the steepest
 grade, and any place where two parts of the road overlap.
+
+## Music player
+
+`music.html` (the **Music player** link on the menu) plays the soundtrack
+through the game's own music bus, so it sounds as it does in a race. It shows
+each song's sections and parts; tap a section or the timeline to jump there,
+and tap a part to solo it. It also has a repeat mode and an output meter
+(level and spectrum), and on a keyboard Space, ← →, N and P work.
 
 ## Tests
 
