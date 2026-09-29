@@ -141,6 +141,7 @@ src/
                        and the drum kit and crash sounds pre-rendered at start-up
 vendor/three/          three.js r180 (the build plus the few add-ons used)
 tools/                 check-track.js, car-test.html, audio-test.html, serve.py
+test/unit/, test/e2e/  the tests (see Tests below)
 ```
 
 ## Dev hooks (URL parameters)
@@ -164,8 +165,15 @@ grade, and any place where two parts of the road overlap.
 
 ```sh
 npm install        # once: puppeteer-core, which drives the Chrome you have installed
-npm test
+npm test           # both suites
+npm run test:unit  # plain Node, about 2 s
+npm run test:e2e   # the browser, a few minutes
 ```
+
+The unit tests in `test/unit/` run the code that doesn't need a browser:
+every level's route, the car physics (including the car claims above), the
+rivals driving each route and passing slower cars, traffic and collisions,
+input, the timer and the soundtrack's songs and synth patches.
 
 The browser tests in `test/e2e/` play the real game in headless Chrome on the
 GPU, both as a desktop and as a phone (touch, in landscape and portrait). They

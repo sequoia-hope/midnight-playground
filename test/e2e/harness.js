@@ -169,8 +169,8 @@ export class Game {
 // Open the game in a fresh profile (so no settings leak between tests).
 // storage: localStorage entries to seed before the game first boots, e.g.
 // { 'mr.level': 'coast' } (values are JSON-encoded here). A reload keeps
-// whatever the game has saved since.
-export async function openGame(browser, { device = 'desktop', query = '', storage = {} } = {}) {
+// whatever the game has saved since. path: another page, e.g. 'music.html'.
+export async function openGame(browser, { device = 'desktop', query = '', storage = {}, path: page_ = '' } = {}) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
   const cdp = await page.createCDPSession();
@@ -208,7 +208,7 @@ export async function openGame(browser, { device = 'desktop', query = '', storag
       for (const [k, v] of Object.entries(entries)) if (localStorage.getItem(k) === null) localStorage.setItem(k, v);
     }, Object.fromEntries(Object.entries(storage).map(([k, v]) => [k, JSON.stringify(v)])));
   }
-  await page.goto(BASE + (query ? '?' + query.replace(/^\?/, '') : ''));
+  await page.goto(BASE + page_ + (query ? '?' + query.replace(/^\?/, '') : ''));
   await game.waitReady();
   return game;
 }

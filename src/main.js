@@ -287,6 +287,7 @@ async function startRace() {
   starting = true;
   try {
     enterFullscreen();
+    audio.setPaused(false); // Restart from the pause screen
     wakeAudio();
     pickMusic();
     applyVolume();
@@ -304,6 +305,7 @@ async function startRace() {
     const compiled = Promise.resolve().then(() => renderer.compileAsync(scene, camera)).catch(() => {});
     await Promise.race([compiled, new Promise((r) => setTimeout(r, 3000))]);
     race.effects.resize(window.innerHeight * renderer.getPixelRatio(), camera.fov);
+    input.pressed.clear(); // keys pressed on the menu don't carry into the race
     input.enabled = true;
     mode = 'race';
     showScreen(null);
@@ -316,6 +318,7 @@ async function startRace() {
 function pause(on) {
   if (!race || (on && mode !== 'race')) return;
   mode = on ? 'paused' : 'race';
+  if (!on) input.pressed.clear(); // nor do keys pressed while paused
   if (on) showNowPlaying(audio.trackInfo, false);
   showScreen(on ? 'pause' : null);
   audio.setPaused(on);

@@ -174,7 +174,10 @@ export class CarPhysics {
       a -= G * gradeAlong / Math.sqrt(1 + gradeAlong * gradeAlong);
       const before = vLong;
       vLong += a * dt;
-      if (inp.throttle < 0.05 && Math.sign(before) !== Math.sign(vLong) && Math.abs(before) < 1) vLong = 0;
+      // Braking or coasting through zero stops the car rather than rolling
+      // it the other way; holding the brake from a standstill reverses.
+      const reversing = inp.brake > 0.05 && Math.abs(before) < 0.05;
+      if (inp.throttle < 0.05 && !reversing && Math.sign(before) !== Math.sign(vLong) && Math.abs(before) < 1) vLong = 0;
       v.accelLong = a;
       v.brakeLight = inp.brake > 0 && vLong > 0.5 ? 1 : 0;
 

@@ -53,9 +53,11 @@ export class AIDriver extends KinematicCar {
       if (o === this) continue;
       const ds = o.s - this.s;
       const oncoming = o.dir === -1;
-      const range = oncoming ? 110 : 45;
-      if (ds < 2 || ds > range) continue;
       const closing = this.speed - (oncoming ? -o.speedAlong : o.speedAlong);
+      // Far enough ahead to get round it at speed (a stopped car at 60 m/s
+      // needs ~3 s of warning, not 45 m).
+      const range = Math.max(oncoming ? 110 : 45, closing * 3.2);
+      if (ds < 2 || ds > range) continue;
       if (closing < 0.5 && !oncoming) continue;
       const tHit = ds / Math.max(closing, 1);
       if (tHit > 3.2) continue;

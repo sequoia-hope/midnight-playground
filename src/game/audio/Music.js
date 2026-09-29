@@ -42,7 +42,8 @@ function pcOf(s) {
 export function noteToMidi(tok) {
   const m = /^([A-G])([#b]?)(-?\d)$/.exec(tok);
   if (!m) return null;
-  return 12 * (Number(m[3]) + 1) + pcOf(m[1] + m[2]);
+  // No wrap to a pitch class here: Cb4 is B3 and B#3 is C4.
+  return 12 * (Number(m[3]) + 1) + PC[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0);
 }
 const QUAL = {
   '': [0, 4, 7], m: [0, 3, 7], 7: [0, 4, 7, 10], m7: [0, 3, 7, 10], maj7: [0, 4, 7, 11], sus2: [0, 2, 7], sus4: [0, 5, 7],

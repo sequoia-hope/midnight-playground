@@ -5,7 +5,8 @@ const ORD = (n) => (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 
 
 export function fmtTime(t) {
   if (t == null || !isFinite(t)) return '--:--.--';
-  const m = Math.floor(t / 60), s = t - m * 60;
+  // Round to hundredths first, so 59.996 s reads 1:00.00, not 0:60.00.
+  const cs = Math.round(t * 100), m = Math.floor(cs / 6000), s = (cs - m * 6000) / 100;
   return `${m}:${s.toFixed(2).padStart(5, '0')}`;
 }
 
