@@ -164,6 +164,27 @@ test('the walls keep the car on the road, with an impact event', () => {
   }
 });
 
+// Pressed into the right-hand wall at `rel` to the road, spinning at
+// `yawRate`, for one frame.
+function wallFrame(rel, yawRate, steer) {
+  const c = car('sports');
+  const ext = c.v.halfW * Math.cos(rel) + c.v.halfL * Math.abs(Math.sin(rel));
+  c.phys.reset(100, track.wallR[100] - ext);
+  c.v.yaw = rel; c.v.vx = 25; c.v.vz = 3; c.v.yawRate = yawRate;
+  c.phys.update(DT, input({ throttle: 1, steer }));
+  assert.ok(c.phys.scrape > 0, 'on the wall');
+  return c.v.yawRate;
+}
+
+test('the wall never fights steering off it, but a tail slap still kills the spin', () => {
+  // Nose in, turning back out at full lock: the turn carries on.
+  const out = wallFrame(0.3, -0.6, -1);
+  assert.ok(out < -0.5, `steering off the wall: yaw rate ${out.toFixed(2)}`);
+  // Tail swinging into the wall: the wall stops it.
+  const slap = wallFrame(-0.4, -2, 0);
+  assert.ok(slap > -1, `tail slap: yaw rate ${slap.toFixed(2)}`);
+});
+
 test('the ends of a point-to-point road stop the car', () => {
   const c = car('sports', { s: 20, speed: -15 });
   drive(c, input(), 3);

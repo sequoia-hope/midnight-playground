@@ -70,6 +70,23 @@ export class AIDriver extends KinematicCar {
     }
     if (this.avoidTimer > 0) { this.avoidTimer -= dt; latT = this.avoid; }
 
+    const lim = Math.min(F.wallR, F.wallL) - myW - 0.35;
+    // Cars alongside (findBlock only sees cars ahead): don't steer into
+    // them. Leaning on a car pinned to a wall would shove it along the wall
+    // and spin it, so keep off its side, and when there's no room on ours
+    // or we're tucked in behind it, drop back instead. (Not roadblock
+    // pieces: we aim for their gap, through the sawhorses.)
+    for (const o of ctx.cars) {
+      if (o === this || o.dir !== 1 || o.gapLat != null) continue;
+      const ds = t.ds(this.s, o.s); // > 0: o is ahead
+      if (Math.abs(ds) > this.halfL + o.halfL + 1) continue;
+      const dl = o.lat - this.lat, clear = myW + o.halfW + 0.4;
+      if (Math.abs(dl) > clear + 1.5) continue;
+      const room = dl > 0 ? o.lat - clear : o.lat + clear;
+      latT = dl > 0 ? Math.min(latT, room) : Math.max(latT, room);
+      if (ds > -1 && (Math.abs(dl) < clear - 0.3 || Math.abs(room) > lim)) vT = Math.min(vT, o.speedAlong - 2);
+    }
+
     // Hot Pursuit: busted. Pull over onto the shoulder and wait out the
     // penalty (the race clock keeps running), then rejoin.
     if (this.hold > 0) {
@@ -78,7 +95,6 @@ export class AIDriver extends KinematicCar {
       latT = this.holdLat ?? this.lat;
     }
 
-    const lim = Math.min(F.wallR, F.wallL) - myW - 0.35;
     latT = clamp(latT, -lim, lim);
 
     // Lateral controller (critically damped-ish, limited accel).

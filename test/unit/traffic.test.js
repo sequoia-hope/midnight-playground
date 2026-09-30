@@ -134,6 +134,23 @@ test('an off-centre hit spins the cars, mirror-symmetrically', () => {
   assert.ok(Math.abs(r.b.spinRate + l.b.spinRate) < 1e-9 && Math.abs(r.a.spinRate + l.a.spinRate) < 1e-9, 'mirror image');
 });
 
+// Two cars leaning on each other (door to door, or one pinned to a wall)
+// touch every frame at a crawl. That pushes them apart but mustn't spin
+// them, or it drowns out the steering.
+test('leaning on another car pushes it but does not spin it', () => {
+  const t = straightTrack(1000);
+  const a = new KinematicCar(makeVehicle('rival', 1400), t);
+  const b = new KinematicCar(makeVehicle('rival', 1400), t);
+  a.s = 100; a.lat = 0; a.speed = 30; a.latVel = 0.6; a.frame(); a.writePos();
+  b.s = 102; b.lat = 1.9; b.speed = 30; b.frame(); b.writePos();
+  const ev = [];
+  resolveCollisions([a, b], ev);
+  assert.equal(ev.length, 1, 'they touch');
+  assert.ok(b.latVel > 0.1, `pushed aside (${b.latVel.toFixed(2)})`);
+  assert.equal(a.spinRate, 0);
+  assert.equal(b.spinRate, 0);
+});
+
 test('collisions skip far-apart cars, a car flying over, and traffic among itself', () => {
   const t = straightTrack(1000);
   const mk = (s, lat) => { const c = new KinematicCar(makeVehicle('rival', 1400), t); c.s = s; c.lat = lat; c.speed = 20; c.frame(); c.writePos(); return c; };

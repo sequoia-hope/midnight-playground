@@ -309,7 +309,10 @@ export class CarPhysics {
         v.vx *= scrub; v.vz *= scrub;
         const pointsIn = Math.sign(rel) === side && Math.abs(rel) < Math.PI / 2;
         if (pointsIn) v.yaw -= rel * clamp(vn * 0.06, 0.05, 0.5);
-        v.yawRate *= 0.5;
+        // The wall stops the touching corner swinging further into it (a
+        // tail slap kills the spin), but never the rotation back toward
+        // parallel: steering a nose-in car off the wall.
+        if (v.yawRate * rel > 0) v.yawRate *= 0.5;
         if (vn > 1.5) {
           const px = v.x + F.rx * side * ext, pz = v.z + F.rz * side * ext;
           this.events.push({ type: 'impact', strength: clamp(vn / 18, 0, 1), x: px, y: v.y + 0.5, z: pz, side });

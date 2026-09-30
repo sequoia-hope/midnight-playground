@@ -229,10 +229,11 @@ npm run test:e2e   # the browser, a few minutes
 
 The unit tests in `test/unit/` run the code that doesn't need a browser:
 every level's route, the car physics (including the car claims above), the
-rivals driving each route and passing slower cars, traffic and collisions,
-input, the timer, the soundtrack's songs and synth patches, and Hot Pursuit
-(line of sight, heat, busts and escapes, and each sprint level raced with
-the police on).
+rivals driving each route, passing slower cars and keeping off a car
+alongside, traffic and collisions (including getting off a wall with a rival
+jammed against you), input, the timer, the soundtrack's songs and synth
+patches, and Hot Pursuit (line of sight, heat, busts and escapes, and each
+sprint level raced with the police on).
 
 The browser tests in `test/e2e/` play the real game in headless Chrome on the
 GPU, both as a desktop and as a phone (touch, in landscape and portrait). They

@@ -2,7 +2,8 @@
 // drives its route to the finish (or once round the cruise loop) on the
 // tarmac and in a sane time, with collisions resolved as Race does it. Also
 // covers overtaking, rubber-banding, holding on the grid, and the track-
-// coordinate car underneath (walls, spin, velocity round trips).
+// coordinate car underneath (walls, spin, velocity round trips), and a
+// rival that ends up alongside you, or jammed between you and a wall.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +11,8 @@ import { LEVELS } from '../../src/levels/index.js';
 import { Track } from '../../src/track/Track.js';
 import { AIDriver } from '../../src/vehicles/AIDriver.js';
 import { KinematicCar } from '../../src/vehicles/Kinematic.js';
-import { resolveCollisions } from '../../src/vehicles/Collisions.js';
+import { resolveCollisions, PhysicsBody } from '../../src/vehicles/Collisions.js';
+import { CarPhysics, CAR_SPECS } from '../../src/vehicles/CarPhysics.js';
 import { makeVehicle, straightTrack, withSeededRandom } from './support/sim.js';
 
 const DT = 1 / 60;
@@ -144,6 +146,73 @@ test('at racing speed a rival gets round a slow or stopped car without hitting i
       assert.ok(r.closest > r.need, `rival at ${r.at.toFixed(0)} m/s passing a car doing ${c.blockSpeed} m/s: ${r.closest.toFixed(2)} m apart sideways, bodies overlap under ${r.need.toFixed(2)}`);
     }
   });
+});
+
+// A car level with a rival, held at a steady 30 m/s; the rival's line
+// (bias) runs straight through it. Returns the rival, how often they
+// touched over `seconds`, and how far apart sideways they were while level.
+function alongside({ carLat, rivalLat, bias, seconds = 3 }) {
+  const t = straightTrack(3000);
+  const a = new AIDriver(makeVehicle('rival', 1400), t, { skill: 0.95, name: 'X', bias, lineFactor: 0 });
+  a.s = 300; a.lat = rivalLat; a.speed = 30; a.nitroTimer = 1e9; a.writePos();
+  const car = new KinematicCar(makeVehicle('rival', 1400), t);
+  car.s = 300; car.lat = carLat; car.speed = 30; car.writePos();
+  let contacts = 0, closest = Infinity;
+  for (let i = 0; i < seconds / DT; i++) {
+    a.update(DT, { cars: [a, car], playerS: car.s, started: true, time: i * DT });
+    car.speed = 30; car.latVel = 0; car.advance(DT);
+    const hits = [];
+    resolveCollisions([a, car], hits);
+    contacts += hits.length;
+    a.writePos(); car.writePos();
+    if (Math.abs(a.s - car.s) < a.halfL + car.halfL) closest = Math.min(closest, Math.abs(a.lat - car.lat));
+  }
+  return { a, car, contacts, closest };
+}
+
+// findBlock only sees cars ahead, so a rival used to steer for its line
+// straight through a car beside it, and lean on it every frame.
+test('a rival alongside keeps off your side instead of steering into you', () => {
+  const { a, car, contacts, closest } = alongside({ carLat: 3, rivalLat: 0.6, bias: 6 });
+  assert.equal(contacts, 0, `touched ${contacts} frames`);
+  assert.ok(closest > a.halfW + car.halfW, `${closest.toFixed(2)} m apart sideways while level`);
+});
+
+test('a rival boxed in between you and the wall drops back behind you', () => {
+  const W = straightTrack(3000).wallL[300];
+  const { a, car, contacts } = alongside({ carLat: -W + 3.4, rivalLat: -W + 1.2, bias: 4 });
+  assert.ok(car.s - a.s > a.halfL + car.halfL, `dropped back ${(car.s - a.s).toFixed(1)} m`);
+  assert.ok(contacts < 10, `touched ${contacts} frames`);
+});
+
+// The bug this guards against: nosed into a wall at speed with a rival
+// jammed between your rear quarter and the wall, the rival's shove (its
+// line runs through you) spun your nose back into the wall every frame. You
+// ground along the wall at full lock, unable to turn off it.
+test('pinned to a wall by a rival at your rear quarter, you can still steer off it', () => {
+  const t = straightTrack(3000);
+  const W = t.wallR[300];
+  for (const kind of Object.keys(CAR_SPECS)) {
+    const spec = CAR_SPECS[kind];
+    const v = makeVehicle(kind, spec.mass);
+    const phys = new CarPhysics(v, t, spec);
+    const rel = 0.35; // nose into the right-hand wall
+    phys.reset(300, W - v.halfW * Math.cos(rel) - v.halfL * Math.sin(rel));
+    v.yaw = rel; v.vx = 30;
+    phys.drifting = true;
+    const body = new PhysicsBody(v, phys);
+    const a = new AIDriver(makeVehicle('rival', 1400), t, { skill: 0.95, name: 'X' });
+    a.s = 297.5; a.lat = W - a.halfW - 0.15; a.speed = 30; a.spin = 0.8; a.stunned = 1.5; a.writePos();
+    let time = 0;
+    while (W - v.lat - v.halfW < 2 && time < 5) {
+      phys.update(DT, { throttle: 1, brake: 0, steer: -1, handbrake: false, nitro: false });
+      a.update(DT, { cars: [body, a], playerS: v.s, started: true, time });
+      resolveCollisions([body, a], []);
+      a.writePos();
+      time += DT;
+    }
+    assert.ok(time < 1.5, `${kind}: 2 m off the wall after ${time.toFixed(2)} s`);
+  }
 });
 
 test('KinematicCar: walls, spin decay and velocity round trips', () => {

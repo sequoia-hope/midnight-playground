@@ -1,4 +1,4 @@
-import { clamp } from '../util/math.js';
+import { clamp, smoothstep } from '../util/math.js';
 
 // Car-to-car contacts. Each car is two circles (front and rear axle) — cheap,
 // and good enough for door-to-door racing, rear-enders and T-bones.
@@ -61,7 +61,10 @@ export function resolveCollisions(bodies, events) {
       A.setVelocity(avx - (nx * jn + tx * jt) * ia, avz - (nz * jn + tz * jt) * ia);
       B.setVelocity(bvx + (nx * jn + tx * jt) * ib, bvz + (nz * jn + tz * jt) * ib);
       // Spin from off-centre hits (2D cross product of lever arm × impulse).
-      const spinK = 0.35;
+      // Only real hits spin: two cars leaning on each other (door to door,
+      // or one pinned against a wall) touch every frame at a crawl, and
+      // spinning them each time would override the steering.
+      const spinK = 0.35 * smoothstep(1, 4, -vr);
       const raX = px - A.v.x, raZ = pz - A.v.z, rbX = px - B.v.x, rbZ = pz - B.v.z;
       A.addSpin(-(raX * nz - raZ * nx) * jn * ia * spinK);
       B.addSpin((rbX * nz - rbZ * nx) * jn * ib * spinK);
