@@ -148,6 +148,15 @@ the throttle down unless you're braking. High quality is off by default on
 touch screens. Switching away from the browser pauses the race. You can also
 add the game to your home screen, where it opens fullscreen in landscape.
 
+**Tilt steer** (on the menu) steers by turning the phone like a steering
+wheel. Level is straight ahead, so there's nothing to calibrate, and the Tilt
+slider sets how far you turn for full lock. While tilt is steering, the
+steering buttons give way to a wheel that shows the lock. Phones only send
+the motion sensor to https pages, so tilt works on the GitHub Pages build but
+not on a plain `http://` address from another machine. An iPhone asks for
+motion access the first time. Whenever tilt can't steer, the menu says why and
+the buttons stay.
+
 ## Layout
 
 ```
@@ -177,7 +186,8 @@ src/
   world/desert/        Level 4 parts: rocks, plants, fence, poles, train
   vehicles/            car models, player physics, rival AI, traffic, collisions,
                        the police driver
-  game/                race flow, camera, HUD, effects, audio, input, touch controls
+  game/                race flow, camera, HUD, effects, audio, input, touch controls,
+                       tilt steering
   game/Pursuit.js      Hot Pursuit: heat, line of sight, busts, units, roadblocks
                        (no three.js, so it's tested in Node); PursuitView.js wires
                        it into a race
@@ -231,12 +241,13 @@ The unit tests in `test/unit/` run the code that doesn't need a browser:
 every level's route, the car physics (including the car claims above), the
 rivals driving each route, passing slower cars and keeping off a car
 alongside, traffic and collisions (including getting off a wall with a rival
-jammed against you), input, the timer, the soundtrack's songs and synth
+jammed against you), input and tilt steering, the timer, the soundtrack's songs and synth
 patches, and Hot Pursuit (line of sight, heat, busts and escapes, and each
 sprint level raced with the police on).
 
 The browser tests in `test/e2e/` play the real game in headless Chrome on the
-GPU, both as a desktop and as a phone (touch, in landscape and portrait). They
+GPU, both as a desktop and as a phone (touch and tilt, in landscape and
+portrait; the tilt comes through Chrome's own sensor emulation). They
 tap and click the way a player does, with the browser's real rules for when
 audio and fullscreen may start. The working tree is served through request
 interception, so the tests need no server and no port. Set `MR_BASE_URL` to test a running copy

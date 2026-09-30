@@ -5,6 +5,9 @@
 // every button on each move, so a thumb can slide from gas to brake or from
 // left to right without lifting. Held buttons feed Input.update(); tap
 // buttons post one-shot actions the same way the keyboard does.
+//
+// With tilt steering on (a TiltSteer as .tilt) and the sensor answering,
+// the steering pads give way to a wheel that shows how much lock is on.
 
 const HOLD = ['throttle', 'brake', 'left', 'right', 'handbrake', 'nitro'];
 const SLOP = 14; // px of forgiveness round each button
@@ -15,6 +18,9 @@ export class TouchControls {
     this.root = root;
     this.visible = false;
     this.autoGas = false;
+    this.tilt = null;
+    this.tilting = false;
+    this.wheel = root.querySelector('.t-wheel');
     this.held = Object.fromEntries(HOLD.map((k) => [k, false]));
     this.pointers = new Map(); // pointerId → [x, y]
     this.holdEls = [...root.querySelectorAll('[data-act]')];
@@ -74,6 +80,7 @@ export class TouchControls {
     let best = null, bd = Infinity;
     for (const el of els) {
       const r = el.getBoundingClientRect();
+      if (!r.width) continue; // hidden (the steering pads while tilting)
       if (x < r.left - SLOP || x > r.right + SLOP || y < r.top - SLOP || y > r.bottom + SLOP) continue;
       const d = Math.hypot(x - (r.left + r.right) / 2, y - (r.top + r.bottom) / 2);
       if (d < bd) { bd = d; best = el; }
@@ -88,6 +95,21 @@ export class TouchControls {
       if (el) this.held[el.dataset.act] = true;
     }
     for (const el of this.holdEls) el.classList.toggle('on', this.held[el.dataset.act]);
+  }
+
+  // Called by Input.update(): the tilt steering for this frame, or null
+  // while steering is on the pads.
+  tiltSteer(dt) {
+    const on = !!this.tilt?.live && this.visible;
+    if (on !== this.tilting) {
+      this.tilting = on;
+      this.root.classList.toggle('tilt', on);
+      this.refresh(); // a thumb resting on a pad that just hid lets go
+    }
+    if (!on) return null;
+    const s = this.tilt.update(dt);
+    if (this.wheel) this.wheel.style.transform = `rotate(${(s * 90).toFixed(1)}deg)`;
+    return s;
   }
 
   // Merged into Input.update(): gas (or auto gas unless braking), brake,

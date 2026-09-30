@@ -9,6 +9,7 @@ import { CAR_SPECS } from './vehicles/CarPhysics.js';
 import { GameAudio } from './game/Audio.js';
 import { Input } from './game/Input.js';
 import { TouchControls, isTouchDevice } from './game/TouchControls.js';
+import { TiltSteer } from './game/TiltSteer.js';
 import { Race } from './game/Race.js';
 import { fmtTime } from './game/HUD.js';
 import { LEVELS, levelById } from './levels/index.js';
@@ -29,6 +30,8 @@ const settings = {
   mph: store.get('mph', true),
   hq: store.get('hq', !touchUI),
   autogas: store.get('autogas', false),
+  tilt: store.get('tilt', false), // steer by turning the phone
+  tiltSens: store.get('tiltSens', 0.5),
   fullscreen: store.get('fullscreen', true),
   car: store.get('car', 'sports'),
   level: store.get('level', 'sierra'),
@@ -139,6 +142,8 @@ const input = new Input();
 const touch = touchUI ? new TouchControls(input) : null;
 input.touch = touch;
 if (touch) touch.autoGas = settings.autogas;
+const tilt = touch ? new TiltSteer() : null;
+if (touch) touch.tilt = tilt;
 window.__audio = audio;
 // Test hooks: headless checks raycast and inspect with these.
 window.__camera = camera;
@@ -269,7 +274,7 @@ function bindSlider(cls, key, storeKey) {
 }
 bindSlider('.vol-music', 'music', 'musicVol');
 bindSlider('.vol-sfx', 'sfx', 'sfxVol');
-for (const [id, key] of [['opt-mph', 'mph'], ['opt-hq', 'hq'], ['opt-autogas', 'autogas'], ['opt-fullscreen', 'fullscreen'], ['opt-flash', 'flash']]) {
+for (const [id, key] of [['opt-mph', 'mph'], ['opt-hq', 'hq'], ['opt-autogas', 'autogas'], ['opt-tilt', 'tilt'], ['opt-fullscreen', 'fullscreen'], ['opt-flash', 'flash']]) {
   const el = $(id);
   el.checked = settings[key];
   el.onchange = () => {
@@ -277,8 +282,31 @@ for (const [id, key] of [['opt-mph', 'mph'], ['opt-hq', 'hq'], ['opt-autogas', '
     if (key === 'hq') applyQuality();
     if (key === 'mph' && race) race.hud.mph = el.checked;
     if (key === 'autogas' && touch) touch.autoGas = el.checked;
+    if (key === 'tilt' && tilt) { tilt.enable(el.checked); showTiltState(); } // inside the tap, for iPhones
     if (key === 'flash' && race?.pv) race.pv.flash = race.pv.pursuit.flash = el.checked;
   };
+}
+
+// Tilt steering: the sensitivity slider shows while it's on, and a line
+// under the options says why it isn't steering, when it isn't.
+const TILT_NOTES = {
+  insecure: 'Tilt steer needs the game\u2019s https:// address; steering stays on the buttons',
+  none: 'No tilt sensor answered; steering stays on the buttons',
+  ask: 'Tap Tilt steer or Race to allow motion access',
+  denied: 'Motion access was turned down; steering stays on the buttons',
+};
+function showTiltState() {
+  $('tilt-sens-row').classList.toggle('hidden', !settings.tilt);
+  $('tilt-note').textContent = (settings.tilt && TILT_NOTES[tilt?.state]) || '';
+}
+if (tilt) {
+  const sens = $('opt-tilt-sens');
+  sens.value = Math.round(settings.tiltSens * 100);
+  sens.oninput = () => { settings.tiltSens = sens.value / 100; store.set('tiltSens', settings.tiltSens); tilt.setSensitivity(settings.tiltSens); };
+  tilt.setSensitivity(settings.tiltSens);
+  tilt.onChange = showTiltState;
+  if (settings.tilt) tilt.enable(true);
+  showTiltState();
 }
 
 // Phones: go fullscreen and hold landscape when a race starts. Must run
@@ -306,6 +334,7 @@ async function startRace() {
   starting = true;
   try {
     enterFullscreen();
+    if (settings.tilt) tilt?.enable(true); // an iPhone asks for motion access in this tap
     audio.setPaused(false); // Restart from the pause screen
     wakeAudio();
     pickMusic();

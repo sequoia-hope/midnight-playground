@@ -181,6 +181,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #05060a; col
 .menu-opts input { accent-color: var(--accent); }
 .menu-link { color: var(--accent2); font-weight: 700; text-decoration: none; letter-spacing: .04em; }
 .menu-link:hover { text-decoration: underline; }
+.tilt-note { flex-basis: 100%; text-align: center; color: #ffb454; font-size: 14px; }
+#tilt-note:empty { display: none; }
+body.touch .menu-opts .vol.touch-only { display: inline-flex; }
 .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 4px 20px; width: min(560px, 92vw); color: var(--hud-dim); font-size: 14px; }
 kbd { display: inline-block; min-width: 20px; padding: 0 5px; border-radius: 4px; border: 1px solid rgba(255,255,255,.3); background: rgba(255,255,255,.08); font-family: inherit; font-size: 12px; text-align: center; margin-right: 2px; color: #fff; }
 .title { font-size: 56px; font-weight: 900; font-style: italic; }
@@ -252,6 +255,13 @@ body.touch .controls { display: none; }
 .t-nitro.on { background: rgba(56, 182, 255, .45); box-shadow: 0 0 18px rgba(56, 182, 255, .6); }
 .t-util { position: absolute; top: calc(max(8px, env(safe-area-inset-top)) + 96px); left: var(--inL); display: flex; gap: 10px; }
 .t-small { width: 44px; height: 44px; }
+/* Tilt steering: a wheel turned to the lock, in place of the steering pads. */
+.t-wheel { display: none; position: absolute; left: calc(var(--inL) + 8px); bottom: calc(var(--inB) + 8px); width: calc(var(--b) * 1.3); height: calc(var(--b) * 1.3);
+  color: rgba(255, 255, 255, .7); filter: drop-shadow(0 1px 4px rgba(0, 0, 0, .6)); pointer-events: none; }
+.t-wheel svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
+.t-wheel .t-wheel-top { stroke: var(--accent); stroke-width: 4; }
+#touch.tilt .t-steer { display: none; }
+#touch.tilt .t-wheel { display: block; }
 
 /* The HUD makes room: speedo between the thumbs, small map and route bar. */
 body.touch .hud-tl { left: var(--inL); top: 8px; }

@@ -1,8 +1,9 @@
 import { clamp } from '../util/math.js';
 
 // Keyboard, gamepad and on-screen touch controls (TouchControls, attached
-// as input.touch). Keyboard and touch steering are ramped so tapping gives
-// small corrections and holding gives full lock, like an analogue stick.
+// as input.touch, with tilt steering through it). Keyboard and touch-pad
+// steering are ramped so tapping gives small corrections and holding gives
+// full lock, like an analogue stick.
 
 const KEYMAP = {
   throttle: ['KeyW', 'ArrowUp'],
@@ -53,10 +54,16 @@ export class Input {
     let throttle = this.any(KEYMAP.throttle) ? 1 : t ? t.throttle : 0;
     let brake = this.any(KEYMAP.brake) ? 1 : t ? t.brake : 0;
     const l = this.any(KEYMAP.left), r = this.any(KEYMAP.right);
-    const target = l || r ? (r ? 1 : 0) - (l ? 1 : 0) : t ? t.steer : 0;
-    // Ramp toward target; snap back faster than we turn in.
-    const rate = target === 0 ? 7 : Math.sign(target) !== Math.sign(this.steer) && this.steer !== 0 ? 9 : 3.6;
-    this.steer += clamp(target - this.steer, -rate * dt, rate * dt);
+    // Tilt steering is analogue and already smoothed, so it isn't ramped;
+    // a held key still wins over it.
+    const tilt = t?.tiltSteer?.(dt) ?? null;
+    if (tilt !== null && !(l || r)) this.steer = tilt;
+    else {
+      const target = l || r ? (r ? 1 : 0) - (l ? 1 : 0) : t ? t.steer : 0;
+      // Ramp toward target; snap back faster than we turn in.
+      const rate = target === 0 ? 7 : Math.sign(target) !== Math.sign(this.steer) && this.steer !== 0 ? 9 : 3.6;
+      this.steer += clamp(target - this.steer, -rate * dt, rate * dt);
+    }
     let steer = this.steer;
     let handbrake = this.any(KEYMAP.handbrake) || !!t?.held.handbrake;
     let nitro = this.any(KEYMAP.nitro) || !!t?.held.nitro;
