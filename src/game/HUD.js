@@ -20,7 +20,10 @@ export class HUD {
       pos: $('hud-pos'), suf: $('hud-pos-suf'), of: $('hud-of'), time: $('hud-time'), zone: $('hud-zone'),
       speed: $('hud-speed'), unit: $('hud-unit'), gear: $('hud-gear'), nitro: $('hud-nitro'), center: $('hud-center'),
       toast: $('hud-toast'), zoneCard: $('zone-card'), dots: $('route-dots'), speedlines: $('speedlines'),
+      lap: $('hud-lap'), lapN: $('hud-lap-n'), lapTime: $('hud-lap-time'), lapBest: $('hud-lap-best'),
     };
+    // Circuits (a loop raced over laps): lap count and times under the clock.
+    this.el.lap.classList.toggle('hidden', !track.laps);
     this.el.nitroBox = this.el.nitro.parentElement;
     this.tach = $('tach').getContext('2d');
     this.mini = $('minimap').getContext('2d');
@@ -162,11 +165,19 @@ export class HUD {
       this.lastZone = z;
       const zone = this.track.zones[z];
       this.set('zone', e.zone, zone.name);
-      if (st.started) this.zoneCard(zone);
+      // (On a circuit, only the first time round.)
+      if (st.started && !(st.laps && (st.laps.lap > 1 || st.laps.time == null))) this.zoneCard(zone);
     }
 
-    // Route dots.
-    const L = this.track.finishS;
+    if (st.laps) {
+      const l = st.laps;
+      this.set('lapN', e.lapN, `LAP ${l.lap}/${l.of}`);
+      this.set('lapTime', e.lapTime, l.time == null ? '' : fmtTime(l.time));
+      this.set('lapBest', e.lapBest, l.best == null ? '' : `BEST LAP ${fmtTime(l.best)}`);
+    }
+
+    // Route dots: along the route, or round the lap on a circuit.
+    const L = this.track.laps ? this.track.n : this.track.finishS;
     st.racers.forEach((r, i) => {
       const d = this.dots[i];
       if (d) d.style.left = (clamp(r.s / L, 0, 1) * 100).toFixed(2) + '%';

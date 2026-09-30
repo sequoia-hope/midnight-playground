@@ -2,7 +2,8 @@
 // width (m); margin = how far past the paved edge the barrier/cliff sits;
 // edge = what lines the road: 'terrain' (rock wall or guardrail, decided from
 // the ground), 'fence', 'jersey' (concrete barrier), 'rail' (kerb + railing),
-// 'curb' (kerb and pavement, built by the level's scenery) or 'none'.
+// 'curb' (kerb and pavement, built by the level's scenery), 'circuit' (run-off
+// and barriers built by the level's scenery) or 'none'.
 // marks = the painted line scheme (see Road.buildMarkings); bank scales the
 // automatic banking in corners (default 1).
 //
@@ -19,5 +20,11 @@ export const ROAD_TYPES = {
   // Desert: a two-lane highway and the open dry-lake course.
   desert: { hw: 5.6, margin: 2.2, lanes: 2, edge: 'none', tone: 0, marks: 'dashed' },
   playa: { hw: 9.0, margin: 3.0, lanes: 4, edge: 'none', tone: 0, marks: 'guide' },
+  // Seaside Raceway: a race circuit, 12 m of tarmac (15 m down the pit
+  // straight) with white edge lines. Past the edge is run-off out to the
+  // surveyed walls (the track carries them); the scenery lays the kerbs,
+  // run-off and barriers. Off the tarmac the car loses speed (runoff).
+  circuit: { hw: 6.0, margin: 12, lanes: 2, edge: 'circuit', tone: 1, marks: 'circuit', runoff: true },
+  circuitWide: { hw: 7.5, margin: 12, lanes: 2, edge: 'circuit', tone: 1, marks: 'circuit', runoff: true },
 };
 export const ROAD_KEYS = Object.keys(ROAD_TYPES);

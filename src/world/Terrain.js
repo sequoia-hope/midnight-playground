@@ -1,4 +1,5 @@
 import { clamp, lerp, smoothstep, makeNoise2D, fbm, ridged, hash2 } from '../util/math.js';
+import { RUNOFF_FLAT } from '../track/Track.js';
 
 // Heightfield terrain sculpted around the road.
 //
@@ -17,6 +18,7 @@ const TILE = NEAR * NT;  // 256 m
 const FORM_FN = {
   mountain: 'formMountain', valley: 'formValley', city: 'formCity', coast: 'formCoast', beach: 'formBeach', harbor: 'formHarbor',
   streets: 'formStreets', canyon: 'formCanyon', desert: 'formDesert', playa: 'formPlaya',
+  raceway: 'formRaceway',
 };
 
 // Per-landform near-road shaping: r0 = flat shoulder past the paved edge,
@@ -36,6 +38,10 @@ export const LANDFORMS = {
   canyon: { r0: 2.2, band: 20, pow: 0.7 },
   desert: { r0: 3.0, band: 40, pow: 1 },
   playa: { r0: 6.0, band: 60, pow: 1 },
+  // Seaside Raceway: the level supplies surveyed ground. Inside the
+  // barriers (the track's wallL/wallR) the run-off is graded flush with the
+  // tarmac, so the car drives on what you see; outside it's the real land.
+  raceway: { r0: 0.5, band: 7, pow: 1, corridor: true },
 };
 
 export class Terrain {
@@ -186,13 +192,20 @@ export class Terrain {
 
     // Near field: sparse 256 m tiles of 4 m nodes.
     this.nearTiles = new Map();
+    // Circuits: the flat run-off reaches the barriers on each side.
+    const corridor = this.lf.every((f) => f.corridor);
     for (let i = 0; i < t.n; i += 2) {
       const zb = t.zoneBlend(i, 150);
       const hw = t.hw[i];
       let r0 = hw, band = 0, kPow = 0;
       zb.forEach((w, z) => { r0 += w * this.lf[z].r0; band += w * this.lf[z].band; kPow += w * this.lf[z].pow; });
-      const r1 = r0 + band;
-      const drop = 0.3;
+      const rL = corridor ? t.wallL[i] + r0 - hw : r0, rR = corridor ? t.wallR[i] + r0 - hw : r0;
+      const r1 = Math.max(rL, rR) + band;
+      // Circuits keep the run-off nearly flush; in a sag (the foot of the
+      // Corkscrew) a straight 4 m chord of ground would cut above the
+      // curving road, so it sits a little lower there.
+      const sag = corridor ? Math.max(0, t.py[t.idx(i - 3)] + t.py[t.idx(i + 3)] - 2 * t.py[i]) / 9 : 0;
+      const drop = corridor ? 0.1 + sag * 6 : 0.3;
       // Bridges and viaducts: no embankment, the deck stands on piers.
       if (this.isElevated(i)) continue;
       const x = t.px[i], z = t.pz[i], y = t.py[i];
@@ -205,15 +218,35 @@ export class Terrain {
           const dx = nx * NEAR - x;
           const d = Math.sqrt(dx * dx + dz * dz);
           if (d > r1) continue;
+          const lat = dx * rx + dz * rz;
+          const rs = lat >= 0 ? rR : rL;
+          if (corridor && d > rs + band) continue;
           const tile = this.nearTileFor(nx, nz, true);
           const li = (nz - tile.oz) * (NT + 1) + (nx - tile.ox);
-          const k = 1 - Math.pow(smoothstep(r0, r1, d), kPow);
-          const lat = dx * rx + dz * rz;
-          const h = y - clamp(lat, -hw, hw) * bank - drop;
-          const w = (k * k) / ((d * d + 1) * (d * d + 1));
+          const k = 1 - Math.pow(smoothstep(rs, rs + band, d), kPow);
+          // Run-off: the track's own surface out to the barriers. Where the
+          // ground folds up from a banked road (concave), the 4 m chord
+          // would stand proud of the road's edge, so drop it by the fold.
+          const fold = corridor ? Math.max(0, lat >= 0 ? t.runR[i] + bank : t.runL[i] - bank) * 0.5
+            * (1 - smoothstep(hw + RUNOFF_FLAT + 2, hw + RUNOFF_FLAT + 6, Math.abs(lat))) : 0;
           if (k > tile.K[li]) tile.K[li] = k;
-          tile.sw[li] += w;
-          tile.swh[li] += w * h;
+          if (corridor) {
+            // The run-off under a car is the surface of the nearest bit of
+            // road (physics projects onto it), so take that one alone: an
+            // average over the stretches round a tight corner on a steep
+            // drop (the Corkscrew) rides high. Offset along the road too,
+            // since samples are 2 m apart.
+            if (d < tile.d[li]) {
+              const along = dx * t.fx[i] + dz * t.fz[i];
+              tile.swh[li] = t.surfaceY(i + along, lat) - drop - fold;
+              tile.sw[li] = 1;
+            }
+          } else {
+            const h = y - clamp(lat, -hw, hw) * bank - drop;
+            const w = (k * k) / ((d * d + 1) * (d * d + 1));
+            tile.sw[li] += w;
+            tile.swh[li] += w * h;
+          }
           if (d < tile.d[li]) { tile.d[li] = d; tile.s[li] = i; }
         }
       }
@@ -373,6 +406,11 @@ export class Terrain {
     const d = F.d;
     const hills = smoothstep(1200, 2400, d) * (60 + 260 * ridged(this.noise, x / 1500 + 6.1, z / 1500, 4));
     return (g ? g(x, z) : F.y) - 0.3 + hills;
+  }
+
+  // Seaside Raceway: the surveyed ground (level.ground), as is.
+  formRaceway(x, z) {
+    return this.level.ground(x, z);
   }
 
   // ── Desert Run (Level 4) ───────────────────────────────────────

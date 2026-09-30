@@ -204,6 +204,27 @@ export class TerrainColorizer {
     mix3(c, c, P.rock, smoothstep(0.45, 0.7, slope));
   }
 
+  // Seaside Raceway: the aerial photo's own colour (level.groundColor,
+  // sRGB 0..1). An overhead summer photo is pale and hazy, so it's graded a
+  // little darker and richer for the game's sunlight. Grey, unsaturated
+  // ground (the paddock, car parks, service roads) is paved.
+  raceway(c, ctx) {
+    const g = this.t.level.groundColor(ctx.x, ctx.z, this._rw || (this._rw = [0, 0, 0]));
+    const lin = (v) => Math.pow(v, 2.2);
+    // Warmer (the photo's haze is blue) and richer.
+    const r = lin(g[0]) * 1.04, gg = lin(g[1]), b = lin(g[2]) * 0.82;
+    const l = (r + gg + b) / 3;
+    const sat = 1.55, k = 0.74;
+    c[0] = Math.max(0, l + (r - l) * sat) * k;
+    c[1] = Math.max(0, l + (gg - l) * sat) * k;
+    c[2] = Math.max(0, l + (b - l) * sat) * k;
+    // Paved yards and lots get slab joints; not the run-off inside the
+    // barriers (that's the scenery's asphalt or bare graded dirt).
+    const chroma = Math.max(g[0], g[1], g[2]) - Math.min(g[0], g[1], g[2]);
+    const grey = (1 - smoothstep(0.035, 0.08, chroma)) * smoothstep(0.4, 0.55, (g[0] + g[1] + g[2]) / 3);
+    ctx.pv = grey * smoothstep(36, 50, ctx.d) * 0.6;
+  }
+
   // ── Desert Run (Level 4) ───────────────────────────────────────
   // Banded sandstone on the steep faces, red sand on the floor and ledges.
   strataColor(out, y, n1) {

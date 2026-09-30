@@ -7,7 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVELS } from '../../src/levels/index.js';
+import { LEVELS } from './support/levels.js';
 import { Track } from '../../src/track/Track.js';
 import { AIDriver } from '../../src/vehicles/AIDriver.js';
 import { KinematicCar } from '../../src/vehicles/Kinematic.js';

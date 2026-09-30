@@ -40,11 +40,13 @@ export class AIDriver extends KinematicCar {
     let vT = Math.min(t.speedProfile[t.idx(this.s)], t.speedProfile[iA]) * this.skill;
     if (park) vT = Math.min(vT, park.speed(this.s));
     else {
-      // Rubber band against the player.
-      const gap = this.s - ctx.playerS;
+      // Rubber band against the player (on a circuit, by race progress).
+      const gap = ctx.playerProg != null ? this.prog - ctx.playerProg : this.s - ctx.playerS;
       vT *= gap > 120 ? lerp(1, 0.9, smoothstep(120, 400, gap)) : gap < -80 ? lerp(1, 1.1, smoothstep(80, 350, -gap)) : 1;
     }
     if (this.stunned > 0) vT *= 0.6;
+    // Circuit run-off slows rivals as it does the player.
+    if (t.runL && Math.abs(this.lat) > F.hw + 0.4) vT *= 0.8;
     // Hot Pursuit: shredded tyres after a spike strip.
     if (this.spiked > 0) { this.spiked -= dt; vT *= 0.75; }
 

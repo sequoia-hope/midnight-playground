@@ -6,7 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVELS } from '../../src/levels/index.js';
+import { LEVELS } from './support/levels.js';
 import { Track } from '../../src/track/Track.js';
 import { KinematicCar } from '../../src/vehicles/Kinematic.js';
 import { resolveCollisions, PhysicsBody } from '../../src/vehicles/Collisions.js';
@@ -50,7 +50,9 @@ for (const L of LEVELS) {
       }
       for (const c of traffic.cars) if (!c.active) spawnedAt.delete(c);
     }
-    assert.ok(seen > 10, `${seen} cars came and went`);
+    // A closed circuit (every zone's mix empty) has no traffic at all.
+    if (L.traffic.every((r) => !r.mix.length)) assert.equal(seen, 0, 'no traffic on a closed circuit');
+    else assert.ok(seen > 10, `${seen} cars came and went`);
     assert.ok(maxActive <= 22, `at most count cars at once (${maxActive})`);
   });
 }

@@ -7,7 +7,7 @@ import { Traffic } from '../vehicles/Traffic.js';
 import { resolveCollisions, PhysicsBody } from '../vehicles/Collisions.js';
 import { CameraRig } from './CameraRig.js';
 import { Effects } from './Effects.js';
-import { HUD } from './HUD.js';
+import { HUD, fmtTime } from './HUD.js';
 import { PursuitView } from './PursuitView.js';
 import { ROAD_TYPES, ROAD_KEYS } from '../track/roadTypes.js';
 
@@ -17,6 +17,9 @@ import { ROAD_TYPES, ROAD_KEYS } from '../track/roadTypes.js';
 // and no finish; you score points for speed, near misses and drifts.
 // With `pursuit` on (Hot Pursuit, sprint levels with police data) the police
 // join in: see PursuitView.js and Pursuit.js.
+// A circuit (a loop with `laps`, Seaside Raceway) is raced over laps: every
+// racer's progress is counted unwrapped (`prog`, metres from the line), so
+// standings, lap counts and the finish all read that.
 
 // After the finish every racer drives on at a relaxed cruise, drifts into a
 // lane and rolls to a stop in a parking row short of the end of the road.
@@ -32,6 +35,12 @@ export class Race {
     this.level = world.level;
     this.cruise = this.level.mode === 'cruise';
     this.pursuitOn = !!(pursuit && this.level.police && !this.cruise);
+    // Laps (circuits only) and the progress that finishes the race.
+    this.laps = track.laps;
+    this.finishProg = this.laps ? track.startS + this.laps * track.n : track.finishS;
+    this.lap = 1;
+    this.lapStart = 0;
+    this.lapTimes = [];
     this.spec = CAR_SPECS[carKind];
     this.score = 0; this.mult = 1; this.multTimer = 0; this.topSpeed = 0; this.dist = 0; this.nearMisses = 0;
     this.time = 0;
@@ -83,9 +92,10 @@ export class Race {
       const row = Math.floor(k / 2), col = k % 2;
       const s = track.startS - 5 - row * 10 - col * 3;
       const lat = col ? 2.4 : -2.4;
-      if (c === 'player') this.phys.reset(s, lat);
-      else { c.s = s; c.lat = lat; c.speed = 0; c.writePos(); }
+      if (c === 'player') { this.phys.reset(track.wrap(s), lat); this.player.prog = s; }
+      else { c.s = track.wrap(s); c.lat = lat; c.speed = 0; c.prog = s; c.writePos(); }
     });
+    this.progS = new Map([[this.player, this.player.s], ...this.ais.map((a) => [a, a.s])]);
 
     this.traffic = new Traffic(track, this.group, buildVehicle, { level: this.level, world, count: this.cruise ? 30 : this.pursuitOn ? 18 : 22 });
 
@@ -120,17 +130,52 @@ export class Race {
   }
 
   standings() {
+    // On a circuit, how far round the race: prog. Elsewhere s is the same.
+    const at = (c) => (this.laps ? c.prog : c.s);
     const list = [
-      { player: true, name: 'You', color: this.spec.color, s: this.player.s, finished: this.playerFinished, time: this.playerTime, v: this.player },
-      ...this.ais.map((a) => ({ player: false, name: a.name, color: a.color, s: a.s, finished: a.finished, time: a.finishTime, v: a.v })),
+      { player: true, name: 'You', color: this.spec.color, s: this.player.s, prog: at(this.player), finished: this.playerFinished, time: this.playerTime, v: this.player },
+      ...this.ais.map((a) => ({ player: false, name: a.name, color: a.color, s: a.s, prog: at(a), finished: a.finished, time: a.finishTime, v: a.v })),
     ];
     list.sort((a, b) => {
       if (a.finished && b.finished) return a.time - b.time;
       if (a.finished) return -1;
       if (b.finished) return 1;
-      return b.s - a.s;
+      return b.prog - a.prog;
     });
     return list;
+  }
+
+  // Circuits: carry each racer's unwrapped progress on by how far it moved
+  // along the loop this frame (a reset back down the road counts too).
+  trackProgress() {
+    const t = this.track;
+    for (const [c, last] of this.progS) {
+      c.prog += t.ds(last, c.s);
+      this.progS.set(c, c.s);
+    }
+    for (const a of this.ais) {
+      if (!a.finished && a.prog >= this.finishProg) {
+        a.finished = true;
+        a.finishTime = this.time;
+      }
+    }
+  }
+
+  // Where a racer is round the lap, for the HUD: on a circuit, anyone who
+  // hasn't crossed the line yet (the grid) is at its start.
+  lapS(c) { return this.laps && c.prog < this.track.startS ? this.track.startS : c.s; }
+
+  // The player's lap: announce each new one and keep the lap times.
+  lapCheck() {
+    const t = this.track;
+    const done = Math.floor((this.player.prog - t.startS) / t.n); // laps completed
+    if (done < this.lap || done >= this.laps) return;
+    this.lapTimes.push(this.time - this.lapStart);
+    this.lapStart = this.time;
+    this.lap = done + 1;
+    const best = Math.min(...this.lapTimes) === this.lapTimes.at(-1) && this.lapTimes.length > 1;
+    this.hud.center(this.lap === this.laps ? 'FINAL LAP' : `LAP ${this.lap}/${this.laps}`, 'pop', 1.4);
+    this.hud.toast(`LAP ${fmtTime(this.lapTimes.at(-1))}${best ? '  BEST' : ''}`, 2.2);
   }
 
   update(dt, inp) {
@@ -159,6 +204,8 @@ export class Race {
     }
     const started = this.state !== 'countdown';
     if (started) this.time += dt;
+    // Scenery that follows the start (Seaside Raceway's start lights).
+    this.world.onCountdown?.(started ? -1 : this.countdown);
 
     // ── Player ─────────────────────────────────────────────────
     this.resetCooldown = Math.max(0, this.resetCooldown - dt);
@@ -168,11 +215,12 @@ export class Race {
     const ctrl = this.playerFinished ? this.coolDown(agents, dt) : this.pv?.held ? this.pv.holdControls() : inp;
     this.phys.update(dt, ctrl);
 
-    const ctx = { cars: agents, playerS: this.player.s, started, time: this.time };
+    const ctx = { cars: agents, playerS: this.player.s, playerProg: this.laps ? this.player.prog : null, started, time: this.time };
     for (const a of this.ais) {
       a.update(dt, ctx);
       if (a.finished && !a.park) a.park = this.parkSpot(a.s, a.lat);
     }
+    if (this.laps) this.trackProgress();
     const dS = t.ds(this.lastS ?? this.player.s, this.player.s);
     this.lastS = this.player.s;
     this.dist += Math.abs(dS);
@@ -260,9 +308,11 @@ export class Race {
     this.hud.centerTimer = Math.max(0, this.hud.centerTimer - dt);
 
     if (this.cruise && started) this.cruiseScore(dt, psp);
-    if (!this.cruise && !this.playerFinished && this.player.s >= t.finishS && started) {
+    if (this.laps && started && !this.playerFinished) this.lapCheck();
+    if (!this.cruise && !this.playerFinished && (this.laps ? this.player.prog : this.player.s) >= this.finishProg && started) {
       this.playerFinished = true;
       this.playerTime = this.time;
+      if (this.laps) this.lapTimes.push(this.time - this.lapStart);
       this.park = this.parkSpot(this.player.s, this.player.lat);
       const place = this.standings().findIndex((r) => r.player) + 1;
       this.hud.center(place === 1 ? 'WINNER!' : `${place}${['st', 'nd', 'rd'][place - 1] || 'th'} PLACE`, 'pop go', 2);
@@ -342,8 +392,10 @@ export class Race {
       speed: Math.hypot(this.player.vx, this.player.vz),
       gear: this.phys.gear, rpm: this.phys.rpm, nitro: this.phys.nitro, nitroActive: this.phys.nitroActive,
       electric: this.phys.electric, power: this.phys.powerOut,
-      s: this.player.s, started,
-      racers: [{ s: this.player.s }, ...this.ais.map((a) => ({ s: a.s }))],
+      // (On a circuit's grid, behind the line, you're at the start of lap 1.)
+      s: this.lapS(this.player), started,
+      racers: [{ s: this.lapS(this.player) }, ...this.ais.map((a) => ({ s: this.lapS(a) }))],
+      laps: this.laps ? { lap: this.lap, of: this.laps, time: this.playerFinished ? null : this.time - this.lapStart, best: this.lapTimes.length ? Math.min(...this.lapTimes) : null } : null,
       player: this.player,
       traffic: this.traffic.cars.filter((c) => c.active).map((c) => c.v),
       racersFull: standings,
@@ -393,6 +445,12 @@ export class Race {
   // there. Returns its target speed and lane as functions of s.
   parkSpot(s0, lat0) {
     const t = this.track;
+    // A circuit has no end to park at: a slow lap on the right-hand side,
+    // easing off for the corners, and the racers still going pass on the left.
+    if (this.laps) {
+      const cool = (s) => Math.min(20, ...[0, 25, 50].map((d) => t.speedProfile[t.idx(s + d)] * 0.7));
+      return { speed: cool, lat: (s) => t.hw[t.idx(s)] - 2.2 };
+    }
     const front = Math.max(t.finishS + 60, t.roadEnd - PARK_GAP);
     const f = t.frame(front);
     const n = Math.max(1, Math.floor(f.hw / 2.1)); // four lanes on a freeway
@@ -475,12 +533,13 @@ export class Race {
     const res = st.map((r, i) => {
       let time = r.time;
       if (!r.finished) {
-        const rem = this.track.finishS - r.s;
+        const rem = this.finishProg - r.prog;
         time = this.time + rem / 45;
       }
       return { place: i + 1, name: r.name, player: r.player, color: r.color, time, estimated: !r.finished };
     });
     if (this.pv) res.pursuit = this.pv.stats();
+    if (this.laps) res.laps = { times: this.lapTimes.slice(), best: this.lapTimes.length ? Math.min(...this.lapTimes) : null };
     return res;
   }
 }

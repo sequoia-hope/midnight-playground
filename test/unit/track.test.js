@@ -6,7 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVELS } from '../../src/levels/index.js';
+import { LEVELS } from './support/levels.js';
 import { Track } from '../../src/track/Track.js';
 import { Terrain } from '../../src/world/Terrain.js';
 import { mulberry32 } from '../../src/util/math.js';
@@ -30,7 +30,8 @@ for (const L of LEVELS) {
       assert.equal(t.finishS, t.length - (L.finishRunoff ?? 180));
       assert.ok(t.finishS > 3000, `a real race (finish at ${t.finishS} m)`);
     }
-    assert.ok(t.startS > 0 && t.startS < 200, `startS ${t.startS}`);
+    // (A circuit starts its lap on the line: startS 0.)
+    assert.ok(t.laps ? t.startS >= 0 && t.startS < 200 : t.startS > 0 && t.startS < 200, `startS ${t.startS}`);
   });
 
   test(`${L.id}: samples are finite`, () => {

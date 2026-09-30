@@ -13,10 +13,10 @@ import { CAR_SPECS } from '../../src/vehicles/CarPhysics.js';
 const WORLD = new URL('../../src/world/', import.meta.url);
 const README = fs.readFileSync(new URL('../../README.md', import.meta.url), 'utf8');
 
-test('the menu lists five levels with unique ids, in order', () => {
-  assert.deepEqual(LEVELS.map((l) => l.id), ['sierra', 'coast', 'streets', 'desert', 'cruise']);
+test('the menu lists six levels with unique ids, in order', () => {
+  assert.deepEqual(LEVELS.map((l) => l.id), ['sierra', 'coast', 'streets', 'desert', 'seaside', 'cruise']);
   assert.equal(new Set(LEVELS.map((l) => l.num)).size, LEVELS.length, 'unique level numbers');
-  assert.deepEqual(LEVELS.map((l) => l.num), ['LEVEL 1', 'LEVEL 2', 'LEVEL 3', 'LEVEL 4', 'ENDLESS']);
+  assert.deepEqual(LEVELS.map((l) => l.num), ['LEVEL 1', 'LEVEL 2', 'LEVEL 3', 'LEVEL 4', 'LEVEL 5', 'ENDLESS']);
 });
 
 test('levelById finds each level and falls back to the first', () => {
@@ -39,6 +39,12 @@ for (const L of LEVELS) {
     if (L.mode === 'cruise') {
       assert.ok(L.loop && typeof L.loop.path === 'function', 'a cruise is a loop');
       assert.equal(L.rivals.length, 0, 'a cruise has no rivals');
+    } else if (L.laps) {
+      // A circuit: a loop raced over laps.
+      assert.ok(L.loop && typeof L.loop.path === 'function', 'a circuit is a loop');
+      assert.ok(Number.isInteger(L.laps) && L.laps >= 1, `laps ${L.laps}`);
+      assert.ok(L.rivals.length > 0, 'a race has rivals');
+      assert.ok(!L.police, 'no Hot Pursuit on a closed circuit');
     } else {
       assert.ok(Array.isArray(L.segments) && L.segments.length > 0, 'a race has segments');
       assert.ok(L.rivals.length > 0, 'a race has rivals');
@@ -142,4 +148,18 @@ test('README: level lengths and rival counts match the data', () => {
   }
   const loop = /endless ([\d.]+) km freeway loop/.exec(README);
   assert.ok(loop, 'README describes the cruise loop');
+  // The circuit: laps, lap length, rivals (as the menu card works it out).
+  const c = /Level 5: Seaside Raceway\.\*\* (\w+) laps of a ([\d.]+) km circuit[^.]*?against (\w+) rivals/s.exec(README);
+  assert.ok(c, 'README describes Seaside Raceway');
+  const sea = levelById('seaside');
+  assert.equal(WORDS[c[1].toLowerCase()], sea.laps, `README says ${c[1]} laps`);
+  assert.equal((sea.lapLength / 1000).toFixed(1), c[2], `README says ${c[2]} km a lap`);
+  assert.equal(WORDS[c[3]], sea.rivals.length, `README says ${c[3]} rivals`);
+});
+
+// The menu card quotes the lap; it has to be the surveyed one.
+test('seaside: the lap length the menu shows is the survey\'s', async () => {
+  const sea = levelById('seaside');
+  await sea.prepare();
+  assert.ok(Math.abs(sea.lapLength - sea.data.lap) < 1, `lapLength ${sea.lapLength} vs survey ${sea.data.lap.toFixed(1)}`);
 });

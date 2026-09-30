@@ -186,6 +186,11 @@ export class CarPhysics {
         this.powerOut = damp(this.powerOut, (spec.mass * (drive - this.regen * 7) * Math.max(0, vLong)) / 1000, 14, dt);
       }
       a -= 0.00115 * vLong * Math.abs(vLong) + 0.01 * vLong;
+      // Circuit run-off (surveyed tracks carry run-off grades): off the
+      // tarmac the tyres plough through dirt and dry grass.
+      const off = t.runL ? clamp((Math.abs(v.lat) - F.hw - 0.4) / 1.5, 0, 1) : 0;
+      this.offTrack = off;
+      if (off > 0) a -= off * Math.sign(vLong) * Math.min(Math.abs(vLong) * 4, 1.2 + 0.0025 * vLong * vLong);
       if (inp.handbrake) a -= Math.sign(vLong) * 3;
       if (inp.throttle < 0.05 && inp.brake < 0.05) a -= Math.sign(vLong) * Math.min(0.9, Math.abs(vLong));
       const gradeAlong = F.grade * (fx * F.fx + fz * F.fz);
@@ -229,7 +234,7 @@ export class CarPhysics {
       vLat = wvx * rx + wvz * rz;
 
       // ── Lateral grip ─────────────────────────────────────────
-      const gripA = hb ? 4.5 : this.drifting ? spec.driftGrip * 1.15 : spec.grip * 2.2;
+      const gripA = (hb ? 4.5 : this.drifting ? spec.driftGrip * 1.15 : spec.grip * 2.2) * (1 - 0.3 * off);
       const dv = Math.min(Math.abs(vLat), gripA * dt);
       vLat -= Math.sign(vLat) * dv;
       if (hb || this.drifting) vLong += Math.sign(vLong) * dv * 0.3; // keep some momentum

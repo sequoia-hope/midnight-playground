@@ -8,6 +8,8 @@ import { levelById } from '../src/levels/index.js';
 const level = levelById(process.argv.find((a) => !a.startsWith('-') && !a.includes('/') && a !== 'shoulder') || 'sierra');
 import { writeFileSync } from 'node:fs';
 
+// Levels built from survey data (Seaside Raceway) load it first.
+await level.prepare?.();
 const t = new Track(level);
 const fmt = (v) => v.toFixed(1);
 console.log(`${level.id}: length ${t.length} m, finish at ${t.finishS}${t.loop ? ' (loop)' : ''}`);

@@ -320,6 +320,7 @@ export const LEVEL_TRACK = {
   coast: 'seabright', // dawn on the coast road
   streets: 'neon-rush', // a flat-out sprint through the neon grid
   desert: 'mirage', // golden hour to moonrise on Route 66
+  seaside: 'afterburner', // three laps of the raceway
   cruise: 'interstate', // endless night freeway
 };
 export const PLAYLIST = ['midnight-run', 'interstate', 'chrome-heart', 'seabright', 'neon-rush', 'afterburner', 'mirage'];

@@ -203,6 +203,7 @@ document.addEventListener('click', (e) => {
 // ── Menu ──────────────────────────────────────────────────────────
 function levelStats(l) {
   if (l.mode === 'cruise') return 'Endless loop · heavy traffic · score attack';
+  if (l.laps) return `${l.laps} laps of ${(l.lapLength / 1000).toFixed(1)} km · ${(l.lapLength / 1609.34).toFixed(2)} mi · ${l.rivals.length} rivals · no traffic`;
   const len = l.segments.reduce((a, s) => a + s[0], 0) - (l.finishRunoff ?? 180);
   return `${(len / 1000).toFixed(1)} km · ${(len / 1609.34).toFixed(1)} mi · ${l.rivals.length} rivals · traffic`;
 }
@@ -216,7 +217,11 @@ function renderLevelCard() {
   $('lvl-desc').textContent = l.desc;
   $('lvl-len').textContent = levelStats(l);
   const best = store.get(l.mode === 'cruise' ? 'bestScore.' + l.id : bestKey(l), null);
-  $('lvl-best').textContent = best == null ? '' : l.mode === 'cruise' ? `Best score ${Math.round(best).toLocaleString()}` : `Best winning time ${fmtTime(best)}`;
+  const lap = l.laps ? store.get('bestLap.' + l.id, null) : null;
+  $('lvl-best').textContent = [
+    best == null ? '' : l.mode === 'cruise' ? `Best score ${Math.round(best).toLocaleString()}` : `Best winning time ${fmtTime(best)}`,
+    lap == null ? '' : `Lap record ${fmtTime(lap)}`,
+  ].filter(Boolean).join(' · ');
   $('btn-start').textContent = l.mode === 'cruise' ? 'Cruise' : m === 'pursuit' ? 'Hot Pursuit' : 'Race';
 }
 // Winning times are kept apart for Hot Pursuit.
@@ -433,11 +438,22 @@ function showResults(res) {
   }
   // Hot Pursuit: what the police cost you (and what you cost them).
   const p = !res.cruise && res.pursuit;
-  $('res-extra').innerHTML = p ? [
-    ['Busted', p.busts], ['Wrecked', p.wrecks], ['Takedowns', p.takedowns],
-    ['Penalty', `+${p.penalty.toFixed(1)} s`], ['Top heat', '★'.repeat(p.heat)],
-  ].map(([a, b]) => `<div class="res-stat"><b>${b}</b><small>${a}</small></div>`).join('') : '';
-  $('res-extra').classList.toggle('hidden', !p);
+  // Circuits: each lap's time, and the best lap you've ever done here.
+  const lp = !res.cruise && res.laps;
+  let stats = null;
+  if (p) {
+    stats = [
+      ['Busted', p.busts], ['Wrecked', p.wrecks], ['Takedowns', p.takedowns],
+      ['Penalty', `+${p.penalty.toFixed(1)} s`], ['Top heat', '★'.repeat(p.heat)],
+    ];
+  } else if (lp && lp.times.length) {
+    const prev = store.get('bestLap.' + id, null);
+    if (lp.best != null && (prev == null || lp.best < prev)) store.set('bestLap.' + id, lp.best);
+    stats = lp.times.map((t, i) => [`Lap ${i + 1}${t === lp.best ? ' ★' : ''}`, fmtTime(t)]);
+    stats.push([prev == null || lp.best < prev ? 'New lap record' : 'Lap record', fmtTime(store.get('bestLap.' + id, null))]);
+  }
+  $('res-extra').innerHTML = stats ? stats.map(([a, b]) => `<div class="res-stat"><b>${b}</b><small>${a}</small></div>`).join('') : '';
+  $('res-extra').classList.toggle('hidden', !stats);
   renderLevelCard();
   mode = 'results';
   showScreen('results');

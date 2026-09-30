@@ -193,7 +193,7 @@ export class Road {
     const L = new Uint8Array(n), R = new Uint8Array(n);
     // 0 none, 1 rock wall, 2 guardrail, 3 fence, 4 jersey barrier, 5 kerb + railing
     const edge = (i) => ROAD_TYPES[ROAD_KEYS[t.roadType[i]]].edge;
-    const EDGE_CODE = { fence: 3, jersey: 4, rail: 5, curb: 6, none: 0 };
+    const EDGE_CODE = { fence: 3, jersey: 4, rail: 5, curb: 6, none: 0, circuit: 0 };
     const tmpL = new Float32Array(n), tmpR = new Float32Array(n);
     for (let i = 0; i < n; i += 2) {
       if (edge(i) === 'terrain') {
@@ -313,8 +313,9 @@ export class Road {
         // Shoulders + skirt (sloped into the terrain; vertical fascia in the city).
         // Profiles run left→right so faces point up/outward.
         const edgeType = typeAt((r[0] + r[1]) / 2).edge;
-        // Kerbed streets: the scenery lays the kerbs and pavements.
-        if (edgeType === 'curb') continue;
+        // Kerbed streets: the scenery lays the kerbs and pavements; circuits
+        // their kerbs and run-off.
+        if (edgeType === 'curb' || edgeType === 'circuit') continue;
         const city = edgeType === 'jersey';
         const TINT = {
           mountain: [0.55, 0.52, 0.48], coast: [0.6, 0.55, 0.47], valley: [0.45, 0.42, 0.33], beach: [0.66, 0.64, 0.6],
@@ -447,7 +448,8 @@ export class Road {
     const t = this.track;
     const tex = checkerTexture(10);
     const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
-    for (const s of t.loop ? [] : [t.startS, t.finishS]) {
+    // A circuit starts and finishes on the same line.
+    for (const s of t.loop ? (t.laps ? [t.startS] : []) : [t.startS, t.finishS]) {
       const g = extrude(t, [[s - 1.2, s + 1.2]], [
         { lat: (f) => -f.hw, dy: 0.022, u: 0 },
         { lat: (f) => f.hw, dy: 0.022, u: 1 },
@@ -589,7 +591,7 @@ export class Road {
     let last = -100;
     for (let s = 0; s < t.length; s += 1) {
       const k = t.kSmooth[t.idx(s)];
-      if (['freeway', 'boulevard', 'street', 'playa'].includes(ROAD_KEYS[t.roadType[t.idx(s)]])) continue;
+      if (['freeway', 'boulevard', 'street', 'playa', 'circuit', 'circuitWide'].includes(ROAD_KEYS[t.roadType[t.idx(s)]])) continue;
       if (Math.abs(k) > 0.03 && s - last > 11) {
         items.push({ s, side: k > 0 ? -1 : 1, dir: k > 0 ? 1 : -1 });
         last = s;

@@ -8,6 +8,8 @@ import { levelById } from '../src/levels/index.js';
 const level = levelById(process.argv.find((a) => !a.startsWith('-') && !a.includes('/') && a !== 'shoulder') || 'sierra');
 import { Terrain } from '../src/world/Terrain.js';
 
+// Levels built from survey data (Seaside Raceway) load it first.
+await level.prepare?.();
 const t = new Track(level);
 const T = new Terrain(t, level);
 let t0 = performance.now();

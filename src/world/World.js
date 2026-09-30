@@ -29,6 +29,8 @@ export class World {
   async build(progress = () => {}) {
     const step = async (label, frac) => { progress(label, frac); await new Promise((r) => setTimeout(r, 0)); };
     await step('Surveying the route', 0.02);
+    // Levels built from data files load them first (Seaside Raceway).
+    await this.level.prepare?.();
     this.track = new Track(this.level);
 
     await step('Shaping the land', 0.06);

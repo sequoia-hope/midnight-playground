@@ -29,6 +29,10 @@ function gaussianSmooth(src, sigma, out = new Float32Array(src.length), wrap = f
   return out;
 }
 
+// Circuits with surveyed run-off: metres past the tarmac edge before the
+// ground leaves the road's plane (see surfaceY).
+export const RUNOFF_FLAT = 1.5;
+
 // Smoothed trapezoid in [0,1]: ramps over `r` at each end. Integral = 1 - r.
 function trapezoid(t, r) {
   if (t < r) return smoothstep(0, r, t);
@@ -50,9 +54,11 @@ export class Track {
     const W = this.loop;
     this.n = n;
     this.length = this.loop ? n : n - 1;
+    // Laps of a circuit (a loop raced to a finish); 0 for everything else.
+    this.laps = this.loop ? L.laps || 0 : 0;
 
     // Elevation: smooth crest/sag kinks.
-    const py = gaussianSmooth(yRaw, L.elevationSmooth ?? 9, new Float32Array(n), W);
+    const py = gaussianSmooth(yRaw, L.elevationSmooth ?? L.loop?.elevationSmooth ?? 9, new Float32Array(n), W);
     const grade = new Float32Array(n);
     for (let k = 0; k < n; k++) {
       const a = W ? (k - 1 + n) % n : Math.max(0, k - 1), b = W ? (k + 1) % n : Math.min(n - 1, k + 1);
@@ -95,17 +101,25 @@ export class Track {
     const kSmooth = gaussianSmooth(kappa, 10, undefined, W);
     const bankRaw = new Float32Array(n);
     for (let k = 0; k < n; k++) bankRaw[k] = clamp(kSmooth[k] * 40, -0.085, 0.085) * bankK[k];
-    const bank = gaussianSmooth(bankRaw, 12, undefined, W);
+    // A surveyed road brings its own camber.
+    const bank = raw.bank ? gaussianSmooth(raw.bank, 2, undefined, W) : gaussianSmooth(bankRaw, 12, undefined, W);
 
     Object.assign(this, { px, py, pz, kappa, kSmooth, grade, zone, roadType, fx, fz, rx, rz, hw, margin, bank });
+    // Surveyed run-off (circuits): past the tarmac edge the ground leaves
+    // the road's plane at its own grade, rise per metre outward (see
+    // surfaceY). null elsewhere: the road's plane carries on.
+    this.runL = raw.runL || null;
+    this.runR = raw.runR || null;
     this.elevated = elevRaw;
 
     // Collision limits either side of the centreline (positive distances).
     this.wallL = new Float32Array(n);
     this.wallR = new Float32Array(n);
     for (let k = 0; k < n; k++) {
-      this.wallL[k] = hw[k] + margin[k];
-      this.wallR[k] = hw[k] + margin[k];
+      // Surveyed barriers (a circuit's walls), never closer than a metre
+      // and a half off the tarmac.
+      this.wallL[k] = raw.wallL ? Math.max(hw[k] + 1.5, raw.wallL[k]) : hw[k] + margin[k];
+      this.wallR[k] = raw.wallR ? Math.max(hw[k] + 1.5, raw.wallR[k]) : hw[k] + margin[k];
     }
 
     // Zones.
@@ -118,7 +132,7 @@ export class Track {
       s1: idx < Z - 1 ? this.zoneStart[idx + 1] : this.length,
     }));
     this.finishS = this.loop ? Infinity : this.length - (L.finishRunoff ?? 180);
-    this.startS = this.loop ? 120 : 60;
+    this.startS = this.loop ? L.loop.startS ?? 120 : 60;
     // Metres of straight road past the last sample. Scenery that draws the
     // road carrying on beyond the end sets this in plan(); cars can drive it.
     this.runout = 0;
@@ -182,7 +196,10 @@ export class Track {
   }
 
   buildLoop(spec) {
-    const { x: X, z: Zs } = spec.path();
+    // path() gives the closed centreline, and optionally surveyed heights,
+    // camber and barrier distances at the same points.
+    const P = spec.path();
+    const { x: X, z: Zs } = P;
     const m = X.length;
     // Cumulative arc length around the closed polyline.
     const cum = new Float64Array(m + 1);
@@ -194,6 +211,8 @@ export class Track {
     const n = Math.round(total);
     const step = total / n;
     const px = new Float32Array(n), pz = new Float32Array(n);
+    const extra = ['y', 'bank', 'wallL', 'wallR', 'runL', 'runR'].filter((k) => P[k]);
+    const ex = Object.fromEntries(extra.map((k) => [k, new Float32Array(n)]));
     let seg = 0;
     for (let i = 0; i < n; i++) {
       const d = i * step;
@@ -202,13 +221,15 @@ export class Track {
       const j = (seg + 1) % m;
       px[i] = X[seg] + (X[j] - X[seg]) * t;
       pz[i] = Zs[seg] + (Zs[j] - Zs[seg]) * t;
+      for (const k of extra) ex[k][i] = P[k][seg] + (P[k][j] - P[k][seg]) * t;
     }
-    // Tags by fraction; elevated ones lift the road with long ramps.
+    // Tags by fraction (f0/f1) or metres (s0/s1); elevated ones lift the
+    // road with long ramps.
     this.tags = [];
-    const yRaw = new Float32Array(n).fill(spec.baseY ?? 0);
+    const yRaw = ex.y || new Float32Array(n).fill(spec.baseY ?? 0);
     const elevRaw = new Uint8Array(n);
     for (const tg of spec.tags || []) {
-      const s0 = Math.round(tg.f0 * n), s1 = Math.round(tg.f1 * n);
+      const s0 = Math.round(tg.s0 ?? tg.f0 * n), s1 = Math.round(tg.s1 ?? tg.f1 * n);
       this.tags.push({ tag: tg.tag, s0, s1, turn: 0 });
       if (tg.elevated) {
         const ramp = 260;
@@ -223,9 +244,19 @@ export class Track {
       }
     }
     const kappa = new Float32Array(n);
+    // Zones start at the given metres into the lap (zone 0 from s = 0).
     const zone = new Uint8Array(n);
+    const starts = spec.zones || [0];
+    for (let i = 0; i < n; i++) {
+      let z = 0;
+      while (z + 1 < starts.length && i >= starts[z + 1]) z++;
+      zone[i] = z;
+    }
     const roadType = new Uint8Array(n).fill(ROAD_KEYS.indexOf(spec.road || 'freeway'));
-    return { n, px, pz, yRaw, kappa, zone, roadType, elevRaw };
+    for (const r of spec.roads || []) {
+      for (let s = r.s0; s < r.s1; s++) roadType[((s % n) + n) % n] = ROAD_KEYS.indexOf(r.road);
+    }
+    return { n, px, pz, yRaw, kappa, zone, roadType, elevRaw, bank: ex.bank, wallL: ex.wallL, wallR: ex.wallR, runL: ex.runL, runR: ex.runR };
   }
 
   tag(name) { return this.tags.filter((t) => t.tag === name); }
@@ -300,7 +331,7 @@ export class Track {
     const f = this.frame(s, out);
     const x = f.x + f.rx * lat, z = f.z + f.rz * lat;
     out.x = x; out.z = z;
-    out.y = f.y - lat * f.bank;
+    out.y = this.runL && Math.abs(lat) > f.hw + RUNOFF_FLAT ? this.surfaceY(s, lat) : f.y - lat * f.bank;
     return out;
   }
 
@@ -308,6 +339,16 @@ export class Track {
     const [i, t, j] = this.locate(s);
     const y = this.py[i] + (this.py[j] - this.py[i]) * t;
     const b = this.bank[i] + (this.bank[j] - this.bank[i]) * t;
+    if (this.runL) {
+      // The road's plane carries on RUNOFF_FLAT past the edge (the verge),
+      // then the ground takes its own grade.
+      const hw = this.hw[i] + (this.hw[j] - this.hw[i]) * t + RUNOFF_FLAT, a = Math.abs(lat);
+      if (a > hw) {
+        const r = lat > 0 ? this.runR : this.runL;
+        const e = lat > 0 ? hw : -hw;
+        return y - e * b + (a - hw) * (r[i] + (r[j] - r[i]) * t);
+      }
+    }
     return y - lat * b;
   }
 
@@ -398,6 +439,9 @@ export class Track {
       line[i] = clamp(k2[j] * 420, -lim, lim);
     }
     this.racingLine = gaussianSmooth(line, 18, undefined, W);
+    // Smoothing can carry the line past a narrowing (circuit straights
+    // are wider than their corners): hold it on the tarmac.
+    for (let i = 0; i < n; i++) this.racingLine[i] = clamp(this.racingLine[i], -(this.hw[i] - 1.6), this.hw[i] - 1.6);
 
     // Speed a well-driven car can carry through each metre.
     const vmax = new Float32Array(n);

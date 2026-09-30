@@ -19,6 +19,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #05060a; col
 .pos sup { font-size: 26px; margin-left: 2px; vertical-align: top; position: relative; top: 8px; }
 .pos .of { font-size: 26px; color: var(--hud-dim); margin-left: 6px; }
 .time { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 4px; }
+/* Circuits: lap count, this lap's time and the best lap. */
+.lap { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.lap b { font-weight: 800; font-style: italic; letter-spacing: .04em; margin-right: 4px; }
+.lap-best { font-size: 15px; color: var(--hud-dim); letter-spacing: .04em; }
 .zone-name { font-size: 14px; letter-spacing: .3em; color: var(--hud-dim); margin-top: 2px; }
 
 /* Cruise score panel (top centre). */
@@ -316,6 +320,11 @@ body.touch .hud-tl { left: var(--inL); top: 8px; }
 body.touch .pos { font-size: 40px; }
 body.touch .pos sup, body.touch .pos .of { font-size: 18px; }
 body.touch .time { font-size: 20px; }
+body.touch .lap { font-size: 15px; }
+body.touch .lap-best { font-size: 12px; }
+/* The lap line takes the zone name's place above the touch buttons (the
+   route bar names the sections anyway). */
+body.touch #hud-lap:not(.hidden) ~ .zone-name { display: none; }
 body.touch .zone-name { font-size: 11px; }
 body.touch #minimap { width: 104px; height: 104px; top: max(8px, env(safe-area-inset-top)); right: var(--inR); }
 body.touch .hud-route { top: 14px; bottom: auto; left: 50%; transform: translateX(-50%); width: min(300px, 30vw); }
