@@ -105,7 +105,8 @@ don't light up the scene.
 
 Play it online at **https://sequoia-hope.github.io/midnight-racer/**. GitHub Pages
 serves `main` as-is (there is no build step), so every push to `main` goes live
-within a minute or two.
+within a minute or two. Links to it unfurl with a picture in Slack, iMessage,
+Discord and the like (the `og:` tags in `index.html`).
 
 To run it locally:
 
@@ -194,7 +195,8 @@ src/
   game/audio/          the soundtrack: step sequencer and synth instruments, the songs,
                        and the drum kit and crash sounds pre-rendered at start-up
 vendor/three/          three.js r180 (the build plus the few add-ons used)
-tools/                 check-track.js, car-test.html, audio-test.html, serve.py
+tools/                 check-track.js, car-test.html, audio-test.html, serve.py,
+                       og-image.mjs
 test/unit/, test/e2e/  the tests (see Tests below)
 music.html             the soundtrack player
 ```
@@ -219,6 +221,10 @@ To check a route after editing its level file, run `node tools/check-track.js <l
 (or `npm run check-track`, which checks Level 1). It
 reports each zone's length and height, the tightest corner, the steepest
 grade, and any place where two parts of the road overlap.
+
+The link-preview picture, `og-image.png`, is a shot from the game (Hot Pursuit
+on Interstate 9) with the logo on it. `node tools/og-image.mjs` renders it
+again, in headless Chrome with no server, like the tests.
 
 ## Music player
 
