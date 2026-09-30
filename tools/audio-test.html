@@ -91,6 +91,32 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
     <span class="chk"><input id="rivalsOn" type="checkbox"> Rival engines on (3 cars)</span>
   </section>
   <section class="card">
+    <h2>Pursuit</h2>
+    <div class="row" style="margin-bottom:6px">
+      <span>Sirens</span>
+      <button data-siren="off" class="siren">Off</button><button data-siren="wail" class="siren">Wail</button>
+      <button data-siren="yelp" class="siren">Yelp</button><button data-siren="hilo" class="siren">Hi-lo</button>
+      <button id="passBy">Pass-by</button>
+    </div>
+    <label>Units <input id="sUnits" type="range" min="1" max="3" value="1"><span></span></label>
+    <label>Distance m <input id="sDist" type="range" min="0" max="400" value="40"><span></span></label>
+    <label>Closing m/s <input id="sRel" type="range" min="-40" max="40" value="0"><span></span></label>
+    <label>Pan <input id="sPan" type="range" min="-1" max="1" step="0.05" value="0"><span></span></label>
+    <div class="row">
+      <button id="sirenHorn">Horn</button><button id="radio">Radio</button><button id="busted">Busted</button>
+      <button id="escaped">Escaped</button><button id="takedown">Takedown</button>
+      <button id="spikePop">Spike pop</button><button id="wrecked">Wrecked</button>
+    </div>
+    <label>Damage <input id="damage" type="range" min="0" max="1" step="0.01" value="0"><span></span></label>
+    <div class="row">
+      <span class="chk"><input id="spiked" type="checkbox"> Spiked tyres (Engine speed)</span>
+    </div>
+    <div class="row">
+      <span>Music mood</span>
+      <button data-mood="off" class="mood">Off</button><button data-mood="pursuit" class="mood">Pursuit</button><button data-mood="cooldown" class="mood">Cooldown</button>
+    </div>
+  </section>
+  <section class="card">
     <h2>Mix</h2>
     <label>Master <input id="vMaster" type="range" min="0" max="1" step="0.01" value="1"><span></span></label>
     <label>SFX <input id="vSfx" type="range" min="0" max="1" step="0.01" value="0.85"><span></span></label>
@@ -187,6 +213,33 @@ $('renderWav').onclick = async () => {
   a.click();
   $('renderState').textContent = `RMS ${r.rmsDb} dB, peak ${r.peak}`;
 };
+let sirenMode = 'off', passBy = -1;
+const markSiren = () => { for (const b of document.querySelectorAll('.siren')) b.classList.toggle('primary', b.dataset.siren === sirenMode); };
+for (const b of document.querySelectorAll('.siren')) b.onclick = () => { sirenMode = b.dataset.siren; passBy = -1; markSiren(); };
+markSiren();
+// Pass-by: a unit closes from 300 m behind at 40 m/s, goes past and pulls away (yelp under 60 m).
+$('passBy').onclick = () => { passBy = 0; };
+$('sirenHorn').onclick = () => audio.sirenHorn(num('sPan'));
+$('radio').onclick = () => audio.radio(1 + Math.random() * 1.5, num('sPan'));
+$('busted').onclick = () => audio.busted();
+$('escaped').onclick = () => audio.escaped();
+$('takedown').onclick = () => audio.takedown(num('strength'), num('sPan'));
+$('spikePop').onclick = () => audio.spikePop(num('sPan'));
+$('wrecked').onclick = () => audio.wrecked();
+const markMood = (m) => { for (const b of document.querySelectorAll('.mood')) b.classList.toggle('primary', b.dataset.mood === m); };
+for (const b of document.querySelectorAll('.mood')) b.onclick = () => { audio.setPursuitMood(b.dataset.mood); markMood(b.dataset.mood); };
+markMood('off');
+function sirenList(dt) {
+  if (passBy >= 0) {
+    passBy += dt;
+    const x = -300 + 40 * passBy, dist = Math.hypot(x, 3);
+    if (passBy > 16) passBy = -1;
+    return [{ id: 1, dist, pan: 0.8 * Math.sign(-x) * 3 / Math.max(3, dist), relSpeed: -40 * x / Math.max(1, dist), mode: dist < 60 ? 'yelp' : 'wail' }];
+  }
+  if (sirenMode === 'off') return [];
+  const d = num('sDist'), p = num('sPan'), rel = num('sRel');
+  return [{ id: 1, dist: d, pan: p, relSpeed: rel, mode: sirenMode }, { id: 2, dist: d + 35, pan: -p, relSpeed: rel, mode: sirenMode }, { id: 3, dist: d + 80, pan: p * 0.5, relSpeed: rel, mode: sirenMode }].slice(0, num('sUnits'));
+}
 let musicOn = false, paused = false, auto = false;
 $('music').onclick = () => { musicOn = !musicOn; audio.setMusic(musicOn); $('music').textContent = 'Music: ' + (musicOn ? 'on' : 'off'); };
 $('pause').onclick = () => { paused = !paused; audio.setPaused(paused); $('pause').textContent = 'Pause: ' + (paused ? 'on' : 'off'); };
@@ -237,6 +290,9 @@ function frame(now) {
     const d = num('rdist'), p = num('rpan'), r = num('rrpm');
     audio.setRivalEngines([{ dist: d, pan: p, rpmNorm: r }, { dist: d + 15, pan: -p, rpmNorm: r * 0.9 }, { dist: d + 30, pan: 0, rpmNorm: r * 1.1 }]);
   } else audio.setRivalEngines([]);
+  audio.setSirens(sirenList(dt));
+  audio.setSpikedTyres($('spiked').checked, num('speed'));
+  audio.setDamage(num('damage'));
 }
 requestAnimationFrame(frame);
 </script>

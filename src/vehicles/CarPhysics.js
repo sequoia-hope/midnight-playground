@@ -58,6 +58,12 @@ export class CarPhysics {
     this.powerOut = 0;     // electric: drive power (+) or regen (−), kW
     this.regen = 0;        // electric: 0..1 regen braking strength
     if (this.electric) this.rpm = 0;
+    // Hot Pursuit. damage 0..1: past half, the engine loses power (a wreck
+    // at 1 is the race's call). spiked: seconds left on shredded tyres
+    // after a spike strip: less grip and a lower top speed. Both are 0
+    // outside Hot Pursuit, which leaves the car exactly as it was.
+    this.damage = 0;
+    this.spiked = 0;
   }
 
   reset(s, lat = 0) {
@@ -83,11 +89,18 @@ export class CarPhysics {
     let a = Math.min(spec.launch ?? 9.5, spec.power / Math.max(v, 5));
     if (spec.turbo) a *= 0.8 + 0.2 * this.boost;
     if (spec.vmax) a *= 1 - smoothstep(spec.vmax - 5, spec.vmax, v);
+    if (this.damage > 0.5) a *= 1 - 0.35 * smoothstep(0.5, 1, this.damage);
+    if (this.spiked > 0) { const vm = (spec.vmax ?? 76) * 0.75; a *= 1 - smoothstep(vm - 5, vm, v); }
     return a;
   }
 
   step(dt, inp) {
-    const v = this.v, t = this.track, spec = this.spec;
+    const v = this.v, t = this.track;
+    let spec = this.spec;
+    if (this.spiked > 0) {
+      this.spiked = Math.max(0, this.spiked - dt);
+      spec = this.spikedSpec ??= { ...spec, grip: spec.grip * 0.7, driftGrip: spec.driftGrip * 0.7 };
+    }
     const P = t.project(v.x, v.z, v.s, this.P);
     v.s = P.s; v.lat = P.lat;
     const F = t.frame(v.s, this.F);

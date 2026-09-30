@@ -8,12 +8,15 @@ import { resolveCollisions, PhysicsBody } from '../vehicles/Collisions.js';
 import { CameraRig } from './CameraRig.js';
 import { Effects } from './Effects.js';
 import { HUD } from './HUD.js';
+import { PursuitView } from './PursuitView.js';
 import { ROAD_TYPES, ROAD_KEYS } from '../track/roadTypes.js';
 
 // One session on a level: builds the field, runs countdown → race →
 // results, and wires physics, AI, traffic, collisions, camera, effects, HUD
 // and audio together. In 'cruise' mode (endless loop) there are no rivals
 // and no finish; you score points for speed, near misses and drifts.
+// With `pursuit` on (Hot Pursuit, sprint levels with police data) the police
+// join in: see PursuitView.js and Pursuit.js.
 
 // After the finish every racer drives on at a relaxed cruise, drifts into a
 // lane and rolls to a stop in a parking row short of the end of the road.
@@ -23,11 +26,12 @@ const PARK_GAP = 240;    // front row, metres short of the road's end
 const PARK_ROW = 13;     // spacing of the rows behind it
 
 export class Race {
-  constructor({ world, scene, camera, renderer, input, audio, buildVehicle, carKind = 'sports', onFinish }) {
+  constructor({ world, scene, camera, renderer, input, audio, buildVehicle, carKind = 'sports', onFinish, pursuit = null }) {
     Object.assign(this, { world, scene, camera, renderer, input, audio, buildVehicle, onFinish });
     const track = (this.track = world.track);
     this.level = world.level;
     this.cruise = this.level.mode === 'cruise';
+    this.pursuitOn = !!(pursuit && this.level.police && !this.cruise);
     this.spec = CAR_SPECS[carKind];
     this.score = 0; this.mult = 1; this.multTimer = 0; this.topSpeed = 0; this.dist = 0; this.nearMisses = 0;
     this.time = 0;
@@ -83,7 +87,7 @@ export class Race {
       else { c.s = s; c.lat = lat; c.speed = 0; c.writePos(); }
     });
 
-    this.traffic = new Traffic(track, this.group, buildVehicle, { level: this.level, world, count: this.cruise ? 30 : 22 });
+    this.traffic = new Traffic(track, this.group, buildVehicle, { level: this.level, world, count: this.cruise ? 30 : this.pursuitOn ? 18 : 22 });
 
     this.cam = new CameraRig(camera, track, world.terrain);
     this.effects = new Effects(scene, renderer, camera);
@@ -103,9 +107,11 @@ export class Race {
     this.tunnels = track.tags.filter((g) => g.tag === 'tunnel');
     this.inTunnel = false;
     this.lastDrift = 0;
+    this.pv = this.pursuitOn ? new PursuitView(this, pursuit) : null;
   }
 
   dispose() {
+    this.pv?.dispose();
     this.scene.remove(this.group);
     this.hud.show(false);
     for (const c of this.effects.cars) this.scene.remove(c.pool);
@@ -156,10 +162,10 @@ export class Race {
 
     // ── Player ─────────────────────────────────────────────────
     this.resetCooldown = Math.max(0, this.resetCooldown - dt);
-    if (this.input.consume('reset') && started && this.resetCooldown === 0) this.resetPlayer();
+    if (this.input.consume('reset') && started && this.resetCooldown === 0 && !this.pv?.blocksReset()) this.resetPlayer();
     // ── Agents list for AI/traffic awareness ───────────────────
-    const agents = [this.playerBody, ...this.ais, ...this.traffic.cars.filter((c) => c.active)];
-    const ctrl = this.playerFinished ? this.coolDown(agents, dt) : inp;
+    const agents = [this.playerBody, ...this.ais, ...this.traffic.cars.filter((c) => c.active), ...(this.pv ? this.pv.bodies() : [])];
+    const ctrl = this.playerFinished ? this.coolDown(agents, dt) : this.pv?.held ? this.pv.holdControls() : inp;
     this.phys.update(dt, ctrl);
 
     const ctx = { cars: agents, playerS: this.player.s, started, time: this.time };
@@ -172,13 +178,20 @@ export class Race {
     this.dist += Math.abs(dS);
     this.odo = (this.odo ?? this.player.s) + dS; // unwrapped position (loops)
     this.traffic.update(dt, this.player.s, agents, night, t.loop ? this.odo : this.player.s);
+    if (this.pv) {
+      this.pv.update(dt, agents, started);
+      // Units that joined this frame collide from now on.
+      for (const b of this.pv.bodies()) if (!agents.includes(b)) agents.push(b);
+    }
 
     // ── Collisions ─────────────────────────────────────────────
     const hits = [];
     resolveCollisions(agents, hits);
     for (const a of this.ais) a.writePos();
     for (const c of this.traffic.cars) if (c.active) c.writePos();
+    this.pv?.writePos();
     for (const h of hits) {
+      this.pv?.onHit(h);
       const involvesPlayer = h.a === this.playerBody || h.b === this.playerBody;
       const other = h.a === this.playerBody ? h.b : h.a;
       if (other.crashed !== undefined && h.strength > 0.15) other.crashed = Math.max(other.crashed, 0.01);
@@ -194,6 +207,7 @@ export class Race {
     for (const e of this.phys.events) {
       if (e.type === 'impact') {
         if (e.strength > 0.35) this.crash();
+        this.pv?.onWallImpact(e.strength);
         this.audio?.impact(e.strength, (e.side || 0) * 0.6);
         this.cam.bump(e.strength);
         this.effects.sparksAt(e.x, e.y, e.z, Math.round(6 + e.strength * 40), this.player.vx, this.player.vz);
@@ -242,7 +256,7 @@ export class Race {
     if (this.wrongWay > 1.5 && this.hud.centerTimer <= 0) this.hud.center('WRONG WAY', 'warn pop', 1);
     // Stuck? Offer the reset key.
     this.stuck = started && !this.playerFinished && spd < 1.5 ? (this.stuck || 0) + dt : 0;
-    if (this.stuck > 3 && this.hud.toastTimer <= 0) this.hud.toast(this.input.touch?.visible ? 'STUCK? TAP ↺ TO RESET' : 'STUCK? PRESS R TO RESET', 2);
+    if (this.stuck > 3 && this.hud.toastTimer <= 0 && !this.pv?.held && !(this.pv?.pursuit.bust > 0)) this.hud.toast(this.input.touch?.visible ? 'STUCK? TAP ↺ TO RESET' : 'STUCK? PRESS R TO RESET', 2);
     this.hud.centerTimer = Math.max(0, this.hud.centerTimer - dt);
 
     if (this.cruise && started) this.cruiseScore(dt, psp);
@@ -276,6 +290,7 @@ export class Race {
     this.player.model.setBoost?.(this.phys.nitroActive ? 1 : 0);
     for (const a of this.ais) a.v.model.setBoost?.(a.nitroActive ? 1 : 0);
     this.headlight.intensity = lightsOn * 140;
+    this.pv?.sync(dt, night, lightsOn);
 
     // Effects.
     this.extras.clear();
@@ -311,6 +326,7 @@ export class Race {
         return { dist: d, pan: clamp((dx * camRight.x + dz * camRight.z) / Math.max(d, 1), -1, 1), rpmNorm: clamp(a.speed / 70, 0.2, 1), electric: a.v.kind === 'electric' };
       }).sort((a, b) => a.dist - b.dist).slice(0, 3);
       this.audio.setRivalEngines(near);
+      this.pv?.audio(camRight);
     }
     this.wasNitro = this.phys.nitroActive;
     // Tunnels get a concrete echo.
@@ -331,6 +347,7 @@ export class Race {
       traffic: this.traffic.cars.filter((c) => c.active).map((c) => c.v),
       racersFull: standings,
       cruise: this.cruise ? { score: this.score, mult: this.mult, multTimer: this.multTimer, dist: this.dist, top: this.topSpeed } : null,
+      pursuit: this.pv ? this.pv.hudState() : null,
     });
     return standings;
   }
@@ -454,7 +471,7 @@ export class Race {
   results() {
     const st = this.standings();
     // Estimate times for anyone still driving.
-    return st.map((r, i) => {
+    const res = st.map((r, i) => {
       let time = r.time;
       if (!r.finished) {
         const rem = this.track.finishS - r.s;
@@ -462,5 +479,7 @@ export class Race {
       }
       return { place: i + 1, name: r.name, player: r.player, color: r.color, time, estimated: !r.finished };
     });
+    if (this.pv) res.pursuit = this.pv.stats();
+    return res;
   }
 }

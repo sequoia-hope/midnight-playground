@@ -28,6 +28,9 @@
 // ?solo=1       hide every vehicle but ?car
 // ?night=1      dark sky / dim environment to judge the light units and bloom
 // ?steer=rad    front-wheel steer angle (default 0.35)
+// Police: the patrol kinds line up in a third row with the interceptors
+// (kind:police, e.g. ?car=muscle:police); ?siren=flash|steady|disabled|off
+// (default flash) animates their lights.
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -91,22 +94,26 @@ for (let i = -20; i <= 20; i++) {
 }
 
 const colors = Object.fromEntries(Object.entries(CAR_SPECS).map(([k, v]) => [k, v.color]));
-const kinds = q.get('kinds') ? q.get('kinds').split(',') : VEHICLE_KINDS;
+const kinds = q.get('kinds') ? q.get('kinds').split(',') : [...VEHICLE_KINDS, 'muscle:police', 'sports:police'];
 const cars = [];
 const info = [];
-// Racers in the front row, traffic behind, each row centred.
-const rows = [[], []];
-kinds.forEach((kind, i) => {
-  const v = buildVehicle(kind, { color: colors[kind], seed: i, lod: q.get('lod') || undefined, stripes: kind === 'super' ? true : undefined });
+// Racers in the front row, traffic behind, police at the back, each row centred.
+const rows = [[], [], []];
+const policeKinds = new Set(['police', 'policeSuv']);
+kinds.forEach((label, i) => {
+  const [kind, livery] = label.split(':');
+  const police = !!livery || policeKinds.has(kind);
+  const v = buildVehicle(kind, { color: livery ? undefined : colors[kind], seed: i, lod: q.get('lod') || undefined, stripes: kind === 'super' ? true : undefined, livery });
+  v.label = label;
   v.setHeadlights(q.get('lights') === '0' ? 0 : 1);
   v.setBrake(q.get('brake') === '1' ? 1 : 0);
   v.steerPivots.forEach((p) => (p.rotation.y = +(q.get('steer') ?? 0.35)));
   scene.add(v.root);
   cars.push(v);
-  rows[colors[kind] ? 0 : 1].push(v);
+  rows[police ? 2 : colors[kind] ? 0 : 1].push(v);
   let calls = 0;
   v.root.traverse((o) => { if (o.isMesh) calls += o.geometry.groups.length || 1; });
-  info.push(`${kind}: ${Math.round(triangleCount(v.root))} tris/${calls} calls`);
+  info.push(`${label}: ${Math.round(triangleCount(v.root))} tris/${calls} calls`);
 });
 rows.forEach((row, r) => {
   let x = 0;
@@ -116,16 +123,17 @@ rows.forEach((row, r) => {
 document.getElementById('info').textContent = info.join('  ·  ');
 window.__tris = info;
 
+const findCar = (k) => cars.find((c) => c.label === k) || cars.find((c) => c.kind === k);
 const camera = new THREE.PerspectiveCamera(+(q.get('fov') || 40), innerWidth / innerHeight, 0.1, 500);
-const focus = cars.find((c) => c.kind === (q.get('car') || 'sports')) || cars[0];
+const focus = findCar(q.get('car') || 'sports') || cars[0];
 if (q.get('solo') === '1') cars.forEach((c) => (c.root.visible = c === focus));
 if (view === 'close') {
-  const c = cars.find((c) => c.kind === (q.get('car') || 'sports')) || cars[0];
+  const c = findCar(q.get('car') || 'sports') || cars[0];
   const p = c.root.position;
   camera.position.set(p.x - 4.2, 1.7, p.z + 5.2);
   camera.lookAt(p.x, 0.55, p.z);
 } else if (view === 'side') {
-  const c = cars.find((c) => c.kind === (q.get('car') || 'sports')) || cars[0];
+  const c = findCar(q.get('car') || 'sports') || cars[0];
   const p = c.root.position;
   camera.position.set(p.x + 3.2, 1.3, p.z + 1.2);
   camera.lookAt(p.x, 0.8, p.z - 0.3);
@@ -135,18 +143,18 @@ if (view === 'close') {
   camera.position.set(p.x + Math.sin(yaw) * dist, +(q.get('h') ?? 1.6), p.z - Math.cos(yaw) * dist);
   camera.lookAt(p.x, +(q.get('look') ?? 0.6), p.z);
 } else if (view === 'chase') {
-  const c = cars.find((c) => c.kind === (q.get('car') || 'sports')) || cars[0];
+  const c = findCar(q.get('car') || 'sports') || cars[0];
   const p = c.root.position;
   camera.fov = 62; camera.updateProjectionMatrix();
   camera.position.set(p.x + 0.6, 2.3, p.z - 6.6);
   camera.lookAt(p.x, 0.9, p.z + 4);
 } else if (view === 'front') {
-  const c = cars.find((c) => c.kind === (q.get('car') || 'sports')) || cars[0];
+  const c = findCar(q.get('car') || 'sports') || cars[0];
   const p = c.root.position;
   camera.position.set(p.x - 2.6, 1.0, p.z + 5.0);
   camera.lookAt(p.x, 0.55, p.z + 0.6);
 } else if (view === 'rear') {
-  const p = (cars.find((c) => c.kind === q.get('car')) || cars[1]).root.position;
+  const p = (findCar(q.get('car')) || cars[1]).root.position;
   camera.position.set(p.x - 3.5, 1.9, p.z - 6.5);
   camera.lookAt(p.x, 0.6, p.z);
 } else {
@@ -160,12 +168,16 @@ composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight),
 composer.addPass(new OutputPass());
 
 const spin = q.get('spin') === '1';
+const siren = q.get('siren') || 'flash';
+// ?t=sec freezes the siren at that time (for screenshots).
+const sirenT = q.get('t') != null ? +q.get('t') : null;
 window.__ready = true;
 let t = 0;
 renderer.setAnimationLoop(() => {
   t += 1 / 60;
   if (spin) cars.forEach((c) => (c.root.rotation.y = t * 0.5));
   cars.forEach((c) => c.wheels.forEach((w) => (w.rotation.x = t * 2)));
+  cars.forEach((c) => c.setSiren?.(siren, sirenT ?? t));
   composer.render();
 });
 </script>

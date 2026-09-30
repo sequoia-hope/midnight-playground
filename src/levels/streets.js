@@ -188,6 +188,9 @@ export default {
     { gap: [110, 220], mix: [['sedan', 0.45], ['hatch', 0.3], ['van', 0.15], ['pickup', 0.1]], oncoming: 0.5, speed: [8, 12] },
     { gap: [60, 130], mix: [['sedan', 0.45], ['hatch', 0.15], ['van', 0.2], ['boxtruck', 0.2]], oncoming: 0.5, speed: [10, 15] },
   ],
+  // Hot Pursuit: every corner in the grid breaks line of sight, so the
+  // city is where you lose them; heat builds 3 / 4 / 5.
+  police: { heatCap: [3, 4, 5], losOpenGround: [false, false, false] },
   rivals: [
     { name: 'Razor', kind: 'super', color: 0xe9ecef, skill: 0.985, power: 520 },
     { name: 'Kaito', kind: 'sports', color: 0x19c46b, skill: 0.972, power: 505 },

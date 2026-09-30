@@ -84,6 +84,9 @@ export default {
     // Nobody else is out on the lake bed.
     { gap: [300, 500], mix: [], oncoming: 0, speed: [0, 0] },
   ],
+  // Hot Pursuit: the canyon hides you (heat 2); Route 66 and the dry lake
+  // are open ground, where they can always see you (4 / 5).
+  police: { heatCap: [2, 4, 5], losOpenGround: [false, true, true] },
   rivals: [
     { name: 'Razor', kind: 'super', color: 0xe9ecef, skill: 0.99, power: 530 },
     { name: 'Marlowe', kind: 'electric', color: 0x1ab8c4, skill: 0.978, power: 520 },

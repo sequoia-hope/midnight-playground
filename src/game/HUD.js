@@ -49,9 +49,60 @@ export class HUD {
     this.bestScore = 0;
     this.dots = [];
     this.last = {};
+    // Hot Pursuit furniture: heat stars, bust/evade bar, damage bar, the
+    // penalty-hold card, the served-penalty line and radio chatter.
+    this.pz = {
+      root: $('hud-pz'), stars: $('pz-stars'), bar: $('pz-bar'), label: $('pz-label'), fill: $('pz-fill'),
+      dmg: $('hud-dmg'), dmgFill: $('hud-dmg-fill'), pen: $('hud-pen'),
+      hold: $('hud-hold'), holdTitle: $('hold-title'), holdSub: $('hold-sub'), holdFill: $('hold-fill'),
+      radio: $('hud-radio'), radioText: $('hud-radio-text'),
+    };
+    this.pz.root.classList.toggle('cruise', this.cruise);
+    this.pz.stars.innerHTML = '';
+    this.starFill = [];
+    for (let i = 0; i < 5; i++) {
+      const star = document.createElement('span'), fill = document.createElement('i');
+      star.className = 'pz-star';
+      star.appendChild(fill);
+      this.pz.stars.appendChild(star);
+      this.starFill.push(fill);
+    }
+    this.clock = 0;
+    this.radioTimer = 0;
+    this.pursuitOn = null;
+    this.setPursuit(false);
   }
 
   show(on) { this.root.classList.toggle('hidden', !on); }
+
+  // Shows or hides all the Hot Pursuit furniture. update() also calls it
+  // from st.pursuit, so a race without the mode never shows any of it.
+  setPursuit(on) {
+    on = !!on;
+    if (on === this.pursuitOn) return;
+    this.pursuitOn = on;
+    const p = this.pz;
+    p.root.classList.toggle('hidden', !on);
+    p.dmg.classList.toggle('hidden', !on);
+    this.el.nitroBox.parentElement.classList.toggle('pz-on', on);
+    if (!on) {
+      p.pen.classList.add('hidden');
+      p.hold.classList.add('hidden');
+      p.radio.classList.remove('show');
+      this.radioTimer = 0;
+    }
+  }
+
+  // A line of police radio chatter, bottom centre. Rate limiting is the
+  // caller's job; a new line replaces the current one.
+  radio(text, dur = 3) {
+    const r = this.pz.radio;
+    this.pz.radioText.textContent = text;
+    r.classList.remove('show');
+    void r.offsetWidth; // restart the slide-in
+    r.classList.add('show');
+    this.radioTimer = dur;
+  }
 
   setRacers(racers) {
     this.el.dots.innerHTML = '';
@@ -131,9 +182,56 @@ export class HUD {
       this.set('best', c.best, Math.floor(Math.max(this.bestScore, cr.score)).toLocaleString());
     }
     if (this.toastTimer > 0) { this.toastTimer -= dt; if (this.toastTimer <= 0) e.toast.classList.remove('show'); }
+    if (this.radioTimer > 0) { this.radioTimer -= dt; if (this.radioTimer <= 0) this.pz.radio.classList.remove('show'); }
+    this.clock += dt;
+    this.setPursuit(!!st.pursuit);
+    if (st.pursuit) this.updatePursuit(st.pursuit);
     if (st.electric) this.drawPower(st.power ?? 0);
     else this.drawTach(st.rpm, st.speed);
     this.drawMinimap(st);
+  }
+
+  updatePursuit(pu) {
+    const p = this.pz;
+    const flash = pu.flash !== false;
+    p.root.classList.toggle('flash', flash);
+    p.root.classList.toggle('patrol', pu.state === 'patrol');
+    // Stars: whole ones up to the heat, the next one filling with the meter.
+    const heat = clamp(Math.floor(pu.heat || 1), 1, 5);
+    this.starFill.forEach((f, i) => {
+      const v = i < heat ? 1 : i === heat ? clamp(pu.heatMeter || 0, 0, 1) : 0;
+      f.style.width = (v * 100).toFixed(1) + '%';
+    });
+    p.stars.classList.toggle('max', heat === 5);
+    // Bar: BUST while it's filling, EVADE in cooldown, nothing in patrol.
+    const bust = pu.bust > 0, evade = !bust && pu.state === 'cooldown';
+    p.bar.classList.toggle('hidden', !bust && !evade);
+    p.bar.classList.toggle('bust', bust);
+    p.bar.classList.toggle('evade', evade);
+    if (bust || evade) {
+      this.set('pzLabel', p.label, bust ? 'BUST' : 'EVADE');
+      p.fill.style.width = (clamp(bust ? pu.bust : pu.evade || 0, 0, 1) * 100).toFixed(1) + '%';
+    }
+    // Damage: green → amber → red, pulsing past 75 %.
+    const d = clamp(pu.damage || 0, 0, 1);
+    p.dmgFill.style.width = (d * 100).toFixed(1) + '%';
+    p.dmgFill.style.background = `hsl(${Math.round(125 * (1 - d))}, 100%, 55%)`;
+    p.dmg.classList.toggle('crit', d > 0.75);
+    p.dmg.classList.toggle('flash', flash);
+    // Penalty served, under the race clock.
+    const pen = pu.penalties || 0;
+    p.pen.classList.toggle('hidden', !(pen > 0));
+    if (pen > 0) this.set('pen', p.pen, `+${pen.toFixed(1)} s`);
+    // The hold card while the car is held for a penalty.
+    const held = pu.hold > 0;
+    p.hold.classList.toggle('hidden', !held);
+    if (held) {
+      const wrecked = pu.holdReason === 'wrecked';
+      p.hold.classList.toggle('wrecked', wrecked);
+      this.set('holdTitle', p.holdTitle, wrecked ? 'WRECKED' : 'BUSTED');
+      this.set('holdSub', p.holdSub, `+${pu.hold.toFixed(1)} s PENALTY`);
+      p.holdFill.style.width = (clamp(pu.hold / (pu.holdTotal || pu.hold), 0, 1) * 100).toFixed(1) + '%';
+    }
   }
 
   drawTach(rpm, speed) {
@@ -252,6 +350,7 @@ export class HUD {
       g.beginPath(); g.arc(r.v.x, r.v.z, 16, 0, Math.PI * 2); g.fill();
       g.lineWidth = 4; g.strokeStyle = '#000'; g.stroke();
     }
+    if (st.pursuit) this.drawPolice(g, st.pursuit);
     g.restore();
     // Player arrow (screen space, always pointing up).
     g.save();
@@ -259,5 +358,30 @@ export class HUD {
     g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2;
     g.beginPath(); g.moveTo(0, -9); g.lineTo(6.5, 7); g.lineTo(0, 3.5); g.lineTo(-6.5, 7); g.closePath(); g.fill(); g.stroke();
     g.restore();
+  }
+
+  // Police on the minimap (world space, called inside drawMinimap's
+  // transform): roadblocks as red bars across the road, spikes as thin
+  // amber ones, units as red/blue dots that blink unless flashing is off.
+  drawPolice(g, pu) {
+    g.lineCap = 'butt';
+    // Drawn wider and thicker than life so they read on a 190 px map.
+    for (const [list, w, col] of [[pu.roadblocks, 18, '#ff3040'], [pu.spikes, 9, '#ffb43c']]) {
+      if (!list) continue;
+      for (const b of list) {
+        const half = Math.max(b.width, 36) / 2, ax = -Math.sin(b.yaw) * half, az = Math.cos(b.yaw) * half;
+        g.beginPath(); g.moveTo(b.x - ax, b.z - az); g.lineTo(b.x + ax, b.z + az);
+        g.lineWidth = w + 6; g.strokeStyle = '#000'; g.stroke();
+        g.lineWidth = w; g.strokeStyle = col; g.stroke();
+      }
+    }
+    const phase = pu.flash !== false ? Math.floor(this.clock * 4) % 2 : 0;
+    (pu.units || []).forEach((u, i) => {
+      g.beginPath(); g.arc(u.x, u.z, 16, 0, Math.PI * 2);
+      if (u.disabled) { g.fillStyle = 'rgba(120,126,140,0.6)'; g.fill(); return; }
+      const red = (i + phase) % 2 === 0;
+      g.fillStyle = red ? '#ff3040' : '#2f6bff'; g.fill();
+      g.lineWidth = 5; g.strokeStyle = pu.flash !== false ? '#000' : red ? '#2f6bff' : '#ff3040'; g.stroke();
+    });
   }
 }

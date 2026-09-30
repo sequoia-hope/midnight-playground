@@ -33,7 +33,12 @@ const settings = {
   car: store.get('car', 'sports'),
   level: store.get('level', 'sierra'),
   track: store.get('track', 'auto'), // music: 'auto' = the level's own track
+  flash: store.get('flash', true), // police lights strobe (off: they glow steadily)
 };
+// Race or Hot Pursuit, per level (only levels with police offer the choice).
+const modeFor = (l) => (l.police && store.get('mode.' + l.id, 'race') === 'pursuit' ? 'pursuit' : 'race');
+// ?pursuit=1 / 0 forces it; ?heat=1..5 starts hotter; ?cops=N caps the units.
+const forcePursuit = params.has('pursuit') ? params.get('pursuit') === '1' : null;
 if (params.has('level')) settings.level = params.get('level');
 
 // ── Renderer ──────────────────────────────────────────────────────
@@ -196,14 +201,27 @@ function levelStats(l) {
 }
 function renderLevelCard() {
   const l = levelById(settings.level);
+  const m = modeFor(l);
+  $('mode-pick').classList.toggle('hidden', !l.police);
+  $('mode-pick').querySelectorAll('button').forEach((b) => b.classList.toggle('sel', b.dataset.mode === m));
   $('lvl-num').textContent = l.num;
   $('lvl-name').textContent = l.title;
   $('lvl-desc').textContent = l.desc;
   $('lvl-len').textContent = levelStats(l);
-  const best = store.get(l.mode === 'cruise' ? 'bestScore.' + l.id : 'best.' + l.id, null);
+  const best = store.get(l.mode === 'cruise' ? 'bestScore.' + l.id : bestKey(l), null);
   $('lvl-best').textContent = best == null ? '' : l.mode === 'cruise' ? `Best score ${Math.round(best).toLocaleString()}` : `Best winning time ${fmtTime(best)}`;
-  $('btn-start').textContent = l.mode === 'cruise' ? 'Cruise' : 'Race';
+  $('btn-start').textContent = l.mode === 'cruise' ? 'Cruise' : m === 'pursuit' ? 'Hot Pursuit' : 'Race';
 }
+// Winning times are kept apart for Hot Pursuit.
+const bestKey = (l) => 'best.' + l.id + (modeFor(l) === 'pursuit' ? '.pursuit' : '');
+$('mode-pick').querySelectorAll('button').forEach((b) => {
+  b.onclick = () => {
+    const l = levelById(settings.level);
+    if (!l.police) return;
+    store.set('mode.' + l.id, b.dataset.mode);
+    renderLevelCard();
+  };
+});
 const levelRow = $('level-pick');
 for (const l of LEVELS) {
   const b = document.createElement('button');
@@ -251,7 +269,7 @@ function bindSlider(cls, key, storeKey) {
 }
 bindSlider('.vol-music', 'music', 'musicVol');
 bindSlider('.vol-sfx', 'sfx', 'sfxVol');
-for (const [id, key] of [['opt-mph', 'mph'], ['opt-hq', 'hq'], ['opt-autogas', 'autogas'], ['opt-fullscreen', 'fullscreen']]) {
+for (const [id, key] of [['opt-mph', 'mph'], ['opt-hq', 'hq'], ['opt-autogas', 'autogas'], ['opt-fullscreen', 'fullscreen'], ['opt-flash', 'flash']]) {
   const el = $(id);
   el.checked = settings[key];
   el.onchange = () => {
@@ -259,6 +277,7 @@ for (const [id, key] of [['opt-mph', 'mph'], ['opt-hq', 'hq'], ['opt-autogas', '
     if (key === 'hq') applyQuality();
     if (key === 'mph' && race) race.hud.mph = el.checked;
     if (key === 'autogas' && touch) touch.autoGas = el.checked;
+    if (key === 'flash' && race?.pv) race.pv.flash = race.pv.pursuit.flash = el.checked;
   };
 }
 
@@ -294,9 +313,14 @@ async function startRace() {
     audio.setCar?.(settings.car);
     await loadLevel(settings.level);
     race?.dispose();
+    const lvl = world.level;
+    const pursuit = lvl.police && (forcePursuit ?? modeFor(lvl) === 'pursuit') ? {
+      heat: Number(params.get('heat') || 1), cops: params.has('cops') ? Number(params.get('cops')) : 6,
+      flash: settings.flash, hq: settings.hq,
+    } : null;
     race = new Race({
       world, scene, camera, renderer, input, audio, buildVehicle, carKind: settings.car,
-      onFinish: showResults,
+      onFinish: showResults, pursuit,
     });
     race.hud.mph = settings.mph;
     race.hud.bestScore = store.get('bestScore.' + world.level.id, 0);
@@ -355,11 +379,19 @@ function showResults(res) {
     const me = res.find((r) => r.player);
     $('res-title').textContent = me.place === 1 ? 'You win!' : `${me.place}${['st', 'nd', 'rd'][me.place - 1] || 'th'} place`;
     $('res-table').innerHTML = res.map((r) => `<tr class="${r.player ? 'me' : ''}"><td>${r.place}</td><td><span class="sw" style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;background:#${r.color.toString(16).padStart(6, '0')}"></span>${r.name}</td><td>${r.estimated ? '~' : ''}${fmtTime(r.time)}</td></tr>`).join('');
-    const best = store.get('best.' + id, null);
-    if (me.place === 1 && (!best || me.time < best)) store.set('best.' + id, me.time);
-    const b = store.get('best.' + id, null);
+    const key = res.pursuit ? 'best.' + id + '.pursuit' : 'best.' + id;
+    const best = store.get(key, null);
+    if (me.place === 1 && (!best || me.time < best)) store.set(key, me.time);
+    const b = store.get(key, null);
     $('res-best').textContent = b ? `Best winning time: ${fmtTime(b)}` : 'Win the race to set a best time';
   }
+  // Hot Pursuit: what the police cost you (and what you cost them).
+  const p = !res.cruise && res.pursuit;
+  $('res-extra').innerHTML = p ? [
+    ['Busted', p.busts], ['Wrecked', p.wrecks], ['Takedowns', p.takedowns],
+    ['Penalty', `+${p.penalty.toFixed(1)} s`], ['Top heat', '★'.repeat(p.heat)],
+  ].map(([a, b]) => `<div class="res-stat"><b>${b}</b><small>${a}</small></div>`).join('') : '';
+  $('res-extra').classList.toggle('hidden', !p);
   renderLevelCard();
   mode = 'results';
   showScreen('results');

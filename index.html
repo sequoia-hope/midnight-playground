@@ -29,6 +29,7 @@
   <div class="hud-tl">
     <div class="pos"><span id="hud-pos">1</span><sup id="hud-pos-suf">st</sup><span class="of">/<span id="hud-of">6</span></span></div>
     <div class="time" id="hud-time">0:00.00</div>
+    <div class="time-pen hidden" id="hud-pen"></div>
     <div class="zone-name" id="hud-zone">SIERRA PASS</div>
   </div>
   <div class="hud-cruise hidden" id="hud-cruise">
@@ -38,6 +39,11 @@
     <div class="c-stats"><span id="hud-dist">0.0 mi</span> · best <span id="hud-best">0</span></div>
   </div>
   <canvas id="minimap" width="220" height="220"></canvas>
+  <!-- Hot Pursuit (src/game/HUD.js setPursuit): heat stars and the bust/evade bar. -->
+  <div class="hud-pz hidden" id="hud-pz">
+    <div class="pz-stars" id="pz-stars"></div>
+    <div class="pz-bar hidden" id="pz-bar"><span class="pz-label" id="pz-label">BUST</span><div class="pz-track"><div class="pz-fill" id="pz-fill"></div></div></div>
+  </div>
   <div class="hud-route">
     <div class="route-bar" id="route-bar">
       <div id="route-dots"></div>
@@ -48,9 +54,12 @@
     <div class="speed"><span id="hud-speed">0</span><small id="hud-unit">MPH</small></div>
     <div class="gear" id="hud-gear">N</div>
     <div class="nitro"><div class="nitro-fill" id="hud-nitro"></div><span>N₂O</span></div>
+    <div class="dmg hidden" id="hud-dmg"><div class="dmg-fill" id="hud-dmg-fill"></div><span>DMG</span></div>
   </div>
   <div id="hud-center"></div>
   <div id="hud-toast"></div>
+  <div id="hud-radio"><span class="radio-tag">DISPATCH</span><span id="hud-radio-text"></span></div>
+  <div id="hud-hold" class="hidden"><div class="hold-title" id="hold-title">BUSTED</div><div class="hold-sub" id="hold-sub"></div><div class="hold-bar"><div id="hold-fill"></div></div></div>
   <div id="zone-card"><div class="zc-name"></div><div class="zc-sub"></div></div>
   <div id="speedlines"></div>
 </div>
@@ -90,6 +99,7 @@
     <div class="lvl-name" id="lvl-name">Sierra to the City</div>
     <div class="lvl-desc" id="lvl-desc"></div>
     <div class="lvl-stats"><span id="lvl-len"></span><span class="lvl-best" id="lvl-best"></span></div>
+    <div id="mode-pick" class="mode-pick"><button data-mode="race" class="sel">Race</button><button data-mode="pursuit">Hot Pursuit</button></div>
   </div>
   <div class="car-pick">
     <div class="pick-label">Your car</div>
@@ -102,6 +112,7 @@
     <label class="vol">Track <select id="opt-track"></select></label>
     <label><input type="checkbox" id="opt-mph" checked> MPH</label>
     <label><input type="checkbox" id="opt-hq" checked> High quality</label>
+    <label><input type="checkbox" id="opt-flash" checked> Police lights flash</label>
     <label class="touch-only"><input type="checkbox" id="opt-autogas"> Auto gas</label>
     <label class="touch-only"><input type="checkbox" id="opt-fullscreen" checked> Fullscreen</label>
     <a class="menu-link" id="link-music" href="music.html">♪ Music player</a>
@@ -137,6 +148,7 @@
 <div id="results" class="screen hidden">
   <div class="title" id="res-title">Finished</div>
   <table id="res-table"></table>
+  <div class="res-extra" id="res-extra"></div>
   <div class="res-best" id="res-best"></div>
   <button class="btn primary" id="btn-again">Race again</button>
   <button class="btn" id="btn-menu">Main menu</button>

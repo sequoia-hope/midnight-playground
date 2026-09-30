@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { glowTexture } from '../world/textures.js';
 
 // Procedural vehicles — no assets.
 //
@@ -786,7 +787,7 @@ function mirrorGeo(g) {
 // Race number on both flanks from seven-segment strokes. On the side view
 // u runs forward, so on the left flank text reads towards -u; the right
 // flank is laid out the other way round and then mirrored across.
-const SEG = { 0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg' };
+const SEG = { 0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', P: 'abefg', O: 'abcdef', L: 'def', I: 'i', C: 'adef', E: 'adefg' };
 function number(P, S, view, str, cu, cv, h, bucket = 'trim') {
   const w = h * 0.5, gapW = h * 0.22, t = h * 0.14;
   const total = str.length * w + (str.length - 1) * gapW;
@@ -794,7 +795,7 @@ function number(P, S, view, str, cu, cv, h, bucket = 'trim') {
     [...str].forEach((ch, i) => {
       const left = cu - dir * (total / 2 - i * (w + gapW)), right = left + dir * w;
       const top = cv + h / 2, mid = cv, bot = cv - h / 2;
-      const seg = { a: [[left, top], [right, top]], b: [[right, top], [right, mid]], c: [[right, mid], [right, bot]], d: [[left, bot], [right, bot]], e: [[left, mid], [left, bot]], f: [[left, top], [left, mid]], g: [[left, mid], [right, mid]] };
+      const seg = { i: [[(left + right) / 2, top], [(left + right) / 2, bot]], a: [[left, top], [right, top]], b: [[right, top], [right, mid]], c: [[right, mid], [right, bot]], d: [[left, bot], [right, bot]], e: [[left, mid], [left, bot]], f: [[left, top], [left, mid]], g: [[left, mid], [right, mid]] };
       for (const k of SEG[ch] || '') {
         const g = ribbon(S, view, seg[k], t, { off: 0.0045, step: 1 });
         P.add(bucket, dir > 0 ? mirrorGeo(g) : g);
@@ -874,6 +875,86 @@ function wheelWells(P, zs, yc, R, W, hi) {
     const g = new THREE.CylinderGeometry(R - 0.012, R - 0.012, W - 0.16, hi ? 14 : 8, 1, true, PI / 2, PI);
     P.add('trim', g, [0, yc, z], [0, 0, PI / 2], 0.5);
   }
+}
+
+// ── police kit ────────────────────────────────────────────────────
+// Rounded rectangle [u, v] (counter-clockwise), for swept sections.
+function roundRect(cu, cv, hu, hv, r, n = 3) {
+  const out = [];
+  for (const [sx, sv, a0] of [[1, 1, 0], [-1, 1, PI / 2], [-1, -1, PI], [1, -1, 1.5 * PI]]) {
+    for (let k = 0; k <= n; k++) {
+      const a = a0 + (PI / 2) * (k / n);
+      out.push([cu + sx * (hu - r) + r * Math.cos(a), cv + sv * (hv - r) + r * Math.sin(a)]);
+    }
+  }
+  return out;
+}
+// Roof lightbar sitting on y at z: a black base on feet, 2×4 lens segments
+// (red on the driver's side, +X; blue on the right) in the lightRed and
+// lightBlue buckets, chrome end caps. Returns the siren layout: glow spots
+// over each half and the anchor for the shared flash light.
+function lightbar(P, hi, { y, z, w = 1.24, d = 0.3, h = 0.1 }) {
+  const yb = y + 0.03, gapC = 0.07;
+  P.box('trim', w, 0.03, d, [0, y + 0.015, z]);
+  const seg = (w / 2 - gapC / 2 - 0.03) / 4;
+  if (hi) {
+    P.pair('trim', Box(0.07, 0.06, d * 0.7), w * 0.36, y - 0.02, z);
+    const sec = roundRect(z, yb + h / 2, d / 2 - 0.005, h / 2, 0.03);
+    for (let i = 0; i < 4; i++) {
+      const x0 = gapC / 2 + i * seg + 0.004, x1 = x0 + seg - 0.008;
+      P.add('lightRed', sweep(sec, 'x', x0, x1));
+      P.add('lightBlue', sweep(sec, 'x', -x1, -x0));
+    }
+    // Dividers, centre block and end caps.
+    P.add('trim', sweep(roundRect(z, yb + h / 2 - 0.004, d / 2 - 0.012, h / 2 - 0.006, 0.026), 'x', -w / 2 + 0.03, w / 2 - 0.03), undefined, undefined, 0.6);
+    P.add('trim', sweep(roundRect(z, yb + h / 2 + 0.003, d / 2 - 0.002, h / 2 + 0.003, 0.03), 'x', -gapC / 2, gapC / 2), undefined, undefined, 0.5);
+    for (const sx of [1, -1]) P.add('chrome', sweep(roundRect(z, yb + h / 2, d / 2, h / 2 + 0.004, 0.035), 'x', sx > 0 ? w / 2 - 0.03 : -w / 2, sx > 0 ? w / 2 : -w / 2 + 0.03), undefined, undefined, 0.8);
+  } else {
+    const hw = seg * 2;
+    P.box('lightRed', hw * 2 - 0.01, h, d - 0.01, [gapC / 2 + hw, yb + h / 2, z]);
+    P.box('lightBlue', hw * 2 - 0.01, h, d - 0.01, [-gapC / 2 - hw, yb + h / 2, z]);
+    P.box('trim', gapC + 0.01, h + 0.006, d, [0, yb + h / 2, z]);
+  }
+  const gy = yb + h * 0.6, gx = gapC / 2 + seg * 2;
+  return {
+    anchor: [0, yb + h + 0.25, z],
+    glows: [{ p: [gx, gy, z], blue: 0, size: 2 }, { p: [-gx, gy, z], blue: 1, size: 2 }],
+  };
+}
+// Push bar in front of the nose: two padded uprights and two cross bars on
+// arms back to the bumper, with a pair of small strobes on the top bar.
+function pushBar(P, hi, { z, y0, y1, x = 0.36, back = 0.14 }) {
+  const my = (y0 + y1) / 2, hgt = y1 - y0;
+  P.pair('trim', Box(0.07, hgt, 0.06), x, my, z, undefined, 1.4);
+  P.box('trim', 2 * x + 0.12, 0.07, 0.05, [0, y0 + hgt * 0.3, z - 0.005], undefined, 1.4);
+  P.box('trim', 2 * x + 0.02, 0.05, 0.05, [0, y1 - 0.05, z], undefined, 1.4);
+  P.pair('trim', Box(0.05, 0.05, back), x, y0 + hgt * 0.3, z - back / 2);
+  P.box('lightRed', 0.16, 0.035, 0.03, [x * 0.45, y1 - 0.05, z + 0.03]);
+  P.box('lightBlue', 0.16, 0.035, 0.03, [-x * 0.45, y1 - 0.05, z + 0.03]);
+  if (hi) {
+    P.pair('trim', Box(0.085, hgt * 0.82, 0.03), x, my, z + 0.04, undefined, 0.45);  // rubber pads
+    P.pair('trim', Box(0.05, 0.05, back), x, y1 - 0.05, z - back / 2);
+  }
+}
+// Slicktop strobes for the interceptor livery: a red/blue pair in the grille
+// and a pair of bars on the rear deck.
+function strobes(P, S, hi, { grille: [gx0, gx1, gy0, gy1], deck: [dx, dy, dz] }) {
+  const rect = (u0, u1) => [[u0, gy0], [u1, gy0], [u1, gy1], [u0, gy1]];
+  const o = { off: 0.012, nu: hi ? 3 : 1, nv: 1 };
+  P.add('lightRed', decal(S, 'front', rect(gx0, gx1), o));
+  P.add('lightBlue', decal(S, 'front', rect(-gx1, -gx0), o));
+  const seg = hi ? 3 : 1, sec = roundRect(dz, dy + 0.025, 0.035, 0.025, 0.012, seg);
+  P.add('trim', sweep(roundRect(dz, dy + 0.012, 0.045, 0.014, 0.01, seg), 'x', -dx - 0.2, dx + 0.2));
+  P.add('lightRed', sweep(sec, 'x', dx - 0.18, dx + 0.18));
+  P.add('lightBlue', sweep(sec, 'x', -dx - 0.18, -dx + 0.18));
+  const gy = (gy0 + gy1) / 2, gz = S.z1 + 0.02, gxm = (gx0 + gx1) / 2;
+  return {
+    anchor: [0, gy, S.z1 + 0.3],
+    glows: [
+      { p: [gxm, gy, gz], blue: 0, size: 0.9 }, { p: [-gxm, gy, gz], blue: 1, size: 0.9 },
+      { p: [dx, dy + 0.03, dz], blue: 0, size: 1.3 }, { p: [-dx, dy + 0.03, dz], blue: 1, size: 1.3 },
+    ],
+  };
 }
 
 // ── wheels ────────────────────────────────────────────────────────
@@ -1097,12 +1178,15 @@ const SPECS = {
     const topF = spline(top);
     const stripe = v.stripes ? (ax) => ax < 0.17 : null;
     const cab = { z0: -1.95, z1: 0.82 };
+    // Police livery: white doors on a black car (between the shut lines).
+    const police = v.livery === 'police', WHITE = hi ? 'stripe' : 'plate', doors = [-0.62, 0.75];
     const body = bodyLoft(lod, {
-      z0, z1, top, bot, arches, rTop: 0.13, endR: 0.26, crownX: stripe ? [0.17] : [], side: [0.56, 0.6, 0.64],
+      z0, z1, top, bot, arches, rTop: 0.13, endR: 0.26, crownX: stripe ? [0.17] : [], side: [0.56, 0.6, 0.64], extraZ: police ? doors : [],
       halfW: shaper({ W, z0, z1, nose: 0.1, tail: 0.05, noseLen: 0.95, tailLen: 0.7, endR: 0.26, tumble: 0.075, y0: 0.64, y1: 0.9, tuck: 0.05, hips: 0.045, hipZ: -a, hipW: 0.6, hipY: [0.45, 0.78], crease: { y: 0.6, d: 0.02, h: 0.05 }, arches, flare: 0.02, lip: 0.008 }),
       mat: (tag, y, z, ax) => {
         if (tag === 0) return 'trim';
         if (hi && tag === 3 && inRange(z, cab.z0 + 0.12, cab.z1 - 0.12) && ax < 0.6) return 'trim';
+        if (police && tag !== 3 && inRange(z, doors[0], doors[1]) && y > 0.3) return WHITE;
         return tag === 3 && stripe && stripe(ax) ? 'stripe' : 'paint';
       },
     });
@@ -1165,10 +1249,11 @@ const SPECS = {
     } else {
       P.add('paint', sweep([[-2.2, 0.88], [-2.02, 0.905], [-2.04, 0.93], [-2.23, 0.935]], 'x', -0.72, 0.72));
     }
+    const siren = police ? strobes(P, S, hi, { grille: [0.2, 0.44, 0.28, 0.33], deck: [0.34, topF(-2.07), -2.07] }) : undefined;
     return {
       dims: { length: 4.47, width: W, height: 1.25, wheelRadius: r, wheelBase: wb, track: 1.62 },
       wheels: { r, w: 0.27, track: 1.62, zF: a, zR: -a, rimFrac: 0.7, spokes: 5, type: 'split' },
-      head: [0, 0.64, 2.22], exhausts: [[0.4, 0.3, -2.3], [-0.4, 0.3, -2.3]],
+      head: [0, 0.64, 2.22], exhausts: [[0.4, 0.3, -2.3], [-0.4, 0.3, -2.3]], siren,
     };
   },
 
@@ -1186,12 +1271,14 @@ const SPECS = {
     const stripe = v.stripes ? (ax) => ax > 0.08 && ax < 0.3 : null;
     const crownX = stripe ? [0.3, 0.08] : [];
     const cab = { z0: -1.5, z1: 0.36 };
+    const police = v.livery === 'police', WHITE = hi ? 'stripe' : 'plate', doors = [-0.92, 0.39];
     const body = bodyLoft(lod, {
-      z0, z1, top, bot, arches, rTop: 0.075, crown: 0.02, crownX, endR: 0.14, side: [0.66, 0.7, 0.74],
+      z0, z1, top, bot, arches, rTop: 0.075, crown: 0.02, crownX, endR: 0.14, side: [0.66, 0.7, 0.74], extraZ: police ? doors : [],
       halfW: shaper({ W, z0, z1, nose: 0.035, tail: 0.035, taperLen: 0.5, endR: 0.14, tumble: 0.045, y0: 0.72, y1: 0.98, tuck: 0.045, hips: 0.04, hipZ: -a, hipW: 0.75, hipY: [0.5, 0.86], crease: { y: 0.7, d: 0.014, h: 0.06 }, arches, flare: 0.012, lip: 0.006 }),
       mat: (tag, y, z, ax) => {
         if (tag === 0) return 'trim';
         if (hi && tag === 3 && inRange(z, cab.z0 + 0.12, cab.z1 - 0.12) && ax < 0.64) return 'trim';
+        if (police && tag !== 3 && inRange(z, doors[0], doors[1]) && y > 0.34) return WHITE;
         return tag === 3 && stripe && stripe(ax) ? 'stripe' : 'paint';
       },
     });
@@ -1256,10 +1343,11 @@ const SPECS = {
     if (v.spoiler !== false) P.add('paint', sweep([[-2.34, 0.955], [-2.12, 0.975], [-2.14, 1.0], [-2.36, 1.02]], 'x', -0.86, 0.86));
     mirrors(P, hi, { x: 0.93, y: 1.03, z: 0.26, w: 0.14, h: 0.08, d: 0.12, shell: 'chrome', base: 0.8 });
     tip(P, hi, 0.62, 0.27, -2.28, 0.05, 0.16);
+    const siren = police ? strobes(P, S, hi, { grille: [0.06, 0.27, 0.645, 0.695], deck: [0.34, topF(-1.64), -1.64] }) : undefined;
     return {
       dims: { length: 4.86, width: W, height: 1.35, wheelRadius: r, wheelBase: wb, track: 1.64 },
       wheels: { r, w: 0.29, track: 1.64, zF: a, zR: -a, rimFrac: 0.62, spokes: 5, type: 'spoke', w0: 0.07, w1: 0.1, dish: 0.07, rimMat: 'rimChrome' },
-      head: [0, 0.67, 2.5], exhausts: [[0.62, 0.27, -2.45], [-0.62, 0.27, -2.45]],
+      head: [0, 0.67, 2.5], exhausts: [[0.62, 0.27, -2.45], [-0.62, 0.27, -2.45]], siren,
     };
   },
 
@@ -1758,6 +1846,172 @@ const SPECS = {
       head: [0, 1.36, 1.84], exhausts: [[0.22, 2.54, 1.25]],
     };
   },
+
+  // Patrol sedan: a full-size four-door between the traffic sedan and the GT
+  // (lower roof, smoother nose), black with white doors and roof, a push bar
+  // and a roof lightbar.
+  police(P, lod) {
+    const hi = lod === 'high';
+    const WHITE = hi ? 'stripe' : 'plate';
+    const r = 0.34, wb = 2.9, W = 1.9, R = r + 0.065, a = wb / 2;
+    const z0 = -2.42, z1 = 2.52;
+    const arches = [[a, r, R], [-a, r, R]];
+    const top = [[-2.42, 0.86], [-2.34, 0.97], [-2.12, 1.0], [-1.2, 1.01], [0.8, 0.99], [1.7, 0.94], [2.3, 0.84], [2.46, 0.74], [2.52, 0.62]];
+    const bot = [[-2.42, 0.48], [-2.36, 0.28], [-1.95, 0.24], [1.95, 0.24], [2.42, 0.28], [2.52, 0.4]];
+    const topF = spline(top);
+    const cab = { z0: -1.45, z1: 0.9 }, roof = [-0.95, 0.12], doors = [-1.32, 0.86], bp = [-0.42, -0.34];
+    const body = bodyLoft(lod, {
+      z0, z1, top, bot, arches, rTop: 0.11, endR: 0.22, side: [0.34], extraZ: doors,
+      halfW: shaper({ W, z0, z1, nose: 0.08, tail: 0.05, noseLen: 0.8, tailLen: 0.6, endR: 0.22, tumble: 0.06, y0: 0.7, y1: 0.98, tuck: 0.04, hips: 0.02, hipZ: -a, hipW: 0.6, hipY: [0.5, 0.85], crease: { y: 0.72, d: 0.012, h: 0.05 }, arches, flare: 0.012 }),
+      mat: (tag, y, z, ax) => {
+        if (tag === 0) return 'trim';
+        if (hi && tag === 3 && inRange(z, cab.z0 + 0.12, cab.z1 - 0.12) && ax < 0.66) return 'trim';
+        if (tag !== 3 && inRange(z, doors[0], doors[1]) && y > 0.34) return WHITE;
+        return 'paint';
+      },
+    });
+    P.addAll(body);
+    const S = body.S;
+    const cabin = cabinLoft(lod, {
+      z0: cab.z0, z1: cab.z1, top: [[-1.45, 1.0], [-1.05, 1.36], [-0.8, 1.435], [-0.1, 1.445], [0.18, 1.4], [0.9, 0.98]], bodyTop: topF,
+      halfW: (y, z) => 0.8 * (1 - 0.16 * smooth(0.98, 1.44, y)) * (1 - 0.04 * smooth(-0.6, -1.45, z)),
+      roof, bPillar: bp,
+      mat: (tag, y, z) => {
+        if (tag >= 2 && inRange(z, roof[0], roof[1])) return WHITE;
+        if (tag === 2) return 'paint';
+        if (tag === 1 && inRange(z, bp[0], bp[1])) return 'trim';
+        return 'glass';
+      },
+    });
+    P.addAll(cabin);
+    const C = cabin.S;
+    if (hi) wheelWells(P, [a, -a], r, R, W, hi);
+    // Front: headlights, black grille, bumper and the push bar.
+    lamp(P, S, 'front', [[0.4, 0.62], [0.8, 0.6], [0.8, 0.7], [0.44, 0.72]], { nu: hi ? 6 : 2, nv: hi ? 3 : 1, lens: 0.15 });
+    if (hi) {
+      glow(P, S, 'front', [[0.44, 0.7], [0.78, 0.68]], 0.014, 'head');
+      dot(P, S, 'front', 0.54, 0.66, 0.035, 'head', { col: 0.9 });
+      dot(P, S, 'front', 0.68, 0.655, 0.035, 'head', { col: 0.9 });
+    }
+    P.add('trim', decal(S, 'front', [[-0.36, 0.5], [0.36, 0.5], [0.38, 0.66], [-0.38, 0.66]], { off: 0.003, nu: hi ? 4 : 1, nv: 1, col: 0.6 }));
+    P.add('trim', sweep([[2.44, 0.26], [2.58, 0.26], [2.59, 0.4], [2.44, 0.42]], 'x', -0.9, 0.9));
+    pushBar(P, hi, { z: 2.66, y0: 0.3, y1: 0.86, x: 0.34 });
+    // Rear: lamps, reverse, bumper, plate.
+    lamp(P, S, 'rear', [[0.42, 0.78], [0.84, 0.78], [0.84, 0.9], [0.46, 0.9]], { bucket: 'tail', nu: hi ? 4 : 2, nv: 1, lens: 0.3 });
+    if (hi) glow(P, S, 'rear', [[0.46, 0.84], [0.82, 0.84]], 0.02, 'tail');
+    P.add('rev', decal(S, 'rear', [[0.3, 0.8], [0.4, 0.8], [0.4, 0.88], [0.3, 0.88]], { off: 0.005, nu: 2, nv: 1, mirror: true }));
+    P.add('trim', sweep([[-2.34, 0.3], [-2.48, 0.3], [-2.49, 0.46], [-2.34, 0.48]], 'x', -0.9, 0.9));
+    P.box('plate', 0.5, 0.12, 0.02, [0, 0.62, -2.43]);
+    // Four doors: shut lines at the white panel edges and the B-pillar.
+    gap(P, S, 'side', [[doors[1], 0.98], [doors[1] - 0.02, 0.36]], { step: hi ? 0.05 : 1 });
+    gap(P, S, 'side', [[bp[0] + 0.04, 1.0], [bp[0] + 0.02, 0.36]], { step: hi ? 0.05 : 1 });
+    gap(P, S, 'side', [[doors[0], 1.0], [doors[0], 0.8]], { step: hi ? 0.05 : 1 });
+    mirrors(P, hi, { x: 0.93, y: 1.04, z: 0.72, w: 0.15, h: 0.1, d: 0.11, base: 0.78 });
+    const zb = -0.28, yb = C.topY(zb, 0.56) - 0.004;
+    const siren = lightbar(P, hi, { y: yb, z: zb, w: 1.24 });
+    if (hi) {
+      gap(P, S, 'top', [[-0.8, -2.3], [0.8, -2.3]], { mirror: false });
+      gap(P, S, 'top', [[0.62, 1.0], [0.6, 2.0], [0.44, 2.38]]);
+      for (const z of [0.28, -0.9]) P.add('chrome', ribbon(S, 'side', [[z, 0.8], [z - 0.14, 0.8]], 0.026, { off: 0.004, mirror: true, col: 0.8 }));
+      number(P, S, 'side', 'POLICE', -0.24, 0.62, 0.14);
+      dlo(P, C, topF, 0.8, -1.38, { rear: false });
+      interior(P, { z: -0.1, top: 1.33, dashZ: 0.62, dashY: 1.02, seat: [1.4, 1.4, 1.5] });
+      // Cage partition behind the front seats, pillar spotlight, antennas.
+      P.add('trim', new THREE.BoxGeometry(1.4, 0.4, 0.02), [0, 1.18, -0.42], undefined, 0.5);
+      P.add('chrome', new THREE.CylinderGeometry(0.055, 0.045, 0.14, 12), [0.86, 1.1, 0.74], [PI / 2, 0, 0]);
+      P.add('chrome', new THREE.CylinderGeometry(0.012, 0.012, 0.18, 6), [0.82, 1.08, 0.68]);
+      for (const x of [0.25, -0.25]) P.add('trim', new THREE.CylinderGeometry(0.004, 0.006, 0.55, 4), [x, 1.26, -2.0]);
+    }
+    return {
+      dims: { length: 5.1, width: W, height: 1.59, wheelRadius: r, wheelBase: wb, track: 1.6 },
+      wheels: { r, w: 0.245, track: 1.6, zF: a, zR: -a, rimFrac: 0.6, spokes: 0, type: 'steel', rimMat: 'rimDark' },
+      head: [0, 0.66, 2.5], exhausts: [[0.5, 0.26, -2.4]], siren,
+    };
+  },
+
+  // Police SUV: a tall two-box body with a near-vertical tail, black with
+  // white doors and roof, a heavy push bar, roof rails and a lightbar.
+  policeSuv(P, lod) {
+    const hi = lod === 'high';
+    const WHITE = hi ? 'stripe' : 'plate';
+    const r = 0.39, wb = 2.95, W = 2.0, R = r + 0.08, a = wb / 2;
+    const z0 = -2.42, z1 = 2.5;
+    const arches = [[a, r, R], [-a, r, R]];
+    const top = [[-2.42, 1.12], [-2.38, 1.16], [1.4, 1.17], [2.26, 1.12], [2.44, 1.04], [2.5, 0.9]];
+    const bot = [[-2.42, 0.56], [-2.36, 0.42], [-1.95, 0.4], [1.95, 0.4], [2.44, 0.44], [2.5, 0.56]];
+    const topF = (z) => interp(top, z);
+    const doors = [-1.28, 1.02], bp = [-0.2, -0.1], cp = [-1.36, -1.24], roof = [-2.24, 0.52];
+    const body = bodyLoft(lod, {
+      z0, z1, top, bot, arches, rTop: 0.08, crown: 0.02, endR: 0.14, linear: true, side: [0.48], extraZ: doors,
+      halfW: shaper({ W, z0, z1, nose: 0.04, tail: 0.02, taperLen: 0.45, endR: 0.14, tumble: 0.03, y0: 0.95, y1: 1.17, tuck: 0.03, tuckY: [0.4, 0.6], arches, flare: 0.03, flareW: 0.18 }),
+      mat: (tag, y, z, ax) => {
+        if (tag === 0) return 'trim';
+        if (hi && tag === 3 && inRange(z, -2.3, 1.35) && ax < 0.84) return 'trim';
+        if (tag !== 3 && inRange(z, doors[0], doors[1]) && y > 0.48) return WHITE;
+        return 'paint';
+      },
+    });
+    P.addAll(body);
+    const S = body.S;
+    const cabin = cabinLoft(lod, {
+      z0: -2.4, z1: 1.45, top: [[-2.4, 1.16], [-2.36, 1.86], [-2.24, 1.93], [0.45, 1.94], [0.64, 1.9], [1.45, 1.17]], bodyTop: topF, linear: true,
+      halfW: (y) => 0.93 * (1 - 0.09 * smooth(1.15, 1.93, y)),
+      roof, bPillar: bp, rTop: 0.07,
+      mat: (tag, y, z) => {
+        if (tag >= 2 && inRange(z, roof[0], roof[1])) return WHITE;
+        if (tag >= 2) return tag === 2 || z < roof[0] ? 'paint' : 'glass';
+        if (inRange(z, bp[0], bp[1]) || inRange(z, cp[0], cp[1])) return 'trim';
+        if (z < -2.3) return 'paint';
+        return 'glass';
+      },
+    });
+    P.addAll(cabin);
+    const C = cabin.S;
+    if (hi) wheelWells(P, [a, -a], r, R, W, hi);
+    // Front: wide black grille between the lamps, bumper, big push bar.
+    lamp(P, S, 'front', [[0.52, 0.86], [0.86, 0.84], [0.86, 0.98], [0.54, 1.0]], { nu: hi ? 5 : 2, nv: hi ? 3 : 1, lens: 0.15 });
+    if (hi) {
+      glow(P, S, 'front', [[0.55, 0.98], [0.84, 0.96]], 0.016, 'head');
+      dot(P, S, 'front', 0.64, 0.92, 0.04, 'head', { col: 0.9 });
+      dot(P, S, 'front', 0.77, 0.91, 0.04, 'head', { col: 0.9 });
+    }
+    P.add('trim', decal(S, 'front', [[-0.48, 0.66], [0.48, 0.66], [0.48, 1.0], [-0.48, 1.0]], { off: 0.003, nu: hi ? 4 : 1, nv: 1, col: 0.6 }));
+    if (hi) for (const y of [0.74, 0.82, 0.9]) P.add('chrome', ribbon(S, 'front', [[-0.46, y], [0.46, y]], 0.012, { off: 0.006, col: 0.5 }));
+    P.add('trim', sweep([[2.4, 0.4], [2.58, 0.4], [2.6, 0.6], [2.4, 0.64]], 'x', -1.0, 1.0));
+    pushBar(P, hi, { z: 2.68, y0: 0.4, y1: 1.1, x: 0.42 });
+    // Rear: tall corner lamps, a black band on the tailgate, bumper, plate.
+    lamp(P, S, 'rear', [[0.66, 0.78], [0.84, 0.78], [0.84, 1.1], [0.7, 1.1]], { bucket: 'tail', nu: hi ? 2 : 1, nv: hi ? 3 : 1, lens: 0.3 });
+    if (hi) glow(P, S, 'rear', [[0.76, 0.82], [0.76, 1.07]], 0.03, 'tail');
+    P.add('rev', decal(S, 'rear', [[0.66, 0.68], [0.84, 0.68], [0.84, 0.74], [0.66, 0.74]], { off: 0.005, nu: 2, nv: 1, mirror: true }));
+    P.add('trim', decal(S, 'rear', [[-0.56, 0.8], [0.56, 0.8], [0.56, 0.94], [-0.56, 0.94]], { off: 0.003, nu: 1, nv: 1 }));
+    P.add('trim', sweep([[-2.34, 0.4], [-2.5, 0.4], [-2.51, 0.6], [-2.34, 0.62]], 'x', -1.0, 1.0));
+    P.box('plate', 0.5, 0.12, 0.02, [0, 0.87, -2.43]);
+    // Running boards and roof rails.
+    P.pair('trim', Box(0.14, 0.04, 1.9), 0.98, 0.44, -0.12);
+    P.pair('trim', Box(0.04, 0.04, 2.3), 0.76, 1.96, -0.85);
+    gap(P, S, 'side', [[doors[1], 1.14], [doors[1] - 0.02, 0.5]], { step: hi ? 0.05 : 1 });
+    gap(P, S, 'side', [[bp[0] + 0.04, 1.15], [bp[0] + 0.02, 0.5]], { step: hi ? 0.05 : 1 });
+    gap(P, S, 'side', [[doors[0], 1.15], [doors[0], 0.9]], { step: hi ? 0.05 : 1 });
+    mirrors(P, hi, { x: 1.06, y: 1.32, z: 1.2, w: 0.14, h: 0.18, d: 0.12, base: 0.9 });
+    const zb = -0.02, yb = C.topY(zb, 0.6) - 0.004;
+    const siren = lightbar(P, hi, { y: yb, z: zb, w: 1.36, d: 0.32 });
+    if (hi) {
+      gap(P, S, 'top', [[0.7, 1.4], [0.68, 2.36]]);
+      gap(P, S, 'rear', [[-0.84, 0.72], [0.84, 0.72]], { mirror: false });
+      for (const z of [0.52, -0.72]) P.add('chrome', ribbon(S, 'side', [[z, 1.0], [z - 0.16, 1.0]], 0.03, { off: 0.004, mirror: true, col: 0.8 }));
+      number(P, S, 'side', 'POLICE', -0.12, 0.8, 0.16);
+      dlo(P, C, topF, 1.35, -2.28, { rear: false });
+      interior(P, { z: -0.35, top: 1.8, dashZ: 0.75, dashY: 1.25, seat: [1.4, 1.4, 1.5] });
+      P.add('trim', new THREE.BoxGeometry(1.6, 0.5, 0.02), [0, 1.5, -0.65], undefined, 0.5);
+      P.add('chrome', new THREE.CylinderGeometry(0.06, 0.05, 0.15, 12), [0.98, 1.4, 1.2], [PI / 2, 0, 0]);
+      for (const x of [0.3, -0.3]) P.add('trim', new THREE.CylinderGeometry(0.004, 0.006, 0.5, 4), [x, 2.2, -1.6]);
+    }
+    return {
+      dims: { length: 5.0, width: W, height: 2.1, wheelRadius: r, wheelBase: wb, track: 1.7 },
+      wheels: { r, w: 0.27, track: 1.7, zF: a, zR: -a, rimFrac: 0.6, spokes: 0, type: 'steel', rimMat: 'rimDark' },
+      head: [0, 0.92, 2.5], exhausts: [[0.6, 0.36, -2.4]], siren,
+    };
+  },
 };
 
 const partsCache = new Map();
@@ -1771,6 +2025,85 @@ function getParts(kind, lod, variant) {
   return res;
 }
 
+// ── siren ─────────────────────────────────────────────────────────
+const POLICE_KINDS = new Set(['police', 'policeSuv']);
+const POLICE_BLACK = 0x0c0d10, POLICE_WHITE = 0xf4f3ee;
+// Red/blue levels (0..1) for a siren mode at time t (s). 'flash' is an
+// alternating quad-flash: a 0.8 s cycle, red bursting four times in the
+// first half and blue in the second (2.5 bursts a second).
+function sirenLevels(mode, t) {
+  if (mode === true || mode === 'flash') {
+    const ph = (((t * 1.25) % 1) + 1) % 1, burst = (ph * 8) % 1 < 0.55 ? 1 : 0;
+    return ph < 0.5 ? [burst, 0] : [0, burst];
+  }
+  if (mode === 'steady') return [0.55, 0.55];
+  if (mode === 'disabled') return [0.3, 0];
+  return [0, 0];
+}
+// Additive glow billboards (one quad per spot, one draw call per car). The
+// vertex shader turns each quad to the camera, pulls it towards the camera
+// so the car's own roof doesn't cut it (further when far away, where the
+// road would otherwise hide its lower half at grazing angles), and never
+// lets it shrink below a minimum screen size, so a unit still reads as
+// police a few hundred metres away.
+function glowGeometry(spots) {
+  const pos = [], corner = [], blue = [], size = [], idx = [];
+  spots.forEach((s, i) => {
+    for (const c of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { pos.push(...s.p); corner.push(...c); blue.push(s.blue); size.push(s.size); }
+    idx.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3);
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('corner', new THREE.Float32BufferAttribute(corner, 2));
+  g.setAttribute('aBlue', new THREE.Float32BufferAttribute(blue, 1));
+  g.setAttribute('aSize', new THREE.Float32BufferAttribute(size, 1));
+  g.setIndex(idx);
+  g.computeBoundingSphere();
+  g.boundingSphere.radius += Math.max(...spots.map((s) => s.size));
+  return g;
+}
+function glowMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: { map: { value: glowTexture() }, uRed: { value: new THREE.Color(0, 0, 0) }, uBlue: { value: new THREE.Color(0, 0, 0) }, uMin: { value: 0.02 } },
+    vertexShader: `
+      attribute vec2 corner;
+      attribute float aBlue;
+      attribute float aSize;
+      uniform float uMin;
+      varying vec2 vUv;
+      varying float vBlue;
+      varying float vFar;
+      void main() {
+        vUv = corner * 0.5 + 0.5;
+        vBlue = aBlue;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        float d = length(mv.xyz);
+        mv.xyz *= max(0.05, d - min(1.0 + d * d * 0.0015, d * 0.5)) / d;
+        vec4 clip = projectionMatrix * mv;
+        vec2 hs = vec2(projectionMatrix[0][0], projectionMatrix[1][1]) * (0.5 * aSize) / clip.w;
+        float grow = max(1.0, uMin / hs.y);
+        vFar = clamp((grow - 1.0) / 1.5, 0.0, 1.0);
+        clip.xy += corner * hs * grow * clip.w;
+        gl_Position = clip;
+      }`,
+    fragmentShader: `
+      uniform sampler2D map;
+      uniform vec3 uRed;
+      uniform vec3 uBlue;
+      varying vec2 vUv;
+      varying float vBlue;
+      varying float vFar;
+      void main() {
+        // Held at its minimum size far away: a harder, brighter core.
+        float a = pow(texture2D(map, vUv).a, 2.0 - vFar);
+        gl_FragColor = vec4(mix(uRed, uBlue, vBlue) * a * (1.0 + 1.5 * vFar), 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+}
+
 // ── public ────────────────────────────────────────────────────────
 export const VEHICLE_KINDS = Object.keys(SPECS);
 
@@ -1782,6 +2115,7 @@ const FINISH = {
   super: { metalness: 0.45, roughness: 0.3, sheen: 0.6 },
   rally: { metalness: 0.1, roughness: 0.3 },
   electric: { metalness: 0.35, roughness: 0.36 },
+  police: { metalness: 0.2, roughness: 0.3 },
 };
 
 export function buildVehicle(kind, opts = {}) {
@@ -1792,15 +2126,18 @@ export function buildVehicle(kind, opts = {}) {
   const hi = lod === 'high';
   const M = hi ? SH.hi : SH.lo;
   const seed = Math.abs(opts.seed ?? 0);
-  const color = opts.color ?? (kind === 'tractor' ? [0x9a3b2b, 0x3f6b3a, 0x8f7a3a][seed % 3] : TRAFFIC_COLORS[seed % TRAFFIC_COLORS.length]);
-  const variant = { stripes: opts.stripes ?? (kind === 'muscle' || kind === 'rally'), spoiler: opts.spoiler ?? true };
+  // Police: the patrol kinds, or a racer body in police livery (interceptor).
+  const livery = opts.livery === 'police' && (kind === 'muscle' || kind === 'sports') ? 'police' : undefined;
+  const police = POLICE_KINDS.has(kind) || !!livery;
+  const color = opts.color ?? (police ? POLICE_BLACK : kind === 'tractor' ? [0x9a3b2b, 0x3f6b3a, 0x8f7a3a][seed % 3] : TRAFFIC_COLORS[seed % TRAFFIC_COLORS.length]);
+  const variant = { stripes: opts.stripes ?? (!livery && (kind === 'muscle' || kind === 'rally')), spoiler: opts.spoiler ?? !livery, livery };
   const { geoms, layout } = getParts(kind, lod, variant);
 
   // Per-instance materials.
   const owned = [];
   let paint;
   if (hi) {
-    const f = FINISH[kind] || { metalness: 0.4, roughness: 0.4 };
+    const f = (police ? FINISH.police : FINISH[kind]) || { metalness: 0.4, roughness: 0.4 };
     paint = new THREE.MeshPhysicalMaterial({ color, metalness: f.metalness, roughness: f.roughness, clearcoat: 1, clearcoatRoughness: 0.09, vertexColors: true });
     if (f.sheen) { paint.sheen = f.sheen; paint.sheenRoughness = 0.35; paint.sheenColor = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.6); }
     owned.push(paint);
@@ -1815,9 +2152,13 @@ export function buildVehicle(kind, opts = {}) {
   const accent = geoms.accent ? new THREE.MeshStandardMaterial({ color: 0x0b2a33, emissive: 0x3fe4ff, emissiveIntensity: 1.4, roughness: 0.3, vertexColors: hi }) : null;
   if (accent) owned.push(accent);
   const c = new THREE.Color(color);
-  const stripeColor = opts.stripeColor ?? (c.r + c.g + c.b > 2.4 ? 0x151515 : 0xf1efe8);
+  const stripeColor = opts.stripeColor ?? (police ? POLICE_WHITE : c.r + c.g + c.b > 2.4 ? 0x151515 : 0xf1efe8);
+  // Siren lenses (police only): per instance, like the head/tail lights.
+  const lightRed = geoms.lightRed ? lightMat({ color: hi ? 0x7a0c0c : 0x5a0808, metalness: hi ? 0.1 : 0, emissive: 0xff1a0c, emissiveIntensity: 0, roughness: 0.15 }, hi) : null;
+  const lightBlue = geoms.lightBlue ? lightMat({ color: hi ? 0x0c1c8a : 0x0a1668, metalness: hi ? 0.1 : 0, emissive: 0x1840ff, emissiveIntensity: 0, roughness: 0.15 }, hi) : null;
+  if (lightRed) owned.push(lightRed, lightBlue);
   const matFor = {
-    paint, head, tail, rev, accent,
+    paint, head, tail, rev, accent, lightRed, lightBlue,
     glass: M.glass, trim: M.trim, chrome: M.chrome, plate: M.plate, cargo: M.cargo, seat: M.seat, carbon: M.carbon,
     stripe: stripeMat(stripeColor, hi),
   };
@@ -1829,7 +2170,7 @@ export function buildVehicle(kind, opts = {}) {
   root.add(body);
   for (const [bucket, geom] of Object.entries(geoms)) {
     const mesh = new THREE.Mesh(geom, matFor[bucket] ?? M.trim);
-    mesh.castShadow = bucket !== 'head' && bucket !== 'tail' && bucket !== 'rev' && bucket !== 'accent' && bucket !== 'glass';
+    mesh.castShadow = !['head', 'tail', 'rev', 'accent', 'glass', 'lightRed', 'lightBlue'].includes(bucket);
     mesh.name = bucket;
     // Transparent glass after the body so the interior shows through it.
     if (bucket === 'glass' && hi) mesh.renderOrder = 1;
@@ -1901,7 +2242,7 @@ export function buildVehicle(kind, opts = {}) {
     tail.emissiveIntensity = base + (4 - base) * brake;
   };
 
-  return {
+  const handle = {
     root, body, wheels, steerPivots,
     kind,
     dims: { ...layout.dims },
@@ -1921,6 +2262,39 @@ export function buildVehicle(kind, opts = {}) {
       root.removeFromParent();
     },
   };
+
+  // Siren: lens emission, glow billboards and the anchor for the game's
+  // shared flash light, all driven by setSiren(mode, t) with mode 'off' |
+  // 'flash' | 'steady' | 'disabled' (true/false mean flash/off).
+  const siren = layout.siren;
+  if (siren) {
+    siren.geo ||= glowGeometry(siren.glows);
+    const glowMat = glowMaterial();
+    owned.push(glowMat);
+    const sirenGlow = new THREE.Mesh(siren.geo, glowMat);
+    sirenGlow.name = 'sirenGlow';
+    sirenGlow.renderOrder = 2;
+    body.add(sirenGlow);
+    const sirenAnchor = new THREE.Object3D();
+    sirenAnchor.name = 'sirenAnchor';
+    sirenAnchor.position.fromArray(siren.anchor);
+    body.add(sirenAnchor);
+    let lr = 0, lb = 0;
+    Object.assign(handle, {
+      sirenGlow, sirenAnchor,
+      setSiren(mode, t = 0) {
+        [lr, lb] = sirenLevels(mode, t);
+        lightRed.emissiveIntensity = lr * 6;
+        lightBlue.emissiveIntensity = lb * 8;
+        glowMat.uniforms.uRed.value.setRGB(2.4 * lr, 0.12 * lr, 0.05 * lr);
+        glowMat.uniforms.uBlue.value.setRGB(0.1 * lb, 0.35 * lb, 3.2 * lb);
+        sirenGlow.visible = lr + lb > 0;
+      },
+      sirenColor() { return { r: lr, b: lb }; },
+    });
+    handle.setSiren('off');
+  }
+  return handle;
 }
 
 // Triangle count of a built vehicle (budget checks / debugging).

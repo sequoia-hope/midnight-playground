@@ -1,6 +1,19 @@
 # Hot Pursuit — design spec
 
-Status: draft, 2026-09-29. Nothing here is implemented yet.
+Status: the Hot Pursuit race (§1.1) is implemented (2026-09-29): see
+`src/game/Pursuit.js`, `src/game/PursuitView.js` and
+`src/vehicles/PoliceDriver.js`. Most Wanted (§1.2) and the helicopter are
+not built yet. Two decisions changed the spec (open questions 1 and 2):
+
+- **Damage is in.** The player's car takes damage in Hot Pursuit; at 100% it
+  is wrecked.
+- **Busted or wrecked doesn't end the race.** The car is held for a penalty
+  (busted: 4 + 1.5 × heat seconds; wrecked: 8 s) while the clock and the
+  rivals keep going, then force-reset onto the road ahead of the police,
+  with 8 s of grace. Rivals are held the same way instead of a DNF.
+
+Tuning that differs from the tables below: the heat meter gains 0.02/s in
+pursuit (not 0.01), because a sprint lasts only 2–3 minutes.
 
 Police join the game as a second kind of opponent. The goal is the feel of the
 classic Need for Speed pursuits: sirens getting louder in the mirrors, a

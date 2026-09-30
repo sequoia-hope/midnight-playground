@@ -115,6 +115,9 @@ export default {
     { gap: [180, 360], mix: [['pickup', 0.3], ['sedan', 0.25], ['hatch', 0.15], ['tractor', 0.15], ['boxtruck', 0.15]], oncoming: 0.65, speed: [16, 21] },
     { gap: [45, 110], mix: [['sedan', 0.34], ['hatch', 0.2], ['van', 0.14], ['pickup', 0.14], ['boxtruck', 0.18]], oncoming: 0, speed: [21, 31], opposite: 0.5 },
   ],
+  // Hot Pursuit (docs/hot-pursuit.md §8): the narrow, twisty pass is capped
+  // at heat 2, the valley at 3 and Interstate 9 at 5.
+  police: { heatCap: [2, 3, 5], losOpenGround: [false, false, false] },
   rivals: [
     { name: 'Razor', kind: 'super', color: 0xe9ecef, skill: 0.99, power: 525 },
     { name: 'Kaito', kind: 'sports', color: 0x19c46b, skill: 0.972, power: 505 },

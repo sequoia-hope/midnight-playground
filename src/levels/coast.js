@@ -85,6 +85,9 @@ export default {
     { gap: [70, 160], mix: [['hatch', 0.3], ['sedan', 0.3], ['van', 0.2], ['pickup', 0.2]], oncoming: 0.5, speed: [12, 17] },
     { gap: [50, 120], mix: [['sedan', 0.3], ['hatch', 0.15], ['van', 0.15], ['pickup', 0.1], ['boxtruck', 0.3]], oncoming: 0, speed: [21, 29], opposite: 0.5 },
   ],
+  // Hot Pursuit: the cliffs at heat 2, the boulevard at 3 (units come
+  // the other way and U-turn), the harbour bridge and docks at 5.
+  police: { heatCap: [2, 3, 5], losOpenGround: [false, false, true] },
   rivals: [
     { name: 'Razor', kind: 'super', color: 0xe9ecef, skill: 0.995, power: 530 },
     { name: 'Marlowe', kind: 'electric', color: 0x1ab8c4, skill: 0.98, power: 520 },

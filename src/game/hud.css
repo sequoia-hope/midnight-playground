@@ -51,6 +51,61 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #05060a; col
 .nitro.active .nitro-fill { animation: nitroPulse .18s infinite alternate; }
 @keyframes nitroPulse { from { filter: brightness(1); } to { filter: brightness(1.7); } }
 
+/* ── Hot Pursuit ── heat stars and the bust/evade bar (top centre, under the route bar). */
+:root { --cop-red: #ff3040; --cop-blue: #2f6bff; --heat: #ffcf4d; }
+.hud-pz { position: absolute; left: 50%; top: 50px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.hud-pz.cruise { top: 142px; }
+.pz-stars { display: flex; gap: 5px; transform: skewX(-8deg); filter: drop-shadow(0 2px 5px rgba(0,0,0,.7)); transition: opacity .4s; }
+.hud-pz.patrol .pz-stars { opacity: .6; }
+.pz-star { position: relative; width: 26px; height: 25px; overflow: hidden; background: rgba(255,255,255,.2);
+  clip-path: polygon(50% 0%, 61.8% 35%, 98% 35.5%, 69% 57.5%, 79.5% 92%, 50% 71.5%, 20.5% 92%, 31% 57.5%, 2% 35.5%, 38.2% 35%); }
+.pz-star i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(180deg, #fff1b8, var(--heat) 45%, #ff9a3c); }
+.pz-stars.max .pz-star i { background: linear-gradient(180deg, #ffd0c0, #ff7a3c 45%, var(--cop-red)); }
+.pz-bar { display: flex; align-items: center; gap: 8px; text-shadow: 0 2px 6px rgba(0,0,0,.7); }
+/* The spacer matches the label so the track sits centred under the stars. */
+.pz-bar::after { content: ''; width: 46px; }
+.pz-label { width: 46px; text-align: right; font-size: 13px; font-weight: 700; font-style: italic; letter-spacing: .2em; }
+.pz-track { width: 170px; height: 7px; border-radius: 4px; background: rgba(255,255,255,.14); overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.pz-fill { height: 100%; width: 0; }
+.pz-bar.bust .pz-label { color: var(--cop-red); }
+.pz-bar.bust .pz-fill { background: linear-gradient(90deg, #a0102a, var(--cop-red), #ff8a8a); box-shadow: 0 0 10px var(--cop-red); }
+.pz-bar.evade .pz-label { color: #6fa8ff; }
+.pz-bar.evade .pz-fill { background: linear-gradient(90deg, #1b3cff, var(--cop-blue), var(--accent2)); box-shadow: 0 0 10px var(--cop-blue); }
+.hud-pz.flash .pz-bar.bust .pz-label { animation: pzBlink .5s steps(1) infinite; }
+@keyframes pzBlink { 50% { opacity: .35; } }
+
+/* Damage, under the dial above the nitro bar. */
+.dmg { position: absolute; left: 40px; right: 40px; bottom: 12px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.12); }
+.dmg-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 3px; }
+.dmg span { position: absolute; left: -32px; top: -5px; font-size: 11px; font-weight: 700; font-style: italic; letter-spacing: .12em; color: var(--hud-dim); text-shadow: 0 1px 4px rgba(0,0,0,.7); }
+.dmg.crit span { color: var(--cop-red); }
+.dmg.crit .dmg-fill { box-shadow: 0 0 10px var(--cop-red); }
+.dmg.crit.flash .dmg-fill { animation: dmgPulse .6s ease-in-out infinite alternate; }
+@keyframes dmgPulse { from { filter: brightness(1); } to { filter: brightness(1.8); } }
+
+/* Penalty time served, under the race clock. */
+.time-pen { font-size: 16px; font-weight: 700; font-style: italic; color: var(--heat); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+
+/* The car is held for a penalty: BUSTED / WRECKED with the seconds left. */
+#hud-hold { position: absolute; left: 0; right: 0; top: 28%; padding: 14px 0 18px; text-align: center; display: flex; flex-direction: column; align-items: center;
+  background: linear-gradient(90deg, transparent, rgba(8,10,18,.55) 25%, rgba(8,10,18,.55) 75%, transparent); }
+.hold-title { font-size: 96px; font-weight: 800; font-style: italic; line-height: .95; letter-spacing: .04em; color: var(--cop-red);
+  text-shadow: 0 0 30px rgba(255,48,64,.55), 0 4px 18px rgba(0,0,0,.7); }
+#hud-hold.wrecked .hold-title { color: #ff9a3c; text-shadow: 0 0 30px rgba(255,154,60,.5), 0 4px 18px rgba(0,0,0,.7); }
+.hold-sub { margin-top: 4px; font-size: 22px; font-weight: 700; letter-spacing: .3em; color: var(--hud-fg); font-variant-numeric: tabular-nums; text-shadow: 0 2px 8px rgba(0,0,0,.7); }
+.hold-bar { margin-top: 10px; width: min(360px, 60vw); height: 4px; border-radius: 2px; background: rgba(255,255,255,.14); overflow: hidden; }
+#hold-fill { height: 100%; width: 100%; background: var(--cop-red); }
+#hud-hold.wrecked #hold-fill { background: #ff9a3c; }
+
+/* Radio chatter: bottom centre. */
+#hud-radio { position: absolute; left: 50%; bottom: 70px; max-width: min(620px, 70vw); display: flex; align-items: center; gap: 10px; padding: 6px 16px 6px 8px;
+  border-radius: 999px; background: rgba(8,10,18,.62); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 4px 18px rgba(0,0,0,.35);
+  opacity: 0; transform: translate(-50%, 10px); transition: opacity .3s, transform .3s; }
+#hud-radio.show { opacity: 1; transform: translate(-50%, 0); }
+.radio-tag { flex: none; padding: 2px 8px 1px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .2em; color: #fff;
+  background: linear-gradient(90deg, var(--cop-red), var(--cop-blue)); }
+#hud-radio-text { font-size: 17px; font-weight: 600; font-style: italic; letter-spacing: .03em; color: #dbe6ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 #hud-center { position: absolute; left: 0; right: 0; top: 34%; text-align: center; font-size: 120px; font-weight: 800; font-style: italic; text-shadow: 0 4px 30px rgba(0,0,0,.6); }
 #hud-center.pop { animation: pop .8s ease-out both; }
 #hud-center.go { color: #4dff8a; }
@@ -135,6 +190,20 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; border-radius: 4px
 #res-table td:first-child { color: var(--hud-dim); width: 40px; }
 #res-table td:last-child { text-align: right; }
 .res-best { color: var(--hud-dim); letter-spacing: .1em; }
+/* Pursuit stats on the results screen: <div class="res-stat"><b>3</b><small>Busts</small></div> each. */
+.res-extra { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: min(460px, 92vw); }
+.res-extra:empty { display: none; }
+.res-stat { flex: 1 1 90px; padding: 6px 10px; border-radius: 10px; text-align: center; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); }
+.res-stat b { display: block; font-size: 26px; font-weight: 800; font-style: italic; font-variant-numeric: tabular-nums; }
+.res-stat small { display: block; font-size: 11px; letter-spacing: .25em; color: var(--hud-dim); text-transform: uppercase; }
+
+/* Race / Hot Pursuit: a segmented control on the level card. */
+.mode-pick { display: inline-flex; margin-top: 10px; padding: 3px; border-radius: 999px; background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.16); }
+.mode-pick button { font-family: var(--font); font-size: 15px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--hud-dim);
+  padding: 5px 18px; border: 0; border-radius: 999px; background: transparent; cursor: pointer; }
+.mode-pick button:hover { color: var(--hud-fg); }
+.mode-pick button.sel { color: #fff; background: linear-gradient(90deg, var(--accent), #ff7a3c); box-shadow: 0 4px 16px rgba(255,56,96,.3); }
+.mode-pick button[data-mode=pursuit].sel { background: linear-gradient(90deg, #ff3040, #2f6bff); box-shadow: 0 4px 16px rgba(47,107,255,.3); }
 
 @media (max-height: 780px) {
   .screen { gap: 10px; justify-content: flex-start; padding-top: 18px; }
@@ -147,6 +216,8 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; border-radius: 4px
   #minimap { width: 120px; height: 120px; }
   .hud-br { transform: scale(.7); transform-origin: bottom right; }
   .hud-route { top: auto; bottom: 16px; left: 16px; transform: none; width: 50vw; }
+  .hud-pz { top: 16px; }
+  .hold-title { font-size: 64px; }
 }
 
 /* ── Touch screens ───────────────────────────────── */
@@ -204,6 +275,24 @@ body.touch #hud-center { font-size: 84px; }
 body.touch #zone-card .zc-name { font-size: 40px; }
 body.touch #zone-card .zc-sub { font-size: 13px; }
 body.touch #hud-toast { font-size: 20px; }
+/* Pursuit on touch: stars under the narrow route bar, the speedo box grows for the damage bar. */
+body.touch .hud-pz { top: 52px; gap: 4px; }
+body.touch .hud-pz.cruise { top: 100px; }
+body.touch .pz-star { width: 18px; height: 17px; }
+body.touch .pz-label, body.touch .pz-bar::after { width: 38px; }
+body.touch .pz-label { font-size: 11px; }
+body.touch .pz-track { width: 120px; height: 5px; }
+body.touch .hud-br.pz-on { height: 74px; }
+body.touch .hud-br.pz-on .nitro { bottom: 16px; }
+body.touch .dmg { left: 40px; right: 12px; bottom: 6px; height: 5px; }
+body.touch .dmg span { left: -28px; top: -5px; font-size: 10px; }
+body.touch .time-pen { font-size: 13px; }
+body.touch #hud-hold { top: 22%; padding: 8px 0 12px; }
+body.touch .hold-title { font-size: 56px; }
+body.touch .hold-sub { font-size: 15px; }
+body.touch #hud-radio { bottom: calc(var(--inB) + 84px); max-width: 56vw; padding: 4px 12px 4px 6px; gap: 8px; }
+body.touch .radio-tag { font-size: 9px; }
+body.touch #hud-radio-text { font-size: 13px; }
 /* Touch: the pill sits centred just above the speedo, clear of both thumbs. */
 body.touch #np-toast { left: 50%; bottom: calc(var(--inB) + 74px); transform: translate(-50%, 8px); font-size: 12px; padding: 4px 12px; }
 body.touch #np-toast.show { transform: translate(-50%, 0); }
@@ -212,6 +301,8 @@ body.touch #np-toast small { font-size: 10px; }
   /* Too narrow for the speedo between the thumbs: it sits above them. */
   body.touch .hud-br { bottom: calc(var(--b) * 2.1 + 34px); }
   body.touch .hud-route { top: 166px; width: 70vw; }
+  body.touch .hud-pz { top: 200px; }
+  body.touch #hud-radio { bottom: calc(var(--b) * 2.1 + 34px + 84px); max-width: 86vw; }
   body.touch #np-toast { bottom: calc(var(--b) * 2.1 + 34px + 74px); }
 }
 @media (orientation: landscape) { #rotate-hint { display: none !important; } }
@@ -243,6 +334,9 @@ body.touch #np-toast small { font-size: 10px; }
   .controls { display: none; }
   #res-table { font-size: 16px; }
   #res-table td { padding: 3px 10px; }
+  .mode-pick { margin-top: 6px; }
+  .mode-pick button { font-size: 12px; padding: 3px 12px; }
+  .res-stat b { font-size: 20px; }
 }
 @media (max-height: 500px) and (orientation: landscape) {
   #menu { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-content: start; justify-items: stretch; column-gap: 22px; row-gap: 8px; }

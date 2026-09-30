@@ -51,6 +51,46 @@ midnight, with heavy traffic and no finish line. Speed scores points, and near
 misses build a multiplier of up to ×10, which you lose if you crash. End the run
 from the pause menu to see your score.
 
+## Hot Pursuit
+
+Every sprint level can also be raced as **Hot Pursuit**: pick it with the
+Race / Hot Pursuit switch on the level card (the choice is remembered per
+level). It's the same race against five rivals, with the police on the road.
+
+- Patrol cars wait on the shoulder and give chase when a racer blasts past.
+  More join from behind, and on two-way roads some come the other way and
+  U-turn as you pass. They chase whoever is nearest, but mostly you, so
+  rivals get pulled over too.
+- **Heat** (the stars at the top) rises the longer the chase goes on, and
+  when you hit or take out police cars. Each zone caps it, so the first
+  zone stays calm. Higher heat brings more and faster units, and new
+  tactics: PIT manoeuvres (heat 2), rolling blocks and roadblocks (3),
+  boxing you in and spike strips (4), and heavy roadblocks whose gap is
+  closed by barriers you have to smash through (5).
+- Break line of sight (round corners, in a tunnel, behind the canyon walls)
+  and the **evade** meter fills. When it's full you've escaped, and the
+  police go back to patrol until they spot you again. Out on open ground,
+  on Route 66 and the dry lake, they can always see you.
+- **Busted**: if you crawl along with a police car right beside you, the
+  bust meter fills. When it's full you're held on the spot for a penalty
+  (5.5 to 11.5 s, longer at higher heat). The race clock keeps running and
+  the rivals drive on. Then you're put back on the road ahead of the
+  police, with a few seconds' grace. Reset (R) is locked while the bust
+  meter is filling.
+- **Damage**: your car takes damage from crashes into cars and walls
+  (police rams wear it down more slowly than a crash into traffic). Past
+  half damage it smokes and loses power. At 100% it's **wrecked**: an 8 s
+  penalty hold, then back on the road, repaired.
+- Spike strips shred your tyres for 10 s: less grip, a lower top speed and
+  sparks off the rims. Ramming a police car hard enough takes it out
+  (a **takedown**).
+- The results screen adds your busts, wrecks, takedowns, penalty time and
+  top heat. Hot Pursuit winning times are kept separately from normal ones.
+
+The police lights flash red and blue. If strobing lights bother you, turn
+off **Police lights flash** in the menu: the lights then glow steadily and
+don't light up the scene.
+
 ## Cars
 
 | Car | Character |
@@ -135,8 +175,12 @@ src/
   world/streets/       Level 3 textures: shop fronts, rowhouses, neon signs
   world/Desert.js      Level 4 canyon, arch, hoodoos, Route 66, railway, lake bed
   world/desert/        Level 4 parts: rocks, plants, fence, poles, train
-  vehicles/            car models, player physics, rival AI, traffic, collisions
+  vehicles/            car models, player physics, rival AI, traffic, collisions,
+                       the police driver
   game/                race flow, camera, HUD, effects, audio, input, touch controls
+  game/Pursuit.js      Hot Pursuit: heat, line of sight, busts, units, roadblocks
+                       (no three.js, so it's tested in Node); PursuitView.js wires
+                       it into a race
   game/audio/          the soundtrack: step sequencer and synth instruments, the songs,
                        and the drum kit and crash sounds pre-rendered at start-up
 vendor/three/          three.js r180 (the build plus the few add-ons used)
@@ -156,6 +200,10 @@ music.html             the soundtrack player
 - `?stats=1`: frame time, draw calls and triangle count.
 - `?touch=1` / `?touch=0`: force the on-screen touch controls on or off (they
   appear automatically on touch screens).
+- `?pursuit=1` / `?pursuit=0`: force Hot Pursuit on or off (sprint levels).
+  `?heat=1..5` sets the starting heat, and `?cops=N` caps the number of police
+  units (`?cops=0` gives the mode with no police, for testing the HUD).
+  `window.__pursuit` is the live pursuit (`src/game/Pursuit.js`).
 
 To check a route after editing its level file, run `node tools/check-track.js <level>`
 (or `npm run check-track`, which checks Level 1). It
@@ -182,7 +230,9 @@ npm run test:e2e   # the browser, a few minutes
 The unit tests in `test/unit/` run the code that doesn't need a browser:
 every level's route, the car physics (including the car claims above), the
 rivals driving each route and passing slower cars, traffic and collisions,
-input, the timer and the soundtrack's songs and synth patches.
+input, the timer, the soundtrack's songs and synth patches, and Hot Pursuit
+(line of sight, heat, busts and escapes, and each sprint level raced with
+the police on).
 
 The browser tests in `test/e2e/` play the real game in headless Chrome on the
 GPU, both as a desktop and as a phone (touch, in landscape and portrait). They

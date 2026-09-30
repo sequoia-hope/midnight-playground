@@ -23,6 +23,9 @@ export class AIDriver extends KinematicCar {
     this.finishTime = null;
     this.throttle = 0;
     this.park = null;
+    this.hold = 0;     // Hot Pursuit: seconds left pulled over after a bust
+    this.holdLat = null;
+    this.spiked = 0;   // Hot Pursuit: seconds left on shredded tyres
   }
 
   update(dt, ctx) {
@@ -42,29 +45,15 @@ export class AIDriver extends KinematicCar {
       vT *= gap > 120 ? lerp(1, 0.9, smoothstep(120, 400, gap)) : gap < -80 ? lerp(1, 1.1, smoothstep(80, 350, -gap)) : 1;
     }
     if (this.stunned > 0) vT *= 0.6;
+    // Hot Pursuit: shredded tyres after a spike strip.
+    if (this.spiked > 0) { this.spiked -= dt; vT *= 0.75; }
 
     // Racing line (or the lane we're parking in).
     let latT = park ? park.lat(this.s) : t.racingLine[t.idx(this.s + 8)] * this.lineFactor + this.bias;
 
     // Look ahead for cars in the way.
-    let block = null, blockGap = Infinity;
     const myW = this.v.halfW;
-    for (const o of ctx.cars) {
-      if (o === this) continue;
-      const ds = o.s - this.s;
-      const oncoming = o.dir === -1;
-      const closing = this.speed - (oncoming ? -o.speedAlong : o.speedAlong);
-      // Far enough ahead to get round it at speed (a stopped car at 60 m/s
-      // needs ~3 s of warning, not 45 m).
-      const range = Math.max(oncoming ? 110 : 45, closing * 3.2);
-      if (ds < 2 || ds > range) continue;
-      if (closing < 0.5 && !oncoming) continue;
-      const tHit = ds / Math.max(closing, 1);
-      if (tHit > 3.2) continue;
-      if (Math.abs(o.lat - this.lat) < myW + o.halfW + 0.7 || Math.abs(o.lat - latT) < myW + o.halfW + 0.7) {
-        if (ds < blockGap) { blockGap = ds; block = o; }
-      }
-    }
+    const block = findBlock(this, ctx.cars, latT);
     // Parking: queue behind anything in our lane, but still go round a car
     // we're closing on fast.
     if (park) {
@@ -75,18 +64,19 @@ export class AIDriver extends KinematicCar {
       }
     }
     if (block && !(park && this.speed - block.speedAlong < 5)) {
-      const need = myW + block.halfW + 1.1;
-      const wallR = F.wallR - myW - 0.4, wallL = -(F.wallL - myW - 0.4);
-      const right = block.lat + need, left = block.lat - need;
-      const okR = right < wallR, okL = left > wallL;
-      let choice = null;
-      if (okR && okL) choice = Math.abs(right - this.lat) < Math.abs(left - this.lat) ? right : left;
-      else if (okR) choice = right;
-      else if (okL) choice = left;
+      const choice = passLat(this, block, F);
       if (choice !== null) { this.avoid = choice; this.avoidTimer = 0.9; }
       else if (block.dir === 1) vT = Math.min(vT, block.speedAlong - 0.5);
     }
     if (this.avoidTimer > 0) { this.avoidTimer -= dt; latT = this.avoid; }
+
+    // Hot Pursuit: busted. Pull over onto the shoulder and wait out the
+    // penalty (the race clock keeps running), then rejoin.
+    if (this.hold > 0) {
+      this.hold -= dt;
+      vT = 0;
+      latT = this.holdLat ?? this.lat;
+    }
 
     const lim = Math.min(F.wallR, F.wallL) - myW - 0.35;
     latT = clamp(latT, -lim, lim);
@@ -104,7 +94,7 @@ export class AIDriver extends KinematicCar {
     const acc = Math.min(9, this.power / Math.max(this.speed, 5)) + (nitroing ? 4 : 0);
     const dv = vT - this.speed;
     this.throttle = dv > 0 ? 1 : 0;
-    const brake = park && !block ? 4 : 12; // ease off after the finish
+    const brake = park && !block ? 4 : this.hold > 0 ? 9 : 12; // ease off after the finish
     this.speed += dv > 0 ? Math.min(dv, acc * dt) : Math.max(dv, -brake * dt);
     this.speed = Math.max(0, this.speed);
     this.v.brakeLight = dv < -1.5 ? 1 : 0;
@@ -119,4 +109,44 @@ export class AIDriver extends KinematicCar {
     }
   }
 
+}
+
+// The nearest car ahead that we'd hit on our current lane or on the lane we
+// want (latT) within a few seconds: slower cars, stopped cars and anything
+// oncoming. Shared by the rivals and the police. skip(o) → true ignores o.
+export function findBlock(self, cars, latT, skip = null) {
+  const myW = self.v.halfW;
+  let block = null, blockGap = Infinity;
+  for (const o of cars) {
+    if (o === self || (skip && skip(o))) continue;
+    const ds = self.track.ds(self.s, o.s);
+    const oncoming = o.dir === -1;
+    const closing = self.speed - (oncoming ? -o.speedAlong : o.speedAlong);
+    // Far enough ahead to get round it at speed (a stopped car at 60 m/s
+    // needs ~3 s of warning, not 45 m).
+    const range = Math.max(oncoming ? 110 : 45, closing * 3.2);
+    if (ds < 2 || ds > range) continue;
+    if (closing < 0.5 && !oncoming) continue;
+    const tHit = ds / Math.max(closing, 1);
+    if (tHit > 3.2) continue;
+    if (Math.abs(o.lat - self.lat) < myW + o.halfW + 0.7 || Math.abs(o.lat - latT) < myW + o.halfW + 0.7) {
+      if (ds < blockGap) { blockGap = ds; block = o; }
+    }
+  }
+  return block;
+}
+
+// A lane that clears `block` on the nearer side, inside the walls, or null
+// when neither side fits. A roadblock car points at its gap instead.
+export function passLat(self, block, F) {
+  if (block.gapLat != null) return block.gapLat;
+  const myW = self.v.halfW;
+  const need = myW + block.halfW + 1.1;
+  const wallR = F.wallR - myW - 0.4, wallL = -(F.wallL - myW - 0.4);
+  const right = block.lat + need, left = block.lat - need;
+  const okR = right < wallR, okL = left > wallL;
+  if (okR && okL) return Math.abs(right - self.lat) < Math.abs(left - self.lat) ? right : left;
+  if (okR) return right;
+  if (okL) return left;
+  return null;
 }

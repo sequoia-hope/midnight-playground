@@ -4,7 +4,7 @@
 //   engine chains ─┐
 //   effects ───────┴─ sfxBus ─ sfxComp ─ sfxVol ─┐
 //                        └─ tunnel reverb ─┘     ├─ master ─ limiter ─ out
-//   music ─ musicMix ─ musicComp ─ gate ─ duck ─ musicVol┘
+//   music ─ musicMix ─ musicComp ─ gate ─ duck ─ mood lp ─ mood ─ musicVol┘
 //
 // The music itself (songs, sequencer, instruments, drum kit) lives in
 // audio/Music.js and audio/tracks.js; it plays into musicIn. Crash, gravel,
@@ -186,6 +186,59 @@ function rumbleCycle(prof, { real, imag }) {
   return { real: re, imag: im };
 }
 
+// A narrow unipolar pulse train (Hann-tapered harmonics, so it doesn't ring),
+// scaled to peak 1. PeriodicWaves carry no DC, so the wave dips to `floor`
+// between pulses; add -floor to whatever it drives to sit the gaps at zero.
+function pulseWave(ctx, harmonics = 24) {
+  const real = new Float32Array(harmonics + 1), imag = new Float32Array(harmonics + 1);
+  for (let h = 1; h <= harmonics; h++) real[h] = Math.cos((Math.PI * h) / (2 * (harmonics + 1))) ** 2;
+  let peak = -Infinity, floor = Infinity;
+  for (let i = 0; i < 512; i++) {
+    let x = 0;
+    for (let h = 1; h <= harmonics; h++) x += real[h] * Math.cos((2 * Math.PI * h * i) / 512);
+    peak = Math.max(peak, x); floor = Math.min(floor, x);
+  }
+  for (let h = 1; h <= harmonics; h++) real[h] /= peak;
+  return { wave: ctx.createPeriodicWave(real, imag, { disableNormalization: true }), floor: floor / peak };
+}
+
+// A square with softened edges (sigma-smoothed odd harmonics): the hi-lo
+// siren's two-tone switch without the Gibbs overshoot in pitch.
+function softSquareWave(ctx, harmonics = 15) {
+  const real = new Float32Array(harmonics + 1), imag = new Float32Array(harmonics + 1);
+  for (let h = 1; h <= harmonics; h += 2) {
+    const x = (Math.PI * h) / (harmonics + 1);
+    imag[h] = (4 / (Math.PI * h)) * (Math.sin(x) / x);
+  }
+  return ctx.createPeriodicWave(real, imag);
+}
+
+// ── Sirens ───────────────────────────────────────────────────────
+// Each pattern is a pitch LFO on the voice: a triangle sweep between lo and
+// hi (wail, yelp) or a soft square between two tones (hi-lo). `period` is a
+// full cycle, so wail spends 1.7 s going up and 1.7 s coming down.
+export const SIREN_PATTERNS = {
+  wail: { lo: 650, hi: 1450, period: 3.4, shape: 'tri' },
+  yelp: { lo: 650, hi: 1450, period: 0.6, shape: 'tri' },
+  hilo: { lo: 770, hi: 960, period: 1.0, shape: 'square' },
+};
+const SOUND_SPEED = 343;
+const SIREN_RANGE = 350; // m: silent beyond
+const SIREN_GAIN = 0.34; // voice level right behind the player
+
+// Pitch factor for a source closing on the listener at relSpeed m/s
+// (negative = pulling away), listener taken as still.
+export function sirenDoppler(relSpeed = 0) {
+  return SOUND_SPEED / (SOUND_SPEED - clamp(relSpeed, -120, 120));
+}
+
+// Voice gain at a distance: near-inverse falloff, faded to zero at the range.
+export function sirenLevel(dist = 0) {
+  const d = Math.max(0, dist);
+  const edge = clamp(1 - d / SIREN_RANGE, 0, 1);
+  return SIREN_GAIN * (20 / (20 + d)) * edge * Math.sqrt(edge);
+}
+
 // Internal trims (calibrated with the analyser measurements in the bench).
 const MASTER_TRIM = 0.64;
 const SFX_TRIM = 1.25;
@@ -269,6 +322,7 @@ export class GameAudio {
     if (!CARS[kind]) kind = 'sports';
     this._car = kind;
     if (!this.ready) return;
+    this._pursuitReset();
     const prof = CARS[kind];
     this.prof = prof;
     this.electric = !!prof.electric;
@@ -348,7 +402,11 @@ export class GameAudio {
     this.musicDuck = ctx.createGain(); // dips under the finish fanfare
     this.musicVol = ctx.createGain();
     this.musicMix.connect(this.musicComp); this.musicComp.connect(this.musicGate);
-    this.musicGate.connect(this.musicDuck); this.musicDuck.connect(this.musicVol); this.musicVol.connect(this.master);
+    // Pursuit mood: a low-pass (wide open unless cooling down) and a trim.
+    this.musicMoodLp = ctx.createBiquadFilter(); this.musicMoodLp.type = 'lowpass'; this.musicMoodLp.frequency.value = 20000; this.musicMoodLp.Q.value = 0.5;
+    this.musicMood = ctx.createGain();
+    this.musicGate.connect(this.musicDuck); this.musicDuck.connect(this.musicMoodLp); this.musicMoodLp.connect(this.musicMood);
+    this.musicMood.connect(this.musicVol); this.musicVol.connect(this.master);
 
     this._makeNoise();
     this.sfxBuf = renderSfx(ctx);
@@ -358,6 +416,7 @@ export class GameAudio {
     this._buildElectric();
     this._buildEnvironment();
     this._buildRivals();
+    this._buildPursuit();
     this.music = new Music(ctx, this.musicIn);
     this.music.build();
     this.music.onTrack = (info) => this.onTrackChange?.(info);
@@ -436,11 +495,12 @@ export class GameAudio {
     e.hp = ctx.createBiquadFilter(); e.hp.type = 'highpass'; e.hp.frequency.value = 28; e.hp.Q.value = 0.6;
     e.shiftG = ctx.createGain(); e.shiftG.gain.value = 1;
     e.limG = ctx.createGain(); e.limG.gain.value = 1;
+    e.misG = ctx.createGain(); e.misG.gain.value = 1; // damage misfires
     e.out = ctx.createGain(); e.out.gain.value = 0;
     // Weight under the whole engine, exhaust chains and rumble alike.
     e.body = ctx.createBiquadFilter(); e.body.type = 'lowshelf'; e.body.frequency.value = 140; e.body.gain.value = 6;
     e.sum.connect(e.hp); e.hp.connect(e.body); e.body.connect(e.shiftG); e.shiftG.connect(e.limG);
-    e.limG.connect(e.out); e.out.connect(this.sfxBus);
+    e.limG.connect(e.misG); e.misG.connect(e.out); e.out.connect(this.sfxBus);
 
     // Slow combustion unsteadiness: low-passed noise wobbles amplitude and
     // pitch a touch, so the cycle never repeats exactly.
@@ -696,6 +756,104 @@ export class GameAudio {
     }
   }
 
+  // Hot Pursuit: three siren voices, the shredded-tyre flap, engine distress
+  // for a damaged car and the police radio's bus. All of it idles at zero gain.
+  _buildPursuit() {
+    const ctx = this.ctx;
+    const pan = () => (ctx.createStereoPanner ? ctx.createStereoPanner() : null);
+    const pulse = pulseWave(ctx);
+    const square = softSquareWave(ctx);
+
+    // Siren voice: square + detuned saw through a horn-speaker band-pass, a
+    // distance low-pass, gain and pan. The pattern is two always-running
+    // pitch LFOs on the oscillators' detune (a triangle for wail/yelp, a soft
+    // square for hi-lo) crossfaded by depth, so a voice's pattern never
+    // restarts: switching mode only changes LFO rates and depths. Each voice's
+    // cycle runs a little long or short so several units drift apart.
+    this.sirens = [];
+    for (let i = 0; i < 3; i++) {
+      const v = { id: null, mode: 'off', drift: 1 + (i - 1) * 0.045 };
+      v.a = ctx.createOscillator(); v.a.type = 'square';
+      v.b = ctx.createOscillator(); v.b.type = 'sawtooth'; v.b.detune.value = 18;
+      const ag = ctx.createGain(); ag.gain.value = 0.55;
+      const bg = ctx.createGain(); bg.gain.value = 0.45;
+      v.bp = ctx.createBiquadFilter(); v.bp.type = 'bandpass'; v.bp.frequency.value = 1150; v.bp.Q.value = 0.9;
+      v.lp = ctx.createBiquadFilter(); v.lp.type = 'lowpass'; v.lp.frequency.value = 6000; v.lp.Q.value = 0.6;
+      v.g = ctx.createGain(); v.g.gain.value = 0;
+      v.a.connect(ag); v.b.connect(bg); ag.connect(v.bp); bg.connect(v.bp);
+      v.bp.connect(v.lp); v.lp.connect(v.g);
+      v.p = pan();
+      if (v.p) { v.g.connect(v.p); v.p.connect(this.sfxBus); } else v.g.connect(this.sfxBus);
+      v.tri = ctx.createOscillator(); v.tri.type = 'triangle';
+      v.tri.frequency.value = 1 / (SIREN_PATTERNS.wail.period * v.drift);
+      v.sq = ctx.createOscillator(); v.sq.setPeriodicWave(square);
+      v.sq.frequency.value = 1 / (SIREN_PATTERNS.hilo.period * v.drift);
+      v.triD = ctx.createGain(); v.triD.gain.value = 0;
+      v.sqD = ctx.createGain(); v.sqD.gain.value = 0;
+      v.tri.connect(v.triD); v.sq.connect(v.sqD);
+      for (const d of [v.triD, v.sqD]) { d.connect(v.a.detune); d.connect(v.b.detune); }
+      const { lo, hi } = SIREN_PATTERNS.wail;
+      v.a.frequency.value = v.b.frequency.value = Math.sqrt(lo * hi);
+      for (const o of [v.a, v.b, v.tri, v.sq]) o.start();
+      this.sirens.push(v);
+    }
+
+    // Spiked tyres: flapping rubber strips. A pulse train at the flap rate
+    // gates a thwacking noise band and carries a low thump of its own.
+    const ty = {};
+    ty.out = ctx.createGain(); ty.out.gain.value = 0; ty.out.connect(this.sfxBus);
+    ty.pulse = ctx.createOscillator(); ty.pulse.setPeriodicWave(pulse.wave); ty.pulse.frequency.value = 8;
+    ty.am = ctx.createGain(); ty.am.gain.value = -pulse.floor;
+    ty.pulse.connect(ty.am.gain);
+    const tyBp = ctx.createBiquadFilter(); tyBp.type = 'bandpass'; tyBp.frequency.value = 340; tyBp.Q.value = 1.2;
+    this._loop(this.noise.pink).connect(tyBp); tyBp.connect(ty.am); ty.am.connect(ty.out);
+    const thLp = ctx.createBiquadFilter(); thLp.type = 'lowpass'; thLp.frequency.value = 160;
+    const thG = ctx.createGain(); thG.gain.value = 0.35;
+    ty.pulse.connect(thLp); thLp.connect(thG); thG.connect(ty.out);
+    ty.pulse.start();
+    this.tyres = ty;
+
+    // Damage: rod knock (a pulse at crank rate ringing a metallic band), a
+    // loose-panel rattle gated by the same pulse, and a steam hiss. Misfires
+    // dip eng.misG from update().
+    const dm = {};
+    dm.out = ctx.createGain(); dm.out.gain.value = 0; dm.out.connect(this.sfxBus);
+    dm.pulse = ctx.createOscillator(); dm.pulse.setPeriodicWave(pulse.wave); dm.pulse.frequency.value = 12;
+    const kBp = ctx.createBiquadFilter(); kBp.type = 'bandpass'; kBp.frequency.value = 1300; kBp.Q.value = 5;
+    const kBp2 = ctx.createBiquadFilter(); kBp2.type = 'bandpass'; kBp2.frequency.value = 420; kBp2.Q.value = 3;
+    dm.knock = ctx.createGain(); dm.knock.gain.value = 0;
+    dm.pulse.connect(kBp); dm.pulse.connect(kBp2); kBp.connect(dm.knock); kBp2.connect(dm.knock); dm.knock.connect(dm.out);
+    const rAm = ctx.createGain(); rAm.gain.value = -pulse.floor;
+    dm.pulse.connect(rAm.gain);
+    const rBp = ctx.createBiquadFilter(); rBp.type = 'bandpass'; rBp.frequency.value = 2300; rBp.Q.value = 1.6;
+    dm.rattle = ctx.createGain(); dm.rattle.gain.value = 0;
+    this._loop(this.noise.white).connect(rBp); rBp.connect(rAm); rAm.connect(dm.rattle); dm.rattle.connect(dm.out);
+    const sHp = ctx.createBiquadFilter(); sHp.type = 'highpass'; sHp.frequency.value = 3800; sHp.Q.value = 0.7;
+    dm.steam = ctx.createGain(); dm.steam.gain.value = 0;
+    this._loop(this.noise.white, 0.9).connect(sHp); sHp.connect(dm.steam); dm.steam.connect(this.sfxBus);
+    dm.pulse.start();
+    this.dmg = dm;
+    this._damage = 0;
+    this._misfireT = 0;
+
+    // Radio bus: crunch, then the handset's 300–3000 Hz band.
+    const rd = {};
+    rd.in = ctx.createGain(); rd.in.gain.value = 1.6;
+    const sh = ctx.createWaveShaper(); sh.curve = distortionCurve(2.6);
+    const hp1 = ctx.createBiquadFilter(); hp1.type = 'highpass'; hp1.frequency.value = 340; hp1.Q.value = 0.7;
+    const hp2 = ctx.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = 340; hp2.Q.value = 0.7;
+    const lp1 = ctx.createBiquadFilter(); lp1.type = 'lowpass'; lp1.frequency.value = 3000; lp1.Q.value = 0.7;
+    const lp2 = ctx.createBiquadFilter(); lp2.type = 'lowpass'; lp2.frequency.value = 3000; lp2.Q.value = 0.7;
+    rd.out = ctx.createGain(); rd.out.gain.value = 0.22;
+    rd.in.connect(sh); sh.connect(hp1); hp1.connect(hp2); hp2.connect(lp1); lp1.connect(lp2); lp2.connect(rd.out);
+    rd.p = pan();
+    if (rd.p) { rd.out.connect(rd.p); rd.p.connect(this.sfxBus); } else rd.out.connect(this.sfxBus);
+    this.radioBus = rd;
+    this._radioCur = null;
+    this._mood = 'off';
+    this._moodTo = 20000;
+  }
+
   // ── Per-frame update ─────────────────────────────────────────────
   update(dt, s = {}) {
     if (!this.ready || this._paused) return;
@@ -711,8 +869,12 @@ export class GameAudio {
     const onGround = s.onGround !== false;
     const gear = s.gear ?? 1;
     const e = this.eng;
+    // The menu and results screens pass a stopped engine (and no motor state):
+    // nothing from a pursuit may carry on there.
+    if (engineOff && s.motor === undefined) this._pursuitReset();
     this._updateTurbo(dt, s, thr, prof);
     if (this.electric) {
+      this._updateDamage(dt, 5 + speed * 0.6, thr, s.motor !== undefined);
       this._updateElectric(dt, s);
       e.out.gain.setTargetAtTime(0, t, 0.05);
       e.whineG.gain.setTargetAtTime(0, t, 0.05);
@@ -780,7 +942,32 @@ export class GameAudio {
       }
     }
     this._prevThrottle = thr;
+    this._updateDamage(dt, rpm / 60, thr, !engineOff);
     this._updateEnvironment(s, speed, onGround);
+  }
+
+  // Engine distress from setDamage(): nothing below 0.5, then knock and
+  // rattle at crank rate, random misfires, and steam above 0.8.
+  _updateDamage(dt, rate, load, running) {
+    const t = this.ctx.currentTime, dm = this.dmg;
+    const d = running ? this._damage : 0;
+    const k = clamp((d - 0.5) / 0.5, 0, 1);
+    dm.out.gain.setTargetAtTime(k > 0 ? 1 : 0, t, 0.1);
+    dm.pulse.frequency.setTargetAtTime(clamp(rate, 4, 140), t, 0.03);
+    dm.knock.gain.setTargetAtTime(0.5 * k * (0.5 + 0.5 * load), t, 0.08);
+    dm.rattle.gain.setTargetAtTime(0.1 * k * k, t, 0.08);
+    const steam = clamp((d - 0.8) / 0.2, 0, 1);
+    dm.steam.gain.setTargetAtTime(0.045 * steam * (0.8 + 0.2 * Math.sin(t * 2.3)), t, 0.2);
+    this._misfireT -= dt;
+    if (k > 0 && !this.electric && this._misfireT <= 0 && Math.random() < dt * 3 * k) {
+      // The engine stumbles for a few cycles; sometimes it spits a bang.
+      const g = this.eng.misG.gain, len = 0.04 + Math.random() * 0.08;
+      g.cancelScheduledValues(t);
+      g.setTargetAtTime(0.2, t, 0.008);
+      g.setTargetAtTime(1, t + len, 0.03);
+      if (Math.random() < 0.4) this._pop(t + len * 0.5, 0.3 + 0.4 * k);
+      this._misfireT = len + 0.15;
+    }
   }
 
   _updateTurbo(dt, s, thr, prof) {
@@ -1192,6 +1379,334 @@ export class GameAudio {
       v.g.gain.setTargetAtTime((ev ? 0.035 : 0.09) * near * near, t, 0.08);
       if (v.p) v.p.pan.setTargetAtTime(clamp(r.pan ?? 0, -1, 1), t, 0.05);
     }
+  }
+
+  // ── Hot Pursuit ───────────────────────────────────────────────────
+  // The nearest police units' sirens, every frame (like setRivalEngines):
+  // [{ dist (m), pan (-1..1), relSpeed (m/s, + = closing), mode, id? }] with
+  // mode 'wail' | 'yelp' | 'hilo' | 'off'. Up to 3 sound. Items with an `id`
+  // keep their voice from frame to frame; without one, voices go by list
+  // order. An empty list fades them all out.
+  setSirens(list = []) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime, V = this.sirens;
+    const slots = V.map(() => null), rest = [];
+    for (const it of list.slice(0, V.length)) {
+      const k = it.id == null ? -1 : V.findIndex((v, i) => !slots[i] && v.id === it.id);
+      if (k >= 0) slots[k] = it; else rest.push(it);
+    }
+    for (const it of rest) {
+      // A new unit takes a voice nobody holds, if there is one.
+      let k = slots.findIndex((s, i) => !s && V[i].id == null);
+      if (k < 0) k = slots.findIndex((s) => !s);
+      slots[k] = it;
+    }
+    for (let i = 0; i < V.length; i++) {
+      const v = V[i], it = slots[i];
+      const pat = it && SIREN_PATTERNS[it.mode];
+      v.id = it?.id ?? null;
+      if (!pat) { v.g.gain.setTargetAtTime(0, t, 0.12); v.mode = 'off'; continue; }
+      if (it.mode !== v.mode) {
+        v.mode = it.mode;
+        const depth = 1200 * Math.log2(pat.hi / Math.sqrt(pat.lo * pat.hi)); // cents either side
+        const tri = pat.shape === 'tri';
+        v.triD.gain.setTargetAtTime(tri ? depth : 0, t, 0.05);
+        v.sqD.gain.setTargetAtTime(tri ? 0 : depth, t, 0.05);
+        (tri ? v.tri : v.sq).frequency.setTargetAtTime(1 / (pat.period * v.drift), t, 0.05);
+      }
+      const dist = Math.max(0, it.dist ?? 100);
+      const f = Math.sqrt(pat.lo * pat.hi) * sirenDoppler(it.relSpeed ?? 0);
+      v.a.frequency.setTargetAtTime(f, t, 0.06);
+      v.b.frequency.setTargetAtTime(f, t, 0.06);
+      v.lp.frequency.setTargetAtTime(900 + 9000 * (30 / (30 + dist)), t, 0.08);
+      v.g.gain.setTargetAtTime(sirenLevel(dist), t, 0.06);
+      if (v.p) v.p.pan.setTargetAtTime(clamp(it.pan ?? 0, -1, 1), t, 0.05);
+    }
+  }
+
+  // A siren chirp over an air-horn blast (the pursuit starts).
+  sirenHorn(pan = 0) {
+    if (!this.ready) return;
+    this._sirenBlip(this.ctx.currentTime, pan, 1);
+  }
+
+  _sirenBlip(t, pan = 0, level = 1) {
+    const ctx = this.ctx;
+    const out = ctx.createGain(); out.gain.value = level;
+    if (pan && ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1); out.connect(p); p.connect(this.sfxBus); }
+    else out.connect(this.sfxBus);
+    // Two quick whoops up the siren's range.
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1150; bp.Q.value = 0.9;
+    const wg = ctx.createGain();
+    wg.gain.setValueAtTime(0, t);
+    for (const [dt, len] of [[0, 0.2], [0.24, 0.3]]) {
+      wg.gain.setTargetAtTime(0.16, t + dt, 0.01);
+      wg.gain.setTargetAtTime(0, t + dt + len - 0.05, 0.02);
+    }
+    bp.connect(wg); wg.connect(out);
+    for (const [type, det, g] of [['square', 0, 0.55], ['sawtooth', 18, 0.45]]) {
+      const o = ctx.createOscillator(); o.type = type; o.detune.value = det;
+      o.frequency.setValueAtTime(600, t);
+      o.frequency.exponentialRampToValueAtTime(1450, t + 0.16);
+      o.frequency.setValueAtTime(700, t + 0.24);
+      o.frequency.exponentialRampToValueAtTime(1500, t + 0.44);
+      o.frequency.exponentialRampToValueAtTime(1100, t + 0.54);
+      const og = ctx.createGain(); og.gain.value = g;
+      o.connect(og); og.connect(bp);
+      o.start(t); o.stop(t + 0.6);
+    }
+    // Air horn: two low, buzzy reeds a minor third apart.
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200; lp.Q.value = 1.5;
+    const hg = ctx.createGain();
+    hg.gain.setValueAtTime(0, t);
+    hg.gain.linearRampToValueAtTime(0.1, t + 0.02);
+    hg.gain.setTargetAtTime(0, t + 0.3, 0.04);
+    lp.connect(hg); hg.connect(out);
+    for (const f of [277, 330]) {
+      const o = ctx.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f * 0.94, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.04);
+      o.connect(lp); o.start(t); o.stop(t + 0.5);
+    }
+  }
+
+  // Police radio chatter: a burst of band-limited gibberish between squelch
+  // clicks, on its own crunchy bus. One channel: a new call cuts off one
+  // that is still talking (the newest message always gets through).
+  radio(duration = 1.6, pan = 0) {
+    if (!this.ready) return;
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.01;
+    const dur = clamp(duration, 0.4, 6), end = t0 + dur, r = Math.random;
+    this._radioCut(t0);
+    const rd = this.radioBus;
+    if (rd.p) rd.p.pan.setValueAtTime(clamp(pan, -1, 1), t0);
+    const g = ctx.createGain(); g.gain.value = 1; g.connect(rd.in);
+    const srcs = [];
+    // Squelch open: a key-up click and a short rush.
+    this._noiseBurst({ time: t0, dur: 0.012, type: 'highpass', freq: 1200, q: 0.7, gain: 0.7, dest: g });
+    this._noiseBurst({ time: t0, dur: 0.07, type: 'bandpass', freq: 1800, q: 0.5, gain: 0.25, dest: g });
+    // Carrier hiss under the voice.
+    const hiss = ctx.createBufferSource(); hiss.buffer = this.noise.white; hiss.loop = true;
+    const hf = ctx.createBiquadFilter(); hf.type = 'bandpass'; hf.frequency.value = 1700; hf.Q.value = 0.4;
+    const hg = ctx.createGain(); hg.gain.value = 0.045;
+    hiss.connect(hf); hf.connect(hg); hg.connect(g);
+    hiss.start(t0, r() * 1.5); hiss.stop(end + 0.2); srcs.push(hiss);
+    // The voice: a buzz (and some breath) through three moving formants.
+    const buzz = ctx.createOscillator(); buzz.type = 'sawtooth';
+    const breath = ctx.createBufferSource(); breath.buffer = this.noise.white; breath.loop = true;
+    const brG = ctx.createGain(); brG.gain.value = 0.12;
+    const vox = ctx.createGain(); vox.gain.value = 0;
+    const F = [[5, 1], [8, 0.7], [10, 0.35]].map(([q, a]) => {
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = q;
+      const fg = ctx.createGain(); fg.gain.value = a * 6;
+      buzz.connect(f); brG.connect(f); f.connect(fg); fg.connect(vox);
+      return f;
+    });
+    breath.connect(brG); vox.connect(g);
+    const VOWELS = [[730, 1090, 2440], [530, 1840, 2480], [270, 2290, 3010], [570, 840, 2410], [300, 870, 2240], [490, 1350, 1690], [660, 1720, 2410]];
+    const f0 = 95 + r() * 85;
+    let at = t0 + 0.08;
+    while (at < end - 0.12) {
+      const len = 0.06 + r() * 0.15;
+      const prog = (at - t0) / dur;
+      const [a1, a2, a3] = VOWELS[Math.floor(r() * VOWELS.length)];
+      const s = 0.9 + r() * 0.2; // speaker's vocal tract
+      F[0].frequency.setTargetAtTime(Math.max(380, a1 * s), at, 0.015); // the handset loses anything lower
+      F[1].frequency.setTargetAtTime(a2 * s, at, 0.02);
+      F[2].frequency.setTargetAtTime(a3 * s, at, 0.02);
+      // Pitch sags across the phrase, with a lift or a drop on each syllable.
+      const p = f0 * (1.08 - 0.18 * prog) * (1 + (r() - 0.5) * 0.14);
+      buzz.frequency.setTargetAtTime(p, at, 0.03);
+      buzz.frequency.setTargetAtTime(p * (0.94 + r() * 0.1), at + len * 0.5, 0.05);
+      const peak = 0.5 + r() * 0.5;
+      vox.gain.setTargetAtTime(peak, at, 0.012);
+      vox.gain.setTargetAtTime(0, at + len * 0.75, 0.02);
+      // Consonants: a hiss or a stop burst before some syllables.
+      if (r() < 0.35) this._noiseBurst({ time: at - 0.02, dur: 0.04 + r() * 0.04, type: 'bandpass', freq: 2200 + r() * 700, q: 1.2, gain: 0.25, dest: g });
+      at += len + (r() < 0.18 ? 0.1 + r() * 0.12 : r() * 0.04);
+    }
+    buzz.frequency.value = f0;
+    buzz.start(t0); buzz.stop(end + 0.05); srcs.push(buzz);
+    breath.start(t0, r() * 1.5); breath.stop(end + 0.05); srcs.push(breath);
+    // Squelch close: the "kssht" as the carrier drops.
+    this._noiseBurst({ time: end, dur: 0.16, type: 'bandpass', freq: 2000, q: 0.4, gain: 0.45, dest: g });
+    this._noiseBurst({ time: end + 0.005, dur: 0.01, type: 'highpass', freq: 1500, q: 0.7, gain: 0.5, dest: g });
+    this._radioCur = { g, end: end + 0.2, srcs };
+  }
+
+  _radioCut(t) {
+    const cur = this._radioCur;
+    this._radioCur = null;
+    if (!cur || cur.end <= t) return;
+    cur.g.gain.cancelScheduledValues(t);
+    cur.g.gain.setTargetAtTime(0, t, 0.012);
+    for (const s of cur.srcs) { try { s.stop(t + 0.08); } catch { /* already stopping */ } }
+  }
+
+  // BUSTED: a low brass stab ("dun... DUN") that climbs a semitone onto a
+  // dark minor chord, a kick under it, and a siren chirp. The music dips.
+  busted() {
+    if (!this.ready) return;
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.03, m = this.music;
+    this._duckMusic(t0, 0.3, 2.2);
+    const brass = { type: 'saw', voices: 3, detune: 16, width: 0.5, cutoff: 1500, q: 1.3, fenv: 1.6, fdec: 0.25, a: 0.01, d: 0.5, s: 0.65, r: 0.5, vib: 0, gain: 0.2 };
+    const out = ctx.createGain(); out.gain.value = 1; out.connect(this.sfxBus);
+    m.note(out, t0, [37, 44, 49], 0.13, brass, 0.8);
+    m.note(out, t0 + 0.22, [38, 45, 50, 53, 57], 1.3, { ...brass, cutoff: 2000, gain: 0.26 }, 1);
+    this._play(m.kit.kickPunch, { time: t0 + 0.22, gain: 0.6 });
+    this._play(m.kit.crash, { time: t0 + 0.22, gain: 0.18, rate: 0.8 });
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(70, t0 + 0.22); o.frequency.exponentialRampToValueAtTime(34, t0 + 0.9);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0, t0 + 0.22);
+    og.gain.linearRampToValueAtTime(0.35, t0 + 0.23);
+    og.gain.exponentialRampToValueAtTime(0.0005, t0 + 1);
+    o.connect(og); og.connect(this.sfxBus);
+    o.start(t0 + 0.22); o.stop(t0 + 1.05);
+    this._sirenBlip(t0 + 0.95, 0, 0.6);
+  }
+
+  // ESCAPED: a suspended chord that resolves to major, bells on top and a
+  // falling breath of air. The music dips a little under it.
+  escaped() {
+    if (!this.ready) return;
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.03, m = this.music;
+    this._duckMusic(t0, 0.5, 2);
+    const pad = { type: 'saw', voices: 3, detune: 12, width: 0.7, cutoff: 2400, q: 0.8, fenv: 0.8, fdec: 0.4, a: 0.06, d: 0.6, s: 0.8, r: 0.8, vib: 6, vibDelay: 0.3, gain: 0.12 };
+    const bell = { type: 'fm', mods: [{ ratio: 3.5, index: 2, dec: 0.6, sus: 0.05 }], a: 0.002, d: 1, s: 0.1, r: 0.8, gain: 0.06 };
+    const out = ctx.createGain(); out.gain.value = 1; out.connect(this.sfxBus);
+    m.note(out, t0, [50, 55, 57, 62], 0.5, pad, 0.85);
+    m.note(out, t0 + 0.5, [50, 54, 57, 62, 66], 1.7, pad, 1);
+    for (const [n, dt] of [[74, 0.5], [78, 0.62], [81, 0.74], [86, 0.9]]) m.note(out, t0 + dt, [n], 0.4, bell, 0.9);
+    this._noiseBurst({ time: t0 + 0.4, dur: 1.4, type: 'bandpass', freq: 3200, q: 0.8, gain: 0.05, sweepTo: 500 });
+  }
+
+  _duckMusic(t, depth, hold) {
+    const d = this.musicDuck.gain;
+    d.cancelScheduledValues(t);
+    d.setTargetAtTime(depth, t, 0.08);
+    d.setTargetAtTime(1, t + hold, 0.6);
+  }
+
+  // A police car taken out: the crash (impact) plus heavy crumpling metal and
+  // a distorted low crunch. strength 0..1.
+  takedown(strength = 0.8, pan = 0) {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime, B = this.sfxBuf, r = Math.random;
+    const s = clamp(strength, 0, 1);
+    this._impactT = -1; // never thinned out as wall grinding is
+    this.impact(Math.max(0.5, s), pan);
+    this._play(B.metal2, { time: t + 0.01, gain: 0.45 * (0.4 + 0.6 * s), rate: 0.5 + r() * 0.1, pan: pan * 0.5 });
+    this._play(B.metal1, { time: t + 0.05, gain: 0.35 * s, rate: 0.62 + r() * 0.1, pan: -pan * 0.3 });
+    this._play(B.metal3, { time: t + 0.12, gain: 0.2 * s, rate: 0.55, pan: pan * 0.3 });
+    const src = ctx.createBufferSource(); src.buffer = this.noise.brown; src.playbackRate.value = 1.5;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 380; bp.Q.value = 0.9;
+    const sh = ctx.createWaveShaper(); sh.curve = this._popCurve || (this._popCurve = distortionCurve(6));
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.3 * (0.4 + 0.6 * s), t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + 0.35);
+    src.connect(bp); bp.connect(sh); sh.connect(g); g.connect(this.sfxBus);
+    src.start(t, r() * 1.5, 0.4);
+  }
+
+  // Driving over a spike strip: the tyre bursts (a crack and a thump), then
+  // the air rushes out.
+  spikePop(pan = 0) {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    this._noiseBurst({ time: t, dur: 0.05, type: 'highpass', freq: 400, q: 0.7, gain: 0.55, pan });
+    this._noiseBurst({ time: t, dur: 0.1, type: 'bandpass', freq: 900, q: 1, gain: 0.3, pan });
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.45, t); og.gain.exponentialRampToValueAtTime(0.0005, t + 0.16);
+    o.connect(og); og.connect(this.sfxBus);
+    o.start(t); o.stop(t + 0.18);
+    const h = this._noiseBurst({ time: t + 0.02, dur: 1.4, type: 'bandpass', freq: 6500, q: 0.9, gain: 0.12, sweepTo: 2200, pan });
+    h.g.gain.cancelScheduledValues(t + 0.02);
+    h.g.gain.setValueAtTime(0, t + 0.02);
+    h.g.gain.linearRampToValueAtTime(0.12, t + 0.06);
+    h.g.gain.exponentialRampToValueAtTime(0.0005, t + 1.42);
+  }
+
+  // The player's car is done: a full crash, steam pouring out and the
+  // engine running down and dying.
+  wrecked() {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime, B = this.sfxBuf;
+    this._impactT = -1;
+    this.impact(1);
+    this._play(B.thud, { time: t + 0.02, gain: 0.6, rate: 0.7 });
+    this._play(B.metal3, { time: t + 0.18, gain: 0.25, rate: 0.5 });
+    // Steam.
+    const st = this._noiseBurst({ time: t + 0.15, dur: 3.2, type: 'highpass', freq: 3000, q: 0.7, gain: 0.1 });
+    st.g.gain.cancelScheduledValues(t + 0.15);
+    st.g.gain.setValueAtTime(0, t + 0.15);
+    st.g.gain.linearRampToValueAtTime(0.1, t + 0.5);
+    st.g.gain.setTargetAtTime(0.05, t + 0.6, 0.6);
+    st.g.gain.exponentialRampToValueAtTime(0.0005, t + 3.35);
+    // The engine runs down, stumbling, and stalls.
+    const o = ctx.createOscillator();
+    const wave = this.electric ? null : (this._waves?.[this._car]?.onL || this._rivalWave);
+    if (wave) o.setPeriodicWave(wave); else o.type = 'sawtooth';
+    const [fa, fb] = wave ? [2600 / 120, 500 / 120] : [700, 40];
+    o.frequency.setValueAtTime(fa, t); o.frequency.exponentialRampToValueAtTime(fb, t + 2.2);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.8;
+    lp.frequency.setValueAtTime(1600, t); lp.frequency.exponentialRampToValueAtTime(250, t + 2.2);
+    const am = ctx.createGain(); am.gain.value = 0.6;
+    const lfo = ctx.createOscillator(); lfo.type = 'square';
+    lfo.frequency.setValueAtTime(9, t); lfo.frequency.exponentialRampToValueAtTime(2.5, t + 2.2);
+    const lg = ctx.createGain(); lg.gain.value = 0.4;
+    lfo.connect(lg); lg.connect(am.gain);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(wave ? 0.5 : 0.08, t + 0.05);
+    g.gain.setTargetAtTime(0, t + 1.4, 0.35);
+    o.connect(lp); lp.connect(am); am.connect(g); g.connect(this.sfxBus);
+    o.start(t); o.stop(t + 3); lfo.start(t); lfo.stop(t + 3);
+  }
+
+  // Shredded tyres flapping: on while the car runs on spiked tyres, the flap
+  // rate following road speed (m/s). Call it every frame, or on each change.
+  setSpikedTyres(on, speed = 0) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime, ty = this.tyres;
+    const sp = Math.abs(speed || 0);
+    // Two strips on a 0.33 m wheel: about one flap per metre travelled.
+    ty.pulse.frequency.setTargetAtTime(clamp(sp * 0.95, 1, 90), t, 0.05);
+    ty.out.gain.setTargetAtTime(on ? 0.3 * clamp(sp / 4, 0, 1) * (0.6 + 0.4 * clamp(sp / 40, 0, 1)) : 0, t, on ? 0.06 : 0.1);
+  }
+
+  // Music under a pursuit: 'cooldown' muffles it (a ~900 Hz low-pass, eased
+  // over a second) and brings it down a little; 'pursuit' and 'off' open it up.
+  setPursuitMood(mood = 'off') {
+    this._mood = mood === 'cooldown' || mood === 'pursuit' ? mood : 'off';
+    if (!this.ready) return;
+    const t = this.ctx.currentTime, f = this.musicMoodLp.frequency;
+    const cool = this._mood === 'cooldown';
+    const to = cool ? 900 : 20000;
+    if (this._moodTo !== to) { // called every frame: only a change starts a ramp
+      this._moodTo = to;
+      f.cancelScheduledValues(t);
+      f.setValueAtTime(f.value, t);
+      f.exponentialRampToValueAtTime(to, t + 1);
+    }
+    this.musicMood.gain.setTargetAtTime(cool ? 0.75 : 1, t, 0.3);
+  }
+
+  // Engine distress, 0 (fine) .. 1 (wrecked): silent below 0.5.
+  setDamage(d = 0) {
+    this._damage = clamp(Number(d) || 0, 0, 1);
+  }
+
+  // Everything a pursuit leaves running goes quiet (menu, a new car).
+  _pursuitReset() {
+    if (!this.ready) return;
+    this.setSirens([]);
+    this.setSpikedTyres(false);
+    if (this._mood !== 'off') this.setPursuitMood('off');
+    this._damage = 0;
+    this._radioCut(this.ctx.currentTime);
   }
 
   setPaused(paused) {
