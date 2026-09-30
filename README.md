@@ -195,6 +195,8 @@ the throttle down while your thumb is off the pedal slider (or, with pedal
 buttons, unless you're braking). High quality is off by default on
 touch screens. Switching away from the browser pauses the race. You can also
 add the game to your home screen, where it opens fullscreen in landscape.
+On an iPhone the game is heard even with Silent mode on, like a music app,
+and anything else playing (a podcast, Spotify) pauses while it plays.
 
 **Tilt** steering steers by turning the phone like a steering wheel. Level
 is straight ahead, so there's nothing to calibrate, and the Tilt slider sets

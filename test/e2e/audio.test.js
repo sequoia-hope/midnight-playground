@@ -43,6 +43,25 @@ test('phone: the Race tap starts the audio and brings the music up', async () =>
   } finally { await game.close(); }
 });
 
+test('phone: the game asks an iPhone to play in Silent mode, before its audio starts', async () => {
+  const game = await openGame(browser, { device: 'phone', query: Q });
+  try {
+    // Chrome has no navigator.audioSession: stand in for Safari's.
+    await game.eval(() => {
+      let type = 'auto';
+      window.__session = [];
+      Object.defineProperty(navigator, 'audioSession', {
+        configurable: true,
+        value: { get type() { return type; }, set type(v) { window.__session.push([v, !!window.__audio.ctx]); type = v; } },
+      });
+    });
+    await startRace(game, { racing: false });
+    await game.waitFor(() => window.__audio.ctx.state === 'running', { what: 'audio to run' });
+    assert.deepEqual(await game.eval(() => window.__session), [['playback', false]], 'asked once, before the context existed');
+    assert.deepEqual(game.errors, []);
+  } finally { await game.close(); }
+});
+
 test('phone: pausing suspends the audio, taps on the pause screen leave it, Resume restarts it', async () => {
   const game = await openGame(browser, { device: 'phone', query: Q });
   try {

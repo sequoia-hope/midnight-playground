@@ -258,6 +258,16 @@ const RADIO_GAP = 0.14;   // s between the clips of one radio line
 const RADIO_VOICE = 1.6;  // recorded voice into the radio bus's crunch: peaks level with the burble
 const RADIO_WAIT = 700;   // ms a line's clips get to load before the burble stands in
 const GATE_TAIL = 1.2; // s: 8 time constants of the slowest voice fade
+// An iPhone plays Web Audio as "ambient" sound: silenced by the Silent
+// switch, mixed under other apps. Ask for "playback", like a media app: the
+// game is heard in Silent mode, and other apps' audio pauses while it plays.
+// (Safari 17+ has navigator.audioSession; elsewhere this does nothing.)
+export function askForPlayback(nav = globalThis.navigator) {
+  try {
+    if (nav?.audioSession && nav.audioSession.type !== 'playback') nav.audioSession.type = 'playback';
+  } catch { /* read-only or unsupported: stay ambient */ }
+}
+
 class Gate {
   // links: [[node, destination], ...]; levels: the voice's output gains
   // (hushed to zero when the whole SFX chain comes back, see _hush).
@@ -334,6 +344,7 @@ export class GameAudio {
     this._initPromise = (async () => {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC && !opts.context) return;
+      if (!opts.context) askForPlayback();
       const ctx = opts.context || new AC({ latencyHint: opts.latencyHint ?? 'balanced' });
       this.ctx = ctx;
       this._realtime = !opts.context;

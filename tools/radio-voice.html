@@ -59,10 +59,6 @@ import { LEVELS } from '../src/levels/index.js';
 import { levelsRadioClips } from '../src/game/audio/radioLines.js';
 
 const $ = (id) => document.getElementById(id);
-// iPhones mute Web Audio in Silent mode unless the page asks to play like a
-// media app (Safari 17+; elsewhere this does nothing).
-try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* not supported */ }
-
 const audio = new GameAudio();
 window.audio = audio;
 const decoded = new Map();
@@ -70,7 +66,7 @@ const status = (html, err = false) => { $('status').innerHTML = html; $('status'
 const name = (url) => decodeURIComponent(url.split('/').pop());
 
 // Web Audio, for the radio: built on the first tap, resumed on every tap
-// (iOS can suspend it).
+// (iOS can suspend it). GameAudio asks an iPhone to play it in Silent mode.
 async function radioReady() {
   await audio.init();
   audio.setVolume({ master: 1, sfx: 1, music: 0 });
