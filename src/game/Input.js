@@ -1,7 +1,7 @@
 import { clamp } from '../util/math.js';
 
 // Keyboard, gamepad and on-screen touch controls (TouchControls, attached
-// as input.touch, with tilt steering through it). Keyboard and touch-pad
+// as input.touch: a thumb stick, ◂ ▸ pads or tilt). Keyboard and ◂ ▸
 // steering are ramped so tapping gives small corrections and holding gives
 // full lock, like an analogue stick.
 
@@ -54,10 +54,10 @@ export class Input {
     let throttle = this.any(KEYMAP.throttle) ? 1 : t ? t.throttle : 0;
     let brake = this.any(KEYMAP.brake) ? 1 : t ? t.brake : 0;
     const l = this.any(KEYMAP.left), r = this.any(KEYMAP.right);
-    // Tilt steering is analogue and already smoothed, so it isn't ramped;
-    // a held key still wins over it.
-    const tilt = t?.tiltSteer?.(dt) ?? null;
-    if (tilt !== null && !(l || r)) this.steer = tilt;
+    // The thumb stick and tilt are analogue already, so they aren't
+    // ramped; a held key still wins over them.
+    const analog = t?.analogSteer?.(dt) ?? null;
+    if (analog !== null && !(l || r)) this.steer = analog;
     else {
       const target = l || r ? (r ? 1 : 0) - (l ? 1 : 0) : t ? t.steer : 0;
       // Ramp toward target; snap back faster than we turn in.

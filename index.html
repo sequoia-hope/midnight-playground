@@ -83,8 +83,24 @@
     <div class="t-btn t-dir" data-act="left"><svg viewBox="0 0 24 24"><path d="M15 4 7 12l8 8"/></svg></div>
     <div class="t-btn t-dir" data-act="right"><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></div>
   </div>
-  <!-- Tilt steering: shows the lock in place of the steering pads. -->
+  <!-- Thumb stick: centred wherever the left thumb lands (idle, it waits here). -->
+  <div class="t-stick"><div class="t-stick-track"><svg viewBox="0 0 24 24"><path d="M15 4 7 12l8 8"/></svg><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></div><div class="t-stick-knob"></div></div>
+  <!-- Tilt steering: shows the lock in place of the stick. -->
   <div class="t-wheel"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="19"/><circle cx="24" cy="24" r="4.5"/><path d="M5.5 22h14M28.5 22h14M24 28.5V43"/><path class="t-wheel-top" d="M24 3.5v5"/></svg></div>
+  <!-- Pedal slider (the default): BRAKE, GAS and N₂O up one track, DRIFT beside it. -->
+  <div class="t-pedal">
+    <div class="t-slider">
+      <div class="t-band t-band-nitro"><span>N₂O</span></div>
+      <div class="t-band t-band-gas"><span>GAS</span></div>
+      <div class="t-band t-band-brake"><span>BRAKE</span></div>
+      <div class="t-mark"></div>
+      <div class="t-fill t-fill-gas"></div>
+      <div class="t-fill t-fill-brake"></div>
+      <div class="t-slider-knob"></div>
+    </div>
+    <div class="t-drift-strip"><span>DRIFT</span><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></div>
+  </div>
+  <!-- Pedal buttons (Pedals: Buttons on the menu). -->
   <div class="t-pedals">
     <div class="t-btn t-drift" data-act="handbrake"><span>DRIFT</span></div>
     <div class="t-btn t-nitro" data-act="nitro"><span>N₂O</span></div>
@@ -129,16 +145,17 @@
     <label><input type="checkbox" id="opt-hq" checked> High quality</label>
     <label><input type="checkbox" id="opt-flash" checked> Police lights flash</label>
     <label class="touch-only"><input type="checkbox" id="opt-autogas"> Auto gas</label>
-    <label class="touch-only"><input type="checkbox" id="opt-tilt"> Tilt steer</label>
+    <label class="touch-only">Steering <select id="opt-steer"><option value="stick">Thumb stick</option><option value="buttons">◂ ▸ buttons</option><option value="tilt">Tilt</option></select></label>
+    <label class="touch-only">Pedals <select id="opt-pedals"><option value="slider">Slider</option><option value="buttons">Buttons</option></select></label>
     <label class="vol touch-only hidden" id="tilt-sens-row">Tilt <input type="range" id="opt-tilt-sens" min="0" max="100"></label>
     <label class="touch-only"><input type="checkbox" id="opt-fullscreen" checked> Fullscreen</label>
     <a class="menu-link" id="link-music" href="music.html">♪ Music player</a>
     <div class="tilt-note touch-only" id="tilt-note"></div>
   </div>
   <div class="touch-help touch-only">
-    <div><b>◂ ▸</b> steer · <b>GAS</b> / <b>BRAKE</b> · slide your thumb between them</div>
-    <div><b>DRIFT</b> handbrake to charge nitro · <b>N₂O</b> boost · reset, camera and pause up top</div>
-    <div><b>Tilt steer</b>: turn the phone like a steering wheel</div>
+    <div><b>Steer</b>: put your left thumb down anywhere and slide it · or ◂ ▸ buttons, or tilt the phone like a wheel</div>
+    <div><b>Pedals</b>: one slider for your right thumb, <b>BRAKE</b> at the bottom, <b>GAS</b> above, <b>N₂O</b> at the top · slide right onto <b>DRIFT</b> for the handbrake</div>
+    <div><b>DRIFT</b> charges nitro · reset, camera and pause up top</div>
   </div>
   <div class="controls">
     <div><kbd>W</kbd>/<kbd>↑</kbd> throttle</div>

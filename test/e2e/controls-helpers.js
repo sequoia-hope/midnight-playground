@@ -89,3 +89,39 @@ export async function holdSim(game, codes, secs, mid) {
   for (const c of [].concat(codes)) await game.page.keyboard.up(c);
   return m;
 }
+
+// Pick an option in a menu <select> the way a phone's picker does (the
+// native picker can't be driven, so set it and send the change).
+export function choose(game, selector, value) {
+  return game.eval((sel, v) => {
+    const el = document.querySelector(sel);
+    el.value = v;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return el.value;
+  }, selector, value);
+}
+
+// A thumb on the steering stick: down at (x, y), a point on the left of
+// the screen (by default a third of the way up from the bottom-left), as
+// finger `id`. Returns the point; move it with stickTo.
+export async function stickDown(game, { x, y, id = 0 } = {}) {
+  const vw = await game.eval('innerWidth'), vh = await game.eval('innerHeight');
+  const p = { x: x ?? Math.round(vw * 0.2), y: y ?? Math.round(vh * 0.7), id };
+  await game.touch('touchStart', [p]);
+  return p;
+}
+
+// Slide the stick's finger to dx px right of p (other fingers held too).
+export function stickTo(game, p, dx, others = []) {
+  return game.touch('touchMove', [{ x: p.x + dx, y: p.y, id: p.id }, ...others]);
+}
+
+// A point on the pedal slider at height u (0 bottom, 1 top), or with
+// drift, on the DRIFT strip beside it at that height.
+export function sliderPoint(game, u, { drift = false, id = 0 } = {}) {
+  return game.eval((u, drift, id) => {
+    const t = document.querySelector('#touch .t-slider').getBoundingClientRect();
+    const d = document.querySelector('#touch .t-drift-strip').getBoundingClientRect();
+    return { x: drift ? (d.left + d.right) / 2 : (t.left + t.right) / 2, y: t.bottom - t.height * u, id };
+  }, u, drift, id);
+}

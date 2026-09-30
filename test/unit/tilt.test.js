@@ -216,7 +216,7 @@ test('iPhone: motion access is asked for, remembered, and refusals are reported'
 test('Input: tilt steering goes straight through (no ramp), and a held key wins', () => {
   globalThis.window = new EventTarget();
   const input = new Input();
-  const touch = { throttle: 0, brake: 0, steer: 0, held: {}, tilt: 0.4, tiltSteer() { return this.tilt; } };
+  const touch = { throttle: 0, brake: 0, steer: 0, held: {}, tilt: 0.4, analogSteer() { return this.tilt; } };
   input.touch = touch;
   near(input.update(0.016).steer, 0.4, 1e-12, 'no ramp');
   touch.tilt = -0.7;
@@ -228,7 +228,7 @@ test('Input: tilt steering goes straight through (no ramp), and a held key wins'
   window.dispatchEvent(Object.assign(new Event('keyup'), { code: 'KeyD' }));
   near(input.update(0.016).steer, -0.7, 1e-12, 'let go: back on the tilt');
 
-  // Not tilting (tiltSteer gives null): the pads, ramped as before.
+  // Steering on the ◂ ▸ pads (analogSteer gives null): ramped as before.
   touch.tilt = null; touch.steer = 1;
   input.steer = 0;
   near(input.update(0.1).steer, 0.36, 1e-9);

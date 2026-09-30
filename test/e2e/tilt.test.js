@@ -1,14 +1,14 @@
 // Tilt steering (src/game/TiltSteer.js) on an emulated phone, fed through
 // Chrome's own deviceorientation override (DevTools' sensor emulation), so
-// the events arrive the way a phone's do: the menu option, the note when
-// there's no sensor, the car turning the way the phone is turned in both
-// landscapes and in portrait, the steering pads giving way to the wheel,
-// and the sensitivity slider.
+// the events arrive the way a phone's do: the Steering choice, the note
+// when there's no sensor (the thumb stick steers meanwhile), the car
+// turning the way the phone is turned in both landscapes and in portrait,
+// the stick giving way to the wheel, and the sensitivity slider.
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, openGame } from './harness.js';
-import { sleep, simWait, startRace, car, placeCar, cameraRight, press, lift } from './controls-helpers.js';
+import { sleep, simWait, startRace, car, placeCar, cameraRight, press, lift, choose, stickDown, stickTo, sliderPoint } from './controls-helpers.js';
 import { pose } from '../unit/support/pose.js';
 
 let browser;
@@ -19,6 +19,7 @@ const Q = 'timescale=2';
 const shown = (sel) => { const el = document.querySelector(sel); return !!el && el.getClientRects().length > 0; };
 const tiltTo = (game, p) => game.cdp.send('DeviceOrientation.setDeviceOrientationOverride', p);
 const tiltState = (game) => game.eval(() => window.__race?.input.touch.tilt.state ?? null);
+const TILT = { 'mr.steering': 'tilt' };
 
 // Turn the phone by `turn` degrees (held `angle` round) for secs of race
 // time from a straight-ahead start. turn > 0 means the car went to the
@@ -40,48 +41,51 @@ async function tiltTurn(game, turn, secs, angle = 90) {
   return { mid, turn: Math.cos(yaw) * right.x + Math.sin(yaw) * right.z };
 }
 
-test('phone: Tilt steer is off by default; on, it saves, shows the slider, and says when there is no sensor', async () => {
+test('phone: tilt is a Steering choice; picked, it saves, shows the slider, and says when there is no sensor', async () => {
   const game = await openGame(browser, { device: 'phone', query: Q });
   try {
-    assert.equal(await game.eval(() => document.getElementById('opt-tilt').checked), false, 'off by default');
-    assert.equal(await game.eval(shown, '#tilt-sens-row'), false, 'no slider while off');
+    assert.equal(await game.eval(() => document.getElementById('opt-steer').value), 'stick', 'the thumb stick by default');
+    assert.equal(await game.eval(shown, '#tilt-sens-row'), false, 'no slider without tilt');
     assert.equal(await game.eval(shown, '#tilt-note'), false);
 
-    await game.tap('#opt-tilt');
-    assert.equal(await game.eval(() => localStorage.getItem('mr.tilt')), 'true', 'the choice is saved');
+    await choose(game, '#opt-steer', 'tilt');
+    assert.equal(await game.eval(() => localStorage.getItem('mr.steering')), '"tilt"', 'the choice is saved');
     assert.equal(await game.eval(shown, '#tilt-sens-row'), true, 'the slider shows');
     // Headless Chrome has no sensor: it sends one event of nulls.
     await game.waitFor(() => /No tilt sensor/.test(document.getElementById('tilt-note').textContent), { what: 'the no-sensor note' });
     assert.equal(await game.eval(shown, '#tilt-note'), true);
 
-    // The race falls back to the steering pads.
+    // The race falls back to the thumb stick.
     await startRace(game);
     assert.equal(await tiltState(game), 'none');
-    assert.equal(await game.eval(shown, '#touch [data-act="left"]'), true, 'steering pads');
+    assert.equal(await game.eval(shown, '#touch .t-stick'), true, 'the stick');
     assert.equal(await game.eval(shown, '#touch .t-wheel'), false, 'no wheel');
     await placeCar(game, { speed: 15 });
-    await press(game, 'right');
+    const p = await stickDown(game);
+    await stickTo(game, p, 40);
     await sleep(200);
-    assert.ok((await car(game)).inp.steer > 0, 'the pads steer');
+    assert.ok((await car(game)).inp.steer > 0, 'the stick steers');
     await lift(game);
 
     // A sensor that answers later takes over.
     await tiltTo(game, pose({ turn: 0 }));
-    await game.waitFor(() => window.__race.input.touch.tilting, { what: 'tilt steering to take over' });
-    assert.equal(await game.eval(shown, '#touch [data-act="left"]'), false, 'pads hidden');
+    await game.waitFor(() => window.__race.input.touch.steering === 'tilt', { what: 'tilt steering to take over' });
+    assert.equal(await game.eval(shown, '#touch .t-stick'), false, 'stick hidden');
     assert.equal(await game.eval(shown, '#touch .t-wheel'), true, 'wheel shown');
     assert.deepEqual(game.errors, []);
   } finally { await game.close(); }
 });
 
 test('phone: turning the phone steers the car that way; gas still works; the wheel shows the lock', async () => {
+  // Saved by the old Tilt steer checkbox: carries over as the tilt choice.
   const game = await openGame(browser, { device: 'phone', query: Q, storage: { 'mr.tilt': true } });
   try {
+    assert.equal(await game.eval(() => document.getElementById('opt-steer').value), 'tilt', 'the old setting carries over');
     await tiltTo(game, pose({ turn: 0 }));
     await game.waitFor(() => document.getElementById('tilt-note').textContent === '', { what: 'no note once the sensor answers' });
     await startRace(game);
     assert.equal(await tiltState(game), 'live');
-    await game.waitFor(() => window.__race.input.touch.tilting, { what: 'tilt steering' });
+    await game.waitFor(() => window.__race.input.touch.steering === 'tilt', { what: 'tilt steering' });
 
     const r = await tiltTurn(game, 20, 0.6);
     assert.ok(r.mid.inp.steer > 0.4 && r.mid.steerAngle > 0, `turned right: steers right (steer ${r.mid.inp.steer.toFixed(2)})`);
@@ -102,26 +106,30 @@ test('phone: turning the phone steers the car that way; gas still works; the whe
     // The pedals are unchanged: tilt and gas together.
     await placeCar(game);
     await tiltTo(game, pose({ turn: -15 }));
-    await press(game, 'throttle');
+    await press(game, await sliderPoint(game, 0.72));
     await simWait(game, 0.4);
     const c = await car(game);
     assert.equal(c.inp.throttle, 1);
     assert.ok(c.inp.steer < 0, 'steering by tilt while on the gas');
     await lift(game);
 
-    // The hidden steering pads can't be hit (a zero-sized box at 0, 0).
+    // The hidden ◂ ▸ pads can't be hit (a zero-sized box at 0, 0), and a
+    // thumb on the left doesn't start the (hidden) stick.
     await tiltTo(game, pose({ turn: 0 }));
     await press(game, { x: 4, y: 4 });
     await sleep(60);
     const held = (await car(game)).held;
     await lift(game);
     assert.ok(!held.left && !held.right, 'a touch in the corner holds no pad');
+    await stickDown(game);
+    assert.equal(await game.eval(() => window.__race.input.touch.stick), null, 'no stick while tilting');
+    await lift(game);
     assert.deepEqual(game.errors, []);
   } finally { await game.close(); }
 });
 
 test('phone: the sensitivity slider changes how much lock a tilt gives', async () => {
-  const game = await openGame(browser, { device: 'phone', query: Q, storage: { 'mr.tilt': true } });
+  const game = await openGame(browser, { device: 'phone', query: Q, storage: TILT });
   try {
     await tiltTo(game, pose({ turn: 0 }));
     const steerAt = async (value) => {
@@ -150,7 +158,7 @@ test('phone: the sensitivity slider changes how much lock a tilt gives', async (
 
 // The same physical right turn, with the picture turned the other way.
 test('phone: the other landscape and portrait steer the right way too', async () => {
-  let game = await openGame(browser, { device: 'phone', query: Q, storage: { 'mr.tilt': true } });
+  let game = await openGame(browser, { device: 'phone', query: Q, storage: TILT });
   try {
     await game.cdp.send('Emulation.setDeviceMetricsOverride', {
       width: 915, height: 412, deviceScaleFactor: 2, mobile: true, screenOrientation: { type: 'landscapeSecondary', angle: 270 },
@@ -164,7 +172,7 @@ test('phone: the other landscape and portrait steer the right way too', async ()
     assert.deepEqual(game.errors, []);
   } finally { await game.close(); }
 
-  game = await openGame(browser, { device: 'phonePortrait', query: Q, storage: { 'mr.tilt': true } });
+  game = await openGame(browser, { device: 'phonePortrait', query: Q, storage: TILT });
   try {
     assert.equal(await game.eval('window.orientation'), 0);
     await tiltTo(game, pose({ angle: 0, turn: 0 }));
@@ -178,10 +186,10 @@ test('phone: the other landscape and portrait steer the right way too', async ()
   } finally { await game.close(); }
 });
 
-test('desktop: no tilt option', async () => {
+test('desktop: no steering choice or tilt option', async () => {
   const game = await openGame(browser, { device: 'desktop', query: Q });
   try {
-    assert.equal(await game.eval(() => document.getElementById('opt-tilt').closest('label').getClientRects().length), 0);
+    assert.equal(await game.eval(() => document.getElementById('opt-steer').closest('label').getClientRects().length), 0);
     assert.equal(await game.eval(shown, '#tilt-sens-row'), false);
     assert.equal(await game.eval(shown, '#tilt-note'), false);
     assert.deepEqual(game.errors, []);

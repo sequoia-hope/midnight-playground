@@ -1,7 +1,9 @@
 // On-screen touch controls (src/game/TouchControls.js), driven with real
 // CDP touches on an emulated phone: the pads appear only while racing, each
 // pad does what it says, fingers can slide between pads and hold several at
-// once, and every pad can actually be hit in landscape and portrait.
+// once, and every pad can actually be hit in landscape and portrait. These
+// are the Buttons choices for steering and pedals; the thumb stick and the
+// pedal slider (the defaults) are in analog-controls.test.js.
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,6 +18,7 @@ const Q = 'timescale=2';
 const touchShown = () => !document.getElementById('touch').classList.contains('hidden');
 const HOLD = ['throttle', 'brake', 'left', 'right', 'handbrake', 'nitro'];
 const TAP = ['reset', 'camera', 'pause'];
+const BUTTONS = { 'mr.steering': 'buttons', 'mr.pedals': 'buttons' };
 
 // Heading · camera-right after steering from a straight-ahead start:
 // positive means the car turned to the right of the screen.
@@ -67,7 +70,7 @@ test('phone: the pads show only while racing, not on the menu, pause or results'
 });
 
 test('phone: GAS, BRAKE, steering and N₂O drive the car', async () => {
-  const game = await openGame(browser, { device: 'phone', query: Q });
+  const game = await openGame(browser, { device: 'phone', query: Q, storage: BUTTONS });
   try {
     await startRace(game);
 
@@ -127,7 +130,7 @@ test('phone: GAS, BRAKE, steering and N₂O drive the car', async () => {
 });
 
 test('phone: a finger slides from GAS to BRAKE; steer and gas together', async () => {
-  const game = await openGame(browser, { device: 'phone', query: Q });
+  const game = await openGame(browser, { device: 'phone', query: Q, storage: BUTTONS });
   try {
     await startRace(game);
     await placeCar(game);
@@ -175,7 +178,7 @@ test('phone: a finger slides from GAS to BRAKE; steer and gas together', async (
 });
 
 test('phone: Auto gas drives with no finger down, and BRAKE overrides it', async () => {
-  const game = await openGame(browser, { device: 'phone', query: Q });
+  const game = await openGame(browser, { device: 'phone', query: Q, storage: BUTTONS });
   try {
     assert.equal(await game.eval(() => document.getElementById('opt-autogas').checked), false, 'off by default');
     await game.tap('#opt-autogas');
@@ -235,16 +238,22 @@ test('phone: the reset, camera and pause pads', async () => {
   } finally { await game.close(); }
 });
 
-for (const device of ['phone', 'phonePortrait']) {
-  test(`${device}: every pad is on screen, uncovered, and answers at its centre`, async () => {
-    const game = await openGame(browser, { device, query: Q });
+// The buttons, and the defaults: the stick's resting place and the pedal
+// slider with its DRIFT strip stand in for the pads they replace.
+const PANELS = { stick: '#touch .t-stick', slider: '#touch .t-slider', drift: '#touch .t-drift-strip' };
+for (const [device, kind] of [['phone', 'buttons'], ['phonePortrait', 'buttons'], ['phone', 'analog'], ['phonePortrait', 'analog']]) {
+  test(`${device}, ${kind}: every control is on screen, uncovered, and answers at its centre`, async () => {
+    const buttons = kind === 'buttons';
+    const game = await openGame(browser, { device, query: Q, storage: buttons ? BUTTONS : {} });
     try {
       await startRace(game);
-      const rects = await game.eval((names) => names.map((n) => {
-        const el = document.querySelector(`#touch [data-act="${n}"], #touch [data-tap="${n}"]`);
+      const hold = buttons ? HOLD : [];
+      const panels = buttons ? [] : Object.keys(PANELS);
+      const rects = await game.eval((names, panels) => names.map((n) => {
+        const el = document.querySelector(panels[n] || `#touch [data-act="${n}"], #touch [data-tap="${n}"]`);
         const b = el.getBoundingClientRect();
         return { n, l: b.left, t: b.top, r: b.right, b: b.bottom };
-      }), [...HOLD, ...TAP]);
+      }), [...hold, ...TAP, ...panels], PANELS);
       const vw = await game.eval('innerWidth'), vh = await game.eval('innerHeight');
       for (const r of rects) {
         assert.ok(r.l >= 0 && r.t >= 0 && r.r <= vw && r.b <= vh, `${r.n} is fully on screen`);
@@ -255,7 +264,8 @@ for (const device of ['phone', 'phonePortrait']) {
       }
       // game.center() throws if anything else sits on the pad's centre.
       for (const n of TAP) await pad(game, n);
-      for (const n of HOLD) {
+      for (const n of panels) if (n !== 'stick') await game.center(PANELS[n]);
+      for (const n of hold) {
         await press(game, n);
         await sleep(60);
         const held = (await car(game)).held;

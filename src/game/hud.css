@@ -228,7 +228,10 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; border-radius: 4px
 body.touch .touch-only { display: revert; }
 body.touch { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; overscroll-behavior: none;
   --b: clamp(58px, calc(12vmin + 26px), 96px);
-  --inL: max(16px, env(safe-area-inset-left)); --inR: max(16px, env(safe-area-inset-right)); --inB: max(14px, env(safe-area-inset-bottom)); }
+  --inL: max(16px, env(safe-area-inset-left)); --inR: max(16px, env(safe-area-inset-right)); --inB: max(14px, env(safe-area-inset-bottom));
+  --pedal-h: clamp(190px, 62vmin, 300px);
+  /* The top of the thumb controls (pedal buttons or slider), for what sits above them in portrait. */
+  --thumbs-top: max(calc(var(--b) * 2.1 + 34px), calc(var(--pedal-h) + var(--inB) + 14px)); }
 body.touch .controls { display: none; }
 .touch-help { width: min(560px, 92vw); color: var(--hud-dim); font-size: 14px; line-height: 1.5; text-align: center; }
 .touch-help b { color: var(--hud-fg); letter-spacing: .06em; }
@@ -250,12 +253,53 @@ body.touch .controls { display: none; }
 .t-gas.on { background: rgba(77, 255, 138, .34); }
 .t-brake { border-color: rgba(255, 56, 96, .65); }
 .t-brake.on { background: rgba(255, 56, 96, .38); }
+/* Pedal slider: one track for the right thumb (TouchControls.js places the
+   bands from SLIDER) and the DRIFT strip beside it. The knob follows the
+   thumb; the fill runs from the coasting gap up to it (gas) or down (brake). */
+#touch.slider .t-pedals, #touch:not(.slider) .t-pedal { display: none; }
+.t-pedal { position: absolute; right: var(--inR); bottom: var(--inB); height: var(--pedal-h); display: flex; gap: 6px; }
+.t-slider, .t-drift-strip { position: relative; height: 100%; box-sizing: border-box; border-radius: 22px; overflow: hidden;
+  background: rgba(10, 12, 22, .42); border: 2px solid rgba(255, 255, 255, .3); }
+.t-slider { width: calc(var(--b) * .95); }
+.t-band { position: absolute; left: 0; right: 0; display: flex; align-items: center; justify-content: center;
+  font: 700 12px var(--font); letter-spacing: .14em; color: rgba(255, 255, 255, .88); text-shadow: 0 1px 4px rgba(0, 0, 0, .7); }
+.t-band span { position: relative; z-index: 2; }
+.t-band-brake { background: rgba(255, 56, 96, .14); }
+.t-band-gas { background: rgba(77, 255, 138, .1); }
+.t-band-nitro { background: rgba(56, 182, 255, .18); border-bottom: 1px solid rgba(56, 182, 255, .6); color: #c8ecff; }
+.t-mark { position: absolute; left: 14%; right: 14%; border-top: 1px dashed rgba(77, 255, 138, .6); } /* flat out from here */
+.t-fill { position: absolute; left: 0; right: 0; z-index: 1; }
+.t-fill-gas { height: var(--gas, 0%); background: linear-gradient(to top, rgba(77, 255, 138, .2), rgba(77, 255, 138, .6)); }
+.t-fill-brake { height: var(--brk, 0%); background: linear-gradient(to bottom, rgba(255, 56, 96, .2), rgba(255, 56, 96, .7)); }
+.t-slider-knob { display: none; position: absolute; left: 5px; right: 5px; bottom: var(--u, 0%); height: 8px; margin-bottom: -4px; z-index: 3;
+  border-radius: 4px; background: #fff; box-shadow: 0 0 10px rgba(255, 255, 255, .8); }
+.t-pedal.active .t-slider { border-color: rgba(255, 255, 255, .75); }
+.t-pedal.active .t-slider-knob { display: block; }
+.t-pedal.nitro .t-band-nitro { background: rgba(56, 182, 255, .55); box-shadow: inset 0 0 18px rgba(56, 182, 255, .9); }
+.t-drift-strip { width: calc(var(--b) * .7); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  border-color: rgba(255, 180, 84, .55); color: rgba(255, 255, 255, .88); font: 700 11px var(--font); letter-spacing: .12em; text-shadow: 0 1px 4px rgba(0, 0, 0, .7); }
+.t-drift-strip svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.t-pedal.drift .t-drift-strip { background: rgba(255, 180, 84, .42); border-color: #ffb454; }
 .t-drift, .t-nitro { width: calc(var(--b) * .74); height: calc(var(--b) * .74); font-size: 11px; }
 .t-nitro { border-color: rgba(56, 182, 255, .8); color: #c8ecff; }
 .t-nitro.on { background: rgba(56, 182, 255, .45); box-shadow: 0 0 18px rgba(56, 182, 255, .6); }
 .t-util { position: absolute; top: calc(max(8px, env(safe-area-inset-top)) + 96px); left: var(--inL); display: flex; gap: 10px; }
 .t-small { width: 44px; height: 44px; }
-/* Tilt steering: a wheel turned to the lock, in place of the steering pads. */
+/* Thumb stick: a track two full locks wide with the knob on it. Idle it
+   waits bottom-left; under a thumb it's centred where the thumb landed. */
+.t-stick { display: none; position: absolute; left: calc(var(--inL) + var(--stick-r) + 32px); top: calc(100% - var(--inB) - var(--b) * .6);
+  width: calc(var(--stick-r) * 2 + 64px); height: 64px; transform: translate(-50%, -50%); pointer-events: none; opacity: .75; }
+.t-stick.active { opacity: 1; }
+.t-stick-track { position: absolute; inset: 8px 0; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; border-radius: 999px;
+  background: rgba(10, 12, 22, .42); border: 2px solid rgba(255, 255, 255, .3); color: rgba(255, 255, 255, .6); }
+.t-stick-track svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.t-stick-knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; box-sizing: border-box;
+  background: rgba(255, 255, 255, .16); border: 2px solid rgba(255, 255, 255, .8); box-shadow: 0 1px 6px rgba(0, 0, 0, .5); }
+.t-stick.active .t-stick-knob { background: rgba(255, 255, 255, .3); border-color: #fff; }
+.t-stick.lock .t-stick-knob { border-color: var(--accent); }
+#touch.stick .t-steer { display: none; }
+#touch.stick .t-stick { display: block; }
+/* Tilt steering: a wheel turned to the lock, in place of the stick. */
 .t-wheel { display: none; position: absolute; left: calc(var(--inL) + 8px); bottom: calc(var(--inB) + 8px); width: calc(var(--b) * 1.3); height: calc(var(--b) * 1.3);
   color: rgba(255, 255, 255, .7); filter: drop-shadow(0 1px 4px rgba(0, 0, 0, .6)); pointer-events: none; }
 .t-wheel svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
@@ -309,11 +353,11 @@ body.touch #np-toast.show { transform: translate(-50%, 0); }
 body.touch #np-toast small { font-size: 10px; }
 @media (orientation: portrait) {
   /* Too narrow for the speedo between the thumbs: it sits above them. */
-  body.touch .hud-br { bottom: calc(var(--b) * 2.1 + 34px); }
+  body.touch .hud-br { bottom: var(--thumbs-top); }
   body.touch .hud-route { top: 166px; width: 70vw; }
   body.touch .hud-pz { top: 200px; }
-  body.touch #hud-radio { bottom: calc(var(--b) * 2.1 + 34px + 84px); max-width: 86vw; }
-  body.touch #np-toast { bottom: calc(var(--b) * 2.1 + 34px + 74px); }
+  body.touch #hud-radio { bottom: calc(var(--thumbs-top) + 84px); max-width: 86vw; }
+  body.touch #np-toast { bottom: calc(var(--thumbs-top) + 74px); }
 }
 @media (orientation: landscape) { #rotate-hint { display: none !important; } }
 @media (orientation: portrait) {

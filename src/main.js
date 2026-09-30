@@ -30,8 +30,11 @@ const settings = {
   mph: store.get('mph', true),
   hq: store.get('hq', !touchUI),
   autogas: store.get('autogas', false),
-  tilt: store.get('tilt', false), // steer by turning the phone
+  // Touch steering: 'stick' (analogue thumb stick), 'buttons' (◂ ▸) or
+  // 'tilt'. Before there was a choice, tilt was a checkbox.
+  steering: store.get('steering', store.get('tilt', false) ? 'tilt' : 'stick'),
   tiltSens: store.get('tiltSens', 0.5),
+  pedals: store.get('pedals', 'slider'), // 'slider' (brake, gas and N₂O on one) or 'buttons'
   fullscreen: store.get('fullscreen', true),
   car: store.get('car', 'sports'),
   level: store.get('level', 'sierra'),
@@ -141,9 +144,8 @@ const audio = new GameAudio();
 const input = new Input();
 const touch = touchUI ? new TouchControls(input) : null;
 input.touch = touch;
-if (touch) touch.autoGas = settings.autogas;
 const tilt = touch ? new TiltSteer() : null;
-if (touch) touch.tilt = tilt;
+if (touch) Object.assign(touch, { autoGas: settings.autogas, tilt });
 window.__audio = audio;
 // Test hooks: headless checks raycast and inspect with these.
 window.__camera = camera;
@@ -274,7 +276,7 @@ function bindSlider(cls, key, storeKey) {
 }
 bindSlider('.vol-music', 'music', 'musicVol');
 bindSlider('.vol-sfx', 'sfx', 'sfxVol');
-for (const [id, key] of [['opt-mph', 'mph'], ['opt-hq', 'hq'], ['opt-autogas', 'autogas'], ['opt-tilt', 'tilt'], ['opt-fullscreen', 'fullscreen'], ['opt-flash', 'flash']]) {
+for (const [id, key] of [['opt-mph', 'mph'], ['opt-hq', 'hq'], ['opt-autogas', 'autogas'], ['opt-fullscreen', 'fullscreen'], ['opt-flash', 'flash']]) {
   const el = $(id);
   el.checked = settings[key];
   el.onchange = () => {
@@ -282,30 +284,45 @@ for (const [id, key] of [['opt-mph', 'mph'], ['opt-hq', 'hq'], ['opt-autogas', '
     if (key === 'hq') applyQuality();
     if (key === 'mph' && race) race.hud.mph = el.checked;
     if (key === 'autogas' && touch) touch.autoGas = el.checked;
-    if (key === 'tilt' && tilt) { tilt.enable(el.checked); showTiltState(); } // inside the tap, for iPhones
     if (key === 'flash' && race?.pv) race.pv.flash = race.pv.pursuit.flash = el.checked;
   };
 }
 
-// Tilt steering: the sensitivity slider shows while it's on, and a line
-// under the options says why it isn't steering, when it isn't.
+// Steering choice. With tilt, the sensitivity slider shows, and a line
+// under the options says why tilt isn't steering, when it isn't.
 const TILT_NOTES = {
-  insecure: 'Tilt steer needs the game\u2019s https:// address; steering stays on the buttons',
-  none: 'No tilt sensor answered; steering stays on the buttons',
-  ask: 'Tap Tilt steer or Race to allow motion access',
-  denied: 'Motion access was turned down; steering stays on the buttons',
+  insecure: 'Tilt needs the game\u2019s https:// address; steering with the thumb stick',
+  none: 'No tilt sensor answered; steering with the thumb stick',
+  ask: 'Tap Race to allow motion access',
+  denied: 'Motion access was turned down; steering with the thumb stick',
 };
 function showTiltState() {
-  $('tilt-sens-row').classList.toggle('hidden', !settings.tilt);
-  $('tilt-note').textContent = (settings.tilt && TILT_NOTES[tilt?.state]) || '';
+  const on = settings.steering === 'tilt';
+  $('tilt-sens-row').classList.toggle('hidden', !on || !tilt);
+  $('tilt-note').textContent = (on && TILT_NOTES[tilt?.state]) || '';
 }
-if (tilt) {
+if (touch) {
+  const sel = $('opt-steer');
+  if (![...sel.options].some((o) => o.value === settings.steering)) settings.steering = 'stick';
+  sel.value = settings.steering;
+  sel.onchange = () => {
+    settings.steering = sel.value; store.set('steering', sel.value);
+    touch.setMode(sel.value);
+    tilt.enable(sel.value === 'tilt'); // an iPhone may take this as the tap to ask in
+    showTiltState();
+  };
+  const ped = $('opt-pedals');
+  if (![...ped.options].some((o) => o.value === settings.pedals)) settings.pedals = 'slider';
+  ped.value = settings.pedals;
+  ped.onchange = () => { settings.pedals = ped.value; store.set('pedals', ped.value); touch.setPedals(ped.value); };
+  touch.setPedals(settings.pedals);
   const sens = $('opt-tilt-sens');
   sens.value = Math.round(settings.tiltSens * 100);
   sens.oninput = () => { settings.tiltSens = sens.value / 100; store.set('tiltSens', settings.tiltSens); tilt.setSensitivity(settings.tiltSens); };
   tilt.setSensitivity(settings.tiltSens);
   tilt.onChange = showTiltState;
-  if (settings.tilt) tilt.enable(true);
+  touch.setMode(settings.steering);
+  if (settings.steering === 'tilt') tilt.enable(true);
   showTiltState();
 }
 
@@ -334,7 +351,7 @@ async function startRace() {
   starting = true;
   try {
     enterFullscreen();
-    if (settings.tilt) tilt?.enable(true); // an iPhone asks for motion access in this tap
+    if (settings.steering === 'tilt') tilt?.enable(true); // an iPhone asks for motion access in this tap
     audio.setPaused(false); // Restart from the pause screen
     wakeAudio();
     pickMusic();

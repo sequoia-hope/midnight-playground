@@ -136,27 +136,46 @@ handbrake, Y for the camera, and Start to pause.
 
 ### Phones and tablets
 
-On a touch screen the game shows on-screen controls while you drive: steering
-buttons bottom-left; brake, gas, handbrake (DRIFT) and nitro bottom-right; and
-reset, camera and pause at the top left. Every finger is tracked, so you can
-steer and hold the gas at the same time, and slide a thumb from gas to brake
-without lifting it. Nitro holds the gas down for you.
+On a touch screen the game shows on-screen controls while you drive:
+steering on the left, the pedals bottom-right, and reset, camera and pause
+at the top left. Every finger is tracked, so you can steer and work the
+pedals at the same time.
+
+Steering is analogue by default: a thumb stick. Put your left thumb down
+anywhere on the left of the screen and that's the centre; slide it left or
+right to steer, further for more lock. Slide past full lock and the centre
+comes with you, so sliding back steers the other way straight away.
+
+The pedals are one vertical slider for your right thumb. From the bottom:
+**BRAKE** (full at the very bottom, lighter going up), a gap to coast in,
+**GAS** (light just above the gap, flat out from the dashed line) and
+**N₂O** at the top, which also holds the gas flat. A knob follows your thumb
+and the slider fills from the gap up (gas) or down (brake) to show how hard
+you're pressing. **DRIFT** is the strip beside it: slide your thumb right
+onto it for the handbrake while its height keeps setting the pedals, so you
+can drift on the gas with one thumb. A thumb that starts on the slider keeps
+working it until you lift it, even if it wanders off the side.
+
+The menu's **Steering** option switches to ◂ ▸ buttons (tap for a little
+lock, hold for more) or to tilt (below), and **Pedals** switches to separate
+GAS, BRAKE, DRIFT and N₂O buttons, where you can slide a thumb from gas to
+brake without lifting it.
 
 Hold the phone sideways; portrait works but shows less of the road. Pressing
 Race goes fullscreen and locks landscape where the browser allows it (turn this
 off with the Fullscreen option). The menu also has **Auto gas**, which keeps
-the throttle down unless you're braking. High quality is off by default on
+the throttle down while your thumb is off the pedal slider (or, with pedal
+buttons, unless you're braking). High quality is off by default on
 touch screens. Switching away from the browser pauses the race. You can also
 add the game to your home screen, where it opens fullscreen in landscape.
 
-**Tilt steer** (on the menu) steers by turning the phone like a steering
-wheel. Level is straight ahead, so there's nothing to calibrate, and the Tilt
-slider sets how far you turn for full lock. While tilt is steering, the
-steering buttons give way to a wheel that shows the lock. Phones only send
-the motion sensor to https pages, so tilt works on the GitHub Pages build but
-not on a plain `http://` address from another machine. An iPhone asks for
-motion access the first time. Whenever tilt can't steer, the menu says why and
-the buttons stay.
+**Tilt** steering steers by turning the phone like a steering wheel. Level
+is straight ahead, so there's nothing to calibrate, and the Tilt slider sets
+how far you turn for full lock. While tilt is steering, a wheel on the left
+shows the lock. Phones only send the motion sensor to https pages, so tilt
+works on the GitHub Pages build but not on a plain `http://` address from
+another machine. An iPhone asks for motion access the first time. Whenever
+tilt can't steer, the menu says why and the thumb stick steers instead.
 
 ## Layout
 
@@ -247,7 +266,7 @@ The unit tests in `test/unit/` run the code that doesn't need a browser:
 every level's route, the car physics (including the car claims above), the
 rivals driving each route, passing slower cars and keeping off a car
 alongside, traffic and collisions (including getting off a wall with a rival
-jammed against you), input and tilt steering, the timer, the soundtrack's songs and synth
+jammed against you), input, tilt steering and the touch stick and pedal slider, the timer, the soundtrack's songs and synth
 patches, and Hot Pursuit (line of sight, heat, busts and escapes, and each
 sprint level raced with the police on).
 
