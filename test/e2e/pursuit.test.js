@@ -69,6 +69,42 @@ test('the police chase you: units join, the heat stars and the siren run, all wi
   } finally { await game.close(); }
 });
 
+test('dispatch speaks in the recorded voice: the race preloads its lines, and one without a recording gets the burble', async () => {
+  const game = await openGame(browser, { query: 'level=streets&pursuit=1&cops=2&' + FAST });
+  try {
+    await startFromMenu(game); // the Race click starts the audio
+    await waitRacing(game, 30000);
+    // This level's lines are fetched ahead of need.
+    await game.waitFor(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('/audio/radio/') && e.name.endsWith('.mp3')).length >= 40,
+      { timeout: 20000, what: 'the radio clips to preload' });
+    const talking = () => {
+      const cur = window.__audio._radioCur;
+      return cur && {
+        clips: cur.srcs.filter((s) => s.buffer && !s.loop).map((s) => +s.buffer.duration.toFixed(2)),
+        burble: cur.srcs.some((s) => s instanceof OscillatorNode),
+        text: document.getElementById('hud-radio-text').textContent,
+      };
+    };
+    const unit = await game.eval(async () => {
+      const { RADIO } = await import('/src/game/audio/radioLines.js');
+      const u = window.__pursuit.units[0].callsign;
+      window.__race.pv.say(RADIO.intercept(u, 'Nob Hill'), true);
+      return u;
+    });
+    await game.waitFor(() => window.__audio._radioCur?.srcs.some((s) => s.buffer && !s.loop), { timeout: 5000, what: 'the line to play' });
+    const said = await game.eval(talking);
+    assert.equal(said.text, `Unit ${unit}, speeder on Nob Hill, moving to intercept.`);
+    assert.equal(said.clips.length, 2, 'the callsign, then the message');
+    assert.ok(said.clips[0] > 0.4 && said.clips[0] < 2.5 && said.clips[1] > 1.5 && said.clips[1] < 6, `clip lengths ${said.clips}`);
+    assert.equal(said.burble, false);
+
+    await game.eval(() => window.__race.pv.say({ text: 'Nobody recorded this.', parts: ['Nobody recorded this.'] }, true));
+    await game.waitFor(() => window.__audio._radioCur?.srcs.some((s) => s instanceof OscillatorNode), { timeout: 5000, what: 'the burble' });
+    assert.deepEqual((await game.eval(talking)).clips, []);
+    assert.deepEqual(game.errors, []);
+  } finally { await game.close(); }
+});
+
 // Stop the car with two units beside it until the bust meter fills.
 async function getBusted(game) {
   await game.eval(() => {

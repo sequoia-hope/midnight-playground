@@ -39,6 +39,10 @@ const SPAWN_GAP = 4;                               // seconds between units join
 const RETARGET = 1;                                // seconds between target choices
 const MIN_BEHAVIOUR = 1.5;
 const POOL = { patrol: 3, interceptor: 2, suv: 2 }; // chasers (at most 6 active)
+// Radio callsigns: unit i answers to 10 + 3i, give or take two, so every
+// pursuit's numbers differ but never collide. CALLSIGNS is every one there is.
+export const callsign = (i, rng) => 10 + i * 3 + Math.floor(rng() * 3);
+export const CALLSIGNS = Array.from({ length: Object.values(POOL).reduce((a, b) => a + b) * 3 }, (_, k) => 10 + k);
 const BLOCK_POOL = ['patrol', 'patrol', 'patrol', 'suv', 'suv'];
 const SAWHORSES = 2;
 
@@ -107,7 +111,7 @@ export class Pursuit {
       for (let i = 0; i < k; i++) {
         const u = new PoliceDriver(makeUnit(type, 'unit'), track, type);
         u.v.model.root.visible = false;
-        u.callsign = 10 + this.units.length * 3 + Math.floor(rng() * 3);
+        u.callsign = callsign(this.units.length, rng);
         this.units.push(u);
       }
     }

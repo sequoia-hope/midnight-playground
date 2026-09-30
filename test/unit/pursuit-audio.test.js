@@ -38,7 +38,7 @@ test('pursuit methods are no-ops before init', () => {
   assert.equal(a.ready, false);
   a.setSirens([{ dist: 5, pan: 0, relSpeed: 10, mode: 'wail' }]);
   a.setSirens([]);
-  a.sirenHorn(0.5); a.radio(2, -0.5); a.busted(); a.escaped(); a.takedown(1); a.spikePop(); a.wrecked();
+  a.sirenHorn(0.5); a.radio(2, -0.5); a.radioLine(['Suspect in custody.']); a.busted(); a.escaped(); a.takedown(1); a.spikePop(); a.wrecked();
   a.setSpikedTyres(true, 30); a.setPursuitMood('cooldown'); a.setDamage(0.9);
   assert.equal(a.ctx, null);
 });

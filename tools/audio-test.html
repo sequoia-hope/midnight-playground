@@ -103,7 +103,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
     <label>Closing m/s <input id="sRel" type="range" min="-40" max="40" value="0"><span></span></label>
     <label>Pan <input id="sPan" type="range" min="-1" max="1" step="0.05" value="0"><span></span></label>
     <div class="row">
-      <button id="sirenHorn">Horn</button><button id="radio">Radio</button><button id="busted">Busted</button>
+      <button id="sirenHorn">Horn</button><button id="radio">Radio</button><button id="burble">Radio (burble)</button><button id="busted">Busted</button>
       <button id="escaped">Escaped</button><button id="takedown">Takedown</button>
       <button id="spikePop">Spike pop</button><button id="wrecked">Wrecked</button>
     </div>
@@ -136,6 +136,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 </div>
 <script type="module">
 import { GameAudio } from '../src/game/Audio.js';
+import { RADIO } from '../src/game/audio/radioLines.js';
 
 // Offline render of a track through the game's real music bus (a whole
 // GameAudio on an OfflineAudioContext, SFX silent), faster than real time.
@@ -220,7 +221,12 @@ markSiren();
 // Pass-by: a unit closes from 300 m behind at 40 m/s, goes past and pulls away (yelp under 60 m).
 $('passBy').onclick = () => { passBy = 0; };
 $('sirenHorn').onclick = () => audio.sirenHorn(num('sPan'));
-$('radio').onclick = () => audio.radio(1 + Math.random() * 1.5, num('sPan'));
+// A random dispatch line in the recorded voice (tools/radio-voice.html has them all).
+$('radio').onclick = () => {
+  const lines = [RADIO.pursuit('north', 'Sierra Pass'), RADIO.intercept(23, 'Nob Hill'), RADIO.unitDown(17), RADIO.heat(4), RADIO.spikes(), RADIO.busted()];
+  audio.radioLine(lines[Math.floor(Math.random() * lines.length)].parts, num('sPan'));
+};
+$('burble').onclick = () => audio.radio(1 + Math.random() * 1.5, num('sPan'));
 $('busted').onclick = () => audio.busted();
 $('escaped').onclick = () => audio.escaped();
 $('takedown').onclick = () => audio.takedown(num('strength'), num('sPan'));

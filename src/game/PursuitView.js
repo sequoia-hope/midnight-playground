@@ -4,6 +4,7 @@ import { Vehicle } from '../vehicles/Vehicle.js';
 import { UNIT_TYPES } from '../vehicles/PoliceDriver.js';
 import { farLod } from '../vehicles/Traffic.js';
 import { Pursuit, WRECK_PENALTY, topSpeed } from './Pursuit.js';
+import { RADIO, DIRS, placeName, radioClips } from './audio/radioLines.js';
 
 // Hot Pursuit inside a Race: builds the police cars and props, feeds the
 // Pursuit its racers and collisions, and turns what happens into damage,
@@ -18,8 +19,6 @@ const RADIO_GAP = 4; // seconds between chatter lines
 // the other car's mass, and per wall impact.
 const DAMAGE_CAR = 0.11;
 const DAMAGE_WALL = 0.1;
-
-const DIRS = ['east', 'southeast', 'south', 'southwest', 'west', 'northwest', 'north', 'northeast'];
 
 export class PursuitView {
   constructor(race, { heat = 1, cops = 6, flash = true, hq = true } = {}) {
@@ -48,6 +47,10 @@ export class PursuitView {
     ]);
     this.cars = [...this.pursuit.units, ...this.pursuit.blockCars];
     for (const u of this.cars) race.effects.addCar(u.v);
+    // Fetch this race's radio lines now, so each is ready when it's said.
+    race.audio?.radioVoice?.prefetch(radioClips({
+      zones: track.zones.map((z) => z.name), units: this.pursuit.units.map((u) => u.callsign), names: race.ais.map((a) => a.name),
+    }).map((c) => c.id));
 
     this.damage = 0;
     this.lastHit = new WeakMap();
@@ -132,30 +135,30 @@ export class PursuitView {
         case 'pursuit':
           hud.center('PURSUIT', 'warn pop', 1.4);
           audio?.sirenHorn?.();
-          this.say(`All units, suspect heading ${this.heading()} on ${this.zoneName()}. Pursuit is on.`, true);
+          this.say(RADIO.pursuit(this.heading(), this.zoneName()), true);
           break;
         case 'reacquired':
           hud.toast('SPOTTED');
-          this.say('Visual on the suspect again, closing in.');
+          this.say(RADIO.spotted());
           break;
         case 'cooldown':
           hud.toast('COOLDOWN — STAY OUT OF SIGHT', 2);
-          this.say('Lost visual. All units, search the area.');
+          this.say(RADIO.lost());
           break;
         case 'escaped':
           hud.center('ESCAPED', 'pop go', 1.6);
           audio?.escaped?.();
-          this.say('We lost the suspect. All units, resume patrol.', true);
+          this.say(RADIO.escaped(), true);
           break;
         case 'heat':
           hud.toast(`HEAT LEVEL ${e.heat}`, 1.8);
-          this.say(e.heat >= 4 ? `Heat level ${e.heat}. Bring in everything we've got.` : `Heat level ${e.heat}. Requesting more units.`, true);
+          this.say(RADIO.heat(e.heat), true);
           break;
         case 'spotted':
-          if (e.player) this.say(`Unit ${e.unit.callsign}, speeder on ${this.zoneName()}, moving to intercept.`);
+          if (e.player) this.say(RADIO.intercept(e.unit.callsign, this.zoneName()));
           break;
         case 'join':
-          if (pu.state === 'pursuit') this.say(`Unit ${e.unit.callsign} joining the pursuit.`);
+          if (pu.state === 'pursuit') this.say(RADIO.joining(e.unit.callsign));
           break;
         case 'uturn':
           race.effects.smokeAt(e.x, race.player.y, e.z, 1.4, 0, 0, race.world.sky.night);
@@ -166,19 +169,19 @@ export class PursuitView {
             hud.center('TAKEDOWN', 'pop go', 1.2);
             audio?.takedown?.(1);
             race.cam.bump(1);
-            this.say(`Unit ${e.unit.callsign} is down! Unit down!`, true);
+            this.say(RADIO.unitDown(e.unit.callsign), true);
           }
           break;
         case 'roadblock':
           hud.toast(e.heavy ? 'HEAVY ROADBLOCK AHEAD' : 'ROADBLOCK AHEAD', 2);
-          this.say(e.heavy ? 'Heavy roadblock in position. Nobody gets through.' : 'Roadblock set up ahead. Suspect is heading right for it.', true);
+          this.say(RADIO.roadblock(e.heavy), true);
           break;
         case 'spikes':
           hud.toast('SPIKE STRIP AHEAD', 2);
-          this.say('Spike strip deployed.', true);
+          this.say(RADIO.spikes(), true);
           break;
         case 'spiked':
-          if (e.player) { hud.center('SPIKED!', 'warn pop', 1.2); audio?.spikePop?.(); this.say('Suspect hit the spikes!', true); }
+          if (e.player) { hud.center('SPIKED!', 'warn pop', 1.2); audio?.spikePop?.(); this.say(RADIO.spiked(), true); }
           else hud.toast(`${e.name.toUpperCase()} HIT THE SPIKES`);
           break;
         case 'dodge':
@@ -192,17 +195,17 @@ export class PursuitView {
             hud.center('BUSTED', 'warn pop', 2);
             audio?.busted?.();
             race.crash();
-            this.say('Suspect in custody.', true);
+            this.say(RADIO.busted(), true);
           } else {
             hud.toast(`${e.name.toUpperCase()} BUSTED`, 1.8);
-            this.say(`${e.name} is in custody.`);
+            this.say(RADIO.rivalBusted(e.name));
           }
           break;
         case 'wrecked':
           hud.center('WRECKED', 'warn pop', 2);
           audio?.wrecked?.();
           race.cam.bump(1.2);
-          this.say('Suspect vehicle is totalled. Tow it back onto the road.', true);
+          this.say(RADIO.wrecked(), true);
           break;
         case 'release':
           if (e.player) this.release(e);
@@ -225,16 +228,18 @@ export class PursuitView {
     race.hud.toast('BACK IN THE RACE', 1.4);
   }
 
-  say(text, force = false) {
+  // A line from RADIO: its text on the HUD (up as long as it takes to say)
+  // and its words over the radio.
+  say(line, force = false) {
     if (this.radioT > 0 && !force) return;
     this.radioT = RADIO_GAP;
-    this.race.hud.radio?.(text);
-    this.race.audio?.radio?.(1 + Math.min(2, text.length / 30));
+    this.race.hud.radio?.(line.text, Math.max(3, line.text.length / 14));
+    this.race.audio?.radioLine?.(line.parts);
   }
 
   zoneName() {
-    const t = this.race.track, z = t.zones[t.zone[t.idx(this.race.player.s)]];
-    return z.name.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    const t = this.race.track;
+    return placeName(t.zones[t.zone[t.idx(this.race.player.s)]].name);
   }
 
   heading() {

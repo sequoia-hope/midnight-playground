@@ -25,6 +25,7 @@
 
 import { Music } from './audio/Music.js';
 import { renderSfx } from './audio/samples.js';
+import { RadioVoice } from './audio/RadioVoice.js';
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -253,6 +254,9 @@ const RUMBLE = 4; // engine rumble layer, relative to the exhaust chains
 // plus a tail for its fade (or reverb) to die away, so idle voices cost
 // nothing. While a gate is shut, leave its voice's params alone: a node that
 // isn't rendered never retires its automation events, so they'd pile up.
+const RADIO_GAP = 0.14;   // s between the clips of one radio line
+const RADIO_VOICE = 1.6;  // recorded voice into the radio bus's crunch: peaks level with the burble
+const RADIO_WAIT = 700;   // ms a line's clips get to load before the burble stands in
 const GATE_TAIL = 1.2; // s: 8 time constants of the slowest voice fade
 class Gate {
   // links: [[node, destination], ...]; levels: the voice's output gains
@@ -307,6 +311,8 @@ export class GameAudio {
     this._gates = [];       // voice gates (the SFX chain's own is _sfxGate)
     this._vg = {};          // ... by voice
     this._gateTimer = null;
+    this.radioVoice = new RadioVoice();
+    this._radioSeq = 0;
   }
 
   get ready() { return !!this.ctx && this._built === true; }
@@ -1633,14 +1639,30 @@ export class GameAudio {
     }
   }
 
-  // Police radio chatter: a burst of band-limited gibberish between squelch
-  // clicks, on its own crunchy bus. One channel: a new call cuts off one
-  // that is still talking (the newest message always gets through).
-  radio(duration = 1.6, pan = 0) {
+  // A line of police radio (its spoken parts, see audio/radioLines.js) in
+  // the recorded voice, or the burble if its clips aren't in within a
+  // moment: the words land with the text on screen or not at all.
+  async radioLine(parts, pan = 0) {
+    if (!this._sfxOn()) return;
+    const n = ++this._radioSeq;
+    const voice = await Promise.race([
+      this.radioVoice.buffers(this.ctx, parts),
+      new Promise((res) => setTimeout(res, RADIO_WAIT, null)),
+    ]);
+    if (n !== this._radioSeq) return; // a newer line has the channel
+    this.radio(1 + Math.min(2, parts.join(' ').length / 30), pan, voice);
+  }
+
+  // Police radio chatter between squelch clicks, on its own crunchy bus:
+  // voice (AudioBuffers, played one after another) or, without it, a burst
+  // of band-limited gibberish. One channel: a new call cuts off one that is
+  // still talking (the newest message always gets through).
+  radio(duration = 1.6, pan = 0, voice = null) {
     if (!this._sfxOn()) return;
     const ctx = this.ctx, t0 = ctx.currentTime + 0.01;
     this._vg.radio.set(true, t0);
-    const dur = clamp(duration, 0.4, 6), end = t0 + dur, r = Math.random;
+    const talk = voice ? voice.reduce((a, b) => a + b.duration, 0) + RADIO_GAP * (voice.length - 1) + 0.12 : clamp(duration, 0.4, 6);
+    const end = t0 + talk, r = Math.random;
     this._radioCut(t0);
     const rd = this.radioBus;
     if (rd.p) rd.p.pan.setValueAtTime(clamp(pan, -1, 1), t0);
@@ -1655,7 +1677,23 @@ export class GameAudio {
     const hg = ctx.createGain(); hg.gain.value = 0.045;
     hiss.connect(hf); hf.connect(hg); hg.connect(g);
     hiss.start(t0, r() * 1.5); hiss.stop(end + 0.2); srcs.push(hiss);
-    // The voice: a buzz (and some breath) through three moving formants.
+    if (voice) {
+      const vg = ctx.createGain(); vg.gain.value = RADIO_VOICE; vg.connect(g);
+      let at = t0 + 0.08;
+      for (const b of voice) {
+        const s = ctx.createBufferSource(); s.buffer = b; s.connect(vg); s.start(at); srcs.push(s);
+        at += b.duration + RADIO_GAP;
+      }
+    } else this._burble(g, t0, end, srcs);
+    // Squelch close: the "kssht" as the carrier drops.
+    this._noiseBurst({ time: end, dur: 0.16, type: 'bandpass', freq: 2000, q: 0.4, gain: 0.45, dest: g });
+    this._noiseBurst({ time: end + 0.005, dur: 0.01, type: 'highpass', freq: 1500, q: 0.7, gain: 0.5, dest: g });
+    this._radioCur = { g, end: end + 0.2, srcs };
+  }
+
+  // Radio gibberish: a buzz (and some breath) through three moving formants.
+  _burble(g, t0, end, srcs) {
+    const ctx = this.ctx, dur = end - t0, r = Math.random;
     const buzz = ctx.createOscillator(); buzz.type = 'sawtooth';
     const breath = ctx.createBufferSource(); breath.buffer = this.noise.white; breath.loop = true;
     const brG = ctx.createGain(); brG.gain.value = 0.12;
@@ -1692,10 +1730,6 @@ export class GameAudio {
     buzz.frequency.value = f0;
     buzz.start(t0); buzz.stop(end + 0.05); srcs.push(buzz);
     breath.start(t0, r() * 1.5); breath.stop(end + 0.05); srcs.push(breath);
-    // Squelch close: the "kssht" as the carrier drops.
-    this._noiseBurst({ time: end, dur: 0.16, type: 'bandpass', freq: 2000, q: 0.4, gain: 0.45, dest: g });
-    this._noiseBurst({ time: end + 0.005, dur: 0.01, type: 'highpass', freq: 1500, q: 0.7, gain: 0.5, dest: g });
-    this._radioCur = { g, end: end + 0.2, srcs };
   }
 
   _radioCut(t) {

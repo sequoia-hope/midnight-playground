@@ -23,7 +23,7 @@ const BASE = process.env.MR_BASE_URL ? process.env.MR_BASE_URL.replace(/\/?$/, '
 const TYPES = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
   '.json': 'application/json', '.webmanifest': 'application/manifest+json',
-  '.png': 'image/png', '.svg': 'image/svg+xml',
+  '.png': 'image/png', '.svg': 'image/svg+xml', '.mp3': 'audio/mpeg',
 };
 
 export const DEVICES = {

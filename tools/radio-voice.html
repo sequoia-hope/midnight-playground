@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Police Radio Voice</title>
+<link rel="icon" href="data:,">
+<style>
+:root { --bg: #0d0f14; --card: #161a22; --line: #262c36; --fg: #e6e9ee; --muted: #8b94a3; --accent: #ff3d7f; --ok: #4dff8a; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; padding: 16px; }
+h1 { font-size: 1.2rem; margin: 0 0 4px; }
+h2 { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 18px 0 8px; }
+p { color: var(--muted); margin: 0 0 12px; max-width: 900px; }
+code { color: var(--fg); }
+button { background: #222834; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; cursor: pointer; font: inherit; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.voices { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); max-width: 1200px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.card.chosen { border-color: var(--ok); }
+.card b { font-size: 15px; }
+.card .tag { color: var(--ok); font-size: 12px; margin-left: 6px; }
+.card p { margin: 4px 0 8px; font-size: 13px; }
+table { border-collapse: collapse; width: 100%; max-width: 1200px; }
+td { border-top: 1px solid var(--line); padding: 4px 8px 4px 0; vertical-align: middle; }
+td:first-child { width: 100%; }
+td small { color: var(--muted); }
+input[type=search] { background: #11141b; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; font: inherit; width: min(420px, 100%); }
+#state { color: var(--muted); }
+</style>
+</head>
+<body>
+<h1>Midnight Racer — police radio voice</h1>
+<p>Hot Pursuit's dispatch lines, recorded with Qwen3-TTS by <code>tools/radio-voice/</code>.
+<b>Raw</b> plays a clip as recorded; <b>Radio</b> plays it the way the game does, through the radio bus (crunch, 300–3000 Hz, squelch and hiss).
+To try another voice: set <code>"voice"</code> in <code>tools/radio-voice/voices.json</code> and run <code>render.py</code> (see the README).</p>
+<div class="row"><button class="primary" id="start">Start audio</button><span id="state">press Start first</span></div>
+
+<h2>Voices (VoiceDesign references)</h2>
+<div class="voices" id="voices"></div>
+
+<h2>Lines</h2>
+<div class="row" style="margin-bottom:6px">
+  <input type="search" id="filter" placeholder="Filter lines…">
+  <button id="random">Random line on the radio</button>
+  <span id="count" style="color:var(--muted)"></span>
+</div>
+<table id="lines"></table>
+
+<script type="module">
+import { GameAudio } from '../src/game/Audio.js';
+import { LEVELS } from '../src/levels/index.js';
+import { levelsRadioClips } from '../src/game/audio/radioLines.js';
+
+const $ = (id) => document.getElementById(id);
+const audio = new GameAudio();
+window.audio = audio;
+const decoded = new Map();
+
+$('start').onclick = async () => {
+  await audio.init();
+  audio.setVolume({ master: 1, sfx: 1, music: 0 });
+  $('state').textContent = audio.ready ? 'running' : 'WebAudio unavailable';
+};
+
+async function buffer(url) {
+  if (!audio.ready) await $('start').onclick();
+  if (!decoded.has(url)) decoded.set(url, fetch(url).then((r) => r.arrayBuffer()).then((b) => audio.ctx.decodeAudioData(b)));
+  return decoded.get(url);
+}
+
+let playing = null;
+async function play(urls, radio) {
+  const bufs = await Promise.all(urls.map(buffer));
+  playing?.stop();
+  playing = null;
+  if (radio) { audio.radio(0, 0, bufs); return; }
+  // Raw: the clips back to back, straight out.
+  const ctx = audio.ctx;
+  let at = ctx.currentTime + 0.02;
+  for (const b of bufs) {
+    const s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination); s.start(at);
+    at += b.duration + 0.14;
+    playing = s;
+  }
+}
+
+const btn = (label, fn) => Object.assign(document.createElement('button'), { textContent: label, onclick: fn });
+
+// Voices
+const cfg = await fetch('radio-voice/voices.json').then((r) => r.json());
+for (const [name, desc] of Object.entries(cfg.voices)) {
+  const card = document.createElement('div');
+  card.className = 'card' + (name === cfg.voice ? ' chosen' : '');
+  const url = `radio-voice/voices/${name}.flac`;
+  card.innerHTML = `<b></b>${name === cfg.voice ? '<span class="tag">in the game</span>' : ''}<p></p>`;
+  card.querySelector('b').textContent = name;
+  card.querySelector('p').textContent = desc;
+  const row = document.createElement('div'); row.className = 'row';
+  row.append(btn('Raw', () => play([url], false)), btn('Radio', () => play([url], true)));
+  card.append(row);
+  $('voices').append(card);
+}
+
+// Lines
+const index = await fetch('../audio/radio/index.json').then((r) => (r.ok ? r.json() : { clips: {} })).catch(() => ({ clips: {} }));
+const clips = levelsRadioClips(LEVELS);
+const file = (id, take) => `../audio/radio/${id}${take > 1 ? '.' + take : ''}.mp3`;
+const rows = [];
+for (const c of clips) {
+  const have = index.clips[c.id] ?? 0;
+  const tr = document.createElement('tr');
+  const td = document.createElement('td');
+  td.textContent = c.text + ' ';
+  if (!have) td.append(Object.assign(document.createElement('small'), { textContent: '(not recorded)' }));
+  tr.append(td);
+  for (let t = 1; t <= c.takes; t++) {
+    const cell = document.createElement('td');
+    const row = document.createElement('div'); row.className = 'row'; row.style.flexWrap = 'nowrap';
+    if (t <= have) row.append(btn(c.takes > 1 ? `Raw ${t}` : 'Raw', () => play([file(c.id, t)], false)), btn(c.takes > 1 ? `Radio ${t}` : 'Radio', () => play([file(c.id, t)], true)));
+    cell.append(row);
+    tr.append(cell);
+  }
+  $('lines').append(tr);
+  rows.push([c, tr]);
+}
+const recorded = clips.filter((c) => index.clips[c.id]).length;
+const filter = () => {
+  const q = $('filter').value.toLowerCase();
+  let n = 0;
+  for (const [c, tr] of rows) { const on = c.text.toLowerCase().includes(q); tr.hidden = !on; n += on; }
+  $('count').textContent = `${n} shown · ${recorded} of ${clips.length} recorded · voice: ${index.voice ?? 'none'}`;
+};
+$('filter').oninput = filter;
+filter();
+$('random').onclick = () => {
+  const have = clips.filter((c) => index.clips[c.id]);
+  const c = have[Math.floor(Math.random() * have.length)];
+  if (c) { $('filter').value = c.text; filter(); play([file(c.id, 1)], true); }
+};
+</script>
+</body>
+</html>

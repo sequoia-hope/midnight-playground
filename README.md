@@ -86,10 +86,37 @@ level). It's the same race against five rivals, with the police on the road.
   (a **takedown**).
 - The results screen adds your busts, wrecks, takedowns, penalty time and
   top heat. Hot Pursuit winning times are kept separately from normal ones.
+- Dispatch talks you through the chase over the police radio (the words
+  show at the bottom of the screen too): the pursuit starting and which way
+  you're heading, units calling in and going down, roadblocks and spikes,
+  the heat rising, busts.
 
 The police lights flash red and blue. If strobing lights bother you, turn
 off **Police lights flash** in the menu: the lights then glow steadily and
 don't light up the scene.
+
+### The radio voice
+
+The dispatcher was made with [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS):
+its VoiceDesign model made a voice from a written description, and its Base
+model cloned that voice to record every line, so all 200-odd clips are one
+speaker. They're small MP3s in `audio/radio/` (16 kHz mono; the game's radio
+bus keeps only 300 to 3000 Hz anyway), fetched when a pursuit race starts
+and played through the radio bus between squelch clicks. A line with no
+recording falls back to a synthesised burble.
+
+- The lines are in `src/game/audio/radioLines.js`. Each clip is named after
+  its words, so after changing a line only the new words need recording.
+- `tools/radio-voice.html` (on the dev server) plays the candidate voices
+  and every line, as recorded or through the in-game radio.
+- `tools/radio-voice/voices.json` has the voice descriptions and says which
+  one the game uses. `python tools/radio-voice/design.py [name…]` designs
+  voices (`voices/<name>.flac`, the reference clip). `python
+  tools/radio-voice/render.py` records whatever is missing and rewrites
+  `audio/radio/index.json`: `--only <words>` re-records matching clips,
+  `--seed N` gives different takes, and switching voices re-records
+  everything. Both need a Python with the `qwen-tts` package, a CUDA GPU
+  with about 5 GB free, node and ffmpeg.
 
 ## Cars
 
@@ -212,10 +239,13 @@ src/
                        (no three.js, so it's tested in Node); PursuitView.js wires
                        it into a race
   game/audio/          the soundtrack: step sequencer and synth instruments, the songs,
-                       and the drum kit and crash sounds pre-rendered at start-up
+                       and the drum kit and crash sounds pre-rendered at start-up;
+                       the police radio's lines and the loader for their recordings
+audio/radio/           the police radio voice's recorded lines (tools/radio-voice/)
 vendor/three/          three.js r180 (the build plus the few add-ons used)
 tools/                 check-track.js, car-test.html, audio-test.html, serve.py,
-                       og-image.mjs
+                       og-image.mjs, radio-voice.html and radio-voice/ (the police
+                       radio voice: design, record, audition)
 test/unit/, test/e2e/  the tests (see Tests below)
 music.html             the soundtrack player
 ```

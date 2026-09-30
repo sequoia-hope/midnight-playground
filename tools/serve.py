@@ -4,8 +4,9 @@ python3 -m http.server sends Last-Modified but no Cache-Control, so browsers
 guess how long each file stays fresh. A phone then reloads with some modules
 new and some hours old: new touch controls lit up while an old Input.js
 ignored them. Everything under src/ and the pages are sent no-store, so every
-load is one consistent version. vendor/ (pinned three.js) is no-cache: always
-revalidated, but a 304 saves re-downloading 2 MB.
+load is one consistent version. vendor/ (pinned three.js) and audio/ (the
+recorded radio voice) are no-cache: always revalidated, but a 304 saves
+re-downloading them.
 """
 import argparse
 import functools
@@ -15,7 +16,7 @@ from pathlib import Path
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def pinned(self):
-        return self.path.startswith('/vendor/')
+        return self.path.startswith(('/vendor/', '/audio/'))
 
     def send_head(self):
         # Never answer 304 for a file the browser was told not to keep: an

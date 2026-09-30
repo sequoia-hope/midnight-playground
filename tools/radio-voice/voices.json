@@ -1,0 +1,10 @@
+{
+  "voice": "dispatcher",
+  "ref_text": "Dispatch to all units, we have a red sports car doing over a hundred on Interstate 9, heading north. Units twelve and fifteen, set up a roadblock at the bridge. Suspect is not stopping. Repeat, suspect is not stopping.",
+  "voices": {
+    "dispatcher": "A seasoned male police dispatcher in his forties with a deep, slightly gravelly American voice, speaking over a police radio during a car chase: fast, clipped and matter-of-fact, calm authority with an edge of urgency, crisp consonants.",
+    "trooper": "A tough American highway patrol officer, male, mid-thirties, mid-low pitch, speaking into a handheld radio from a speeding cruiser: urgent, clipped, loud and commanding, a little breathless.",
+    "sergeant": "A gruff veteran police sergeant, male, in his fifties, low raspy voice, terse and commanding, speaking quickly over the radio with controlled intensity.",
+    "dispatch-woman": "A female American police dispatcher around forty, alto voice, cool and professional, rapid clipped radio cadence, steady and unflappable under pressure."
+  }
+}
