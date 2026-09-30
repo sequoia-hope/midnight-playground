@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { clamp, smoothstep } from '../util/math.js';
 import { Vehicle } from '../vehicles/Vehicle.js';
 import { UNIT_TYPES } from '../vehicles/PoliceDriver.js';
+import { farLod } from '../vehicles/Traffic.js';
 import { Pursuit, WRECK_PENALTY, topSpeed } from './Pursuit.js';
 
 // Hot Pursuit inside a Race: builds the police cars and props, feeds the
@@ -34,7 +35,7 @@ export class PursuitView {
       }
       const [kind, o] = MODELS[type];
       let m;
-      try { m = buildVehicle(kind, { ...o, lod: 'low', seed: seed++ }); } catch { m = buildVehicle('sedan', { color: 0x16181c, lod: 'low', seed: seed++ }); }
+      try { m = buildVehicle(kind, { ...o, lod: 'low', far: true, seed: seed++ }); } catch { m = buildVehicle('sedan', { color: 0x16181c, lod: 'low', far: true, seed: seed++ }); }
       m.root.traverse((c) => { if (c.isMesh) c.castShadow = true; });
       group.add(m.root);
       return new Vehicle(m, { kind, mass: UNIT_TYPES[type].mass, name: 'Police' });
@@ -250,9 +251,11 @@ export class PursuitView {
     this.events(dt);
     const mode = (u) => (u.siren === 'flash' && !this.flash ? 'steady' : u.siren);
     let near = null, nearD = 40;
+    const cam = race.camera.position;
     for (const u of this.cars) {
       if (!u.active) continue;
       u.v.sync(t, dt);
+      farLod(u.v, cam.x, cam.z);
       u.v.model.setHeadlights?.(Math.max(0.15, lightsOn));
       u.v.model.setSiren?.(mode(u), this.t);
       // The additive glow reads from 300 m at night but is a big halo up

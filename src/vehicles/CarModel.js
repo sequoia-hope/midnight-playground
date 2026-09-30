@@ -2294,7 +2294,74 @@ export function buildVehicle(kind, opts = {}) {
     });
     handle.setSiren('off');
   }
+  if (opts.far) addFarLod(handle, `${kind}|${lod}|${JSON.stringify(variant)}|${rimMat.uuid}`);
   return handle;
+}
+
+// ── far LOD ───────────────────────────────────────────────────────
+// Traffic a hundred metres off is a few dozen pixels wide, yet each car was
+// ~15 draw calls (every material bucket, two per wheel), and a freeway keeps
+// 30-40 of them in view. The far version keeps the paint and every light (so
+// brake lights, headlights and sirens still switch per car) and bakes the rest
+// (trim, glass, plates, chrome, parked wheels) into one mesh coloured per
+// vertex and shared by every car of the kind: 4 draw calls for most traffic.
+// handle.setFar(true) swaps it in.
+const FAR_OWN = new Set(['paint', 'stripe', 'head', 'tail', 'accent', 'lightRed', 'lightBlue', 'sirenGlow']);
+const farCache = new Map();
+let farMaterial = null;
+
+function farGeometry(handle) {
+  const { root } = handle;
+  root.updateMatrixWorld(true);
+  const toRoot = root.matrixWorld.clone().invert();
+  const parts = [], m = new THREE.Matrix4();
+  const add = (o) => {
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    if (mats.some((x) => !x.color)) return;
+    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry;
+    const n = g.attributes.position.count;
+    const col = new Float32Array(n * 3);
+    const groups = Array.isArray(o.material) && g.groups.length ? g.groups : [{ start: 0, count: n, materialIndex: 0 }];
+    for (const gr of groups) {
+      const c = mats[gr.materialIndex ?? 0].color;
+      for (let i = gr.start; i < Math.min(n, gr.start + gr.count); i++) col.set([c.r, c.g, c.b], i * 3);
+    }
+    const out = new THREE.BufferGeometry();
+    out.setAttribute('position', g.attributes.position.clone());
+    out.setAttribute('normal', g.attributes.normal.clone());
+    out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    out.applyMatrix4(m.multiplyMatrices(toRoot, o.matrixWorld));
+    parts.push(out);
+  };
+  for (const o of handle.body.children) if (o.isMesh && !FAR_OWN.has(o.name)) add(o);
+  for (const w of handle.wheels) w.traverse((o) => { if (o.isMesh) add(o); });
+  const geo = mergeGeometries(parts);
+  for (const p of parts) p.dispose();
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+function addFarLod(handle, key) {
+  if (!farCache.has(key)) farCache.set(key, farGeometry(handle));
+  farMaterial ||= new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.3, roughness: 0.5 });
+  const far = new THREE.Mesh(farCache.get(key), farMaterial);
+  far.name = 'far';
+  far.visible = false;
+  // Everything the far mesh stands in for: the baked body buckets, and the
+  // wheels on their pivots.
+  const near = [
+    ...handle.body.children.filter((o) => o.isMesh && !FAR_OWN.has(o.name)),
+    ...handle.root.children.filter((o) => o !== handle.body),
+  ];
+  handle.body.add(far);
+  let isFar = false;
+  handle.setFar = (on) => {
+    if (on === isFar) return;
+    isFar = on;
+    far.visible = on;
+    for (const o of near) o.visible = !on;
+  };
+  Object.defineProperty(handle, 'isFar', { get: () => isFar });
 }
 
 // Triangle count of a built vehicle (budget checks / debugging).

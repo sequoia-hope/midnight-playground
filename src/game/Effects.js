@@ -187,7 +187,6 @@ export class Effects {
     }
     const pool = new THREE.Mesh(this.poolGeo, this.poolMat);
     pool.scale.set(player ? 9 : 7, 1, player ? 16 : 12);
-    pool.frustumCulled = false;
     this.scene.add(pool);
     entry.pool = pool;
     this.cars.push(entry);

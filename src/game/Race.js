@@ -282,6 +282,7 @@ export class Race {
     this.player.sync(t, dt);
     for (const a of this.ais) a.v.sync(t, dt);
     for (const c of this.traffic.cars) if (c.active) c.v.sync(t, dt);
+    this.traffic.lod(this.camera.position.x, this.camera.position.z);
     const lightsOn = smoothstep(0.25, 0.6, night);
     this.player.model.setHeadlights?.(Math.max(0.15, lightsOn));
     for (const a of this.ais) a.v.model.setHeadlights?.(Math.max(0.15, lightsOn));

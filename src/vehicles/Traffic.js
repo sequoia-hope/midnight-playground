@@ -12,6 +12,16 @@ import { Vehicle } from './Vehicle.js';
 
 const PAINT = [0xc9ccd1, 0x2b2f36, 0x8a1c1c, 0x1d3f75, 0xe8e6df, 0x4d5a3a, 0x6b4a2e, 0x9aa3ad, 0x2e6d8e, 0xb5a27a];
 const MASS = { sedan: 1500, hatch: 1200, van: 2200, pickup: 2100, boxtruck: 6500, tractor: 3500 };
+// Past FAR_OUT metres from the camera (x, z) a car switches to its cheap far
+// model (CarModel's far LOD), and back inside FAR_IN, so one pacing you at
+// the boundary doesn't flicker between the two.
+export const FAR_OUT = 95, FAR_IN = 85;
+export function farLod(v, x, z) {
+  const m = v.model;
+  if (!m.setFar) return;
+  const d2 = (v.x - x) ** 2 + (v.z - z) ** 2;
+  m.setFar(d2 > (m.isFar ? FAR_IN : FAR_OUT) ** 2);
+}
 
 export class TrafficCar extends KinematicCar {
   constructor(vehicle, track) {
@@ -40,7 +50,7 @@ export class Traffic {
     const paint = level.trafficPaint || PAINT;
     const make = (k, i) => {
       const color = k === 'tractor' ? rpick(this.rng, [0x9c2a1c, 0x3d6b2a]) : rpick(this.rng, paint);
-      const model = buildVehicle(k, { color, seed: i * 17 + k.length, lod: 'low' });
+      const model = buildVehicle(k, { color, seed: i * 17 + k.length, lod: 'low', far: true });
       const veh = new Vehicle(model, { kind: k, mass: MASS[k] });
       model.root.visible = false;
       scene.add(model.root);
@@ -143,6 +153,11 @@ export class Traffic {
     car.speed = car.cruise;
     car.writePos();
     return true;
+  }
+
+  // Far models for the cars a long way from the camera (x, z).
+  lod(x, z) {
+    for (const c of this.cars) if (c.active) farLod(c.v, x, z);
   }
 
   despawn(car) {
