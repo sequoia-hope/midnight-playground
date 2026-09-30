@@ -231,7 +231,11 @@ body.touch { -webkit-tap-highlight-color: transparent; -webkit-user-select: none
   --inL: max(16px, env(safe-area-inset-left)); --inR: max(16px, env(safe-area-inset-right)); --inB: max(14px, env(safe-area-inset-bottom));
   --pedal-h: clamp(190px, 62vmin, 300px);
   /* The top of the thumb controls (pedal buttons or slider), for what sits above them in portrait. */
-  --thumbs-top: max(calc(var(--b) * 2.1 + 34px), calc(var(--pedal-h) + var(--inB) + 14px)); }
+  --thumbs-top: max(calc(var(--b) * 2.1 + 34px), calc(var(--pedal-h) + var(--inB) + 14px));
+  /* The top of the steering under the left thumb (the stick while it waits), for the speedo above it. */
+  --steer-top: calc(var(--inB) + var(--b) * .6 + 32px); }
+body.touch:has(#touch.buttons) { --steer-top: calc(var(--inB) + var(--b) * 1.08); }
+body.touch:has(#touch.tilt) { --steer-top: calc(var(--inB) + var(--b) * 1.3 + 8px); }
 body.touch .controls { display: none; }
 .touch-help { width: min(560px, 92vw); color: var(--hud-dim); font-size: 14px; line-height: 1.5; text-align: center; }
 .touch-help b { color: var(--hud-fg); letter-spacing: .06em; }
@@ -307,7 +311,7 @@ body.touch .controls { display: none; }
 #touch.tilt .t-steer { display: none; }
 #touch.tilt .t-wheel { display: block; }
 
-/* The HUD makes room: speedo between the thumbs, small map and route bar. */
+/* The HUD makes room: speedo over the steering, small map and route bar. */
 body.touch .hud-tl { left: var(--inL); top: 8px; }
 body.touch .pos { font-size: 40px; }
 body.touch .pos sup, body.touch .pos .of { font-size: 18px; }
@@ -315,8 +319,9 @@ body.touch .time { font-size: 20px; }
 body.touch .zone-name { font-size: 11px; }
 body.touch #minimap { width: 104px; height: 104px; top: max(8px, env(safe-area-inset-top)); right: var(--inR); }
 body.touch .hud-route { top: 14px; bottom: auto; left: 50%; transform: translateX(-50%); width: min(300px, 30vw); }
-/* A compact digital speedo between the thumbs (the round dial would sit on the car). */
-body.touch .hud-br { right: auto; left: 50%; bottom: var(--inB); transform: translateX(-50%); width: 176px; height: 64px;
+/* A compact digital speedo just above the steering, off to the side: in the
+   middle (or as the round dial) it sits on the car. */
+body.touch .hud-br { right: auto; left: var(--inL); bottom: calc(var(--steer-top) + 8px); transform: none; width: 176px; height: 64px;
   border-radius: 14px; background: rgba(8, 10, 18, .45); }
 body.touch #tach { display: none; }
 body.touch .speed { top: 2px; font-size: 42px; }
@@ -344,20 +349,22 @@ body.touch .time-pen { font-size: 13px; }
 body.touch #hud-hold { top: 22%; padding: 8px 0 12px; }
 body.touch .hold-title { font-size: 56px; }
 body.touch .hold-sub { font-size: 15px; }
-body.touch #hud-radio { bottom: calc(var(--inB) + 84px); max-width: 56vw; padding: 4px 12px 4px 6px; gap: 8px; }
+/* Dispatch: bottom centre, no wider than the gap between the idle stick (as TouchControls sizes it) and the pedals. */
+body.touch #hud-radio { bottom: var(--inB); max-width: calc(100vw - 2 * (var(--inL) + clamp(44px, 15vmin, 84px) * 2 + 76px));
+  padding: 4px 12px 4px 6px; gap: 8px; }
 body.touch .radio-tag { font-size: 9px; }
 body.touch #hud-radio-text { font-size: 13px; }
-/* Touch: the pill sits centred just above the speedo, clear of both thumbs. */
-body.touch #np-toast { left: 50%; bottom: calc(var(--inB) + 74px); transform: translate(-50%, 8px); font-size: 12px; padding: 4px 12px; }
-body.touch #np-toast.show { transform: translate(-50%, 0); }
+/* Touch: the pill sits on top of the speedo (clear of the pursuit damage bar too). */
+body.touch #np-toast { left: var(--inL); bottom: calc(var(--steer-top) + 90px); font-size: 12px; padding: 4px 12px; }
 body.touch #np-toast small { font-size: 10px; }
 @media (orientation: portrait) {
-  /* Too narrow for the speedo between the thumbs: it sits above them. */
-  body.touch .hud-br { bottom: var(--thumbs-top); }
   body.touch .hud-route { top: 166px; width: 70vw; }
   body.touch .hud-pz { top: 200px; }
-  body.touch #hud-radio { bottom: calc(var(--thumbs-top) + 84px); max-width: 86vw; }
-  body.touch #np-toast { bottom: calc(var(--thumbs-top) + 74px); }
+  /* Narrow: dispatch goes above both thumbs, and the track's style drops
+     under its title so the pill fits beside the pedals. */
+  body.touch #hud-radio { bottom: var(--thumbs-top); max-width: 86vw; }
+  body.touch #np-toast { border-radius: 12px; }
+  body.touch #np-toast small { display: block; margin-left: 0; }
 }
 @media (orientation: landscape) { #rotate-hint { display: none !important; } }
 @media (orientation: portrait) {
