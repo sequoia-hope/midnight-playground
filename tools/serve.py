@@ -16,7 +16,9 @@ from pathlib import Path
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def pinned(self):
-        return self.path.startswith(('/vendor/', '/audio/'))
+        # No path yet when the request line itself is bad (e.g. a browser
+        # trying https on this port), and send_error still sends headers.
+        return getattr(self, 'path', '').startswith(('/vendor/', '/audio/'))
 
     def send_head(self):
         # Never answer 304 for a file the browser was told not to keep: an
