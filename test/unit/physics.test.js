@@ -220,6 +220,27 @@ test('the same inputs give the same drive (deterministic)', () => {
   assert.deepEqual(run(), run());
 });
 
+// At a steady 70 m/s every frame should move the car speed × frame time, at
+// any refresh rate and with the timing jitter a browser adds. The camera and
+// every other car move by the frame's time; a car that moves 0, 1 or 3 physics
+// steps' worth instead lurches against them.
+test('the car moves by each frame’s own time at any refresh rate', () => {
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (const hz of [60, 90, 120, 144]) {
+    const c = car('super', { speed: 70 });
+    let worst = 0;
+    for (let i = 0; i < 400; i++) {
+      const dt = (1 + (rand() - 0.5) * 0.06) / hz; // ±3 % jitter
+      const x0 = c.v.x, v0 = c.v.vx;
+      c.phys.update(dt, input({ throttle: 0.4 }));
+      const expect = ((v0 + c.v.vx) / 2) * dt;
+      worst = Math.max(worst, Math.abs(c.v.x - x0 - expect) / expect);
+    }
+    assert.ok(worst < 0.01, `${hz} Hz: a frame's move was off by ${(worst * 100).toFixed(1)} %`);
+  }
+});
+
 // README "Cars": Kestrel RS "launches hard … but its top speed is lower";
 // Ion Arc has "the quickest launch" and "a lower top speed".
 test('README: the car table matches CAR_SPECS and its claims hold', () => {

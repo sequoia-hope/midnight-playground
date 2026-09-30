@@ -51,7 +51,6 @@ export class CarPhysics {
     this.events = [];
     this.locked = false;   // during countdown
     this.wheelBase = vehicle.model.dims.wheelBase || 2.6;
-    this.acc = 0;
     this.electric = !!spec.electric;
     this.gearTop = GEAR_TOP.map((v) => v * (spec.gearScale ?? 1));
     this.boost = 0;        // turbo boost 0..1
@@ -76,12 +75,18 @@ export class CarPhysics {
     v.onGround = true;
   }
 
+  // Equal steps of about 1/120 s that add up to exactly the frame's time. A
+  // fixed step with a carried-over remainder took 1, 2 or 3 steps per 60 Hz
+  // frame (and 0 or 1 at 144 Hz) with nothing drawn in between, so at speed
+  // the car lurched against the camera, the traffic and the rivals, which all
+  // move by the frame's own time. A step may run 10 % long, so a 60 Hz frame
+  // a hair over 1/60 s is still two steps, not three.
   update(frameDt, inp) {
-    const h = 1 / 120;
-    this.acc += frameDt;
-    let n = 0;
-    while (this.acc >= h && n < 12) { this.step(h, inp); this.acc -= h; n++; }
-    if (n === 12) this.acc = 0;
+    const H = 1 / 120;
+    if (!(frameDt > 0)) return;
+    const n = Math.min(12, Math.ceil(frameDt / (H * 1.1)));
+    const h = Math.min(H * 1.1, frameDt / n);
+    for (let i = 0; i < n; i++) this.step(h, inp);
   }
 
   engineAccel(v) {

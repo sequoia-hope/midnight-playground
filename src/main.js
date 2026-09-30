@@ -473,7 +473,6 @@ function autopilot(inp) {
 }
 
 // ── Main loop ─────────────────────────────────────────────────────
-const clock = new THREE.Clock();
 const focus = new THREE.Vector3();
 let lastError = '';
 const timescale = Number(params.get('timescale') || 1); // test hook
@@ -497,17 +496,24 @@ function updateStats(ms) {
   statT0 = performance.now(); statN = 0; statMs = 0;
 }
 
-function frame() {
+// Frame time comes from the rAF timestamp, which marks the display's frame:
+// a steady 60 Hz gives a steady step. Reading the clock whenever the callback
+// happens to run adds the page's own scheduling jitter to every move, and at
+// speed that shows as the world stuttering past.
+let lastFrameT = null;
+function frame(now) {
   requestAnimationFrame(frame);
   const t0 = performance.now();
+  const frameDt = lastFrameT === null ? 0 : Math.max(0, now - lastFrameT) / 1000;
+  lastFrameT = now;
   renderer.info.reset();
-  try { tick(); updateStats(performance.now() - t0); } catch (e) {
+  try { tick(frameDt); updateStats(performance.now() - t0); } catch (e) {
     // Keep running; report each distinct error once.
     if (String(e) !== lastError) { lastError = String(e); console.error(e); }
   }
 }
-function tick() {
-  const dt = Math.min(clock.getDelta(), 1 / 20) * timescale;
+function tick(frameDt) {
+  const dt = Math.min(frameDt, 1 / 20) * timescale;
   let inp = input.update(dt);
   if (!world || mode === 'loading') return;
   const track = world.track;
