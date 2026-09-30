@@ -245,6 +245,47 @@ const SFX_TRIM = 1.25;
 const MUSIC_TRIM = 2.4;
 const RUMBLE = 4; // engine rumble layer, relative to the exhaust chains
 
+// ── Gates ────────────────────────────────────────────────────────
+// Chrome renders every node the destination pulls on, audible or not: an
+// engine, siren or noise bed idling behind a zero gain costs the audio thread
+// as much as a loud one, and on a phone that is enough to break up the
+// music. A gate connects a voice's output only while the voice is in use,
+// plus a tail for its fade (or reverb) to die away, so idle voices cost
+// nothing. While a gate is shut, leave its voice's params alone: a node that
+// isn't rendered never retires its automation events, so they'd pile up.
+const GATE_TAIL = 1.2; // s: 8 time constants of the slowest voice fade
+class Gate {
+  // links: [[node, destination], ...]; levels: the voice's output gains
+  // (hushed to zero when the whole SFX chain comes back, see _hush).
+  constructor(links, { tail = GATE_TAIL, levels = [] } = {}) {
+    this.links = links;
+    this.tail = tail;
+    this.levels = levels;
+    this.open = true; // built connected; the first idle check shuts it
+    this.until = 0;   // shut once the clock passes this (Infinity: in use)
+    this.onTail = null;
+  }
+
+  // Report whether the voice is in use this frame; returns whether it is
+  // connected (worth steering).
+  set(active, t) {
+    if (active) {
+      this.until = Infinity;
+      if (!this.open) { for (const [n, d] of this.links) n.connect(d); this.open = true; }
+    } else if (this.open) {
+      if (this.until === Infinity) { this.until = t + this.tail; this.onTail?.(this.tail); }
+      else if (t >= this.until) this.shut();
+    }
+    return this.open;
+  }
+
+  shut() {
+    if (this.open) for (const [n, d] of this.links) n.disconnect(d);
+    this.open = false;
+    this.until = 0;
+  }
+}
+
 export class GameAudio {
   constructor() {
     this.ctx = null;
@@ -261,6 +302,11 @@ export class GameAudio {
     this.onTrackChange = null; // (info) => void when a music track starts
     this._track = null; // requested track id (null = keep / level default)
     this._impactT = -1;
+    this._realtime = false; // a live AudioContext (not a test's offline one)
+    this._ran = false;      // it has been running at least once
+    this._gates = [];       // voice gates (the SFX chain's own is _sfxGate)
+    this._vg = {};          // ... by voice
+    this._gateTimer = null;
   }
 
   get ready() { return !!this.ctx && this._built === true; }
@@ -268,6 +314,10 @@ export class GameAudio {
   get environment() { return this._env; }
 
   // opts.context: run on a given context (tests render an OfflineAudioContext).
+  // opts.latencyHint: the new context's buffering. 'balanced' by default: a
+  // phone's smallest buffer ('interactive') leaves the audio thread no slack,
+  // and a late buffer is an audible stutter. The music player, where latency
+  // doesn't matter, asks for 'playback'.
   //
   // Never waits for the context to start. One made outside a user gesture
   // (on a phone, a tap's pointerdown doesn't count) starts suspended, and a
@@ -278,8 +328,9 @@ export class GameAudio {
     this._initPromise = (async () => {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC && !opts.context) return;
-      const ctx = opts.context || new AC({ latencyHint: 'interactive' });
+      const ctx = opts.context || new AC({ latencyHint: opts.latencyHint ?? 'balanced' });
       this.ctx = ctx;
+      this._realtime = !opts.context;
       this._build();
       this._built = true;
       this.setCar(this._car);
@@ -311,9 +362,65 @@ export class GameAudio {
   _applyVolumes(tc) {
     const t = this.ctx.currentTime;
     this.master.gain.setTargetAtTime(MASTER_TRIM * this._vol.master, t, tc);
+    // SFX at zero (the music player): the whole effects graph stops rendering.
+    const wasOpen = this._sfxGate.open;
+    if (this._sfxGate.set(this._vol.sfx > 0.001, t) && !wasOpen) this._hush(t);
     this.sfxVol.gain.setTargetAtTime(SFX_TRIM * this._vol.sfx, t, tc);
     this.musicVol.gain.setTargetAtTime(MUSIC_TRIM * this._vol.music, t, tc);
   }
+
+  // ── Gates (see Gate) ─────────────────────────────────────────────
+  _gate(links, opts) {
+    const g = new Gate(links, opts);
+    g.onTail = (s) => this._gateLater(s);
+    this._gates.push(g);
+    return g;
+  }
+
+  // A live context shuts gates whose tails ran out on a timer too, so voices
+  // left fading when nothing calls update() (the menu) still stop rendering.
+  // Offline renders call _gateTick() themselves if they want it.
+  _gateLater(s) {
+    if (!this._realtime || this._gateTimer) return;
+    this._gateTimer = setTimeout(() => { this._gateTimer = null; this._gateTick(); }, (Math.max(0.25, s) + 0.05) * 1000);
+  }
+
+  _gateTick() {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime;
+    let wait = 0;
+    for (const g of [this._sfxGate, ...this._gates]) {
+      if (!g.open || g.until === Infinity) continue;
+      if (t >= g.until) g.shut(); else wait = Math.max(wait, g.until - t);
+    }
+    if (wait) this._gateLater(wait);
+  }
+
+  // The SFX chain is back after being shut: voices inside it kept whatever
+  // level they had (their updates were skipped), so silence them all and
+  // let the next update() bring back the ones in use.
+  _hush(t) {
+    for (const g of this._gates) {
+      for (const p of g.levels) { p.cancelScheduledValues(t); p.setValueAtTime(0, t); }
+      if (g.levels.length) g.shut();
+    }
+    this._radioCut(t);
+  }
+
+  // Per-frame steering needs a context that has run: until the first unlock
+  // nothing renders, so every automation event would pile up (headless
+  // Chrome; a phone that never got its tap). Offline contexts always steer.
+  _running() {
+    if (!this.ready) return false;
+    if (!this._ran) this._ran = !this._realtime || this.ctx.state === 'running';
+    return this._ran;
+  }
+
+  // Continuous SFX voices: steered only while the SFX chain renders.
+  _steer() { return this._running() && this._sfxGate.open; }
+
+  // One-shots: nothing to play into while the SFX chain is shut (muted).
+  _sfxOn() { return this.ready && this._sfxGate.open; }
 
   // Engine character: 'sports' (flat-plane V8), 'muscle' (cross-plane V8),
   // 'super' (V10), 'rally' (turbo four), 'electric' (motor, no engine).
@@ -363,6 +470,7 @@ export class GameAudio {
     if (!this.ready) return;
     const t = this.ctx.currentTime, tc = immediate ? 0.001 : 0.25;
     const on = this._env === 'tunnel';
+    this._vg.tunnel.set(on, t);
     this.envSend.gain.setTargetAtTime(on ? 0.75 : 0, t, tc);
     this.envLow.gain.setTargetAtTime(on ? 3 : 0, t, tc);
   }
@@ -390,6 +498,8 @@ export class GameAudio {
     this.sfxVol = ctx.createGain();
     this.sfxBus.connect(this.envLow); this.envLow.connect(this.sfxComp);
     this.sfxComp.connect(this.sfxVol); this.sfxVol.connect(this.master);
+    this._sfxGate = new Gate([[this.sfxVol, this.master]], { tail: 0.5 });
+    this._sfxGate.onTail = (s) => this._gateLater(s);
 
     // Music bus: mix → gentle compressor → on/off gate → user volume.
     this.musicIn = ctx.createBiquadFilter(); this.musicIn.type = 'highpass'; this.musicIn.frequency.value = 36;
@@ -420,6 +530,8 @@ export class GameAudio {
     this.music = new Music(ctx, this.musicIn);
     this.music.build();
     this.music.onTrack = (info) => this.onTrackChange?.(info);
+    // Everything starts silent: update() and the setters connect what they use.
+    for (const g of this._gates) g.shut();
     this._applyVolumes(0.001);
   }
 
@@ -486,6 +598,8 @@ export class GameAudio {
     const out = ctx.createGain(); out.gain.value = 0.55;
     this.sfxBus.connect(this.envSend); this.envSend.connect(this.tunnel);
     this.tunnel.connect(out); out.connect(this.sfxComp);
+    // Rendered only in (and just out of) a tunnel: the fade and the 1.4 s tail.
+    this._vg.tunnel = this._gate([[out, this.sfxComp]], { tail: 4 });
   }
 
   _buildEngine() {
@@ -591,6 +705,8 @@ export class GameAudio {
     e.whine.start(); e.whine2.start();
 
     this.eng = e;
+    this._vg.eng = this._gate([[e.out, this.sfxBus]], { levels: [e.out.gain] });
+    this._vg.whine = this._gate([[e.whineG, this.sfxBus]], { levels: [e.whineG.gain] });
   }
 
   // Turbo: a whistle that climbs with shaft speed and a breathy intake
@@ -612,6 +728,7 @@ export class GameAudio {
     tb.w1.frequency.value = 2000; tb.w2.frequency.value = 3000;
     tb.w1.start(); tb.w2.start();
     this.turbo = tb;
+    this._vg.turbo = this._gate([[tb.out, this.sfxBus]], { levels: [tb.out.gain] });
     this._boost = 0;
   }
 
@@ -655,6 +772,7 @@ export class GameAudio {
     ev.airG = ctx.createGain(); ev.airG.gain.value = 0;
     this._loop(this.noise.pink).connect(ev.airBp); ev.airBp.connect(ev.airG); ev.airG.connect(ev.sum);
     this.ev = ev;
+    this._vg.ev = this._gate([[ev.out, this.sfxBus]], { levels: [ev.out.gain] });
   }
 
   _buildEnvironment() {
@@ -681,6 +799,7 @@ export class GameAudio {
     this.windHi = [-0.6, 0.6].map((pv) => {
       const p = pan(pv); p.connect(this.sfxBus);
       const w = mk(this.noise.pink, 'bandpass', 1400, 0.9, p);
+      w.p = p;
       w.gust = ctx.createGain(); w.gust.gain.value = 1;
       w.g.disconnect(); w.g.connect(w.gust); w.gust.connect(p);
       wobble(0.45, 0.45).connect(w.gust.gain);
@@ -736,6 +855,16 @@ export class GameAudio {
     const flg = ctx.createGain(); flg.gain.value = 0;
     this.nitroFlame.flutter = flg;
     fl.connect(flg); flg.connect(this.nitroFlame.g.gain); fl.start();
+
+    const B = this.sfxBus, G = this._vg;
+    // Road noise: wind, the gusting side bands and the tyre rumble.
+    G.road = this._gate([[this.wind.g, B], ...this.windHi.map((w) => [w.p, B]), [this.rumble.g, B]],
+      { levels: [this.wind.g.gain, ...this.windHi.map((w) => w.g.gain), this.rumble.g.gain] });
+    G.squeal = this._gate([[sq.out, B]], { levels: [sq.out.gain] });
+    G.gravel = this._gate([[this.gravel.g, B]], { levels: [this.gravel.g.gain] });
+    G.scrape = this._gate([[sc.pan, B]], { levels: [sc.g.gain, sc.grit.g.gain] });
+    const nitro = [this.nitroHiss, this.nitroRumble, this.nitroFlame];
+    G.nitro = this._gate(nitro.map((n) => [n.g, B]), { tail: 1.6, levels: nitro.map((n) => n.g.gain) });
   }
 
   _buildRivals() {
@@ -752,7 +881,7 @@ export class GameAudio {
       osc.frequency.value = 30;
       osc.detune.value = (i - 1) * 13;
       osc.start();
-      this.rivals.push({ osc, lp, g, p });
+      this.rivals.push({ osc, lp, g, p, gate: this._gate([[out, this.sfxBus]], { levels: [g.gain] }) });
     }
   }
 
@@ -784,6 +913,7 @@ export class GameAudio {
       v.bp.connect(v.lp); v.lp.connect(v.g);
       v.p = pan();
       if (v.p) { v.g.connect(v.p); v.p.connect(this.sfxBus); } else v.g.connect(this.sfxBus);
+      v.gate = this._gate([[v.p || v.g, this.sfxBus]], { levels: [v.g.gain] });
       v.tri = ctx.createOscillator(); v.tri.type = 'triangle';
       v.tri.frequency.value = 1 / (SIREN_PATTERNS.wail.period * v.drift);
       v.sq = ctx.createOscillator(); v.sq.setPeriodicWave(square);
@@ -812,6 +942,7 @@ export class GameAudio {
     ty.pulse.connect(thLp); thLp.connect(thG); thG.connect(ty.out);
     ty.pulse.start();
     this.tyres = ty;
+    this._vg.tyres = this._gate([[ty.out, this.sfxBus]], { levels: [ty.out.gain] });
 
     // Damage: rod knock (a pulse at crank rate ringing a metallic band), a
     // loose-panel rattle gated by the same pulse, and a steam hiss. Misfires
@@ -833,6 +964,7 @@ export class GameAudio {
     this._loop(this.noise.white, 0.9).connect(sHp); sHp.connect(dm.steam); dm.steam.connect(this.sfxBus);
     dm.pulse.start();
     this.dmg = dm;
+    this._vg.dmg = this._gate([[dm.out, this.sfxBus], [dm.steam, this.sfxBus]], { levels: [dm.out.gain, dm.steam.gain] });
     this._damage = 0;
     this._misfireT = 0;
 
@@ -849,6 +981,7 @@ export class GameAudio {
     rd.p = pan();
     if (rd.p) { rd.out.connect(rd.p); rd.p.connect(this.sfxBus); } else rd.out.connect(this.sfxBus);
     this.radioBus = rd;
+    this._vg.radio = this._gate([[rd.p || rd.out, this.sfxBus]]);
     this._radioCur = null;
     this._mood = 'off';
     this._moodTo = 20000;
@@ -856,8 +989,8 @@ export class GameAudio {
 
   // ── Per-frame update ─────────────────────────────────────────────
   update(dt, s = {}) {
-    if (!this.ready || this._paused) return;
-    const ctx = this.ctx, t = ctx.currentTime;
+    if (this._paused || !this._steer()) return;
+    const ctx = this.ctx, t = ctx.currentTime, G = this._vg;
     const prof = this.prof || CARS.sports;
     const rpmMax = s.rpmMax || 7800;
     const rawRpm = Number.isFinite(s.rpm) ? s.rpm : 800;
@@ -872,18 +1005,48 @@ export class GameAudio {
     // The menu and results screens pass a stopped engine (and no motor state):
     // nothing from a pursuit may carry on there.
     if (engineOff && s.motor === undefined) this._pursuitReset();
+    G.radio.set(!!this._radioCur && t < this._radioCur.end, t);
+    G.tunnel.set(this._env === 'tunnel', t);
     this._updateTurbo(dt, s, thr, prof);
     if (this.electric) {
       this._updateDamage(dt, 5 + speed * 0.6, thr, s.motor !== undefined);
       this._updateElectric(dt, s);
-      e.out.gain.setTargetAtTime(0, t, 0.05);
-      e.whineG.gain.setTargetAtTime(0, t, 0.05);
+      if (G.eng.set(false, t)) e.out.gain.setTargetAtTime(0, t, 0.05);
+      if (G.whine.set(false, t)) e.whineG.gain.setTargetAtTime(0, t, 0.05);
       this._prevThrottle = thr;
       this._updateEnvironment(s, speed, onGround);
       return;
     }
-    this.ev.out.gain.setTargetAtTime(0, t, 0.05);
+    if (G.ev.set(false, t)) this.ev.out.gain.setTargetAtTime(0, t, 0.05);
+    if (G.eng.set(!engineOff, t)) this._steerEngine(t, prof, rpm, rn, thr, engineOff, onGround, rpmMax);
 
+    // Transmission whine with road speed (and a louder reverse whine).
+    const rev = gear === -1;
+    const whine = engineOff ? 0 : rev ? 0.05 * clamp(speed / 6, 0, 1)
+      : prof.whine * 0.016 * clamp(speed / 35, 0, 1) * (0.35 + 0.65 * thr);
+    if (G.whine.set(whine > 1e-5, t)) {
+      e.whine.frequency.setTargetAtTime(rev ? 250 + speed * 90 : 90 + speed * 26, t, 0.05);
+      e.whine2.frequency.setTargetAtTime(rev ? 375 + speed * 135 : 140 + speed * 41, t, 0.05);
+      e.whineG.gain.setTargetAtTime(whine, t, 0.08);
+    }
+
+    // Decel pops/crackle on lift-off at high revs.
+    this._popCooldown -= dt;
+    if (!engineOff) {
+      if (this._prevThrottle > 0.5 && thr < 0.15 && rn > 0.5) this._popBurst(Math.round((3 + Math.random() * 4) * prof.pops), rn);
+      else if (thr < 0.1 && rn > 0.42 && this._popCooldown <= 0 && Math.random() < dt * 1.6 * prof.pops) {
+        this._pop(t + Math.random() * 0.05, rn * 0.7);
+        this._popCooldown = 0.12;
+      }
+    }
+    this._prevThrottle = thr;
+    this._updateDamage(dt, rpm / 60, thr, !engineOff);
+    this._updateEnvironment(s, speed, onGround);
+  }
+
+  // The combustion engine's pitch, load crossfade, level and limiter.
+  _steerEngine(t, prof, rpm, rn, thr, engineOff, onGround, rpmMax) {
+    const e = this.eng;
     // Pitch: the wave holds one 720° cycle, so it plays at rpm / 120.
     const fc = rpm / 120;
     const k = 0.022;
@@ -923,27 +1086,6 @@ export class GameAudio {
       e.limG.gain.setTargetAtTime(limiting ? 0.7 : 1, t, 0.01);
       e.limDepth.gain.setTargetAtTime(limiting ? 0.3 : 0, t, 0.01);
     }
-
-    // Transmission whine with road speed (and a louder reverse whine).
-    const rev = gear === -1;
-    e.whine.frequency.setTargetAtTime(rev ? 250 + speed * 90 : 90 + speed * 26, t, 0.05);
-    e.whine2.frequency.setTargetAtTime(rev ? 375 + speed * 135 : 140 + speed * 41, t, 0.05);
-    const whine = engineOff ? 0 : rev ? 0.05 * clamp(speed / 6, 0, 1)
-      : prof.whine * 0.016 * clamp(speed / 35, 0, 1) * (0.35 + 0.65 * thr);
-    e.whineG.gain.setTargetAtTime(whine, t, 0.08);
-
-    // Decel pops/crackle on lift-off at high revs.
-    this._popCooldown -= dt;
-    if (!engineOff) {
-      if (this._prevThrottle > 0.5 && thr < 0.15 && rn > 0.5) this._popBurst(Math.round((3 + Math.random() * 4) * prof.pops), rn);
-      else if (thr < 0.1 && rn > 0.42 && this._popCooldown <= 0 && Math.random() < dt * 1.6 * prof.pops) {
-        this._pop(t + Math.random() * 0.05, rn * 0.7);
-        this._popCooldown = 0.12;
-      }
-    }
-    this._prevThrottle = thr;
-    this._updateDamage(dt, rpm / 60, thr, !engineOff);
-    this._updateEnvironment(s, speed, onGround);
   }
 
   // Engine distress from setDamage(): nothing below 0.5, then knock and
@@ -952,6 +1094,7 @@ export class GameAudio {
     const t = this.ctx.currentTime, dm = this.dmg;
     const d = running ? this._damage : 0;
     const k = clamp((d - 0.5) / 0.5, 0, 1);
+    if (!this._vg.dmg.set(k > 0, t)) return;
     dm.out.gain.setTargetAtTime(k > 0 ? 1 : 0, t, 0.1);
     dm.pulse.frequency.setTargetAtTime(clamp(rate, 4, 140), t, 0.03);
     dm.knock.gain.setTargetAtTime(0.5 * k * (0.5 + 0.5 * load), t, 0.08);
@@ -975,13 +1118,15 @@ export class GameAudio {
     const on = !!prof.turbo && !this.electric;
     const boost = on ? clamp(s.boost || 0, 0, 1) : 0;
     const rn = clamp(((s.rpm || 800) - 800) / 7000, 0, 1);
-    tb.out.gain.setTargetAtTime(on ? 1 : 0, t, 0.1);
-    const wf = 1900 + boost * 3600 + rn * 900;
-    tb.w1.frequency.setTargetAtTime(wf, t, 0.08);
-    tb.w2.frequency.setTargetAtTime(wf * 1.505, t, 0.08);
-    tb.wg.gain.setTargetAtTime(0.045 * boost * boost * (0.4 + 0.6 * thr), t, 0.06);
-    tb.hissBp.frequency.setTargetAtTime(1400 + boost * 2600, t, 0.06);
-    tb.hg.gain.setTargetAtTime(0.1 * boost * thr, t, 0.06);
+    if (this._vg.turbo.set(boost > 0.001, t)) {
+      tb.out.gain.setTargetAtTime(on ? 1 : 0, t, 0.1);
+      const wf = 1900 + boost * 3600 + rn * 900;
+      tb.w1.frequency.setTargetAtTime(wf, t, 0.08);
+      tb.w2.frequency.setTargetAtTime(wf * 1.505, t, 0.08);
+      tb.wg.gain.setTargetAtTime(0.045 * boost * boost * (0.4 + 0.6 * thr), t, 0.06);
+      tb.hissBp.frequency.setTargetAtTime(1400 + boost * 2600, t, 0.06);
+      tb.hg.gain.setTargetAtTime(0.1 * boost * thr, t, 0.06);
+    }
     // Blow-off: lifting with boost up vents it.
     if (on && this._prevThrottle > 0.5 && thr < 0.2 && this._boost > 0.35) this._blowOff(this._boost);
     this._boost = boost;
@@ -997,6 +1142,8 @@ export class GameAudio {
 
   _updateElectric(dt, s) {
     const t = this.ctx.currentTime, ev = this.ev;
+    // Menu / results pass no motor state: switched off.
+    if (!this._vg.ev.set(s.motor !== undefined, t)) return;
     const motor = clamp(s.motor ?? 0, 0, 1.05);
     const speed = Math.abs(s.speed || 0);
     const load = clamp((s.power || 0) / 600, 0, 1);
@@ -1027,64 +1174,74 @@ export class GameAudio {
     const idle = 1 - clamp(motor * 40, 0, 1);
     ev.hum.g.gain.setTargetAtTime(0.01 * idle, t, 0.2);
     ev.hum2.g.gain.setTargetAtTime(0.004 * idle, t, 0.2);
-    // Menu / results pass no motor state: switched off.
     ev.out.gain.setTargetAtTime(s.motor === undefined ? 0 : 3.4, t, 0.1);
   }
 
   // s.offroad (0..1, how far onto the verge), s.slip (slip angle, rad) and
   // s.scrapeSide (-1 left / 1 right) are optional; older callers still work.
   _updateEnvironment(s, speed, onGround) {
-    const t = this.ctx.currentTime;
+    const t = this.ctx.currentTime, G = this._vg;
     const off = onGround ? clamp(s.offroad || 0, 0, 1) : 0;
-    // Wind: builds with the square of speed; louder in the air.
-    const sp = clamp(speed / 80, 0, 1.3);
-    const air = onGround ? 1 : 1.35;
-    this.wind.g.gain.setTargetAtTime(0.2 * sp * sp * air, t, 0.1);
-    this.wind.f.frequency.setTargetAtTime(350 + speed * 22, t, 0.1);
-    for (const w of this.windHi) {
-      w.g.gain.setTargetAtTime(0.06 * Math.pow(clamp((speed - 12) / 70, 0, 1.3), 2.2) * air, t, 0.12);
-      w.f.frequency.setTargetAtTime(900 + speed * 28, t, 0.15);
+    if (G.road.set(speed > 0.05, t)) {
+      // Wind: builds with the square of speed; louder in the air.
+      const sp = clamp(speed / 80, 0, 1.3);
+      const air = onGround ? 1 : 1.35;
+      this.wind.g.gain.setTargetAtTime(0.2 * sp * sp * air, t, 0.1);
+      this.wind.f.frequency.setTargetAtTime(350 + speed * 22, t, 0.1);
+      for (const w of this.windHi) {
+        w.g.gain.setTargetAtTime(0.06 * Math.pow(clamp((speed - 12) / 70, 0, 1.3), 2.2) * air, t, 0.12);
+        w.f.frequency.setTargetAtTime(900 + speed * 28, t, 0.15);
+      }
+      this.rumble.g.gain.setTargetAtTime(onGround ? (0.13 + 0.22 * off) * clamp(speed / 50, 0, 1) : 0, t, 0.05);
+      this.rumble.f.frequency.setTargetAtTime(80 + speed * 1.5 + off * 60, t, 0.1);
     }
-    this.rumble.g.gain.setTargetAtTime(onGround ? (0.13 + 0.22 * off) * clamp(speed / 50, 0, 1) : 0, t, 0.05);
-    this.rumble.f.frequency.setTargetAtTime(80 + speed * 1.5 + off * 60, t, 0.1);
 
     // Squeal follows the skid amount; the slip angle and speed raise its pitch.
     // Off the tarmac tyres don't squeal, they plough.
     const skid = onGround ? clamp(s.skid || 0, 0, 1) * (1 - off) : 0;
-    const slip = clamp(Math.abs(s.slip || 0), 0, 0.9);
-    const sq = this.squeal;
-    const f = 780 + slip * 520 + clamp(speed, 0, 70) * 3.5 + skid * 120;
-    sq.out.gain.setTargetAtTime(0.17 * Math.pow(skid, 1.3) * clamp(speed / 6, 0, 1), t, skid > 0.05 ? 0.035 : 0.07);
-    sq.o1.frequency.setTargetAtTime(f, t, 0.08);
-    sq.o2.frequency.setTargetAtTime(f * 2.03, t, 0.08);
-    sq.tbp.frequency.setTargetAtTime(f * 1.15, t, 0.08);
-    sq.nbp.frequency.setTargetAtTime(f * 1.05, t, 0.08);
-    sq.nbp2.frequency.setTargetAtTime(f * 2.2, t, 0.08);
-    // A light, cornering squeal is mostly tone; a big slide is mostly scrub noise.
-    sq.tone.gain.setTargetAtTime(0.75 - 0.35 * skid, t, 0.1);
+    const sqLvl = 0.17 * Math.pow(skid, 1.3) * clamp(speed / 6, 0, 1);
+    if (G.squeal.set(sqLvl > 0, t)) {
+      const slip = clamp(Math.abs(s.slip || 0), 0, 0.9);
+      const sq = this.squeal;
+      const f = 780 + slip * 520 + clamp(speed, 0, 70) * 3.5 + skid * 120;
+      sq.out.gain.setTargetAtTime(sqLvl, t, skid > 0.05 ? 0.035 : 0.07);
+      sq.o1.frequency.setTargetAtTime(f, t, 0.08);
+      sq.o2.frequency.setTargetAtTime(f * 2.03, t, 0.08);
+      sq.tbp.frequency.setTargetAtTime(f * 1.15, t, 0.08);
+      sq.nbp.frequency.setTargetAtTime(f * 1.05, t, 0.08);
+      sq.nbp2.frequency.setTargetAtTime(f * 2.2, t, 0.08);
+      // A light, cornering squeal is mostly tone; a big slide is mostly scrub noise.
+      sq.tone.gain.setTargetAtTime(0.75 - 0.35 * skid, t, 0.1);
+    }
 
     // Gravel.
     const gv = off * clamp(speed / 14, 0, 1);
-    this.gravel.g.gain.setTargetAtTime(0.3 * gv, t, 0.06);
-    this.gravel.src.playbackRate.setTargetAtTime(clamp(0.55 + speed / 45, 0.5, 1.9), t, 0.1);
+    if (G.gravel.set(gv > 0, t)) {
+      this.gravel.g.gain.setTargetAtTime(0.3 * gv, t, 0.06);
+      this.gravel.src.playbackRate.setTargetAtTime(clamp(0.55 + speed / 45, 0.5, 1.9), t, 0.1);
+    }
 
     // Wall scrape, from the side that's touching.
     const scrape = clamp(s.scrape || 0, 0, 1);
-    const sc = this.scrape;
-    sc.g.gain.setTargetAtTime(0.32 * scrape, t, 0.03);
-    sc.src.playbackRate.setTargetAtTime(clamp(0.7 + speed / 60, 0.6, 1.8), t, 0.05);
-    sc.grit.g.gain.setTargetAtTime(0.1 * scrape, t, 0.03);
-    sc.grit.f.frequency.setTargetAtTime(1800 + clamp(speed, 0, 60) * 25, t, 0.05);
-    if (sc.pan.pan && s.scrapeSide) sc.pan.pan.setTargetAtTime(0.55 * Math.sign(s.scrapeSide), t, 0.05);
+    if (G.scrape.set(scrape > 0, t)) {
+      const sc = this.scrape;
+      sc.g.gain.setTargetAtTime(0.32 * scrape, t, 0.03);
+      sc.src.playbackRate.setTargetAtTime(clamp(0.7 + speed / 60, 0.6, 1.8), t, 0.05);
+      sc.grit.g.gain.setTargetAtTime(0.1 * scrape, t, 0.03);
+      sc.grit.f.frequency.setTargetAtTime(1800 + clamp(speed, 0, 60) * 25, t, 0.05);
+      if (sc.pan.pan && s.scrapeSide) sc.pan.pan.setTargetAtTime(0.55 * Math.sign(s.scrapeSide), t, 0.05);
+    }
 
     // Nitro hiss, rumble and flame (the electric car's boost has its own growl).
     const nitro = s.nitro ? 1 : 0;
-    const comb = this.electric ? 0 : nitro;
-    this.nitroHiss.g.gain.setTargetAtTime((this.electric ? 0.035 : 0.07) * nitro, t, nitro ? 0.04 : 0.15);
-    this.nitroRumble.g.gain.setTargetAtTime(0.24 * comb, t, nitro ? 0.05 : 0.2);
-    this.nitroFlame.g.gain.setTargetAtTime(0.12 * comb, t, nitro ? 0.05 : 0.2);
-    this.nitroFlame.flutter.gain.setTargetAtTime(0.06 * comb, t, 0.05);
-    this.nitroFlame.f.frequency.setTargetAtTime(300 + speed * 5, t, 0.1);
+    if (G.nitro.set(nitro > 0, t)) {
+      const comb = this.electric ? 0 : nitro;
+      this.nitroHiss.g.gain.setTargetAtTime((this.electric ? 0.035 : 0.07) * nitro, t, nitro ? 0.04 : 0.15);
+      this.nitroRumble.g.gain.setTargetAtTime(0.24 * comb, t, nitro ? 0.05 : 0.2);
+      this.nitroFlame.g.gain.setTargetAtTime(0.12 * comb, t, nitro ? 0.05 : 0.2);
+      this.nitroFlame.flutter.gain.setTargetAtTime(0.06 * comb, t, 0.05);
+      this.nitroFlame.f.frequency.setTargetAtTime(300 + speed * 5, t, 0.1);
+    }
   }
 
   _popBurst(n, strength) {
@@ -1126,13 +1283,15 @@ export class GameAudio {
 
   // ── One-shots ─────────────────────────────────────────────────────
   shift(up = true) {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     const t = this.ctx.currentTime;
-    const g = this.eng.shiftG.gain;
-    g.cancelScheduledValues(t);
-    g.setValueAtTime(g.value, t);
-    g.linearRampToValueAtTime(up ? 0.3 : 0.55, t + 0.025);
-    g.setTargetAtTime(1, t + (up ? 0.11 : 0.06), 0.05);
+    if (this._vg.eng.open) {
+      const g = this.eng.shiftG.gain;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(g.value, t);
+      g.linearRampToValueAtTime(up ? 0.3 : 0.55, t + 0.025);
+      g.setTargetAtTime(1, t + (up ? 0.11 : 0.06), 0.05);
+    }
     if (this.electric) return;
     // The gearbox: a dog-ring clunk, softer on the way down.
     this._play(this.sfxBuf.clunk, { time: t + (up ? 0.03 : 0.015), gain: up ? 0.32 : 0.24, rate: 0.9 + Math.random() * 0.2 });
@@ -1181,7 +1340,7 @@ export class GameAudio {
   // Layered crash: a body thud, crumpling sheet metal, a noise crunch for the
   // attack and, on a hard hit, glass. pan: -1 left .. 1 right (optional).
   impact(strength = 0.5, pan = 0) {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     const ctx = this.ctx, t = ctx.currentTime;
     const s = clamp(strength, 0, 1);
     // Grinding along a wall fires a stream of small hits: thin them out.
@@ -1198,7 +1357,7 @@ export class GameAudio {
   }
 
   landing(strength = 0.5) {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     const ctx = this.ctx, t = ctx.currentTime;
     const s = clamp(strength, 0, 1);
     const o = ctx.createOscillator(); o.type = 'sine';
@@ -1220,7 +1379,7 @@ export class GameAudio {
 
   // Countdown: a rounded square-wave pip; GO is an octave up with a chord.
   beep(final = false) {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     const ctx = this.ctx, t = ctx.currentTime;
     const dur = final ? 0.7 : 0.22;
     const f0 = final ? 880 : 440;
@@ -1248,7 +1407,7 @@ export class GameAudio {
   // A car flashing past: an air rush that sweeps across the stereo field
   // plus its engine note dropping in pitch (doppler).
   whoosh(pan = 0, strength = 0.5) {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     const ctx = this.ctx, t = ctx.currentTime;
     const s = clamp(strength, 0, 1);
     const p = clamp(pan, -1, 1);
@@ -1282,7 +1441,7 @@ export class GameAudio {
   }
 
   nitroBurst() {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     const ctx = this.ctx, t = ctx.currentTime;
     if (this.electric) {
       // Overboost: a rising electric zap and a crackle of discharge.
@@ -1324,7 +1483,7 @@ export class GameAudio {
 
   // Short UI sounds for the menus: 'click' (buttons, tabs), 'start' (go racing).
   uiClick(kind = 'click') {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     const ctx = this.ctx, t = ctx.currentTime;
     const blips = kind === 'start' ? [[880, 0], [1318.5, 0.06], [1760, 0.12]] : [[1500, 0]];
     for (const [f, dt] of blips) {
@@ -1342,7 +1501,7 @@ export class GameAudio {
 
   // A brass-and-bells lift over a crash; the music dips under it.
   finishFanfare() {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     const ctx = this.ctx, t0 = ctx.currentTime + 0.05;
     const d = this.musicDuck.gain;
     d.cancelScheduledValues(t0);
@@ -1360,10 +1519,12 @@ export class GameAudio {
   }
 
   setRivalEngines(list = []) {
-    if (!this.ready) return;
+    if (!this._steer()) return;
     const t = this.ctx.currentTime;
     for (let i = 0; i < this.rivals.length; i++) {
       const v = this.rivals[i], r = list[i];
+      const near = r ? clamp(1 - (r.dist ?? 100) / 70, 0, 1) : 0;
+      if (!v.gate.set(near > 0, t)) continue;
       if (!r) { v.g.gain.setTargetAtTime(0, t, 0.1); continue; }
       const rn = clamp(r.rpmNorm ?? 0.5, 0, 1);
       // Electric rivals whine instead of burbling.
@@ -1375,7 +1536,6 @@ export class GameAudio {
       }
       v.osc.frequency.setTargetAtTime(ev ? 40 + rn * 700 : (1200 + rn * 6000) / 120, t, 0.05);
       v.lp.frequency.setTargetAtTime(ev ? 900 + rn * 2600 : 500 + rn * 1600, t, 0.05);
-      const near = clamp(1 - (r.dist ?? 100) / 70, 0, 1);
       v.g.gain.setTargetAtTime((ev ? 0.035 : 0.09) * near * near, t, 0.08);
       if (v.p) v.p.pan.setTargetAtTime(clamp(r.pan ?? 0, -1, 1), t, 0.05);
     }
@@ -1388,7 +1548,7 @@ export class GameAudio {
   // keep their voice from frame to frame; without one, voices go by list
   // order. An empty list fades them all out.
   setSirens(list = []) {
-    if (!this.ready) return;
+    if (!this._steer()) return;
     const t = this.ctx.currentTime, V = this.sirens;
     const slots = V.map(() => null), rest = [];
     for (const it of list.slice(0, V.length)) {
@@ -1405,6 +1565,11 @@ export class GameAudio {
       const v = V[i], it = slots[i];
       const pat = it && SIREN_PATTERNS[it.mode];
       v.id = it?.id ?? null;
+      const dist = Math.max(0, it?.dist ?? 100);
+      const lvl = pat ? sirenLevel(dist) : 0;
+      // Shut: its pattern LFOs keep the last mode applied (off: none), so a
+      // unit coming back in range picks up any change once it reconnects.
+      if (!v.gate.set(lvl > 0, t)) { if (!pat) v.mode = 'off'; continue; }
       if (!pat) { v.g.gain.setTargetAtTime(0, t, 0.12); v.mode = 'off'; continue; }
       if (it.mode !== v.mode) {
         v.mode = it.mode;
@@ -1414,19 +1579,18 @@ export class GameAudio {
         v.sqD.gain.setTargetAtTime(tri ? 0 : depth, t, 0.05);
         (tri ? v.tri : v.sq).frequency.setTargetAtTime(1 / (pat.period * v.drift), t, 0.05);
       }
-      const dist = Math.max(0, it.dist ?? 100);
       const f = Math.sqrt(pat.lo * pat.hi) * sirenDoppler(it.relSpeed ?? 0);
       v.a.frequency.setTargetAtTime(f, t, 0.06);
       v.b.frequency.setTargetAtTime(f, t, 0.06);
       v.lp.frequency.setTargetAtTime(900 + 9000 * (30 / (30 + dist)), t, 0.08);
-      v.g.gain.setTargetAtTime(sirenLevel(dist), t, 0.06);
+      v.g.gain.setTargetAtTime(lvl, t, 0.06);
       if (v.p) v.p.pan.setTargetAtTime(clamp(it.pan ?? 0, -1, 1), t, 0.05);
     }
   }
 
   // A siren chirp over an air-horn blast (the pursuit starts).
   sirenHorn(pan = 0) {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     this._sirenBlip(this.ctx.currentTime, pan, 1);
   }
 
@@ -1473,8 +1637,9 @@ export class GameAudio {
   // clicks, on its own crunchy bus. One channel: a new call cuts off one
   // that is still talking (the newest message always gets through).
   radio(duration = 1.6, pan = 0) {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     const ctx = this.ctx, t0 = ctx.currentTime + 0.01;
+    this._vg.radio.set(true, t0);
     const dur = clamp(duration, 0.4, 6), end = t0 + dur, r = Math.random;
     this._radioCut(t0);
     const rd = this.radioBus;
@@ -1545,7 +1710,7 @@ export class GameAudio {
   // BUSTED: a low brass stab ("dun... DUN") that climbs a semitone onto a
   // dark minor chord, a kick under it, and a siren chirp. The music dips.
   busted() {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     const ctx = this.ctx, t0 = ctx.currentTime + 0.03, m = this.music;
     this._duckMusic(t0, 0.3, 2.2);
     const brass = { type: 'saw', voices: 3, detune: 16, width: 0.5, cutoff: 1500, q: 1.3, fenv: 1.6, fdec: 0.25, a: 0.01, d: 0.5, s: 0.65, r: 0.5, vib: 0, gain: 0.2 };
@@ -1568,7 +1733,7 @@ export class GameAudio {
   // ESCAPED: a suspended chord that resolves to major, bells on top and a
   // falling breath of air. The music dips a little under it.
   escaped() {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     const ctx = this.ctx, t0 = ctx.currentTime + 0.03, m = this.music;
     this._duckMusic(t0, 0.5, 2);
     const pad = { type: 'saw', voices: 3, detune: 12, width: 0.7, cutoff: 2400, q: 0.8, fenv: 0.8, fdec: 0.4, a: 0.06, d: 0.6, s: 0.8, r: 0.8, vib: 6, vibDelay: 0.3, gain: 0.12 };
@@ -1590,7 +1755,7 @@ export class GameAudio {
   // A police car taken out: the crash (impact) plus heavy crumpling metal and
   // a distorted low crunch. strength 0..1.
   takedown(strength = 0.8, pan = 0) {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     const ctx = this.ctx, t = ctx.currentTime, B = this.sfxBuf, r = Math.random;
     const s = clamp(strength, 0, 1);
     this._impactT = -1; // never thinned out as wall grinding is
@@ -1612,7 +1777,7 @@ export class GameAudio {
   // Driving over a spike strip: the tyre bursts (a crack and a thump), then
   // the air rushes out.
   spikePop(pan = 0) {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     const ctx = this.ctx, t = ctx.currentTime;
     this._noiseBurst({ time: t, dur: 0.05, type: 'highpass', freq: 400, q: 0.7, gain: 0.55, pan });
     this._noiseBurst({ time: t, dur: 0.1, type: 'bandpass', freq: 900, q: 1, gain: 0.3, pan });
@@ -1632,7 +1797,7 @@ export class GameAudio {
   // The player's car is done: a full crash, steam pouring out and the
   // engine running down and dying.
   wrecked() {
-    if (!this.ready) return;
+    if (!this._sfxOn()) return;
     const ctx = this.ctx, t = ctx.currentTime, B = this.sfxBuf;
     this._impactT = -1;
     this.impact(1);
@@ -1669,19 +1834,21 @@ export class GameAudio {
   // Shredded tyres flapping: on while the car runs on spiked tyres, the flap
   // rate following road speed (m/s). Call it every frame, or on each change.
   setSpikedTyres(on, speed = 0) {
-    if (!this.ready) return;
+    if (!this._steer()) return;
     const t = this.ctx.currentTime, ty = this.tyres;
     const sp = Math.abs(speed || 0);
+    const lvl = on ? 0.3 * clamp(sp / 4, 0, 1) * (0.6 + 0.4 * clamp(sp / 40, 0, 1)) : 0;
+    if (!this._vg.tyres.set(lvl > 0, t)) return;
     // Two strips on a 0.33 m wheel: about one flap per metre travelled.
     ty.pulse.frequency.setTargetAtTime(clamp(sp * 0.95, 1, 90), t, 0.05);
-    ty.out.gain.setTargetAtTime(on ? 0.3 * clamp(sp / 4, 0, 1) * (0.6 + 0.4 * clamp(sp / 40, 0, 1)) : 0, t, on ? 0.06 : 0.1);
+    ty.out.gain.setTargetAtTime(lvl, t, on ? 0.06 : 0.1);
   }
 
   // Music under a pursuit: 'cooldown' muffles it (a ~900 Hz low-pass, eased
   // over a second) and brings it down a little; 'pursuit' and 'off' open it up.
   setPursuitMood(mood = 'off') {
     this._mood = mood === 'cooldown' || mood === 'pursuit' ? mood : 'off';
-    if (!this.ready) return;
+    if (!this._running()) return;
     const t = this.ctx.currentTime, f = this.musicMoodLp.frequency;
     const cool = this._mood === 'cooldown';
     const to = cool ? 900 : 20000;

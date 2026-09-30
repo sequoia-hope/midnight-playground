@@ -246,7 +246,10 @@ let analyser = null, tbuf = null, fbuf = null;
 // inside a tap's pointerup/touchend/click).
 function wake() {
   if (!analyser) {
-    audio.init();
+    // Big buffers: nothing here needs low latency, and a phone's audio
+    // thread needs the slack. With the SFX at zero, the game's engine and
+    // effects voices don't render at all.
+    audio.init({ latencyHint: 'playback' });
     if (!audio.ready) { $('hint').innerHTML = '<span class="error">This browser has no Web Audio.</span>'; return false; }
     audio.setVolume({ master: 1, sfx: 0, music: vol });
     audio.onTrackChange = onTrackStart;
