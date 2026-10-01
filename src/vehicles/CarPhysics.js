@@ -27,6 +27,8 @@ export const CAR_SPECS = {
 const G = 9.81;
 const GEAR_TOP = [0, 15, 26, 38, 51, 64, 84];
 const IDLE = 900, REDLINE = 7800;
+// Analogue steering: full travel asks for this much of the grip-limited turn.
+export const ANALOG_LOCK = 1.25;
 // The electric motor: rpm at the speed limiter (single reduction gear).
 export const MOTOR_MAX = 16000;
 
@@ -116,8 +118,18 @@ export class CarPhysics {
     let vLat = v.vx * rx + v.vz * rz;
     const speed = Math.hypot(v.vx, v.vz);
 
-    // Steering: less lock at speed.
-    const steerMax = lerp(0.6, 0.15, smoothstep(0, 65, speed));
+    // Steering: less lock at speed. Analogue steering (a thumb stick, tilt,
+    // a gamepad) is scaled to the grip instead: full travel asks for a
+    // quarter more turn than the tyres hold at this speed, so the whole
+    // stick steers. With a fixed lock, past about 100 km/h the first fifth
+    // of a phone's stick (a centimetre of thumb) already turned as hard as
+    // the tyres allow, and the rest did nothing. Not in a slide, which
+    // needs the lock to catch.
+    let steerMax = lerp(0.6, 0.15, smoothstep(0, 65, speed));
+    if (inp.analog && !this.drifting && !(inp.handbrake && speed > 9)) {
+      const yawMax = ANALOG_LOCK * spec.grip * 1.5 / Math.max(speed, 4);
+      steerMax = Math.min(steerMax, Math.atan(yawMax * this.wheelBase / Math.max(speed, 1)));
+    }
     const target = inp.steer * steerMax;
     v.steerAngle += clamp(target - v.steerAngle, -3.2 * dt, 3.2 * dt);
 

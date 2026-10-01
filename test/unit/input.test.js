@@ -1,7 +1,7 @@
 // game/Input.js with a fake window and navigator: the keymap, one-shot
 // actions (consume), the steering ramp, merging the on-screen touch pads,
-// a gamepad, and turning input off (enabled = false) during the countdown
-// and menus.
+// a gamepad, which steering counts as analogue, and turning input off
+// (enabled = false) during the countdown and menus.
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -151,13 +151,36 @@ test('a gamepad: analogue steering with a dead zone, triggers and buttons', () =
   assert.equal(input.update(0.016).throttle, 0);
 });
 
+// Physics scales analogue steering to the grip (CarPhysics: ANALOG_LOCK), so
+// Input says which kind this frame's steering is.
+test('steering is flagged analogue from the stick, tilt or a gamepad, not keys or ◂ ▸ pads', () => {
+  let stick = 0.4;
+  input.touch = { throttle: 0, brake: 0, steer: 0, held: {}, analogSteer: () => stick };
+  let s = input.update(0.016);
+  assert.equal(s.analog, true, 'the stick');
+  near(s.steer, 0.4);
+  down('KeyA');
+  s = input.update(0.016);
+  assert.equal(s.analog, false, 'a held key wins, and is a key');
+  up('KeyA');
+  stick = null; // ◂ ▸ pads: no analogue reading
+  input.touch.steer = 1;
+  assert.equal(input.update(0.016).analog, false, 'the pads');
+  input.touch = null;
+  const pad = { connected: true, axes: [0.6, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+  navigator.getGamepads = () => [pad];
+  assert.equal(input.update(0.016).analog, true, 'a gamepad stick');
+  pad.axes[0] = 0.05;
+  assert.equal(input.update(0.016).analog, false, 'a gamepad at rest leaves it to the keys');
+});
+
 test('enabled = false zeroes everything', () => {
   input.touch = { throttle: 1, brake: 1, steer: 1, held: { handbrake: true, nitro: true } };
   down('KeyW'); down('Space'); down('ShiftLeft');
   for (let i = 0; i < 5; i++) input.update(0.1);
   input.enabled = false;
   const s = input.update(0.1);
-  assert.deepEqual({ ...s, lookBack: false }, { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false, lookBack: false });
+  assert.deepEqual({ ...s, lookBack: false }, { throttle: 0, brake: 0, steer: 0, analog: false, handbrake: false, nitro: false, lookBack: false });
   // One-shot actions still get through (pause works on the menu).
   down('Escape');
   assert.equal(input.consume('pause'), true);

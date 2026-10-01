@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { CarPhysics, CAR_SPECS, MOTOR_MAX } from '../../src/vehicles/CarPhysics.js';
+import { CarPhysics, CAR_SPECS, MOTOR_MAX, ANALOG_LOCK } from '../../src/vehicles/CarPhysics.js';
 import { makeVehicle, straightTrack } from './support/sim.js';
 
 const DT = 1 / 60;
@@ -116,6 +116,30 @@ for (const kind of Object.keys(CAR_SPECS)) {
     assert.equal(n.phys.nitroActive, false);
   });
 }
+
+// A thumb stick, tilt or gamepad asks for a share of the grip; keys ask for
+// a wheel angle (and are ramped by Input). At speed a fifth of the stick
+// used to turn as hard as the tyres allow, which made a phone twitchy.
+test('analogue steering spans the grip at any speed; keys keep their lock', () => {
+  const yawAfter = (speed, steer, analog) => {
+    const c = car('sports', { speed });
+    drive(c, input({ throttle: 1, steer, analog }), 0.3);
+    return Math.abs(c.v.yawRate);
+  };
+  const spec = CAR_SPECS.sports;
+  for (const speed of [30, 45, 60]) {
+    const limit = spec.grip * 1.5 / speed; // the grip-limited turn rate
+    // Keys: a fifth of the lock is already at the limit.
+    assert.ok(yawAfter(speed, 0.2, false) > limit * 0.9, `keys at ${speed} m/s`);
+    // Stick: a fifth asks for a fifth (and a bit), half for half, full for all of it.
+    const fifth = yawAfter(speed, 0.2, true), half = yawAfter(speed, 0.5, true), full = yawAfter(speed, 1, true);
+    assert.ok(Math.abs(fifth / limit - 0.2 * ANALOG_LOCK) < 0.06, `stick 0.2 at ${speed} m/s: ${(fifth / limit).toFixed(2)} of the grip`);
+    assert.ok(Math.abs(half / limit - 0.5 * ANALOG_LOCK) < 0.1, `stick 0.5 at ${speed} m/s: ${(half / limit).toFixed(2)} of the grip`);
+    assert.ok(full > limit * 0.9, `full stick reaches the grip at ${speed} m/s (${(full / limit).toFixed(2)})`);
+  }
+  // At parking speeds the stick has the full wheel lock, as keys do.
+  assert.ok(Math.abs(yawAfter(5, 1, true) - yawAfter(5, 1, false)) < 1e-9);
+});
 
 test('handbrake at speed starts a drift, and drifting fills the nitro tank', () => {
   const c = car('sports', { speed: 30 });

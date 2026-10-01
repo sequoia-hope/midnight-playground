@@ -222,7 +222,11 @@ pedals at the same time.
 Steering is analogue by default: a thumb stick. Put your left thumb down
 anywhere on the left of the screen and that's the centre; slide it left or
 right to steer, further for more lock. Slide past full lock and the centre
-comes with you, so sliding back steers the other way straight away.
+comes with you, so sliding back steers the other way straight away. The
+stick (like tilt and a gamepad's stick) asks for a share of what the tyres
+can do at your speed rather than a wheel angle: full travel is always a bit
+more turn than they hold, so at 200 km/h the whole stick still steers, not
+just its first few millimetres.
 
 The pedals are one vertical slider for your right thumb. From the bottom:
 **BRAKE** (full at the very bottom, lighter going up), a gap to coast in,

@@ -21,7 +21,7 @@ export class Input {
     this.down = new Set();
     this.pressed = new Set();
     this.steer = 0;
-    this.state = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false, lookBack: false };
+    this.state = { throttle: 0, brake: 0, steer: 0, analog: false, handbrake: false, nitro: false, lookBack: false };
     this.enabled = true;
     this.touch = null;
     window.addEventListener('keydown', (e) => {
@@ -57,7 +57,10 @@ export class Input {
     // The thumb stick and tilt are analogue already, so they aren't
     // ramped; a held key still wins over them.
     const analog = t?.analogSteer?.(dt) ?? null;
-    if (analog !== null && !(l || r)) this.steer = analog;
+    // Analogue steering (the stick, tilt or a gamepad) asks for a share of
+    // what the tyres can give; keys and pads ask for a wheel angle.
+    let analogSteer = analog !== null && !(l || r);
+    if (analogSteer) this.steer = analog;
     else {
       const target = l || r ? (r ? 1 : 0) - (l ? 1 : 0) : t ? t.steer : 0;
       // Ramp toward target; snap back faster than we turn in.
@@ -74,7 +77,7 @@ export class Input {
     for (const p of pads) {
       if (!p || !p.connected) continue;
       const ax = p.axes[0] || 0;
-      if (Math.abs(ax) > 0.12) steer = Math.sign(ax) * Math.pow((Math.abs(ax) - 0.12) / 0.88, 1.4);
+      if (Math.abs(ax) > 0.12) { steer = Math.sign(ax) * Math.pow((Math.abs(ax) - 0.12) / 0.88, 1.4); analogSteer = true; }
       const rt = p.buttons[7]?.value || 0, lt = p.buttons[6]?.value || 0;
       if (rt > 0.05) throttle = Math.max(throttle, rt);
       if (lt > 0.05) brake = Math.max(brake, lt);
@@ -85,7 +88,7 @@ export class Input {
       edge(3, 'camera'); edge(9, 'pause'); edge(8, 'reset');
     }
     if (!this.enabled) { throttle = brake = steer = 0; handbrake = nitro = false; }
-    s.throttle = throttle; s.brake = brake; s.steer = clamp(steer, -1, 1);
+    s.throttle = throttle; s.brake = brake; s.steer = clamp(steer, -1, 1); s.analog = analogSteer;
     s.handbrake = handbrake; s.nitro = nitro; s.lookBack = lookBack;
     return s;
   }
