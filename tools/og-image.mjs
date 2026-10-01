@@ -79,7 +79,7 @@ try {
     const logo = Object.assign(document.createElement('div'), { className: 'logo' });
     logo.innerHTML = 'MIDNIGHT<span>RACER</span>';
     logo.style.cssText = 'position:fixed;left:54px;top:40px;z-index:20;font-size:96px;text-align:left;filter:drop-shadow(0 4px 18px rgba(0,0,0,.7))';
-    const tag = Object.assign(document.createElement('div'), { textContent: 'Street racing in your browser' });
+    const tag = Object.assign(document.createElement('div'), { textContent: 'Do you have what it takes?' });
     tag.style.cssText = 'position:fixed;left:60px;top:178px;z-index:20;font:600 24px Rajdhani,sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.8)';
     document.body.append(logo, tag);
   });
