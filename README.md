@@ -60,8 +60,9 @@ data (see [How Seaside Raceway was built](#how-seaside-raceway-was-built)):
 
 The HUD shows the lap, this lap's time and your best, and the results list
 every lap. The menu card keeps your lap record. Off the tarmac, the run-off
-slows you down. Tyre walls and concrete walls with catch fencing stand where
-the real barriers are.
+is the real one: the paved run-off drives like the road, and the dirt and
+grass slow you down. Tyre walls and concrete walls with catch fencing stand
+where the real barriers are.
 
 **Night City Cruise.** An endless 14 km freeway loop through the city at
 midnight, with heavy traffic and no finish line. Speed scores points, and near
@@ -139,14 +140,22 @@ recording falls back to a synthesised burble.
 
 Everything about the circuit's shape comes from free survey data, fetched and
 boiled down by `python3 tools/seaside/build.py` (numpy and Pillow; add
-`--refresh` to download again). It writes `src/levels/seaside/circuit.js`
-and `ground.js`, about 0.7 MB between them, which the game only loads when
-you pick the level.
+`--refresh` to download again). It writes `src/levels/seaside/circuit.js`,
+`ground.js` and `photo.jpg`, about 1.5 MB between them, which the game only
+loads when you pick the level.
 
 - **The racing line**: the circuit's route relation in
   [OpenStreetMap](https://www.openstreetmap.org/relation/21195763) (© OpenStreetMap
-  contributors, ODbL), smoothed a little. It comes out 3,593 m round against
-  the official 3,602 m.
+  contributors, ODbL). OpenStreetMap sits about 1.2 m west of the survey
+  (the aerial photo and the lidar agree to within 30 cm), so everything
+  taken from it is moved by the shift that centres the lap on the photo's
+  tarmac. Then the line itself is nudged, by up to 1.5 m, onto the middle
+  of the tarmac between the edges the photo shows. It comes out 3,595 m
+  round against the official 3,602 m.
+- **The tarmac's width**: measured off the photo at every metre, between
+  the white edge lines or wherever the asphalt meets dirt or kerb paint.
+  It runs from 10.5 m between Five and Six to 15 m down the pit
+  straight.
 - **The road surface, its camber and the ground round it**: the USGS 3DEP
   1 m bare-earth lidar DEM (survey `CA_AZ_FEMA_R9_Lidar_2017_D18`, flown
   2018–19, public domain). The road's height is the lidar across the
@@ -160,14 +169,20 @@ you pick the level.
   wide as the real one. Where there's no wall, a tyre wall closes it off.
 - **Buildings, grandstands, bridges, the pit lane and the infield lake**:
   OpenStreetMap too.
-- **The ground's colour and the oaks**: USGS NAIP aerial photos (public
-  domain). Their colour paints the terrain, and the dark crowns in them
-  place the coast live oaks.
+- **The ground and the oaks**: USGS NAIP aerial photos (public domain).
+  Within 160 m of the lap the 60 cm photo itself is draped over the ground
+  (graded warmer and richer for the game's sun), so the paved run-off, the
+  dirt, the green strips past the kerbs, the paddock and the paths are
+  where they really are. Further out its colour paints the terrain, and
+  the dark crowns in it place the coast live oaks.
+- **Paved or loose run-off**: the photo again. Grey (asphalt, concrete) and
+  painted ground is paved, and the car drives on it as on the road; tan
+  and green (dirt, gravel, grass) is loose and slows it. About half the
+  ground within 50 m of the lap is paved, as it is at the real circuit.
 
 It's a game track, not a laser scan. The lidar is bare earth with 1 m
-cells, so there are no kerb heights, bumps or paint in it. The tarmac is
-12 m wide all round (15 m on the pit straight), and the kerbs go where
-each corner's shape says they should.
+cells, so there are no kerb heights, bumps or paint in it, and the kerbs go
+where each corner's shape says they should.
 
 ## Cars
 

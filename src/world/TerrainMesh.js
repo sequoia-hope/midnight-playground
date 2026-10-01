@@ -404,11 +404,27 @@ function buildTileGeometry(terrain, colorizer, tile) {
 // the vertex colour (green-dominant = grass, warm = sand/dirt). A cheap
 // derivative bump (no extra fetches) gives the close ground relief, faded out
 // with distance so it never shimmers.
-export function patchTriplanar(material, rockTex, detailTex = null) {
+//
+// photo (optional, with the packed detail): an aerial photo draped over the
+// ground, { tex, loose, box: [x0, z0, x1, z1] }. Inside the box it is the
+// ground's colour, fading back to the vertex colours over its last 80 m;
+// loose is a one-channel texture over the same box, 0 where the ground is
+// paved, which gets fine asphalt grain instead of grass or pebbles.
+export function patchTriplanar(material, rockTex, detailTex = null, photo = null) {
+  // three caches programs by this function's source, which is the same
+  // with or without a photo.
+  material.customProgramCacheKey = () => `triplanar:${!!detailTex}:${!!photo}`;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.tRock = { value: rockTex };
     const packed = !!detailTex;
     if (packed) shader.uniforms.tDetail = { value: detailTex };
+    if (packed && photo) {
+      const [x0, z0, x1, z1] = photo.box;
+      shader.uniforms.tPhoto = { value: photo.tex };
+      shader.uniforms.tLoose = { value: photo.loose };
+      shader.uniforms.uPhotoBox = { value: new THREE.Vector4(x0, z0, x1, z1) };
+      shader.defines = { ...shader.defines, MR_PHOTO: '' };
+    }
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vTPos;\nvarying vec3 vTNorm;' + (packed ? '\nattribute float aSurf;\nvarying float vSurf;' : ''))
       .replace('#include <fog_vertex>', '#include <fog_vertex>\nvTPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvTNorm = normalize(mat3(modelMatrix) * objectNormal);' + (packed ? '\nvSurf = aSurf;' : ''));
@@ -435,6 +451,11 @@ varying vec3 vTNorm;
 varying float vSurf;
 uniform sampler2D tRock;
 uniform sampler2D tDetail;
+#ifdef MR_PHOTO
+uniform sampler2D tPhoto;
+uniform sampler2D tLoose;
+uniform vec4 uPhotoBox;
+#endif
 // Bump from a scalar height via screen-space derivatives (as three's
 // perturbNormalArb, but without needing a bump map).
 vec3 mrPerturb(vec3 surfPos, vec3 surfNorm, float h, float faceDir) {
@@ -473,8 +494,18 @@ vec3 mrPerturb(vec3 surfPos, vec3 surfNorm, float h, float faceDir) {
             varnish = smoothstep(0.45, 0.8, vs.a) * red;
           }
         }
-        // What kind of ground this is, read from the vertex colour.
+        // What kind of ground this is, read from the vertex colour (or the
+        // photo, where there is one).
         vec3 vc = vColor;
+        float asph = 0.0;
+        #ifdef MR_PHOTO
+        vec2 mrPU = (vTPos.xz - uPhotoBox.xy) / (uPhotoBox.zw - uPhotoBox.xy);
+        float mrPIn = smoothstep(0.0, 80.0, min(min(vTPos.x - uPhotoBox.x, uPhotoBox.z - vTPos.x), min(vTPos.z - uPhotoBox.y, uPhotoBox.w - vTPos.z)));
+        if (mrPIn > 0.0) {
+          vc = mix(vColor, texture2D(tPhoto, mrPU).rgb, mrPIn);
+          asph = (1.0 - texture2D(tLoose, mrPU).r) * mrPIn;
+        }
+        #endif
         float grassy = smoothstep(0.08, 0.32, (vc.g - max(vc.r, vc.b)) / (vc.g + 0.02));
         float sandy = smoothstep(0.3, 0.6, (vc.r - vc.b) / (vc.r + 0.02)) * (1.0 - grassy);
         float fineN = mix(dA.g, dC.g, mrNear);
@@ -493,7 +524,10 @@ vec3 mrPerturb(vec3 surfPos, vec3 surfNorm, float h, float faceDir) {
         float joint = 1.0 - (1.0 - smoothstep(0.0, jw * 1.5 + 0.012, 0.5 - max(sj.x, sj.y))) * 0.3 * (1.0 - smoothstep(0.08, 0.3, jw));
         float slabTone = 0.94 + 0.12 * fract(sin(dot(floor(slab), vec2(12.9898, 78.233))) * 43758.5453);
         float pavedT = mix(1.0, (0.92 + (fineN - 0.5) * 0.18) * slabTone * joint, mrMid) * (1.0 - smoothstep(0.55, 0.8, dB.a) * 0.18);
-        float groundT = mix(mix(mix(dirtT, sandT, sandy), grassT, grassy), pavedT, paved);
+        // Asphalt (paved run-off, service roads): fine, even grain.
+        float asphT = mix(1.0, 0.95 + (fineN - 0.5) * 0.14 + (dC.b - 0.5) * 0.06 * mrNear, mrMid);
+        asph *= 1.0 - paved;
+        float groundT = mix(mix(mix(mix(dirtT, sandT, sandy), grassT, grassy), asphT, asph), pavedT, paved);
         vec3 top = vec3((dA.r * 0.6 + dB.r * 0.6) * groundT);
         vec3 side = mix(vec3(0.85), sx * tw.x / max(tw.x + tw.z, 1e-3) + sz * tw.z / max(tw.x + tw.z, 1e-3), 0.75) * (0.75 + 0.5 * dA.r);
         side *= 1.0 - varnish * 0.38;
@@ -503,11 +537,31 @@ vec3 mrPerturb(vec3 surfPos, vec3 surfNorm, float h, float faceDir) {
         float mac = dM.a - 0.5;
         tex *= (1.0 + mac * 0.28) * vec3(1.0 + mac * 0.06, 1.0, 1.0 - mac * 0.1);
         diffuseColor.rgb *= tex * 1.3;
-        float mrH = ((dC.b * (1.0 - grassy) * (1.0 - sandy) * 0.6 + fineN * 0.35) * mrNear * tw.y * 0.02 + dA.r * mrMid * 0.12) * (1.0 - paved * 0.8);
+        float mrH = ((dC.b * (1.0 - grassy) * (1.0 - sandy) * 0.6 + fineN * 0.35) * mrNear * tw.y * 0.02 + dA.r * mrMid * 0.12) * (1.0 - max(paved, asph) * 0.8);
       `)
+      .replace('#include <color_fragment>', 'diffuseColor.rgb *= vc;')
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = mrPerturb(-vViewPosition, normal, mrH, faceDirection);')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = clamp(roughnessFactor - sandy * 0.08 * (1.0 - fineN), 0.0, 1.0);');
   };
+}
+
+// A level's draped aerial photo (level.groundPhoto) as textures for the
+// ground shader, or null.
+async function groundPhoto(level) {
+  const p = level.groundPhoto;
+  if (!p) return null;
+  const tex = await new THREE.TextureLoader().loadAsync(p.url);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.flipY = false; // row 0 is the north edge, at z0
+  tex.anisotropy = 8;
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  const { values, w, h } = p.loose;
+  const bytes = new Uint8Array(w * h);
+  for (let k = 0; k < bytes.length; k++) bytes[k] = Math.round(values[k] * 255);
+  const loose = new THREE.DataTexture(bytes, w, h, THREE.RedFormat, THREE.UnsignedByteType);
+  loose.magFilter = loose.minFilter = THREE.LinearFilter;
+  loose.needsUpdate = true;
+  return { tex, loose, box: [p.x0, p.z0, p.x1, p.z1] };
 }
 
 export async function buildTerrainMeshes(terrain, onProgress = () => {}) {
@@ -520,7 +574,7 @@ export async function buildTerrainMeshes(terrain, onProgress = () => {}) {
     roughness: 0.96,
     metalness: 0,
   });
-  patchTriplanar(material, rockTexture(), terrainDetailTexture());
+  patchTriplanar(material, rockTexture(), terrainDetailTexture(), await groundPhoto(terrain.level));
   const colorizer = new TerrainColorizer(terrain);
   const tiles = terrain.tileList();
   // Group coarse tiles into larger meshes to keep draw calls down.

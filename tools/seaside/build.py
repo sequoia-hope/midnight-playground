@@ -8,18 +8,24 @@ two generated modules:
   src/levels/seaside/circuit.js  the racing line's shape, height and camber,
                                  plus walls, buildings, grandstands, bridges,
                                  the pit lane and the infield lake
-  src/levels/seaside/ground.js   the ground: heights, colour and tree cover
+  src/levels/seaside/ground.js   the ground: heights, colour, tree cover,
+                                 and which ground is paved and which loose
+  src/levels/seaside/photo.jpg   the aerial photo round the circuit, graded
+                                 for the game, draped over the ground
 
 Sources (all free to use):
   OpenStreetMap (ODbL, (c) OpenStreetMap contributors): the circuit's route
     relation 21195763 gives the centreline in racing order; walls, buildings,
-    grandstands, bridges and water come from the same download.
+    grandstands, bridges and water come from the same download. It sits
+    about 1.3 m west of the survey, so everything from it is moved onto the
+    photo (which lines up with the lidar), and the centreline and the
+    tarmac's width are then taken from the photo's own edges.
   USGS 3DEP 1 m DEM (public domain): bare-earth lidar from the 2018-19
     CA_AZ_FEMA_R9_Lidar_2017_D18 survey. The track surface, its camber and
     the hills around it. The same service's coarser data fills in out to
     the horizon.
-  USGS NAIP aerial imagery (public domain): the ground's colour and where
-    the oaks stand.
+  USGS NAIP aerial imagery (public domain): the tarmac's edges, the ground's
+    colour, paved and loose run-off, and where the oaks stand.
 
 Needs python3 with numpy and Pillow, and network access on the first run.
   python3 tools/seaside/build.py            # use the cache where it can
@@ -65,6 +71,10 @@ START_S = 0
 FINE_STEP, WIDE_STEP = 4, 16
 # Furthest the barrier stands from the centreline (open run-off).
 WALL_MAX = 34.0
+# The draped photo: metres per pixel, and how far past the lap it reaches.
+PHOTO_STEP, PHOTO_PAD = 0.6, 160
+# The tarmac's measured width is held between these (m).
+WIDTH_MIN, WIDTH_MAX = 10.5, 15.5
 
 
 # ── Geodesy ───────────────────────────────────────────────────────────
@@ -180,6 +190,65 @@ def js_ints(a):
     return '[' + ','.join(str(int(v)) for v in a) + ']'
 
 
+def median_wrap(a, r):
+    """Periodic running median over ±r samples, ignoring NaNs."""
+    st = np.stack([np.roll(a, k) for k in range(-r, r + 1)])
+    with np.errstate(all='ignore'):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            return np.nanmedian(st, axis=0)
+
+
+def fill_wrap(a):
+    """Periodic linear interpolation over NaN gaps."""
+    ok = np.isfinite(a)
+    i = np.arange(len(a))
+    return np.interp(i, np.concatenate([i[ok] - len(a), i[ok], i[ok] + len(a)]), np.tile(a[ok], 3))
+
+
+def frames(c):
+    """Unit tangents and driver's-right normals of a closed 1 m polyline (map frame)."""
+    tan = np.roll(c, -2, 0) - np.roll(c, 2, 0)
+    tan /= np.linalg.norm(tan, axis=1)[:, None]
+    return tan, np.stack([tan[:, 1], -tan[:, 0]], 1)
+
+
+def photo_edges(photo, c, right):
+    """Where the tarmac ends on each side of every metre, from the photo:
+    the first spot, 4 m or more out, that's coloured (dirt, grass, kerb
+    paint) or much brighter than the middle of the road (the white edge
+    line). NaN where neither shows within 17 m (paved run-off)."""
+    lats = np.arange(-17, 17.01, 0.5)
+    prof = np.stack([photo(c[:, 0] + right[:, 0] * l, c[:, 1] + right[:, 1] * l) for l in lats], 1)
+    lum, chroma = prof.mean(2), prof.max(2) - prof.min(2)
+    c0 = int(np.argmin(np.abs(lats)))
+    base = np.median(lum[:, c0 - 6:c0 + 7], axis=1)
+    hit = (chroma > 15) | (lum > base[:, None] + 30)
+    out = []
+    for d in (-1, 1):
+        e = np.full(len(c), np.nan)
+        ks = range(8, c0 + 1)
+        for k in reversed(ks):  # nearest hit wins
+            j = c0 + d * k
+            e = np.where(hit[:, j], lats[j], e)
+        out.append(e)
+    return out
+
+
+def classify_loose(rgb):
+    """0 for paved ground (asphalt, concrete, paint), 1 for loose (dirt,
+    gravel, grass, scrub), from photo colour. Asphalt and concrete are grey;
+    the run-off's dirt is tan and the grass gold or green."""
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    lum = (r + g + b) / 3
+    chroma = rgb.max(-1) - rgb.min(-1)
+    grey = (chroma < 14) & (lum > 70)
+    white = lum > 200
+    teal = (g > r + 12) & (b > r + 8)  # the painted run-off strips
+    return np.where(grey | white | teal, 0.0, 1.0)
+
+
 # ── OSM ───────────────────────────────────────────────────────────────
 def load_osm(refresh):
     lon0, lat0, lon1, lat1 = OSM_BBOX
@@ -217,40 +286,80 @@ def main():
 
     print('OpenStreetMap', file=sys.stderr)
     nodes, ways, rels = load_osm(R)
-    osm = centreline_utm(nodes, ways, rels)
 
-    # 1 m samples, smoothed so the OSM polyline's vertices don't kink the
-    # curvature (σ 4 m barely changes a 15 m hairpin radius).
-    c1, total = resample_closed(osm, 1.0)
-    c1 = gauss_wrap(c1, 4.0)
-    c1, total = resample_closed(c1, 1.0)
-    n = len(c1)
-    print(f'  centreline {total:.1f} m, {len(osm)} OSM nodes', file=sys.stderr)
+    def lap_from(nodes):
+        # 1 m samples, smoothed so the OSM polyline's vertices don't kink
+        # the curvature (σ 4 m barely changes a 15 m hairpin radius), and
+        # rolled so the lap starts START_S metres before the line.
+        c, _ = resample_closed(centreline_utm(nodes, ways, rels), 1.0)
+        c, _ = resample_closed(gauss_wrap(c, 4.0), 1.0)
+        return np.roll(c, -((START_LINE_S - START_S) % len(c)), axis=0)
 
-    # Rotate so the lap starts START_S metres before the line.
-    shift = (START_LINE_S - START_S) % n
-    c1 = np.roll(c1, -shift, axis=0)
-    E0, N0 = (round(v) for v in c1[START_S])
-
-    # Tangents and right-hand normals (map frame, x east / y north).
-    tan = np.roll(c1, -2, 0) - np.roll(c1, 2, 0)
-    tan /= np.linalg.norm(tan, axis=1)[:, None]
-    right = np.stack([tan[:, 1], -tan[:, 0]], 1)  # driver's right, map frame
-
-    print('USGS 3DEP', file=sys.stderr)
+    # The download areas come from OpenStreetMap's own lap, so they (and
+    # the cache) don't move when the lap is moved onto the survey below.
+    c1 = lap_from(nodes)
     minE, maxE = c1[:, 0].min(), c1[:, 0].max()
     minN, maxN = c1[:, 1].min(), c1[:, 1].max()
-    # Fine DEM: the circuit plus 400 m, for the road and the ground near it.
+    # Fine grids: the circuit plus 400 m, for the road and the ground near it.
     fine_bbox = (math.floor((minE - 400) / 4) * 4, math.floor((minN - 400) / 4) * 4,
                  math.ceil((maxE + 400) / 4) * 4, math.ceil((maxN + 400) / 4) * 4)
     lidar_bbox = (math.floor(minE - 60), math.floor(minN - 60), math.ceil(maxE + 60), math.ceil(maxN + 60))
-    lidar = dem_raster('dem_lidar_1m.tif', lidar_bbox, 1, R)
-    L1 = Grid(lidar, lidar_bbox[0], lidar_bbox[3], 1)
-    fine = dem_raster('dem_fine_4m.tif', fine_bbox, FINE_STEP, R)
     cx, cy = (minE + maxE) / 2, (minN + maxN) / 2
     half = 3600
     wide_bbox = (math.floor((cx - half) / 16) * 16, math.floor((cy - half) / 16) * 16,
                  math.floor((cx - half) / 16) * 16 + 2 * half, math.floor((cy - half) / 16) * 16 + 2 * half)
+    photo_bbox = (math.floor(minE - PHOTO_PAD), math.floor(minN - PHOTO_PAD), math.ceil(maxE + PHOTO_PAD), math.ceil(maxN + PHOTO_PAD))
+
+    print('USGS NAIP', file=sys.stderr)
+    nb = fine_bbox
+    nw, nh = round((nb[2] - nb[0]) / 0.75), round((nb[3] - nb[1]) / 0.75)
+    naip_fine = np.array(Image.open(fetch('naip_fine_075m.png', export_image(NAIP_SERVICE, nb, (nw, nh), 'png'), R)).convert('RGB')).astype(np.float64)
+    pb = photo_bbox
+    pw, phh = round((pb[2] - pb[0]) / PHOTO_STEP), round((pb[3] - pb[1]) / PHOTO_STEP)
+    naip_photo = np.array(Image.open(fetch('naip_photo_06m.png', export_image(NAIP_SERVICE, pb, (pw, phh), 'png'), R)).convert('RGB')).astype(np.float64)
+    PH = Grid(naip_photo, pb[0], pb[3], PHOTO_STEP)
+
+    # OpenStreetMap was traced off other imagery and sits a little to one
+    # side of the survey (the NAIP photo and the lidar agree to a few tens
+    # of centimetres). Find the shift that centres the lap between the
+    # photo's tarmac edges, and move every OSM node by it.
+    tan, right = frames(c1)
+    eL, eR = photo_edges(PH, c1, right)
+    ok = np.isfinite(eL) & np.isfinite(eR) & (eR - eL > 9) & (eR - eL < 16)
+    shift, *_ = np.linalg.lstsq(right[ok], ((eL + eR) / 2)[ok], rcond=None)
+    nodes = {k: (e + shift[0], nn + shift[1]) for k, (e, nn) in nodes.items()}
+    c1 = lap_from(nodes)
+    print(f'  OpenStreetMap moved {shift[0]:+.2f} m east, {shift[1]:+.2f} m north onto the survey', file=sys.stderr)
+
+    # Then the centreline itself: what's left of the offset from the middle
+    # of the tarmac, metre by metre, smoothed over tens of metres (it's a
+    # tracing error, not a wiggle in the road) and never more than 1.5 m.
+    tan, right = frames(c1)
+    eL, eR = photo_edges(PH, c1, right)
+    ok = np.isfinite(eL) & np.isfinite(eR) & (eR - eL > 9) & (eR - eL < 16)
+    off = np.where(ok, (eL + eR) / 2, np.nan)
+    off = gauss_wrap(np.clip(fill_wrap(median_wrap(off, 15)), -1.5, 1.5), 10.0)
+    c1 = c1 + right * off[:, None]
+    c1, total = resample_closed(gauss_wrap(c1, 2.0), 1.0)
+    n = len(c1)
+    tan, right = frames(c1)
+    print(f'  centreline {total:.1f} m, moved onto the photo\'s tarmac by up to {np.abs(off).max():.1f} m ({ok.mean() * 100:.0f} % of the lap measured)', file=sys.stderr)
+
+    # The tarmac's width. Each edge counts where it's plausibly close
+    # (paved run-off runs on with no edge to see, or shows one far out);
+    # with only one, the road is taken as centred, which it now is.
+    eL, eR = photo_edges(PH, c1, right)
+    good = lambda e: np.where((np.abs(e) >= WIDTH_MIN / 2 - 0.5) & (np.abs(e) <= WIDTH_MAX / 2 + 0.25), np.abs(e), np.nan)
+    hL, hR = good(eL), good(eR)
+    wid = np.where(np.isfinite(hL) & np.isfinite(hR), hL + hR, 2 * np.where(np.isfinite(hL), hL, hR))
+    wid = gauss_wrap(np.clip(fill_wrap(median_wrap(wid, 20)), WIDTH_MIN, WIDTH_MAX), 10.0)
+    print(f'  tarmac {wid.min():.1f}..{wid.max():.1f} m wide (median {np.median(wid):.1f})', file=sys.stderr)
+    E0, N0 = (round(v) for v in c1[START_S])
+
+    print('USGS 3DEP', file=sys.stderr)
+    lidar = dem_raster('dem_lidar_1m.tif', lidar_bbox, 1, R)
+    L1 = Grid(lidar, lidar_bbox[0], lidar_bbox[3], 1)
+    fine = dem_raster('dem_fine_4m.tif', fine_bbox, FINE_STEP, R)
     wide = dem_raster('dem_wide_16m.tif', wide_bbox, WIDE_STEP, R)
 
     # Road height and camber: the lidar across the tarmac at each metre.
@@ -383,12 +492,14 @@ def main():
         '',
         '// Centreline every 2 m from the start of the lap: x, z, height and',
         '// bank (surface y = y - lat * bank), all in centimetres (bank in 1/10000),',
-        '// how far the barriers are on each side, and the run-off grade out to them.',
+        '// half the tarmac\'s width, how far the barriers are on each side, and the',
+        '// run-off grade out to them.',
         f'export const LINE = {{ step: {step}, y0: {Y0:.0f},',
         f'  x: {js_ints(np.round(X[idx] * 100))},',
         f'  z: {js_ints(np.round(Z[idx] * 100))},',
         f'  y: {js_ints(np.round((y[idx] - Y0) * 100))},',
         f'  bank: {js_ints(np.round(bank[idx] * 10000))},',
+        f'  hw: {js_ints(np.round(wid[idx] * 50))}, // half the tarmac\'s width, measured off the photo',
         f'  wallL: {js_ints(np.round(walls[idx, 0] * 10))}, // decimetres, left of the centreline',
         f'  wallR: {js_ints(np.round(walls[idx, 1] * 10))},',
         f'  runL: {js_ints(np.round(runoff[idx, 0] * 1000))}, // run-off grade outward, 1/1000',
@@ -420,20 +531,20 @@ def main():
         *[f'  {{ kind: {json.dumps(k)}, pts: {flat(p)} }},' for k, p in feats['roads']],
         '];',
         '',
+        '// The aerial photo draped over the ground (photo.jpg, USGS NAIP), graded',
+        '// for the game: its edges in the local frame (x0, z0 the north-west corner).',
+        f"export const PHOTO = {{ file: 'photo.jpg', x0: {pb[0] - E0}, z0: {-(pb[3] - N0)}, x1: {pb[2] - E0}, z1: {-(pb[1] - N0)}, w: {pw}, h: {phh} }};",
+        '',
     ]
     os.makedirs(OUT, exist_ok=True)
     with open(os.path.join(OUT, 'circuit.js'), 'w') as f:
         f.write('\n'.join(lines))
 
     # ── ground.js ────────────────────────────────────────────────────
-    print('USGS NAIP', file=sys.stderr)
-    # Photos: 3 m over the wide area, 0.75 m near the circuit.
+    # Photos: 3 m over the wide area, 0.75 m near the circuit (above).
     img_bbox = (wide_bbox[0], wide_bbox[1], wide_bbox[2], wide_bbox[3])
     iw = round((img_bbox[2] - img_bbox[0]) / 3)
     naip_wide = np.array(Image.open(fetch('naip_wide_3m.png', export_image(NAIP_SERVICE, img_bbox, (iw, iw), 'png'), R)).convert('RGB')).astype(np.float64)
-    nb = fine_bbox
-    nw, nh = round((nb[2] - nb[0]) / 0.75), round((nb[3] - nb[1]) / 0.75)
-    naip_fine = np.array(Image.open(fetch('naip_fine_075m.png', export_image(NAIP_SERVICE, nb, (nw, nh), 'png'), R)).convert('RGB')).astype(np.float64)
 
     def block_mean(a, k):
         H, W = a.shape[0] // k * k, a.shape[1] // k * k
@@ -482,6 +593,36 @@ def main():
             meta += ", kind: 'cover'"
         return f"export const {name} = {{ {meta},\n  data: '{data}' }};"
 
+    # The draped photo, graded as the terrain's vertex colours are (see
+    # TerrainColorizer.raceway): the summer haze warmed and the colour
+    # richer and a little darker for the game's sun. Stored as sRGB.
+    lin = (naip_photo / 255) ** 2.2
+    lin[..., 0] *= 1.04
+    lin[..., 2] *= 0.82
+    lum = lin.mean(-1, keepdims=True)
+    lin = np.maximum(0, lum + (lin - lum) * 1.55) * 0.74
+    srgb = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.power(np.clip(lin, 0.0031308, None), 1 / 2.4) - 0.055)
+    Image.fromarray(np.clip(np.round(srgb * 255), 0, 255).astype(np.uint8)).save(os.path.join(OUT, 'photo.jpg'), quality=82, optimize=True, progressive=True)
+
+    # Paved or loose: 0 on asphalt and concrete, 1 on dirt and grass, at 1 m,
+    # out to 50 m from the lap (no car gets further). Off the tarmac the
+    # car only slows on the loose stuff.
+    lb_ = photo_bbox
+    lw, lh = lb_[2] - lb_[0], lb_[3] - lb_[1]
+    cls = Image.fromarray((classify_loose(naip_photo) * 255).astype(np.uint8)).resize((lw, lh), Image.BOX)
+    loose = np.array(cls).astype(np.float64) / 255
+    # Speckle out: a 3x3 box, then back to clean paved/loose with a soft edge.
+    k = np.ones(3) / 3
+    for ax in (0, 1):
+        loose = np.apply_along_axis(lambda r: np.convolve(np.pad(r, 1, mode='edge'), k, 'valid'), ax, loose)
+    loose = np.clip((loose - 0.5) * 3 + 0.5, 0, 1)
+    near_lap = np.zeros((lh, lw), bool)
+    for e, nn in c1[::3]:
+        j, i = int(e - lb_[0]), int(lb_[3] - nn)
+        near_lap[max(0, i - 50):i + 51, max(0, j - 50):j + 51] = True
+    loose[~near_lap] = 1
+    print(f'  run-off: {(1 - loose[near_lap]).mean() * 100:.0f} % of the ground within 50 m of the lap is paved', file=sys.stderr)
+
     g = [
         '// Generated by tools/seaside/build.py. Do not edit: run the script.',
         '//',
@@ -491,7 +632,8 @@ def main():
         '// (x0, z0 in the local frame of circuit.js), zlib-deflated, base64:',
         '//   height: int16 2D deltas of heights in steps of q metres above BASE',
         '//   rgb5:   photo colour, 0..31 a channel, R plane then G then B',
-        '//   cover:  oak canopy cover, 0..255',
+        '//   cover:  oak canopy cover, or loose ground (dirt, grass) as against',
+        '//           paved, 0..255',
         '',
         f'export const BASE = {base};',
         grid('HEIGHT_FINE', fine_bbox, FINE_STEP, fine, 'height', q=0.05),
@@ -500,11 +642,12 @@ def main():
         grid('COLOR_WIDE', wide_bbox, 32, wide_col, 'rgb'),
         grid('TREES_FINE', fine_bbox, FINE_STEP, fine_cov, 'cover'),
         grid('TREES_WIDE', wide_bbox, 32, wide_cov, 'cover'),
+        grid('LOOSE', photo_bbox, 1, loose, 'cover'),
         '',
     ]
     with open(os.path.join(OUT, 'ground.js'), 'w') as f:
         f.write('\n'.join(g))
-    for fn in ('circuit.js', 'ground.js'):
+    for fn in ('circuit.js', 'ground.js', 'photo.jpg'):
         print(f'  wrote src/levels/seaside/{fn} ({os.path.getsize(os.path.join(OUT, fn)) / 1024:.0f} KB)', file=sys.stderr)
 
 

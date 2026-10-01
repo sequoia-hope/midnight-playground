@@ -38,7 +38,7 @@ const level = {
   desc: 'Three laps of a real circuit in the golden hills above the bay, rebuilt from lidar survey: over the crest into the hairpin, up the long climb and over the blind drop of the Corkscrew.',
   laps: 3,
   // Metres round the lap (the survey's centreline; the menu shows it).
-  lapLength: 3593,
+  lapLength: 3595,
   // Survey data: filled in by prepare().
   data: null,
   async prepare() {
@@ -57,26 +57,28 @@ const level = {
       const L = d.line, n = L.n;
       return {
         x: spline(L.x, n), z: spline(L.z, n), y: spline(L.y, n),
-        bank: spline(L.bank, n), wallL: spline(L.wallL, n), wallR: spline(L.wallR, n),
+        bank: spline(L.bank, n), hw: spline(L.hw, n), wallL: spline(L.wallL, n), wallR: spline(L.wallR, n),
         runL: spline(L.runL, n), runR: spline(L.runR, n),
       };
     },
     zones: SECTORS,
     // Named places round the lap (metres from the line).
     tags: [
-      { tag: 'pit-straight', s0: 3380, s1: 3593 },
+      { tag: 'pit-straight', s0: 3380, s1: 3595 },
       { tag: 'crest', s0: 200, s1: 330 },
       { tag: 'hairpin', s0: 500, s1: 680 },
       { tag: 'climb', s0: 2040, s1: 2480 },
       { tag: 'corkscrew', s0: 2500, s1: 2640 },
       { tag: 'hairpin', s0: 3290, s1: 3420 },
     ],
-    // The pit straight is wider than the rest of the lap.
-    roads: [{ s0: 3380, s1: 3593 + 60, road: 'circuitWide' }],
   },
   // The level owns the ground: the lidar surface round the circuit.
   ground(x, z) { return level.data.height(x, z); },
   groundColor(x, z, out) { return level.data.color(x, z, out); },
+  // Off the tarmac: 0 on paved run-off, 1 on dirt and grass (the photo's).
+  looseGround(x, z) { return level.data.loose(x, z); },
+  // The aerial photo draped over the ground near the circuit (Terrain mesh).
+  get groundPhoto() { return level.data?.photo ?? null; },
   zones: [
     { key: 'hairpin', name: 'THE HAIRPIN', sub: 'Over the crest and down to the hairpin', landform: 'raceway', scenery: 'Raceway', color: '#d6a24a' },
     { key: 'climb', name: 'THE CLIMB', sub: 'Up through Five and Six', landform: 'raceway', scenery: 'Raceway', color: '#b9853c' },

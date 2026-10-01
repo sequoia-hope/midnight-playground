@@ -46,7 +46,7 @@ export class AIDriver extends KinematicCar {
     }
     if (this.stunned > 0) vT *= 0.6;
     // Circuit run-off slows rivals as it does the player.
-    if (t.runL && Math.abs(this.lat) > F.hw + 0.4) vT *= 0.8;
+    if (t.runL && Math.abs(this.lat) > F.hw + 0.4) vT *= 1 - 0.2 * (t.looseAt ? t.looseAt(F.x + F.rx * this.lat, F.z + F.rz * this.lat) : 1);
     // Hot Pursuit: shredded tyres after a spike strip.
     if (this.spiked > 0) { this.spiked -= dt; vT *= 0.75; }
 
@@ -72,7 +72,8 @@ export class AIDriver extends KinematicCar {
     }
     if (this.avoidTimer > 0) { this.avoidTimer -= dt; latT = this.avoid; }
 
-    const lim = Math.min(F.wallR, F.wallL) - myW - 0.35;
+    // On a circuit the walls stand past the run-off: race on the tarmac.
+    const lim = Math.min(Math.min(F.wallR, F.wallL) - myW - 0.35, t.runL ? F.hw - 0.6 : Infinity);
     // Cars alongside (findBlock only sees cars ahead): don't steer into
     // them. Leaning on a car pinned to a wall would shove it along the wall
     // and spin it, so keep off its side, and when there's no room on ours

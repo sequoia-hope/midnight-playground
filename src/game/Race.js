@@ -362,7 +362,8 @@ export class Race {
       // Freeway shoulders, boulevards and kerbed streets are paved to the wall.
       const edge = ROAD_TYPES[ROAD_KEYS[t.roadType[t.idx(this.player.s)]]]?.edge;
       const paved = edge === 'jersey' || edge === 'rail' || edge === 'curb';
-      const offroad = paved ? 0 : clamp((Math.abs(this.player.lat) + this.player.halfW * 0.6 - F.hw) / 1.2, 0, 1);
+      let offroad = paved ? 0 : clamp((Math.abs(this.player.lat) + this.player.halfW * 0.6 - F.hw) / 1.2, 0, 1);
+      if (offroad > 0 && t.looseAt) offroad *= t.looseAt(this.player.x, this.player.z); // paved run-off
       this.audio.update(dt, {
         rpm: ph.rpm, rpmMax: 7800, throttle: ph.locked ? inp.throttle : ctrl.throttle, gear: ph.gear,
         speed: psp, skid: ph.skid, nitro: ph.nitroActive, onGround: this.player.onGround, scrape: ph.scrape,

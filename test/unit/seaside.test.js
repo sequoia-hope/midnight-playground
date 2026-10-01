@@ -1,9 +1,10 @@
 // Seaside Raceway (src/levels/seaside.js + src/levels/seaside/): the
 // survey data decodes to the real circuit (its length, its 55 m of climb
-// and the Corkscrew's drop), the barriers stand off the tarmac, the lidar
-// ground meets the road, the run-off surface joins the road without a step
-// and slows a car down, and the rivals rubber-band on race progress, not on
-// where they are round the lap.
+// and the Corkscrew's drop, the tarmac's measured width), the barriers
+// stand off the tarmac, the lidar ground meets the road, the run-off
+// surface joins the road without a step, loose run-off slows a car down
+// and paved run-off doesn't, and the rivals rubber-band on race progress,
+// not on where they are round the lap.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -113,23 +114,73 @@ test('inside the barriers the terrain is the run-off the car drives on', () => {
   assert.ok(Math.abs(worst) < 0.5, `terrain vs run-off surface: ${worst.toFixed(2)} m at ${where}`);
 });
 
-test('the run-off slows the car; the tarmac does not', () => {
+test('loose run-off slows the car; paved run-off and the tarmac do not', () => {
   const spec = CAR_SPECS.sports;
-  const run = (lat) => {
+  const run = (s, lat) => {
     const v = makeVehicle('sports', spec.mass);
     const phys = new CarPhysics(v, t, spec);
-    // The long climb: straight enough to coast along at a fixed offset.
-    const s = 2150;
     phys.reset(s, lat);
     const f = t.frame(s);
     v.vx = f.fx * 40; v.vz = f.fz * 40;
     for (let k = 0; k < 60; k++) phys.update(DT, { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false });
     return { speed: Math.hypot(v.vx, v.vz), off: phys.offTrack };
   };
-  const on = run(0), off = run(t.hw[2150] + 5);
-  assert.equal(on.off, 0, 'on the tarmac');
-  assert.equal(off.off, 1, 'out on the run-off');
-  assert.ok(on.speed - off.speed > 4, `after a second: ${on.speed.toFixed(1)} m/s on the tarmac, ${off.speed.toFixed(1)} on the run-off`);
+  // Straight-ish spots 5 m off the tarmac, on dirt and on asphalt.
+  const spot = (want) => {
+    for (let s = 100; s < t.n - 100; s += 7) {
+      if (Math.abs(t.kSmooth[s]) > 1 / 400 || t.wallR[s] < t.hw[s] + 9) continue;
+      let ok = true;
+      for (let d = 0; d < 45 && ok; d += 3) {
+        const f = t.frame(s + d), p = t.pointAt(s + d, f.hw + 5);
+        ok = Math.abs(L.looseGround(p.x, p.z) - want) < 0.05;
+      }
+      if (ok) return s;
+    }
+    assert.fail(`no ${want ? 'loose' : 'paved'} run-off found`);
+  };
+  const sDirt = spot(1), sPaved = spot(0);
+  const dirt = run(sDirt, t.hw[sDirt] + 5), paved = run(sPaved, t.hw[sPaved] + 5);
+  const tarmac = run(sDirt, 0), tarmac2 = run(sPaved, 0);
+  assert.equal(tarmac.off, 0, 'on the tarmac');
+  assert.ok(dirt.off > 0.95, `out on the dirt (${dirt.off})`);
+  assert.equal(paved.off, 0, 'paved run-off is as good as the road');
+  assert.ok(tarmac.speed - dirt.speed > 4, `after a second: ${tarmac.speed.toFixed(1)} m/s on the tarmac, ${dirt.speed.toFixed(1)} on the dirt`);
+  assert.ok(Math.abs(tarmac2.speed - paved.speed) < 0.6, `${tarmac2.speed.toFixed(1)} m/s on the tarmac, ${paved.speed.toFixed(1)} on the paved run-off`);
+});
+
+test('the run-off is the real mix of paved and loose, and the photo covers the lap', () => {
+  let paved = 0, all = 0;
+  for (let s = 0; s < t.n; s += 3) {
+    const f = t.frame(s);
+    for (const side of [-1, 1]) {
+      const w = side < 0 ? f.wallL : f.wallR;
+      for (let lat = f.hw + 2; lat < w - 1; lat += 2) {
+        const p = t.pointAt(s, side * lat);
+        paved += 1 - L.looseGround(p.x, p.z); all++;
+      }
+    }
+  }
+  // Laguna Seca's run-off is about half asphalt now.
+  assert.ok(paved / all > 0.3 && paved / all < 0.75, `${(paved / all * 100).toFixed(0)} % of the run-off is paved`);
+  const P = L.groundPhoto;
+  for (let s = 0; s < t.n; s += 50) {
+    assert.ok(t.px[s] > P.x0 + 100 && t.px[s] < P.x1 - 100 && t.pz[s] > P.z0 + 100 && t.pz[s] < P.z1 - 100, `the photo reaches 100 m past s ${s}`);
+  }
+  assert.equal(P.loose.w * P.loose.h, P.loose.values.length);
+});
+
+test('the tarmac is as wide as the photo shows: narrowest between Five and Six, widest down the pit straight', () => {
+  let lo = Infinity, hi = 0, loS = 0, hiS = 0;
+  for (let s = 0; s < t.n; s++) {
+    if (t.hw[s] < lo) { lo = t.hw[s]; loS = s; }
+    if (t.hw[s] > hi) { hi = t.hw[s]; hiS = s; }
+  }
+  assert.ok(lo >= 5.2 && hi <= 7.8, `half-widths ${lo.toFixed(2)}..${hi.toFixed(2)} m`);
+  assert.ok(loS > 1700 && loS < 2050, `narrowest at s ${loS}`);
+  const pit = t.tag('pit-straight')[0];
+  let pitW = 0;
+  for (let s = pit.s0 + 20; s < pit.s1 - 20; s++) pitW += 2 * t.hw[s] / (pit.s1 - pit.s0 - 40);
+  assert.ok(pitW > 14, `pit straight ${pitW.toFixed(1)} m wide`);
 });
 
 test('rivals rubber-band on race progress, not on lap position', () => {

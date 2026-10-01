@@ -96,7 +96,8 @@ export class Track {
       marginRaw[k] = rt.margin;
       bankK[k] = rt.bank ?? 1; // kerbed streets stay level across
     }
-    const hw = gaussianSmooth(hwRaw, 40, undefined, W);
+    // A surveyed road brings its own width.
+    const hw = raw.hw ? gaussianSmooth(raw.hw, 3, undefined, W) : gaussianSmooth(hwRaw, 40, undefined, W);
     const margin = gaussianSmooth(marginRaw, 40, undefined, W);
     const kSmooth = gaussianSmooth(kappa, 10, undefined, W);
     const bankRaw = new Float32Array(n);
@@ -110,6 +111,10 @@ export class Track {
     // surfaceY). null elsewhere: the road's plane carries on.
     this.runL = raw.runL || null;
     this.runR = raw.runR || null;
+    // How loose the ground is at (x, z) off the tarmac: 0 paved (asphalt
+    // run-off, which drives like the road), 1 dirt or grass (slows the car).
+    // null: all of it is loose.
+    this.looseAt = L.looseGround ? (x, z) => L.looseGround(x, z) : null;
     this.elevated = elevRaw;
 
     // Collision limits either side of the centreline (positive distances).
@@ -197,7 +202,7 @@ export class Track {
 
   buildLoop(spec) {
     // path() gives the closed centreline, and optionally surveyed heights,
-    // camber and barrier distances at the same points.
+    // camber, half-widths and barrier distances at the same points.
     const P = spec.path();
     const { x: X, z: Zs } = P;
     const m = X.length;
@@ -211,7 +216,7 @@ export class Track {
     const n = Math.round(total);
     const step = total / n;
     const px = new Float32Array(n), pz = new Float32Array(n);
-    const extra = ['y', 'bank', 'wallL', 'wallR', 'runL', 'runR'].filter((k) => P[k]);
+    const extra = ['y', 'bank', 'hw', 'wallL', 'wallR', 'runL', 'runR'].filter((k) => P[k]);
     const ex = Object.fromEntries(extra.map((k) => [k, new Float32Array(n)]));
     let seg = 0;
     for (let i = 0; i < n; i++) {
@@ -256,7 +261,7 @@ export class Track {
     for (const r of spec.roads || []) {
       for (let s = r.s0; s < r.s1; s++) roadType[((s % n) + n) % n] = ROAD_KEYS.indexOf(r.road);
     }
-    return { n, px, pz, yRaw, kappa, zone, roadType, elevRaw, bank: ex.bank, wallL: ex.wallL, wallR: ex.wallR, runL: ex.runL, runR: ex.runR };
+    return { n, px, pz, yRaw, kappa, zone, roadType, elevRaw, bank: ex.bank, hw: ex.hw, wallL: ex.wallL, wallR: ex.wallR, runL: ex.runL, runR: ex.runR };
   }
 
   tag(name) { return this.tags.filter((t) => t.tag === name); }

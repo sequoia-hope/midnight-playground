@@ -199,8 +199,10 @@ export class CarPhysics {
       }
       a -= 0.00115 * vLong * Math.abs(vLong) + 0.01 * vLong;
       // Circuit run-off (surveyed tracks carry run-off grades): off the
-      // tarmac the tyres plough through dirt and dry grass.
-      const off = t.runL ? clamp((Math.abs(v.lat) - F.hw - 0.4) / 1.5, 0, 1) : 0;
+      // tarmac the tyres plough through dirt and dry grass. Paved run-off
+      // drives like the road.
+      let off = t.runL ? clamp((Math.abs(v.lat) - F.hw - 0.4) / 1.5, 0, 1) : 0;
+      if (off > 0 && t.looseAt) off *= t.looseAt(v.x, v.z);
       this.offTrack = off;
       if (off > 0) a -= off * Math.sign(vLong) * Math.min(Math.abs(vLong) * 4, 1.2 + 0.0025 * vLong * vLong);
       if (inp.handbrake) a -= Math.sign(vLong) * 3;
