@@ -277,7 +277,14 @@
      "time": 228.14999999995683,
      "estimated": false
     }
-   ]
+   ],
+   "pursuit": {
+    "busts": 0,
+    "wrecks": 2,
+    "takedowns": 4,
+    "penalty": 16,
+    "heat": 2
+   }
   },
   "coast-pursuit": {
    "query": "parity=1&seed=1&ticks=16&level=coast&autostart=rally&autodrive=1&pursuit=1&heat=1",
@@ -320,7 +327,14 @@
      "time": 179.53455186289133,
      "estimated": true
     }
-   ]
+   ],
+   "pursuit": {
+    "busts": 0,
+    "wrecks": 2,
+    "takedowns": 4,
+    "penalty": 16,
+    "heat": 4
+   }
   },
   "streets-pursuit": {
    "query": "parity=1&seed=1&ticks=16&level=streets&autostart=muscle&autodrive=1&pursuit=1&heat=1",
@@ -363,7 +377,14 @@
      "time": 170.04166666667635,
      "estimated": false
     }
-   ]
+   ],
+   "pursuit": {
+    "busts": 0,
+    "wrecks": 2,
+    "takedowns": 2,
+    "penalty": 16,
+    "heat": 2
+   }
   },
   "desert-pursuit": {
    "query": "parity=1&seed=1&ticks=16&level=desert&autostart=electric&autodrive=1&pursuit=1&heat=1",
@@ -456,9 +477,16 @@
      "time": 226.63333333329155,
      "estimated": false
     }
-   ]
+   ],
+   "pursuit": {
+    "busts": 0,
+    "wrecks": 2,
+    "takedowns": 7,
+    "penalty": 16,
+    "heat": 5
+   }
   }
  },
  "format": "parity/trace-format.md",
- "jsTree": "dad9513b74f7c5cc"
+ "jsTree": "2a65261c9506d9cd"
 }
