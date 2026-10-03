@@ -1696,3 +1696,32 @@ rock option, both conifer kinds at the three levels, the four canopy
 kinds at both levels, the foliage material with each override) in
 `parity/golden/flora/flora.json`; `tests/flora.rs` is bit-identical,
 native and in wasm. CI checks that the golden regenerates.
+
+## WP 3.7 decisions
+
+## D330. Scenery modules ported or replayed, each in its place
+
+2026-10-03, WP 3.7. The terrain's flattens blend one after another in
+`heightAt`, so the order the scenery's `plan()`s register them in is part
+of the heights. D232 and D273 replay the whole recording before any module
+runs, which would put a ported module's registrations after every recorded
+one. `tools/parity/scenery-plan.mjs` runs the plan stage under Node with the
+kernel and notes, around each module's `plan()`, how far each recorded list
+had grown, writing `parity/golden/scenery-plan/<level>.json`: per module its
+range of the terrain golden's flattens and carves, of the road golden's
+fence gaps and unpainted stretches, whether it set the railway bed, the
+runout after it where it changed it, its label and whether its plan threw.
+`mr_worldgen::scenery` reads the three goldens into a `PlanRecording`
+(checking that the ranges follow on and cover every list) and makes
+`RecordedScenery` stand-ins: a module that registers its own slice in its
+own place and builds nothing. `scenery_factory(Some(recording))` gives
+`level_jobs` the ported module where `PORTED` names one and the stand-in
+otherwise; `plan_only_factory` the same with every `build()` skipped (the
+terrain and road tests); `recorded_factory` replays every module. With a
+factory, `TerrainSetup::plan` and `LevelSetup::road` are `None`. Porting a
+module is one line in `PORTED`. The terrain test (L2) now also requires
+the registered flattens, carves and railway bed to equal the recording bit
+for bit and in order, and the road test the fence gaps, unpainted stretches
+and runout, so the goldens test each ported `plan()`. The goldens are
+compiled into the tests, so this runs in wasm too; CI checks that the split
+regenerates.
