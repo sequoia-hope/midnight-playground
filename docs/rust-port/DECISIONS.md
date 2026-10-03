@@ -1874,3 +1874,151 @@ material's own parameters, so a patch's textures (`tDetail`, `tRock`,
 `tFoam`, which the export keeps under `uniforms`, D23) came out missing and
 bound Bevy's white fallback. It now uses `MaterialDesc::texture`, which
 looks in both.
+
+
+## WP 5.3–5.5 decisions
+
+## D250. `setTimeout` is a task queue the driver runs; promises settle in `settle()`
+
+2026-10-03, WP 5.3. `Audio.js` and `Music.js` use `setTimeout` for the gate
+tails, the music's 25 ms scheduler, its track-change and retire callbacks,
+and the radio's 700 ms wait. `mr_audio::timers` is the reference's
+`VirtualTimers`: a timer set at time `now` for `ms` is due at
+`now + max(0, ms) / 1000`, due timers run in due order (ties in the order
+set), and each callback is a `Task` that `GameAudio` runs. The driver says
+when time has passed: the call-log playback runs the timers due by each
+call's tick at their due times (`run_due_timers`), and a live client calls
+`poll()` each frame, which runs the timers due by the audio clock. (A
+browser's timers run on wall time; on the audio clock they also stand
+still while the context is suspended, which changes nothing audible.) The
+JS's promise chains (`resume`, decoding, the radio's fetches and its race
+against the 700 ms) settle in `GameAudio::settle()`, which the driver calls
+after each call and each timer, as the reference settles microtasks.
+
+## D251. Music and the radio voice are ported in full, not stubbed
+
+2026-10-03, WP 5.3–5.5. An exact call-log match needs the whole sequencer:
+both drives play Midnight Run, so most of their 278k and 474k Web Audio
+calls are notes and drum hits, and the risers' noise draws from the shared
+`Math.random`. Stubbing music would leave the gate untestable. So
+`Music.js` and `tracks.js` are ported faithfully (`mr_audio::music`,
+`mr_audio::tracks`), as is `RadioVoice.js` with `clipId`
+(`mr_audio::radio`, fetching through a `Fetch` trait). The sirens, radio
+bus and burble live in `Audio.js` and come with `GameAudio`. Of WP 5.6's
+gates, `test/unit/music.test.js` is ported (`tests/music.rs`: notes, song
+data, every patch's oscillators, every song played start to finish in
+strict mode, the playlist); its "every part sounds" check reads a trace
+the sequencer keeps only when a test asks (`Music::trace_parts`). The
+per-song L4 renders and WP 5.7's radio tests are left to those packages.
+The coordinator approved the scope.
+
+## D252. Song data as structs and ordered slices
+
+2026-10-03, WP 5.3. `tracks.js`'s objects become structs with an `Option`
+per optional field (`None` is `undefined`; JS truthiness tests such as
+`if (P.fenv)` treat 0 and NaN as missing). Everything the JS iterates with
+`Object.entries` (progressions, drum lanes, parts, a section's parts, kit
+overrides) is a slice of pairs in source order, because the order of
+iteration is the order of Web Audio calls. A parsed chord carries an `id`
+for the JS object identity the voicing code compares.
+
+## D253. Steered offline renders on the native backend
+
+2026-10-03, WP 5.4. The reference renders steer an `OfflineAudioContext`
+every 384 frames through `suspend(t)` (D45). The facade gains
+`AudioContext::start_rendering_steered(frame, control)`; a backend hands
+over its offline context (`Backend::take_offline`) so the facade is free
+while it renders, and the control function's calls go through the facade as
+usual. On web-audio-api the native backend makes nodes from a clone of the
+context's base (so the offline context itself can render), schedules a
+`suspend_sync` per frame half a quantum early (the crate rounds a suspend
+time up to a quantum; `currentTime` there is exactly `k·frame/sampleRate`,
+as in Chrome), and reaches the non-`Send` control function through a
+thread-local, since the crate runs the suspend callbacks on the rendering
+thread. `examples/render_scenarios.rs` renders the reference's scenario
+table this way.
+
+## D254. web-audio-api 1.7.0's `setTargetAtTime` bug, worked around
+
+2026-10-03, WP 5.4. The crate evaluates a target curve that becomes current
+before its start time (after a ramp, or after a target that a later event
+ended) at that earlier time, where `e^(-(t - t0)/τ)` explodes: a linear
+ramp to 0.1 followed by a later `setTargetAtTime` held at 102.6. The native
+backend keeps each param's timeline as the facade sends it (the null
+backend's `Timeline`, pruned to the present so it stays short) and puts a
+`setValueAtTime(v, t)` with the value the param holds at `t` in front of
+every `setTargetAtTime(_, t, _)`. The curve then starts where the spec
+says.
+
+## D255. `GameAudio`'s shape
+
+2026-10-03, WP 5.3. `mr_audio::game::GameAudio` keeps `Audio.js`'s methods
+and order of calls; the graph is in `game/build.rs`, the per-frame steering
+in `game/steer.rs`, and the one-shots and pursuit sounds in
+`game/shots.rs`, in place of SPEC 7.3's suggested `graph`, `gate`,
+`voices` and `oneshots`. `update`'s `s` and the setters' items are structs
+of `Option`s (`CarState`, `Rival`, `SirenUnit`, `Volume`) so the JS's
+`??`, `||` and `!== undefined` read the same. What the JS takes from the
+browser (`window.AudioContext`, `navigator.audioSession`, `fetch`,
+`Math.random`) is a `Platform`; `session::ask_for_playback` takes the audio
+session behind a small trait, with the browser's under the `web` feature.
+`init` is synchronous, as the JS's is (its async body never awaits).
+
+## D256. Chrome's compressor kernel on the native backend
+
+2026-10-03, WP 5.4. The crate's DynamicsCompressor follows the spec's
+outline of Chrome's but lets transients through several dB hotter (an
+impact peaked at 0.52 against Chrome's 0.35) and delays by 384 frames
+instead of 288. Every SFX and music path goes through two of them, so no
+one-shot could meet SPEC 7.5's 1.5 dB. `wa/compressor.rs` ports Blink's
+`DynamicsCompressor` (adaptive release, knee, pre-delay, makeup gain) to
+a web-audio-api worklet processor, used for every compressor; with it a
+whole impact render agrees with Chrome's to 7e-6 per sample.
+
+## D257. Chrome's oscillator and buffer-source rules on the native backend
+
+2026-10-03, WP 5.4–5.5. The crate draws square and sawtooth with polyBLEP
+at full scale (Chrome's are 1.4 dB quieter: band-limited and normalised to
+the Gibbs peak), triangles and periodic waves without band-limiting (the
+electric car's triangles aliased down to 800 Hz), and ignores a built-in
+type set after a periodic wave (an electric rival kept the engine wave).
+`wa/oscillator.rs` ports Blink's `PeriodicWaveHandler` (36 band-limited
+tables, three per octave, crossfaded by pitch) and `OscillatorHandler`
+(2/3/5-point interpolation, start and end frames rounded up) as a worklet
+processor used for every oscillator. That also brings a Chrome quirk the
+reference hears: in the quantum an oscillator starts in, its a-rate params
+are read from the quantum's start, so a one-shot that automates from its
+start time (`setValueAtTime(147, t); start(t)`) plays its earlier value
+(440 Hz) for part of a quantum. Buffer sources stay the crate's, with two
+Chrome rules: a start offset is rounded to the nearest frame (Chrome
+starts on a whole frame; the crate interpolated, 0.7 dB off on noise), and
+a stop lands on Chrome's last frame.
+
+## D258. Only what the destination pulls on runs
+
+2026-10-03, WP 5.4. Chrome renders only nodes the destination pulls on: an
+oscillator a gate cuts off stops, phase and all, until it is connected
+again (the damage knock started 8 ms late in Chrome, because its gate opens
+a frame after the engine's). The crate runs everything. The native backend
+tracks which nodes reach the destination (links by target, a param link
+counting for its node) and freezes the Chrome oscillators that do not. An
+oscillator the facade lets go of before anything pulls on it (an FM
+modulator is wired up before its carrier) is held until it is pulled, so
+it can be told to run. Buffer sources are not frozen: for the noise beds
+that changes only which noise plays, not its level.
+
+## D259. The L4 comparison and where it stands
+
+2026-10-03, WP 5.4–5.5. `node tools/parity/audio-bands.mjs` renders the 104
+non-song scenarios of `renders.json` on the native backend
+(`examples/render_scenarios.rs`), analyses them with `lib/bands.mjs` and
+compares with Chrome's band levels at 1.5 dB, ignoring bands below -90 dB
+in both; `tools/parity/audio-render-js.mjs` saves Chrome's renders of
+chosen scenarios as WAVs for looking at a difference. 102 of 104 pass (the
+median worst band per scenario is under 0.2 dB). The two left are single
+bands 40 dB or more under the signal: `engine-rally-6500-1` at 25 Hz
+(-73.8 dB against -71.9) and `shot-radio-burble` at 126–316 Hz below the
+radio bus's 340 Hz high-passes (-73.8 against -80.2 at 158 Hz). The
+remaining native differences are the crate's own buffer sources (their
+sub-sample start position) and WaveShaper oversampling filters; every
+other node type was checked against Chrome sample by sample.
