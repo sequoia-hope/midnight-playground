@@ -2203,19 +2203,31 @@ materials equal parameter by parameter, uniforms and GLSL included; native
 and wasm. One port fix was needed, found by the loop: the westbound runs
 `if (cur) ... push` drop a run that starts at u = 0 (the loop's first one;
 the JS's 0 is falsy), so the loop has no outer barrier on its first stretch.
-Textures: every one without lettering is within WP 3.2's threshold (the
-façade atlas's map, emissive and mask 0.14, 0.02 and 0.10 levels mean
-absolute difference; tunnel tiles, sound wall, park, glow, concrete,
-asphalt under 0.6). The lettering (tunnel name banners, the finish and
-welcome banners, the gantry sign atlas, the billboard and roof-ad atlases)
-differs by 14 to 42 levels: the scene export draws text in whatever faces
-that machine's Chrome falls back to (a wide sans for "Arial Narrow"), while
-mr_canvas draws the bundled faces; the sheets show identical layout,
-colours, glow and stripes in another face. Until the export pins the same
-faces (the pending Roboto change), lettering textures — one canvas for both
-`map` and `emissiveMap`, 1024 px wide or more — are held to their block
-means within 12 levels, every other texture to 3. Rerun:
-`node tools/parity/city-golden.mjs` (with the cache), then
+Textures without lettering are held to the export within WP 3.2's
+threshold (the façade atlas's map, emissive and mask 0.14, 0.02 and 0.10
+levels mean absolute difference; tunnel tiles, sound wall, park, glow,
+concrete, asphalt under 0.6). The lettered ones (the tunnel name banners,
+the finish and welcome banners, the gantry sign atlas, the billboard and
+roof-ad atlases) differ from the export by 14 to 43 levels: the export
+draws text in whatever faces that machine's Chrome falls back to, mr_canvas
+in the bundled faces (D370), and the sheets show identical layout, colours,
+glow and stripes in another face. They are held, as D313 holds Mountain's,
+to a capture with the bundled fonts: `tools/parity/city-textures.mjs` opens
+the game on Sierra and on the cruise loop (`?kernel=1&freeze=1&s=0`,
+`Math.random` seeded as the export seeds it) with every face of
+`assets/fonts/fonts.json` registered under the family the JS names before
+the page's scripts run, and reads back each canvas the group `city` uses as
+both `map` and `emissiveMap`, in order of first use (six on Sierra, seven
+on the loop; the 256-px canvas both levels share is among them). It writes
+the RGBA to `parity/cache/<key>/city/<level>-canvas-<k>.rgba` and a summary
+with the font manifest's hash to `parity/golden/city/textures.json`;
+`--check` captures twice. The test holds those to WP 3.2's threshold
+(mean absolute difference under 3/255 per channel with the cache, block
+means without it, so in CI and wasm) and reports them against the export.
+Result with the Roboto faces: at most 0.55 levels (the sign and roof-ad
+atlases' glow), the banners 0.05 to 0.13. When the bundled fonts change,
+rerun the tool: the gate then fails until the capture is refreshed. Rerun
+the rest: `node tools/parity/city-golden.mjs` (with the cache), then
 `cargo test -p mr_worldgen --test city` (and in wasm).
 
 ## D355. Small additions to shared modules

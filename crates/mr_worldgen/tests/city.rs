@@ -13,7 +13,10 @@
 //! flags, local matrix, instance count, matrices and colours), each
 //! drawable's material in a canonical form (keys sorted, numbers as bits;
 //! textures by sampler), and the 8×8 block means of every texture a
-//! material uses, within WP 3.2's threshold (3/255 per channel). The golden
+//! material uses, within WP 3.2's threshold (3/255 per channel); the
+//! lettered canvases against Chrome's drawing with the bundled fonts
+//! (`parity/golden/city/textures.json`, `tools/parity/city-textures.mjs`),
+//! the others against the export. The golden
 //! is compiled in, so the gate runs in CI and wasm; with the cache
 //! (`node tools/parity/scene-export.mjs`), a failing node is shown in full
 //! beside the JS one, a failing material as both views, and each texture's
@@ -50,8 +53,16 @@ fn sim_golden() -> Value {
         .expect("world-data golden parses")
 }
 
-/// The block-mean bound for lettering in another face (D354).
-const TEXT_BLOCKS: f64 = 12.0;
+/// The font-matched capture of City's lettered textures
+/// (`tools/parity/city-textures.mjs`, D354).
+fn lettered_golden(id: &str) -> Vec<Value> {
+    let v: Value = serde_json::from_str(include_str!("../../../parity/golden/city/textures.json"))
+        .expect("city textures golden parses");
+    v["levels"][id].as_array().expect("a level").clone()
+}
+
+/// WP 3.2's threshold, per channel.
+const LIMIT: f64 = 3.0;
 
 fn bits(x: f64) -> String {
     format!("{:016x}", x.to_bits())
@@ -380,12 +391,47 @@ fn pixels(s: &Scene, t: u32) -> (usize, usize, Vec<u8>) {
     )
 }
 
+/// The canvas textures a material uses as both `map` and `emissiveMap`,
+/// in order of first use, once per picture (as city-textures.mjs reads
+/// them).
+fn lettered_textures(s: &Scene, mats: &[u32]) -> Vec<u32> {
+    let mut out: Vec<u32> = Vec::new();
+    for &m in mats {
+        let md = &s.materials[m as usize];
+        let (Some(a), Some(b)) = (md.texture("map"), md.texture("emissiveMap")) else {
+            continue;
+        };
+        let t = &s.textures[a as usize];
+        if a == b
+            && t.source == TextureSource::Canvas
+            && !out
+                .iter()
+                .any(|&o| s.textures[o as usize].pixels == t.pixels)
+        {
+            out.push(a);
+        }
+    }
+    out
+}
+
+/// The font-matched capture's RGBA, when the cache has it and it is the
+/// one the golden describes.
+fn captured_rgba(id: &str, k: usize, sha: &str) -> Option<Vec<u8>> {
+    if cfg!(target_arch = "wasm32") {
+        return None;
+    }
+    let dir = mr_scene::cache::scenes_dir(&common::root()).ok()?;
+    let p = dir.parent()?.join(format!("city/{id}-canvas-{k}.rgba"));
+    let b = std::fs::read(p).ok()?;
+    (sha256_hex(&b) == sha).then_some(b)
+}
+
 /// JS, Rust and their difference side by side, in `parity/report/city/`.
-fn sheet(id: &str, k: usize, key: &str, w: usize, h: usize, js: &[u8], rust: &[u8]) {
+fn sheet(id: &str, name: &str, w: usize, h: usize, js: &[u8], rust: &[u8]) {
     let dir = common::root().join("parity/report/city");
     std::fs::create_dir_all(&dir).expect("report dir");
     let (sw, sh, px) = mr_canvas::compare::sheet(w, h, js, rust);
-    let path = dir.join(format!("{id}-m{k}-{}.png", key.replace('.', "-")));
+    let path = dir.join(format!("{id}-{name}.png"));
     let f = std::fs::File::create(path).expect("sheet file");
     let mut e = png::Encoder::new(std::io::BufWriter::new(f), sw as u32, sh as u32);
     e.set_color(png::ColorType::Rgba);
@@ -494,7 +540,21 @@ fn check(id: &str) {
             ));
         }
     }
-    // Textures: within WP 3.2's threshold.
+    // Textures: within WP 3.2's threshold. The lettered ones (`map` and
+    // `emissiveMap` both: the tunnel names, the finish and welcome banners,
+    // the gantry sign atlas, the billboard and roof-ad atlases) against
+    // Chrome's drawing with the bundled fonts (city-textures.mjs): the
+    // export drew its text with the machine's fonts, so against it they are
+    // only reported (D354). The rest against the export.
+    let lettered = lettered_textures(&b.scene, &v.table);
+    let fc = lettered_golden(id);
+    if lettered.len() != fc.len() {
+        problems.push(format!(
+            "{} lettered canvas textures here, the font-matched capture {}",
+            lettered.len(),
+            fc.len()
+        ));
+    }
     let mut tk = 0;
     let wt = gc["textures"].as_array().expect("textures");
     for (k, &m) in v.table.iter().enumerate() {
@@ -522,32 +582,58 @@ fn check(id: &str) {
             let bd = block_diff(&ours, &theirs);
             let mut line =
                 format!("texture {key} of material {k} ({tw}×{th}): block diff {bd:.2?}");
-            // Lettering (banners, the sign and ad atlases: one canvas for both
-            // `map` and `emissiveMap`, 1024 px wide or more) is drawn in the
-            // fonts of the machine that exported the scene, which the export
-            // does not pin (D354): those are held to the layout only (block
-            // means within 12 levels), every other texture to WP 3.2's 3.
-            let md = &b.scene.materials[m as usize];
-            let text = tw >= 1024
-                && md.texture("map").is_some()
-                && md.texture("map") == md.texture("emissiveMap");
-            let limit = if text { TEXT_BLOCKS } else { 3.0 };
-            let mut bad = bd.iter().any(|&x| x >= limit);
+            let mut gate = bd;
             if let (Some((s, _)), Some(j)) = (&js, &jv) {
                 let jt = material_textures(s, j.table[k]);
                 if let Some(&(_, jt)) = jt.iter().find(|(kk, _)| *kk == key) {
                     let (_, _, jpx) = pixels(s, jt);
                     let mad = mr_canvas::compare::mean_abs_diff(&px, &jpx);
-                    sheet(id, k, &key, tw, th, &jpx, &px);
+                    sheet(
+                        id,
+                        &format!("m{k}-{}", key.replace('.', "-")),
+                        tw,
+                        th,
+                        &jpx,
+                        &px,
+                    );
                     line += &format!(", mean abs diff {mad:.3?}");
-                    if !text {
-                        bad = mad.iter().any(|&x| x >= 3.0);
-                    }
+                    gate = mad;
                 }
             }
-            if text {
-                line += " (lettering)";
+            let tex = &b.scene.textures[t as usize];
+            let fmatch = lettered
+                .iter()
+                .position(|&l| b.scene.textures[l as usize].pixels == tex.pixels);
+            if let Some(f) = fmatch
+                && let Some(fw) = fc.get(f)
+            {
+                if fw["width"].as_u64() != Some(tw as u64)
+                    || fw["height"].as_u64() != Some(th as u64)
+                {
+                    problems.push(format!(
+                        "lettered {f}: {tw}×{th}, the capture {}×{}",
+                        fw["width"], fw["height"]
+                    ));
+                    continue;
+                }
+                let fblocks: Vec<[f64; 4]> = fw["blocks"]
+                    .as_array()
+                    .expect("blocks")
+                    .iter()
+                    .map(|b| [0, 1, 2, 3].map(|i| b[i].as_f64().expect("mean")))
+                    .collect();
+                let fbd = block_diff(&ours, &fblocks);
+                let fmad = captured_rgba(id, f, fw["sha256"].as_str().expect("sha")).map(|jpx| {
+                    sheet(id, &format!("lettered-{f}"), tw, th, &jpx, &px);
+                    mr_canvas::compare::mean_abs_diff(&px, &jpx)
+                });
+                line += &format!(
+                    " (held to the font-matched capture; against the export only reported): with the bundled fonts, block diff {fbd:.2?}, mean abs diff {}",
+                    fmad.map_or("(no cache)".into(), |m| format!("{m:.3?}"))
+                );
+                gate = fmad.unwrap_or(fbd);
             }
+            let bad = gate.iter().any(|&x| x >= LIMIT);
             println!("{id}: {line}");
             if bad {
                 problems.push(line);
