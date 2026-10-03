@@ -552,6 +552,22 @@ fn animator_golden() -> Value {
 fn animators(wb: &mut WorldBuild) -> Vec<String> {
     let g = animator_golden();
     let mut out = Vec::new();
+    // Valley's own targets: the group's children, the creek's material and
+    // its normal map (other scenery animates its own).
+    let (nodes, water, ripples) = {
+        let s = &wb.scene;
+        let grp = group(s);
+        let water = grp
+            .children
+            .iter()
+            .map(|&c| s.nodes[c as usize].materials[0])
+            .find(|&m| s.materials[m as usize].texture("normalMap").is_some())
+            .expect("the creek");
+        let ripples = s.materials[water as usize]
+            .texture("normalMap")
+            .expect("ripples");
+        (grp.children.clone(), water, ripples)
+    };
     for (k, f) in g["frames"].as_array().expect("frames").iter().enumerate() {
         let (dt, s) = (common::hex(&f["dt"]), common::hex(&f["s"]));
         let edits = wb.update(&UpdateCtx {
@@ -566,20 +582,22 @@ fn animators(wb: &mut WorldBuild) -> Vec<String> {
         let mut emissive = None;
         for e in &edits {
             match (&e.target, &e.change) {
-                (SceneRef::Node(_), Change::InstanceMatrix { matrix, .. }) => {
+                (SceneRef::Node(n), Change::InstanceMatrix { matrix, .. }) if nodes.contains(n) => {
                     wheels.extend(matrix.iter().flat_map(|v| v.to_le_bytes()));
                 }
-                (SceneRef::Node(_), Change::Transform { quaternion, .. }) => {
+                (SceneRef::Node(n), Change::Transform { quaternion, .. }) if nodes.contains(n) => {
                     quats.push(quaternion.map(bits).to_vec());
                 }
-                (SceneRef::Texture(_), Change::TextureOffset(o)) => offset = Some(o.map(bits)),
+                (SceneRef::Texture(t), Change::TextureOffset(o)) if *t == ripples => {
+                    offset = Some(o.map(bits))
+                }
                 (
-                    SceneRef::Material(_),
+                    SceneRef::Material(m),
                     Change::Color {
                         prop: "emissive",
                         rgb,
                     },
-                ) => {
+                ) if *m == water => {
                     emissive = Some(rgb.map(bits));
                 }
                 _ => {}
