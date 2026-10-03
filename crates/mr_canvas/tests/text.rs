@@ -18,22 +18,23 @@ fn widths_match_chrome() {
         (
             "bold 64px \"Arial Narrow\", Arial, sans-serif",
             &[
-                ("i", 14.591979980),
-                ("W", 49.535919189),
-                ("AV", 69.055877686),
-                ("PORT MERIDIAN", 419.839294434),
+                ("i", 16.125),
+                ("W", 47.96875),
+                ("AV", 72.772064209),
+                ("PORT MERIDIAN", 422.316162109),
             ],
         ),
-        // Arimo's kerning of RT and T-space is zero at wght 700 by a
-        // variation delta: a shaper that ignores GPOS deltas gets 509.69.
+        // Roboto's kerning varies with wght by GPOS variation deltas (A-V
+        // is -87 units at 400, -80 at 700): a shaper that ignores them gets
+        // AV wrong in bold.
         (
             "bold 64px Arial",
             &[
-                ("i", 17.78125),
-                ("W", 60.40625),
-                ("AV", 84.15625),
-                ("RT", 85.3125),
-                ("PORT MERIDIAN", 512.0),
+                ("i", 16.9375),
+                ("W", 56.0),
+                ("AV", 82.305511475),
+                ("RT", 78.791519165),
+                ("PORT MERIDIAN", 480.854003906),
             ],
         ),
         (
@@ -59,17 +60,17 @@ fn widths_match_chrome() {
         (
             "bold 96px \"Arial Black\", Arial",
             &[
-                ("i", 31.967987061),
-                ("AV", 144.095947266),
-                ("PORT MERIDIAN", 863.039611816),
+                ("i", 26.390625),
+                ("AV", 125.25),
+                ("PORT MERIDIAN", 727.828125),
             ],
         ),
         (
             "italic 900 84px \"Arial Narrow\", Arial",
             &[
-                ("i", 19.152023315),
-                ("AV", 89.460128784),
-                ("PORT MERIDIAN", 551.040771484),
+                ("i", 21.287109375),
+                ("AV", 93.84375),
+                ("PORT MERIDIAN", 543.45703125),
             ],
         ),
     ];
@@ -91,18 +92,18 @@ fn baselines_match_chrome() {
     let cases: &[(&str, f64, [f64; 5])] = &[
         (
             "bold 64px \"Arial Narrow\", Arial, sans-serif",
-            66.0,
-            [48.828125, 16.828125, 80.828125, 13.200000763, 86.0],
+            59.0,
+            [43.0, 11.0, 75.0, 11.799999237, 75.0],
         ),
         (
             "bold 64px Arial",
-            58.0,
-            [38.140625, 6.140625, 70.140625, 11.599998474, 72.0],
+            59.0,
+            [43.0, 11.0, 75.0, 11.799999237, 75.0],
         ),
         (
             "bold 96px \"Arial Black\", Arial",
-            84.0,
-            [54.53125, 6.53125, 102.53125, 16.800003052, 104.0],
+            89.0,
+            [65.0, 17.0, 113.0, 17.800003052, 112.0],
         ),
     ];
     for (font, ascent, want) in cases {
