@@ -11,6 +11,7 @@ use crate::input::Input;
 use crate::kinematic::Kinematic;
 use crate::park::Park;
 use crate::physics::CarPhysics;
+use crate::race::{PlayerRules, RaceStateKind, SimState};
 use crate::traffic::{Traffic, TrafficCar};
 use crate::vehicle::Vehicle;
 
@@ -83,12 +84,23 @@ pub struct PlayerView<'a> {
     pub v: &'a Vehicle,
     pub phys: &'a CarPhysics,
     pub input: Option<&'a Input>,
+    /// Race's rule state for this player, and the race's parking rows.
+    pub rules: Option<(&'a PlayerRules, Option<&'a [i32]>)>,
+}
+
+/// The race header (`race.state`, `time`, `countdown`, `throttleAt`).
+pub struct RaceHeader {
+    pub state: i32,
+    pub time: f64,
+    pub countdown: f64,
+    pub throttle_at: Option<f64>,
 }
 
 /// Everything a record is written from. Pieces that later work packages
 /// add (race, pursuit) are optional.
 pub struct View<'a> {
     pub tick: i32,
+    pub race: Option<RaceHeader>,
     pub players: Vec<PlayerView<'a>>,
     pub rivals: &'a [AiDriver],
     pub traffic: Option<&'a Traffic>,
@@ -136,8 +148,42 @@ pub fn write_player(w: &mut Writer, p: &PlayerView) {
     w.f64(ph.damage);
     w.f64(ph.spiked);
     w.f64(ph.off_track.unwrap_or(0.0));
-    // Race rule state and PursuitView: not yet (WP 1.5, 1.6).
-    w.bool(false);
+    match p.rules {
+        Some((r, rows)) => {
+            w.bool(true);
+            w.opt(v.prog);
+            w.opt(r.last_s);
+            w.opt(r.odo);
+            w.f64(r.dist);
+            w.i32(r.lap);
+            w.f64(r.lap_start);
+            w.i32(r.lap_times.len() as i32);
+            w.opt(r.lap_times.last().copied());
+            for x in [r.score, r.mult, r.mult_timer, r.top_speed] {
+                w.f64(x);
+            }
+            w.i32(r.near_misses);
+            for x in [r.bonus_cooldown, r.reset_cooldown, r.wrong_way] {
+                w.f64(x);
+            }
+            w.opt(r.stuck);
+            w.f64(r.last_drift);
+            w.f64(r.finish_delay);
+            w.bool(r.finished);
+            w.opt(r.finish_time);
+            w.bool(r.reported);
+            w.opt(r.pass_timer);
+            w.opt(r.pass_lat);
+            write_park(w, r.park.as_ref());
+            let rows = rows.unwrap_or(&[]);
+            w.i32(rows.len() as i32);
+            for n in rows {
+                w.i32(*n);
+            }
+        }
+        None => w.bool(false),
+    }
+    // PursuitView: not yet (WP 1.6).
     w.bool(false);
 }
 
@@ -192,15 +238,17 @@ pub fn write_rival(w: &mut Writer, a: &AiDriver) {
     write_park(w, a.park.as_ref());
 }
 
-pub fn write_traffic_car(w: &mut Writer, c: &TrafficCar) {
+/// `passed` and `near_miss_hit` are Race's, about this car (None without a
+/// Race).
+pub fn write_traffic_car(w: &mut Writer, c: &TrafficCar, passed: Option<f64>, near_miss_hit: bool) {
     w.bool(c.active);
     write_kinematic(w, &c.k);
     w.f64(c.crashed);
     w.f64(c.cruise);
     w.f64(c.lane_lat);
     w.i32(c.lane.unwrap_or(-1));
-    w.opt(None); // passed (Race)
-    w.bool(false); // nearMissHit (Race)
+    w.opt(passed);
+    w.bool(near_miss_hit);
 }
 
 /// The record of one tick.
@@ -208,8 +256,14 @@ pub fn trace_record(view: &View) -> Vec<u8> {
     let mut w = Writer::default();
     let tcars: &[TrafficCar] = view.traffic.map_or(&[], |t| &t.cars);
     w.i32(view.tick);
-    w.bool(false); // hasRace
+    w.bool(view.race.is_some());
     w.bool(false); // hasPursuit
+    if let Some(r) = &view.race {
+        w.i32(r.state);
+        w.f64(r.time);
+        w.f64(r.countdown);
+        w.opt(r.throttle_at);
+    }
     w.i32(view.players.len() as i32);
     w.i32(view.rivals.len() as i32);
     w.i32(tcars.len() as i32);
@@ -233,8 +287,13 @@ pub fn trace_record(view: &View) -> Vec<u8> {
         }
         None => w.bool(false),
     }
-    for c in tcars {
-        write_traffic_car(&mut w, c);
+    let rules = view.players.first().and_then(|p| p.rules.map(|r| r.0));
+    for (i, c) in tcars.iter().enumerate() {
+        let (passed, hit) = match rules {
+            Some(r) => (r.passed[i], r.near_miss_hit[i]),
+            None => (None, false),
+        };
+        write_traffic_car(&mut w, c, passed, hit);
     }
     for s in view.streams {
         w.i32(s);
@@ -346,5 +405,38 @@ pub fn read_trace(b: &[u8]) -> Result<ReadTrace, String> {
         interval,
         hashes,
         full,
+    })
+}
+
+/// The record of a race state after a tick (the game oracle's `fromRace`).
+pub fn race_record(st: &SimState, inputs: &[Input]) -> Vec<u8> {
+    let r = &st.race;
+    let players = st
+        .players
+        .iter()
+        .enumerate()
+        .map(|(i, p)| PlayerView {
+            v: &p.v,
+            phys: &p.phys,
+            input: inputs.get(i),
+            rules: Some((&p.rules, r.park_rows.as_deref())),
+        })
+        .collect();
+    trace_record(&View {
+        tick: st.tick as i32,
+        race: Some(RaceHeader {
+            state: match r.state {
+                RaceStateKind::Countdown => 0,
+                RaceStateKind::Racing => 1,
+                RaceStateKind::Finished => 2,
+            },
+            time: r.time,
+            countdown: r.countdown,
+            throttle_at: r.throttle_at,
+        }),
+        players,
+        rivals: &st.rivals,
+        traffic: Some(&st.traffic),
+        streams: st.rng.draws(),
     })
 }
