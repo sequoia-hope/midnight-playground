@@ -38,6 +38,9 @@ use mr_scene::{NightParam, Scene};
 use mr_track::{Level, Track};
 
 use crate::object::{Bases, GeoId, HandleMap, MaterialId, NodeId, SceneGraph, TextureId};
+use crate::road::{MarkGap, Road};
+use crate::sea::Sea;
+use crate::sky::{Sky, SkyFrame};
 use crate::terrain::Terrain;
 use crate::textures::TextureCache;
 
@@ -117,6 +120,16 @@ pub enum Change {
     Color { prop: &'static str, rgb: [f64; 3] },
     /// `texture.offset.set(u, v)`.
     TextureOffset([f64; 2]),
+    /// A vector uniform (`uSunDir`, the sea's `uOff2`), as many components
+    /// as it has.
+    Vector { prop: &'static str, value: Vec<f64> },
+    /// A light's colour and intensity (linear), and a hemisphere light's
+    /// ground colour.
+    Light {
+        color: [f64; 3],
+        intensity: f64,
+        ground_color: Option<[f64; 3]>,
+    },
 }
 
 /// An animator's edit.
@@ -172,7 +185,7 @@ impl Animator for Rebased {
 
 /// The JS `World` during a build: the level, the track once surveyed,
 /// everything made so far, and the per-frame hooks. Later packages add
-/// what they port (terrain, road, sky, sea).
+/// what they port (terrain: WP 3.4; road, sky, sea: WP 3.5).
 pub struct World {
     pub level: Level,
     pub track: Option<Track>,
@@ -188,6 +201,15 @@ pub struct World {
     pub terrain: Option<Terrain>,
     /// `world.terrainMaterial`.
     pub terrain_material: Option<MaterialId>,
+    /// `track.noMarks`: where scenery's `plan()` blanks the road paint
+    /// (mr_track's Track does not carry it, so the world does).
+    pub no_marks: Vec<MarkGap>,
+    /// `world.road`, from "Paving roads" on (WP 3.5).
+    pub road: Option<Road>,
+    /// `world.sky`.
+    pub sky: Option<Sky>,
+    /// `world.sea`, on levels with a sea.
+    pub sea: Option<Sea>,
 }
 
 impl World {
@@ -210,6 +232,10 @@ impl World {
             },
             terrain: None,
             terrain_material: None,
+            no_marks: Vec::new(),
+            road: None,
+            sky: None,
+            sea: None,
         }
     }
 
@@ -259,6 +285,7 @@ impl World {
             sim_data: self.sim_data,
             handles,
             log: self.graph.log,
+            sky: self.sky,
         }
     }
 }
@@ -281,6 +308,9 @@ pub struct WorldBuild {
     pub handles: HandleMap,
     /// What the JS would have logged.
     pub log: Vec<String>,
+    /// The sky (`world.sky`): the time of day along the route and the
+    /// handles of the dome and the lights.
+    pub sky: Option<Sky>,
 }
 
 /// A night parameter's value at night factor n: `day + (night - day) * n`.
@@ -289,6 +319,43 @@ pub fn night_value(p: &NightParam, n: f64) -> f64 {
 }
 
 impl WorldBuild {
+    /// The start of `world.update(dt, s, focus)`: the sky at the player's
+    /// distance `s` (its frame: lights, fog, exposure, the night factor)
+    /// and its edits to the dome, the lights and their nodes, resolved to
+    /// the scene. Then the client applies the night parameters at
+    /// `frame.night` and runs [`WorldBuild::update`].
+    pub fn update_sky(
+        &mut self,
+        dt: f64,
+        s: f64,
+        focus: Option<[f64; 3]>,
+    ) -> Option<(SkyFrame, Vec<SceneEdit>)> {
+        let sky = self.sky.as_mut()?;
+        let mut edits = Vec::new();
+        let frame = sky.update(dt, s, focus, &mut edits);
+        Some((frame, self.resolve(edits)))
+    }
+
+    /// Edits addressed by handle → edits of the scene (those of things
+    /// the scene left out dropped).
+    pub fn resolve(&self, edits: Vec<Edit>) -> Vec<SceneEdit> {
+        edits
+            .into_iter()
+            .filter_map(|e| {
+                let target = match e.target {
+                    Handle::Node(n) => SceneRef::Node(self.handles.node(n)?),
+                    Handle::Material(m) => SceneRef::Material(self.handles.material(m)?),
+                    Handle::Geometry(g) => SceneRef::Mesh(self.handles.mesh(g)?),
+                    Handle::Texture(t) => SceneRef::Texture(self.handles.texture(t)?),
+                };
+                Some(SceneEdit {
+                    target,
+                    change: e.change,
+                })
+            })
+            .collect()
+    }
+
     /// One frame of `world.update` after the sky: every animator in order,
     /// its edits resolved to the scene (edits of things the scene left out
     /// are dropped). The night parameters are the client's to apply first
