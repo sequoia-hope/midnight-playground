@@ -1150,3 +1150,124 @@ material and geometry; geometries as in D134.
 `crates/mr_worldgen/tests/builders.rs` makes the same calls and is
 bit-identical in every case, native and in wasm. CI checks that the golden
 regenerates.
+
+## WP 3.4 decisions
+
+## D230. The shape of `terrain`, `colorizer` and `terrain_mesh`
+
+2026-10-03, WP 3.4. `Terrain.js` is `mr_worldgen::terrain`, the
+`TerrainColorizer` of `TerrainMesh.js` is `colorizer`, the rest of
+`TerrainMesh.js` is `terrain_mesh`. The JS keeps a reference to the track;
+here `Terrain::new`, `build_fields` and `is_elevated` take `&Track` and
+nothing else needs it, so a built terrain is a plain value the `World` owns
+beside its track. Methods keep the JS names (`height_at`, `landform`,
+`far`, `road_info`, `slope_at`, `tile_list`, `add_flatten`, `add_carve`,
+`resolve_flattens`, each `form_*`); `this[FORM_FN[...]]` is a `Form` enum
+and `LANDFORMS` a table in the JS order. Every `Float32Array` (the far
+field, the near tiles, `canyonWidth`'s table, the mesh's heights and
+attributes) is a `Vec<f32>` stored through `as f32` and read as `f64`; a
+typed-array read past the end (`t.px[zoneStart[1] + 800]`) is NaN, as
+`undefined` becomes in JS arithmetic. The near tiles keep the JS key
+(`tx,tz`) in a `BTreeMap` used only for lookup, and `height_at` reads them
+through a dense grid over the tiles' range; `tileList`'s neighbour `Map` is
+the grid position, since the list is complete. `zoneWeights` returns a
+fixed array (at most eight zones) rather than allocating per call. A
+landform the JS has no entry for is an error from `Terrain::new`.
+
+## D231. The lazy caches are filled by `build_fields`; nothing mutates on read
+
+2026-10-03, WP 3.4. The JS fills `_open` (`openBias`'s lookout windows) and
+`_cw` (`canyonWidth`'s smoothed wall distances) on first use, from the
+track and the noise. Both are pure functions of those, so `build_fields`
+fills them (the windows before `openField` needs them, the canyon table on
+levels with a canyon), and `height_at`, `landform` and the colouriser take
+`&self`: the tiles can be built on several threads. The colouriser's
+`this.paved` (read by the mesh after each `color()`) is returned with the
+colour, and its scratch arrays (`_rw`, `_pf`, `_farTmp`) are locals.
+
+## D232. The scenery's plan is recorded until the scenery is ported
+
+2026-10-03, WP 3.4. The JS heights depend on what the scenery modules'
+`plan()` registers before `buildFields`: 33 flattens and the creek carve on
+Sierra, 35 flattens on Coast, the railway bed and six flattens on Desert,
+one flatten and one carve on the cruise loop. The scenery arrives in WP 3.6
+on, so `tools/parity/terrain-plan.mjs` runs `World.build`'s first stages
+under Node with the parity kernel (the Track, `new Terrain`, each scenery
+module made as `loadScenery` makes it and its `plan()` run, `buildFields`,
+`resolveFlattens`) and writes `parity/golden/terrain/<level>.json`: the
+flattens (with the heights the JS resolved), carves and `desertRail` as hex
+f64 bits in registration order. The tool also evaluates the heights at the
+world golden's 10,000 points and requires the golden's SHA-256 (and, with
+the cache, every height of the browser's dump): Node reproduces the
+browser bit for bit on all six levels, so the plan recorded is the one the
+game's world had. `TerrainPlan::apply` registers it as the scenery would;
+`TerrainSetup::plan` carries it into a level build. When a scenery module
+is ported, its `plan()` replaces its part of the recording and the golden
+becomes the test of that `plan()`. CI checks that the golden regenerates.
+
+## D233. The L2 and L3 gates, and what they found
+
+2026-10-03, WP 3.4. L2 (`tests/terrain.rs`): the 10,000 points of
+`terrainDump` are regenerated (Track `point_at` along the road, Halton 2, 3
+over the bounds) and the SHA-256 of the points and of the heights must equal
+the world golden's, so the gate runs without the cache and in wasm; with
+the cache every point is compared and the first difference reported.
+Result: **bit-identical on all six levels**, native and in wasm. L3
+(`tests/terrain_mesh.rs`, native, needs the cache): the terrain built into
+an `mr_scene::Scene` through the object tree, each mesh's `mr_scene` digest
+(counts, bounds, SHA-256 of `position`, `normal`, `color`, `uv`, `aSurf`
+and the index, area, centroid) against the JS digest of the export's
+meshes under `terrain` (the `--base` export when present), per attribute
+differences reported from the file's buffers; the node flags; the material
+parameter by parameter, uniforms included, its textures by description and,
+for data and image textures, pixels (canvas textures' pixels are WP 3.2's
+threshold gate: the rock texture is not identical). Result: **every vertex
+buffer and index identical**: Sierra 133 meshes (501,072 vertices), Coast
+115 (460,626), Streets 73 (277,047), Desert 127 (456,693), Seaside 44
+(168,312), cruise 152 (670,629); the material equal but for the rock
+texture's pixels. So that L3 also runs in CI and in wasm without the cache,
+`terrain-plan.mjs` records per level a SHA-256 over one line per terrain
+mesh (counts, attribute digests, index digest) from the cached export, and
+`tests/terrain.rs` builds each level through `level_jobs` and requires the
+same hash.
+
+## D234. Seaside's photo is decoded by the caller
+
+2026-10-03, WP 3.4. The ground shader drapes Seaside's aerial photo
+(`level.groundPhoto`) with a one-channel loose-ground mask over the same
+box. `mr_worldgen` has no JPEG decoder, and the client already has one
+(Bevy's image loader; the browser on the web), so the decoded photo comes
+in with `GroundPhoto::seaside(data, photo, url)`, as the survey itself is
+passed in (D54); the mask is made from the survey's loose grid as the JS
+makes its `DataTexture` (`Math.round(v * 255)`), and `seaside_ground_color`
+is `level.groundColor`. The L3 test takes the photo's pixels from the JS
+export (Chrome's decode); the material and both textures then match.
+
+## D235. The terrain in the job list
+
+2026-10-03, WP 3.4. `terrain_mesh::terrain_stages(setup)` returns the three
+`Stages` entries: "Shaping the land" first makes the terrain (and applies
+the recorded plan), after the scenery plans `buildFields` and
+`resolveFlattens` run, and "Sculpting terrain" builds the tiles in batches
+of 24 (the JS yields every 24 tiles), each later batch a job showing
+`0.1 + done / tiles × 0.55` as the JS reports it, then a job that merges
+the tiles into meshes by group (in the order the groups were first met),
+makes the material and adds the group `terrain` to the world's root. With
+the `parallel` feature a batch's tiles are built on scoped threads; the
+result is identical. `World` gains `terrain` and `terrain_material`
+(`world.terrainMaterial`). A release build makes all six levels' terrain,
+fields and meshes in 2.8 s on one thread.
+
+## D236. Two fixes found by the terrain material
+
+2026-10-03, WP 3.4. `textures::Texture::desc` gave a `DataTexture`
+`unpack_alignment` 4; three's `DataTexture` sets 1 (the export says 1 for
+`terrainDetailTexture`). The scene assembly gave every pixel buffer an item
+size of 4; it is the texture's channel count (Seaside's loose mask is R8,
+item size 1, as the export writes it). Neither changes an RGBA canvas
+texture. Still open for WP 3.5: the JS texture cache hands out one
+`THREE.Texture` per key, so the terrain, road, sea and sky share one
+`terrainDetailTexture` (one texture in the scene), while
+`SceneGraph::cached_texture` makes a new texture per call; the road and sky
+must reuse the terrain's `TextureId` (or the graph learn to share by key) to
+match the export's texture count.
