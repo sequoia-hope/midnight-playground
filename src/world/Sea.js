@@ -114,6 +114,7 @@ export class Sea {
   // the ripple facets.
   patchMaterial(m) {
     const u = this.uniforms;
+    m.userData.kind = 'Sea'; // MaterialKind for the scene export
     m.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, u);
       shader.vertexShader = shader.vertexShader

@@ -414,6 +414,9 @@ export function patchTriplanar(material, rockTex, detailTex = null, photo = null
   // three caches programs by this function's source, which is the same
   // with or without a photo.
   material.customProgramCacheKey = () => `triplanar:${!!detailTex}:${!!photo}`;
+  // MaterialKind for the Rust port's scene export; changes nothing here.
+  material.userData.kind = 'Terrain';
+  material.userData.kindOpts = { packed: !!detailTex, photo: !!photo };
   material.onBeforeCompile = (shader) => {
     shader.uniforms.tRock = { value: rockTex };
     const packed = !!detailTex;

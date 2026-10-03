@@ -109,6 +109,7 @@ float mrHash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.y
 // rectangular repair patch, dusty edges, and at night a damp sheen (lower
 // roughness in the wheel paths and dips) so lamps and headlights glint.
 function patchAsphalt(material, uniforms) {
+  material.userData.kind = 'Asphalt'; // MaterialKind for the scene export
   material.onBeforeCompile = (shader) => {
     shader.uniforms.tDetail = uniforms.tDetail;
     shader.uniforms.uWet = uniforms.uWet;
@@ -145,6 +146,7 @@ function patchAsphalt(material, uniforms) {
 // Paint wear: markings are thin quads carrying (side, s) in uv; fade the
 // paint toward asphalt in blotches and where tyres cross.
 function patchMarkings(material, uniforms) {
+  material.userData.kind = 'Markings'; // MaterialKind for the scene export
   material.onBeforeCompile = (shader) => {
     shader.uniforms.tDetail = uniforms.tDetail;
     shader.vertexShader = shader.vertexShader
@@ -274,6 +276,7 @@ export class Road {
       // Toward the outer edge the gravel texture flattens to its average so
       // the verge meets the terrain (whose colour the outer vertices carry)
       // without a hard seam.
+      m.userData.kind = 'Shoulder'; // MaterialKind for the scene export
       m.onBeforeCompile = (shader) => {
         shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `
           vec4 sampledDiffuseColor = texture2D(map, vMapUv);

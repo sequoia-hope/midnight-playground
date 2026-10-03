@@ -6,9 +6,11 @@
 //!   size              report the size of the built wasm (raw and gzip)
 //!   kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits
 //!   parity shots      compare two sets of screenshots (CIEDE2000), write a report
+//!   parity scene-check [files]  read exported scenes back and check their digests
 
 mod deps;
 mod kernel;
+mod parity_scene;
 mod shots;
 mod size;
 mod web;
@@ -33,6 +35,7 @@ fn main() -> ExitCode {
         "kernel" => kernel::run(rest),
         "parity" => match rest.first().map(String::as_str) {
             Some("shots") => shots::run(&rest[1..]),
+            Some("scene-check") => parity_scene::run(&rest[1..]),
             _ => Err(format!("parity: which comparison?\n\n{}", usage())),
         },
         "-h" | "--help" | "help" => {
@@ -59,7 +62,8 @@ fn usage() -> &'static str {
      \x20 size [--budget]   report the built wasm's size; --budget fails over 10 MB gzip\n\
      \x20 kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits\n\
      \x20 parity shots --a <dir> --b <dir> [--label name]\n\
-     \x20                   compare two sets of screenshots; report in parity/report/"
+     \x20                   compare two sets of screenshots; report in parity/report/\n\
+     \x20 parity scene-check [files]  read exported .mrscene files back and check their digests"
 }
 
 /// The repository root (the workspace root).

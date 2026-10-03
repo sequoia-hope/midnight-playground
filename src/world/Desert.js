@@ -1783,6 +1783,7 @@ export default class Desert {
       // Front faces only: from inside the beam it vanishes rather than
       // washing out the screen. It fades where the surface turns edge-on,
       // so it reads as a soft shaft of lit dust, not a solid lampshade.
+      mat.userData.kind = 'FloodBeam'; // MaterialKind for the scene export
       mat.onBeforeCompile = (sh) => {
         sh.vertexShader = sh.vertexShader
           .replace('#include <common>', '#include <common>\nvarying float vFace;')

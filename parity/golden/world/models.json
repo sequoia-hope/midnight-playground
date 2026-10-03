@@ -1,0 +1,25 @@
+{
+  "query": "level=sierra&kernel=1&freeze=1&s=0",
+  "counts": {
+    "nodes": 804,
+    "meshes": 330,
+    "materials": 182,
+    "textures": 4,
+    "instances": 0,
+    "lights": 0,
+    "drawables": 466,
+    "vertices": 734090,
+    "indices": 14652,
+    "binary_bytes": 24962576
+  },
+  "kinds": {
+    "Standard": 94,
+    "Physical": 20,
+    "CarLight": 54,
+    "PoliceGlow": 8,
+    "Particles": 2,
+    "SkidMarks": 1,
+    "Basic": 3
+  },
+  "digest_sha256": "129feec93beb1f0250c77587c0584af3f6a7a97788891e5118b1d999aa95e539"
+}

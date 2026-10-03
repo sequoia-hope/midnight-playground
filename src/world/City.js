@@ -1361,6 +1361,7 @@ export default class City {
           gl_FragColor = vec4(vCol * 2.2, a);
         }`,
     });
+    mat.userData.kind = 'TrafficStreams'; // MaterialKind for the scene export
     const pts = new THREE.Points(geo, mat);
     pts.frustumCulled = false;
     pts.renderOrder = 3;
@@ -1405,6 +1406,7 @@ export default class City {
           gl_FragColor = vec4(col * g * uK, 1.0);
         }`,
     });
+    mat.userData.kind = 'SkyGlow'; // MaterialKind for the scene export
     const m = new THREE.Mesh(geo, mat);
     m.position.set(c.x, this.groundY - 10, c.z);
     m.frustumCulled = false;
@@ -1521,6 +1523,7 @@ function glowPointsMaterial(world, size, minPx) {
     depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
   });
   const u = { uMinPx: { value: minPx }, uFogK: { value: 0 } };
+  m.userData.kind = 'GlowPoints'; // MaterialKind for the scene export
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader

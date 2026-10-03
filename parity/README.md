@@ -11,6 +11,9 @@ parity hooks on (`src/parity/`).
 | `report/` | no | The comparison report (`cargo xtask parity ...`), viewed through the registered server at `/parity/report/`. |
 | `trace-format.md` | yes | The trace record both sides produce (WP 0.4). |
 | `scenarios.md` | yes | The catalogue of staged simulation scenarios (WP 0.4). |
+| `golden/world/` | yes | Per level: SHA-256 of every Track array and of the terrain heights at 10,000 points, and the scene's counts, material kinds and digest hash; `models.json` likewise (WP 0.5). |
+| `cache/<key>/scenes/` | no | `<level>.mrscene` and `models.mrscene` scene exports (`crates/mr_scene/FORMAT.md`), each with the digest of the live scene; `<level>.base.mrscene` with `--base` (WP 0.5). |
+| `cache/<key>/world/<level>/` | no | `track.{json,bin}` and `terrain.{json,bin}`: the Track arrays and terrain heights (WP 0.5). |
 
 ## The hooks
 
@@ -48,3 +51,17 @@ Every capture is taken with the kernel on.
 The browser tools drive the game through `test/e2e/harness.js` (headless
 Chrome on the GPU, files served from the working tree by request
 interception: no server, no port).
+
+## Scene export (WP 0.5)
+
+```
+node tools/parity/scene-export.mjs            # all six levels and the models, ~1 min
+node tools/parity/scene-export.mjs --base     # terrain, road and sky only
+node tools/parity/scene-export.mjs --check    # again, and compare with the goldens and the last run
+cargo xtask parity scene-check                # read every scene back with mr_scene, check its digest
+```
+
+Each JS material is tagged with its `MaterialKind` (`material.userData.kind`);
+the exporter refuses a custom material without one. The export seeds
+`Math.random` and uses a fresh Chrome per level, so two runs give identical
+files (DECISIONS D20 to D29).

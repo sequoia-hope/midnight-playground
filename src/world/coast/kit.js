@@ -89,6 +89,7 @@ export function prep(geo) {
 export function rockMaterial() {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0 });
   const tex = rockTexture();
+  m.userData.kind = 'TriplanarRock'; // MaterialKind for the scene export
   m.onBeforeCompile = (sh) => {
     sh.uniforms.tRock = { value: tex };
     sh.vertexShader = sh.vertexShader

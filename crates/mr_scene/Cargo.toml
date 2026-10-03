@@ -6,3 +6,9 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+# float_roundtrip: numbers written by JavaScript read back to the same f64
+# (the default parser may be one ulp off). preserve_order: material
+# parameters keep the JS insertion order.
+serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
+sha2 = "0.10"

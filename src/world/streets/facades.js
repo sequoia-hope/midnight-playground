@@ -398,6 +398,7 @@ export function facadeMaterial() {
     map: A.map, emissiveMap: A.emissive, emissive: 0xffffff, emissiveIntensity: 1.1, roughness: 0.62, metalness: 0.2,
   });
   const spec = GRID.map(([c, r, k]) => `vec3(${c}.0, ${r}.0, ${k}.0)`).join(', ');
+  m.userData.kind = 'StreetFacade'; // MaterialKind for the scene export
   m.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float cell;\nattribute vec3 fdata;\nvarying float vCell;\nvarying vec2 vAUv;\nvarying vec3 vFData;\nvarying float vWY;')

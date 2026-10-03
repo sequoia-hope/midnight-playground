@@ -348,6 +348,7 @@ export function streetAtlas() {
 // walls read in the dark.
 export function patchStreetAtlas(material) {
   const spec = S_GRID.map(([a, b, k]) => `vec3(${a}.0, ${b}.0, ${k}.0)`).join(', ');
+  material.userData.kind = 'StreetAtlas'; // MaterialKind for the scene export
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float cell;\nvarying float vCell;\nvarying vec2 vAUv;')

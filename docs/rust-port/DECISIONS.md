@@ -171,3 +171,121 @@ level in race mode and Hot Pursuit (heat 3), `fuzzer(1)`; excursion is
 field without Race's rules or the trace, with V8's Math and with the kernel
 (`parity/golden/sim/bench.json`); it is machine-dependent, so the Rust
 benchmark is compared on the same machine.
+## WP 0.5 decisions
+
+## D20. The scene export seeds `Math.random`
+
+2026-10-03, WP 0.5. World generation draws from `Math.random` in two
+places: the steam puffs' `aSeed` attribute (`world/streets/props.js:415`)
+and the plank noise of the wooden signs (`world/Valley.js:53`); desert
+`paint()` also draws (with zero jitter, so without effect) when no `rng` is
+given. Left alone, those two would differ on every export. The exporter
+(`tools/parity/scene-export.mjs`) replaces `Math.random` with mulberry32
+seeded 0x5eed before the page's scripts run (the harness's `init` hook), so
+the game itself is untouched and the exports are reproducible. The world
+generator port meets these two sites as a known gap: matching them needs
+the same stream in the same draw order, or a recorded deviation.
+
+## D21. MaterialKind: the kinds beyond SPEC 6.2's table, and kind options
+
+2026-10-03, WP 0.5. `Points` joins the built-in kinds: a `PointsMaterial`
+without a patch (glow points, lantern points) is in eleven places and the
+table had no plain kind for it. `CityAtlas` (`patchAtlasMaterial`) stays a
+kind though nothing calls it at present. `TriplanarRock` covers both
+`Mountain.js` and `coast/kit.js` (the same GLSL). Where a JS patch takes
+values from its closure rather than from the material, the tag carries them
+as `kindOpts` and the file as `kind_opts`: `Terrain` {packed, photo},
+`Siding` {mode}, `FlickerPoints` {rate, depth, blink}, `AmbientProp` {rgb}.
+The material's `customProgramCacheKey()` is exported too, as `program_key`.
+
+## D22. How the JS carries the tags
+
+2026-10-03, WP 0.5. A tag is `material.userData.kind = 'Kind'` (plus
+`userData.kindOpts`), set beside each `onBeforeCompile` assignment and each
+`ShaderMaterial`: a plain property three never reads, so the game renders
+exactly as before. Built-in materials without a patch are classified by the
+exporter from `material.type`. The exporter refuses an untagged material
+that has its own `onBeforeCompile` or is a `ShaderMaterial`, an unknown kind
+name, and a tag on a material with no patch (which would mean a clone that
+lost its patch: three's `clone()` copies `userData` but not
+`onBeforeCompile`).
+
+## D23. Patch uniforms are read from the compiled program
+
+2026-10-03, WP 0.5. Most patches create their uniforms inside the
+`onBeforeCompile` closure (`sh.uniforms.tRock = { value: tex }`), where no
+one can reach them. The exporter calls `renderer.compile()` on the scene
+(which builds any program not built yet and changes nothing in the scene)
+and reads the uniforms three keeps per material (`renderer.properties`),
+minus the ones three's own shader for that type has. That is three
+internals, read only, in a tool.
+
+## D24. Where and when a level is captured
+
+2026-10-03, WP 0.5. `?level=<id>&kernel=1&freeze=1&s=0`: the fly camera at
+the route's start (h 5 m), scenery frozen, after three frames. Camera
+dependent state is recorded as it is there: visibility (the cruise loop's
+City chunks beyond 2000 m are exported with `visible: false`), the sky and
+fog at that point of the route, the night-scaled material values (with
+`night_params` giving day and night values), the sky dome's position.
+Night parameters of materials no mesh uses (the road chevron on levels
+without chevrons) are left out. Desert tumbleweeds not yet launched are
+zero-scale instances, as in the game.
+
+## D25. Scene file choices
+
+2026-10-03, WP 0.5. Buffers are an accessor table (glTF style), shared by
+index wherever three shares the array, so a texture cloned from another
+(same image) and attributes shared between geometries are stored once.
+Texture pixels are stored decoded (RGBA8 or R8, as `getImageData` or the
+`DataTexture` holds them), including Seaside's photo (decoded by Chrome;
+`url` names the JPEG for a loader that prefers the file). Nodes carry both
+the local and the world matrix. An `InstancedMesh` is exported as type
+`InstancedMesh` (three leaves its `type` as `Mesh`), with per-instance
+custom attributes in its mesh marked `instanced`. Material parameters are
+every own property of the material, as JSON with tagged colours, vectors,
+matrices and texture references. The format is
+`crates/mr_scene/FORMAT.md`.
+
+## D26. The digest, and what is committed
+
+2026-10-03, WP 0.5. The digest that proves a file matches the live scene is
+computed on both sides with the same IEEE operations in the same order
+(counts, f32 bounds, SHA-256 of every attribute, index, pixel array and
+instance array, triangle area and centroid, world bounds over every vertex
+of every instance), and must match exactly. A full digest is 0.3–0.4 MB per
+scene, so it lives in the cache beside the scene; `parity/golden/world/`
+commits per level the Track array and terrain height checksums, the scene's
+counts and kinds, and the SHA-256 of the full digest
+(`cargo xtask parity scene-check` checks the cached digest against it).
+
+## D27. A fresh Chrome for every level
+
+2026-10-03, WP 0.5. Exporting the levels one after another in one browser
+made Desert's sign atlases (`world/beach/atlas.js`) differ by one or two
+units in a few hundred pixels from a run where Desert came first: canvas
+text and blur drawn on the GPU depend on what earlier pages drew. Each
+level, and the models, get their own browser; three runs in two orders then
+gave byte-identical files.
+
+## D28. Track and terrain dumps
+
+2026-10-03, WP 0.5. The Track dump is every own property of `world.track`
+after the world is built, in insertion order: typed arrays as their bytes,
+plain values as JSON; `level`, functions (`looseAt`) and the spatial hash
+(a `Map`) are skipped. Terrain heights (`terrain.heightAt`) are taken at
+10,000 points per level: 6,000 on and beside the road (s evenly spaced,
+lateral offset from a golden-ratio sequence over ±60 m) and 4,000 from a
+Halton (2, 3) sequence over the terrain's bounds. The points are stored
+with the heights (f64), so the Rust test does not need the Track port to
+regenerate them.
+
+## D29. The models scene
+
+2026-10-03, WP 0.5. `models.mrscene` holds every car kind at high detail
+and at low detail with its far model (as traffic and police build them),
+the police liveries of the muscle and sports cars at both, all with seed 0
+and default colours; the effects (smoke, sparks, skid marks, a headlight
+pool and nitro flames on a sports car); and the pursuit props: a sawhorse
+and a spike strip laid on Sierra's road. `sawhorseModel` and `spikeStrip`
+in `game/PursuitView.js` are exported for this, which changes nothing.
