@@ -38,6 +38,7 @@ use mr_scene::{NightParam, Scene};
 use mr_track::{Level, Track};
 
 use crate::object::{Bases, GeoId, HandleMap, MaterialId, NodeId, SceneGraph, TextureId};
+use crate::terrain::Terrain;
 use crate::textures::TextureCache;
 
 /// What the simulation needs from the world (SPEC 4.3): the runout and the
@@ -183,6 +184,10 @@ pub struct World {
     /// The texture module's cache (`world/textures.js`).
     pub textures: TextureCache,
     pub sim_data: SimWorldData,
+    /// `world.terrain`, from "Shaping the land" on (WP 3.4).
+    pub terrain: Option<Terrain>,
+    /// `world.terrainMaterial`.
+    pub terrain_material: Option<MaterialId>,
 }
 
 impl World {
@@ -203,6 +208,8 @@ impl World {
                 runout: 0.0,
                 opposite_carriageway: None,
             },
+            terrain: None,
+            terrain_material: None,
         }
     }
 
