@@ -621,3 +621,140 @@ races, the module traces and the fuzz runs passing in wasm against the same
 JS-derived numbers. The determinism test steps a clone of a mid-race Hot
 Pursuit state beside the original and compares hashes every tick and the
 whole state at the end.
+
+## M2 decisions
+
+## D100. Bevy 0.19.1, pinned, with default features off
+
+2026-10-03, WP 2.1. SPEC 2's policy: 0.20 if it is final when M2 begins,
+else 0.19.1. On crates.io on 2026-10-03 0.20 is at `0.20.0-rc.2`
+(2026-09-28), so the client is on 0.19.1, pinned exactly (`=0.19.1`), and
+moves to 0.20 straight after G1, before many shaders exist. Default features
+are off; `mr_game` turns on the 3D renderer (`bevy_render`,
+`bevy_core_pipeline`, `bevy_pbr`, `bevy_post_process` and the asset, mesh,
+image, light, camera, material and shader crates), windowing, states,
+logging, keyboard, mouse and touch input, and `png` (screenshots); natively
+also `multi_threaded`, `x11` and `wayland`; on the web `web` and `webgpu`.
+No UI, text, audio, glTF, gizmos, picking or gamepads yet: the packages that
+need them add them. No third-party Bevy plugins. The `wayland` feature links
+`libwayland-client`, so CI installs `libwayland-dev`.
+
+## D101. The client's states and how a scene is built
+
+2026-10-03, WP 2.1 and 2.2. States: `Waiting` (for the scene file),
+`Building`, `Running`, `Failed`. The build turns a `.mrscene` into Bevy
+assets a slice at a time (60 ms of work per frame), so the page's loading
+bar keeps moving: textures first, then nodes, then lights and the camera's
+environment. Every mesh and image is created `RENDER_WORLD` only and the
+`Scene` is dropped at the end, so only GPU copies remain. Transforms are the
+export's world matrices (the tree is flattened; nothing moves until
+animators exist), with three's hierarchical visibility applied (a node under
+an invisible one is skipped). An `InstancedMesh` becomes one entity per
+instance, which Bevy batches back into instanced draws; zero-scale instances
+are skipped. A multi-material mesh becomes one Bevy mesh per group, cut to
+three's draw range. The client is "ready" once the scene is up and the
+render world's pipeline cache has nothing waiting (natively pipelines
+compile in the background and a mesh draws only once its pipeline is
+ready); `--screenshot` waits for that.
+
+## D102. How the client finds a scene in development
+
+2026-10-03, WP 2.2. `?level=<id>` (`--level` natively) names a level, or
+`models`; `?scene=<url>` (`--scene <file>`) names a file outright. The
+default is the level's export in the parity cache of the current JS tree:
+`mr_scene::cache` computes `tools/parity/lib/jstree.mjs`'s key in Rust, the
+native client reads `parity/cache/<key>/scenes/<id>.mrscene` under the repo
+root, and `cargo xtask web` writes the same directory into
+`dist/next/build.json` as the relative URL `../../parity/cache/<key>/scenes/`,
+which the registered server (repo root) serves. Every URL is relative. The
+page downloads the file itself (for the progress bar) and hands the bytes to
+the wasm (`load_scene`), which parses them at once so the page's copy can
+go. Seaside's Track needs its survey: the page fetches
+`../../assets/seaside/survey.bin`, natively it is read from the repo.
+
+## D103. Stand-in materials
+
+2026-10-03, WP 2.2. Until WP 2.3 and 2.4 port the shading, every kind draws
+with Bevy's `StandardMaterial`, lit for three's standard, physical and
+Lambert types (and every patch on them) and unlit for basic, line and
+points, with the material's colour, map (and its offset, repeat, rotation),
+emissive and emissive map, roughness, metalness, clearcoat, side, blending,
+alpha test, fog flag and polygon offset (as a depth bias of
+-(factor + units) × 32, judged by eye on the road markings). Vertex colours
+apply where the material has `vertexColors`. Exposure: three's ACES applies
+`exposure / 0.6` before the same fitted curve Bevy's `AcesFitted` uses, so
+the camera's `ev100` is `-log2(1.2 × exposure / 0.6)`; unlit colours, the
+fog colour and the sky are multiplied by the same factor themselves, and
+emission takes the view exposure (`emissive_exposure_weight` 1) as three's
+does. The hemisphere light becomes the camera's ambient light (sky 0.75,
+ground 0.25, divided by π as three's diffuse is), plus the fog colour at
+half the environment intensity for the missing environment map. Fog is
+`ExponentialSquared` with three's density; the sun-tinted fog is Bevy's
+directional scattering at a low weight. The sky dome draws as its own sphere
+with vertex colours from the dome shader's gradient, sun glow and horizon
+haze (no clouds, sun disc, moon or stars), and follows the focus as
+`Sky.update` moves it. The effect `ShaderMaterial`s (TrafficStreams,
+SkyGlow, Surf, LighthouseBeam, Steam, Particles, SkidMarks, PoliceGlow) and
+sprites are not drawn: as plain quads they would be white sheets. Points
+draw one pixel each. Instance colours ride in Bevy's `MeshTag`, 10 bits a
+channel over 0..2, and a small extension of the standard fragment shader
+(`crates/mr_game/src/tint.wgsl`) multiplies the base colour by them, so
+instances keep one material per JS material (Sierra: 119 materials, not the
+1,838 a material per distinct colour gave). Canvas textures are flipped on
+upload where three flips them; mip chains are made on the CPU (2 × 2 box
+filter, sRGB averaged in linear light) where three generates them, and
+anisotropy is set only where WebGPU allows it (linear filtering throughout).
+
+## D104. The models scene is laid out in a grid
+
+2026-10-03, WP 2.2. `models.mrscene` holds every model at the origin
+(D29). For viewing, the client places each child of its root in a grid
+(eight to a row, 7 m by 12 m), centred on the child's drawn nodes, adds a
+sun (it has no lights of its own), and frames the grid.
+
+## D105. The fly camera and the time of day
+
+2026-10-03, WP 2.2. `?s=` starts the JS debug fly camera with its
+parameters and defaults (`s`, `h` 5, `back` 14, `lat` 0, `v` 0, `yaw` 0,
+`pitch` -0.08), on the Rust `Track` from `mr_track` and `mr_levels`;
+`flyCamera` is ported line for line, with `dt` clamped to 1/20 s as the JS
+frame loop does. Without `s` the client runs the menu's attract camera
+(16 m/s along the first zone from s = 120, h 7, back 22, lat 3, pitch
+-0.05). Up and Down change the fly camera's speed by 10 m/s, a convenience
+the JS does not have. The sky, fog and lights are the export's, captured at
+the route's start (D24), and do not follow the route's time of day yet: on
+the sprint levels the light at the far end differs from the JS until the
+sky is ported (WP 2.3 and M3).
+
+## D106. The web page, the gesture bridge and the test hooks
+
+2026-10-03, WP 2.1. `crates/mr_game/web/index.html` checks
+`navigator.gpu.requestAdapter()` before downloading anything (asking up to
+four times: headless Chrome answers null while its GPU process starts) and
+shows a plain "no WebGPU" page naming the browsers to use. It downloads the
+wasm and the scene with progress, starts the app before the scene arrives
+(so the first frame is early), and forwards pointer-up, touch-end, click and
+key-down to the wasm's `gesture()` inside the handler; the wasm side only
+counts them for now (audio, fullscreen, the landscape lock and the motion
+permission arrive in M5 and M6). The wasm publishes its state on
+`window.__mr` (`state`, `progress`, `ready`, `frames`, `firstFrameMs`,
+`readyMs`, `counts`, ...), and `?stats=1` shows a panel with the frame rate
+and worst frame measured as the JS game's panel does.
+High quality (shadows on) defaults as in the JS: on, except on touch
+devices; `?hq=0` or `?hq=1` overrides it. The shadow map is one cascade
+to 140 m (about the JS's ±70 m box) at 2048², with Bevy's own biases.
+`__mr.screenshot(name)` saves the next frame through Bevy's screenshot as
+a download: headless Chrome does not composite a WebGPU canvas into its own
+screenshots. Headless Chrome on the dev machine gets the hardware adapter
+with `--enable-unsafe-webgpu --enable-features=Vulkan --use-angle=vulkan
+--ignore-gpu-blocklist`. Scenes over about 100 MB cannot be answered
+through the harness's request interception (the tab dies), so the larger
+levels are checked through the registered server.
+
+## D107. The dev server sends precompressed files under `dist/`
+
+2026-10-03, WP 2.1. `cargo xtask web --release` writes `mr_game_bg.wasm.gz`
+and `mr_game.js.gz`; `tools/serve.py` sends the `.gz` with
+`Content-Encoding: gzip` (and the original type) for a file under `/dist/`
+when the browser accepts gzip and the `.gz` exists, and sends `.wasm` as
+`application/wasm`. Everything else is served as before.

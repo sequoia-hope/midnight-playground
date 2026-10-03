@@ -87,11 +87,28 @@ pub fn run(args: &[String]) -> Result {
     }
 
     copy_dir(&root.join("crates/mr_game/web"), &out)?;
+    // Where the page finds the scene exports: the parity cache of this JS
+    // tree, relative to dist/next/ (the registered server serves the repo
+    // root, and every URL the client uses is relative; DECISIONS D102).
+    let key = mr_scene::cache::js_tree_key(&root)
+        .map_err(|e| format!("hashing the JS tree for the scene cache key: {e}"))?;
+    let scenes_rel = mr_scene::cache::scenes_rel(&key);
     std::fs::write(
         out.join("build.json"),
-        format!("{{\"profile\": \"{profile}\", \"wasm_opt\": {release}}}\n"),
+        format!(
+            "{{\"profile\": \"{profile}\", \"wasm_opt\": {release}, \"scenes\": \"../../{scenes_rel}\"}}\n"
+        ),
     )
     .map_err(|e| format!("writing build.json: {e}"))?;
+    if !root.join(&scenes_rel).is_dir() {
+        println!(
+            "web: no scene exports for this JS tree yet ({scenes_rel}); make them with\n\
+             \x20    node tools/parity/scene-export.mjs"
+        );
+    }
+    if release {
+        precompress(&out)?;
+    }
 
     println!(
         "web: built {} ({profile}) into dist/next/\n\
@@ -135,6 +152,24 @@ fn locked_version(lock: &str, name: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Writes `<file>.gz` beside the wasm and the JS glue, for a server that
+/// sends precompressed files, so load times on phones are as they will be
+/// (SPEC 6.6). `tools/serve.py` sends them for files under `dist/`.
+fn precompress(out: &Path) -> Result {
+    use flate2::{Compression, write::GzEncoder};
+    use std::io::Write;
+    for name in ["mr_game_bg.wasm", "mr_game.js"] {
+        let src = out.join(name);
+        let bytes = std::fs::read(&src).map_err(|e| format!("reading {}: {e}", src.display()))?;
+        let mut gz = GzEncoder::new(Vec::new(), Compression::best());
+        gz.write_all(&bytes).map_err(|e| e.to_string())?;
+        let gz = gz.finish().map_err(|e| e.to_string())?;
+        let dest = out.join(format!("{name}.gz"));
+        std::fs::write(&dest, gz).map_err(|e| format!("writing {}: {e}", dest.display()))?;
+    }
+    Ok(())
 }
 
 fn copy_dir(from: &Path, to: &Path) -> Result {

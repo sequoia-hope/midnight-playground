@@ -28,6 +28,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod cache;
 pub mod digest;
 mod file;
 mod num;
