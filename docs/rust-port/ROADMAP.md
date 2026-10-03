@@ -42,7 +42,8 @@ environment (M12c) needs only M1 and can start whenever wanted.
    reason. A choice the spec does not cover: add it to `DECISIONS.md` and
    carry on with the option that best preserves parity.
 5. Do not edit the JS game except to fix a bug the owner reports, or to add
-   a parity hook during M0.
+   a parity hook during M0 (SPEC 12). A hook changes nothing unless switched
+   on. After the `js-reference` tag at the end of M0, hooks are closed too.
 6. Check your own work the way the JS project does: run the tests, render
    it headless, look at the result, compare with the reference. Then commit
    and push to `main`.
@@ -59,45 +60,49 @@ turns the JS game into reference data.
 
 | WP | Work | Output | Gate |
 |---|---|---|---|
-| 0.1 | Workspace, empty crates with the dependency rules, `xtask` (`check-deps`, `web`, `size`), `CLAUDE.md`, `DEVIATIONS.md`, `DECISIONS.md` | Cargo workspace at the repo root; `cargo xtask web` produces `dist/next/` with a wasm that clears the screen | Builds native and wasm; `check-deps` passes |
+| 0.1 | Workspace, empty crates with the dependency rules, `xtask` (`check-deps`, `web`, `size`), `CLAUDE.md`, `DEVIATIONS.md`, `DECISIONS.md`. The web output is a bare wasm-bindgen module that writes a line to the page: it proves the pipeline without choosing an engine version | Cargo workspace at the repo root; `cargo xtask web` produces `dist/next/` | Builds native and wasm; `check-deps` passes; the page opens on a phone at the tailnet address |
 | 0.2 | CI: format, clippy, tests, wasm tests, `check-deps`, web build, size report, JS unit tests. No deploy: GitHub Pages stays the JS game until M9 | `.github/workflows/` | Green on `main`; the live site is unchanged |
-| 0.3 | Parity hooks in the JS game: fixed dt (`?fixeddt=120`), seeded `Math.random` (`?seed=`), freeze traffic and particles for screenshots, scene export. Then tag `js-reference` | Small changes in `src/main.js`; `tools/parity/` | The JS suites still pass |
-| 0.4 | Simulation traces from Node (staged scenarios, dt 1/120, seeded) and whole-race statistics from headless Chrome | `tools/parity/sim-traces.mjs`, `parity/golden/sim/` (committed) | Two runs give identical files |
-| 0.5 | Scene export: walk `__world.root` and the car models, write `.mrscene` files (meshes, instances, material kind and parameters, textures) plus Track and terrain dumps | `tools/parity/scene-export.mjs`; goldens cached by JS tree hash | Sierra and Coast export and reload in the JS viewer with the same picture |
-| 0.6 | Screenshot stations, material test scenes, the comparison metric and the report page | `cargo xtask parity shots`, `parity/report/index.html` | JS against JS gives the noise floor; thresholds in SPEC 12 confirmed or raised |
-| 0.7 | Audio reference: engine wave arrays, kit and SFX buffers, offline renders, a call log for a scripted drive | `parity/golden/audio/` | Reproducible |
-| 0.8 | Baselines: desktop numbers (already in SPEC 6.6) and the JS game's frame rate, load time and memory on the reference phones | A table in `docs/rust-port/BASELINE.md` | Owner reads the phone numbers |
+| 0.3 | The math kernel and the first hooks. `mr_math`'s transcendental functions on `libm`, built to wasm for the oracle. JS hooks: replace `Math.sin` and the rest with the kernel; rewrite `**` as `Math.pow` in simulation and world-generation code; optional generator parameters in `AIDriver`, `PoliceDriver` and `PursuitView` (passed on to `Pursuit`); fixed dt with several ticks per frame; quantised inputs; a state recorder | `crates/mr_math` (kernel only), `tools/parity/kernel/`, hooks in `src/` | JS suites pass with hooks off and with the kernel on; kernel in wasm and native give identical bits on a million inputs per function |
+| 0.4 | Simulation references. The scenario catalogue; module traces from Node; whole-race recordings from headless Chrome for every level, in race mode and Hot Pursuit; the fuzz excursion and ticks-per-second baselines of the JS. Dumps the simulation needs from the JS world: `runout`, the opposite carriageway, vehicle dimensions for all kinds | `parity/scenarios.md`, `tools/parity/sim-*.mjs`, `parity/golden/sim/` | Two runs of every recording give identical files |
+| 0.5 | Scene export. `mr_scene` types and the `.mrscene` reader and writer; `MaterialKind` tags on every JS material; the exporter (walks `__world.root` and the car models); Track and terrain dumps. An option exports terrain, road and sky only | `crates/mr_scene`, `tools/parity/scene-export.mjs` | Every mesh has a kind; the file read back by `mr_scene` has the same per-mesh digests (counts, bounds, texture hashes) as the live scene; all six levels export |
+| 0.6 | Pictures. Screenshot stations with traffic and particles frozen; material test scenes built from the exposed JS patch functions; the comparison metric; the report page | `tools/parity/shots.mjs`, `cargo xtask parity shots`, `parity/report/` | JS against JS gives the noise floor; thresholds in SPEC 12 confirmed or raised |
+| 0.7 | Audio reference: engine wave arrays, kit and SFX buffers, offline renders, a call log for a scripted drive | `parity/golden/audio/` | Reproducible. Then tag `js-reference` |
+| 0.8 | Baselines on the reference phones: the JS game in a race and in the fly camera along each route (`?s=&v=`): frame rate, load time, memory | `docs/rust-port/BASELINE.md` | Owner reads the phone numbers |
 
-**Owner:** read the stats overlay on the phones for 0.8.
+**Order:** 0.1 first. Then 0.2, 0.3 and 0.5 together. 0.4 needs 0.3. 0.6
+and 0.7 need 0.5's hooks pattern but not its output.
+
+**Owner:** name the reference phones (the iPhone must be on iOS 26 or later;
+an Android 12+ phone if one is to be supported) and join them to the
+tailnet; read the stats overlay for 0.8.
 
 **Exit:** goldens exist and are reproducible; the report page shows the JS
-compared with itself; CI is green; the Rust build opens on a phone at the
-tailnet address under `dist/next/` (SPEC 9.5).
+compared with itself; CI is green; `js-reference` is tagged.
 
 ---
 
 ## M1. Simulation at parity (headless)
 
-**Goal:** the whole game's logic in Rust with no graphics, proven against
-the JS. Size L (about 3,300 lines of JS plus about 1,500 lines of tests).
+**Goal:** the whole game's logic in Rust with no graphics, matching the JS
+reference tick for tick. Size L (about 3,300 lines of JS plus about 1,500
+lines of tests).
 
 | WP | Ports | Output | Gate |
 |---|---|---|---|
-| 1.1 | `util/math.js` | `mr_math` | L1 (`math.test.js`); bit-exact `mulberry32`, `hash2`; noise within 1e-12 of JS |
-| 1.2 | `track/Track.js`, `roadTypes.js`, level files, Seaside loader; `tools/seaside/build.py` gains a binary output | `mr_track`, `mr_levels`, `assets/seaside/` | L1 (`track`, `levels`, `seaside` tests); L2 (all Track arrays against JS dumps) |
-| 1.3 | `CarPhysics.js`, `Vehicle.js` state | `mr_sim::{physics, vehicle}` | L1 (`physics.test.js`); L2 traces |
-| 1.4 | `Kinematic.js`, `AIDriver.js`, `Traffic.js`, `Collisions.js` | `mr_sim::{kinematic, ai, traffic, collisions}` | L1 (`ai`, `traffic` tests); L2 traces |
-| 1.5 | Race rules from `Race.js`; the autopilot from `main.js` | `mr_sim::race`, `SimState`, `step`, `SimEvent`, `hash` | L2 whole-race statistics for every level |
-| 1.6 | `Pursuit.js`, `PoliceDriver.js`, game rules from `PursuitView.js` | `mr_sim::pursuit` | L1 (`pursuit.test.js`); L2 traces; a full pursuit race per police level |
-| 1.7 | Determinism, snapshot, fuzz and speed tests (SPEC 4.6) | Tests and a benchmark | Native and wasm hashes equal; 200,000 ticks per second |
-| 1.8 | `mr-sim` command-line runner: run a race with the autopilot, print results, optionally dump a trace | A binary in `mr_sim` | Used by the gates above |
+| 1.1 | `util/math.js`; the JS-semantics helpers (SPEC 4.2) | `mr_math` complete | L1 (`math.test.js`); `mulberry32`, `hash2` and noise bit-exact against the JS run with the kernel |
+| 1.2 | `track/Track.js`, `roadTypes.js`, level files, Seaside loader; `tools/seaside/build.py` gains a binary output; the world data and dimension tables from WP 0.4 | `mr_track`, `mr_levels`, `mr_sim::dims`, `assets/seaside/` | L1 (`track`, `levels`, `seaside` tests); every Track array identical to the JS dump |
+| 1.3 | `CarPhysics.js`, `Vehicle.js` state | `mr_sim::{physics, vehicle}` | L1 (`physics.test.js`); module traces identical. **This is the proof that bit-identical works: do it before 1.4 to 1.6 and stop if it cannot be made to pass** |
+| 1.4 | `Kinematic.js`, `AIDriver.js`, `Traffic.js`, `Collisions.js` | `mr_sim::{kinematic, ai, traffic, collisions}` | L1 (`ai`, `traffic` tests); module traces identical |
+| 1.5 | Race rules from `Race.js`; the autopilot from `main.js` | `mr_sim::race`, `SimState`, `step`, `SimEvent`, `hash` | Whole-race recordings identical for every level in race mode, and the cruise run |
+| 1.6 | `Pursuit.js`, `PoliceDriver.js`, game rules from `PursuitView.js` | `mr_sim::pursuit` | L1 (`pursuit.test.js`); module traces and whole Hot Pursuit races identical |
+| 1.7 | Determinism, snapshot, fuzz and speed tests (SPEC 4.6) | Tests and a benchmark | Native and wasm hashes equal; fuzz within the JS excursion; not slower than the JS |
+| 1.8 | `mr-sim` command-line runner: run a race with the autopilot, print results, dump a trace or a state at a tick | A binary in `mr_sim` | Used by the gates above |
 
-**Order:** 1.1, then 1.2, then 1.3 and 1.4 together, then 1.5, then 1.6.
+**Order:** 1.1, then 1.2, then 1.3 alone. Then 1.4, then 1.5, then 1.6.
 1.7 and 1.8 grow alongside.
 
-**Exit:** every ported test passes; traces agree; all six levels run a full
-race headless and deterministically; a race on Sierra prints the same
-finishing order as the JS.
+**Exit:** every ported test passes; every trace and recording is identical;
+all six levels run headless and deterministically.
 
 ---
 
@@ -108,23 +113,34 @@ carries this game on the phones. Runs beside M1.
 
 | WP | Work | Gate |
 |---|---|---|
-| 2.1 | Client shell: Bevy app, window, states, the HTML shell with the WebGPU check and loading bar, the build pipeline, the gesture bridge stub. Choose the Bevy version (SPEC 2) and record it | Loads on desktop browsers, native, and both phones over the tailnet https address |
-| 2.2 | Scene loader: `.mrscene` to Bevy meshes, instances and textures, with CPU copies dropped | Sierra and Coast exports load |
-| 2.3 | `three_std` shading library, the plain material kinds, the post chain (bloom, tone mapping), fog, the shadow map, sky dome | L4 material test scenes within threshold |
-| 2.4 | Terrain, asphalt and sea kinds, so one level looks right; thirty moving stand-in cars; points as quads | Sierra screenshots within threshold at five stations |
-| 2.5 | Pipeline warm-up; performance, memory and size measurement; ten reloads | Numbers recorded |
-| 2.6 | A WebGL2 build of the same client, selected by the page when WebGPU is missing or fails | Compiles in CI; loads on the iPhone |
-| 2.7 | A phone outside the tailnet (the Android reference phone, if it is not on it): join it to the tailnet, or give `tools/serve.py` a TLS option | Both reference phones open the working-tree build with WebGPU |
+| 2.1 | Client shell: Bevy app, window, states, the HTML shell with the WebGPU check and loading bar, the build pipeline, the gesture bridge stub. Choose the Bevy version (SPEC 2) and record it. `tools/serve.py` sends precompressed files from `dist/` | Loads on desktop browsers, native, and the reference phones over the tailnet https address |
+| 2.2 | Scene loader: `.mrscene` to Bevy meshes, instances and textures, with CPU copies dropped. A fly camera on the same parameters as the JS one | All six exports load |
+| 2.3 | `three_std` shading library, the plain material kinds, the environment map from the sky, the post chain (bloom, tone mapping), fog, the shadow map, the sky dome | L4 material test scenes within threshold, on desktop |
+| 2.4 | Terrain, asphalt, markings and sea kinds. Every kind not yet written draws with the plain standard material, marked as a stand-in; points as quads; thirty moving stand-in cars | The terrain-road-sky export of Sierra within threshold at five stations, on desktop |
+| 2.5 | Screenshots of the Rust build: WebGPU flags and the wasm MIME type in the harness, a minimal `window.__mr.ready`, native `--screenshot` | The gates of 2.3 and 2.4 run from one command |
+| 2.6 | Pipeline warm-up; frame-time, memory and size measurement; ten reloads | Numbers recorded in `BASELINE.md` |
+| 2.7 | A WebGL2 build of the same client, selected by the page when WebGPU is missing or fails | Compiles in CI; loads on the iPhone |
 
-**Gate G1.** On the owner's iPhone and one Android phone, WebGPU build, high
-quality off, flying the Sierra and Coast exports along the route:
+**Gate G1.** On the reference phones, WebGPU build, high quality off, flying
+the full Sierra and Coast exports along the route at the speed of the JS
+fly-camera baseline from WP 0.8:
 
-- frame time no worse than the JS game on the same phone;
-- no tab kill, no strobing or corrupt frames, in ten minutes and ten level
+- frame time no worse than the JS game in the fly camera on the same phone
+  (the Rust side draws stand-in materials for unported kinds, so this is a
+  floor on its cost, not the final figure: the budgets are checked again at
+  the exits of M3 and M7);
+- no tab kill, no strobing or corrupt frames, in ten minutes and ten scene
   reloads;
-- wasm under 10 MB as served; time to first frame within 5 s of the JS game;
+- the wasm under 10 MB after gzip;
+- time from navigation to the client's first rendered frame within 5 s of
+  the JS game's time to its menu;
 - no frame over 50 ms after warm-up;
-- material test scenes within threshold.
+- on desktop, the gates of 2.3 and 2.4. On the phones the owner looks at the
+  same material scenes for anything visibly wrong.
+
+Scene download time and memory are not compared with the JS here: loading a
+multi-hundred-megabyte export is not how the finished game will get its
+world.
 
 | Outcome | Next |
 |---|---|
@@ -145,13 +161,13 @@ Size XL (about 11,000 lines).
 |---|---|---|
 | 3.1 | `three_geom`: the three.js generators and merge (SPEC 5.2) | Each generator against a three.js dump |
 | 3.2 | `mr_canvas`: the Canvas 2D subset and text (SPEC 5.3); the font gallery | The shared textures in `world/textures.js` within threshold |
-| 3.3 | Builders: `valley/Builder`, `beach/ColorBuilder`, `city/geom`, `Road.js` extrude; `SceneDesc`, `Animator`, night parameters; the job list | Unit tests on builders |
+| 3.3 | Builders: `valley/Builder`, `beach/ColorBuilder`, `city/geom`, `Road.js` extrude; `WorldBuild`, `Animator`, night parameters; the job list | Unit tests on builders |
 | 3.4 | `Terrain.js`, `TerrainMesh.js`, the colouriser | L2 heights; L3 terrain digest |
 | 3.5 | `Road.js`, `Sky.js` (parameters and keys), `Sea.js`, `World.js` | L3 road digest; L4 road and sky stations |
 | 3.6 | `Mountain.js` and its material kinds | L3, L4 for zone 0 |
 | 3.7 | `Valley.js`, `valley/*` | L3, L4 for zone 1 |
 | 3.8 | `City.js`, `city/*` (freeway, textures, geometry) | L3, L4 for zone 2 |
-| 3.9 | Remaining material kinds for Level 1, animators (waterfall, flag, windpumps, traffic streams, aircraft lights), environment map from the sky | L4 all Sierra stations; L5 |
+| 3.9 | Remaining material kinds for Level 1, animators (waterfall, flag, windpumps, traffic streams, aircraft lights); `runout` and the opposite carriageway computed by the ported scenery | L4 all Sierra stations; the world data equals the WP 0.4 dump; budgets of SPEC 6.6 on the phones; L5 |
 
 **Order:** 3.1, 3.2 and 3.3 first and together. Then 3.4, then 3.5. Then
 3.6, 3.7 and 3.8 together, one agent each. 3.9 closes.
@@ -170,7 +186,7 @@ desktop web and native.
 
 | WP | Ports | Gate |
 |---|---|---|
-| 4.1 | `CarModel.js`: thirteen kinds, detail levels, far model, light setters. Size M | L3 digests per kind; L4 against `tools/car-test.html` views |
+| 4.1 | `CarModel.js`: thirteen kinds, detail levels, far model, light setters. Size M | L3 digests per kind; dimensions equal `mr_sim::dims`; L4 against `tools/car-test.html` views |
 | 4.2 | Session and tick loop (loopback), interpolation, `Vehicle.sync` | Motion is smooth at 60 and 120 Hz; no drift from the simulation |
 | 4.3 | `CameraRig.js`, the intro camera | L4 stations in chase, far and bumper views |
 | 4.4 | `Effects.js`: smoke, sparks, skids, flames, headlight pools; the headlight spot | L4 staged effect scenes |
@@ -218,8 +234,8 @@ time after M2.
 | 6.4 | Gamepad: bindings, remapping, menu navigation, rumble | L1 (`gamepad.test.js`); `gamepad` e2e |
 | 6.5 | Touch controls: stick, slider, buttons, auto gas | L1 (`touch.test.js`); `touch-controls`, `analog-controls` e2e |
 | 6.6 | Tilt, fullscreen and landscape lock through the gesture bridge; visibility pause | L1 (`tilt.test.js`); `tilt` e2e |
-| 6.7 | The test bridge (`window.__mr`) and the harness `target` option | The e2e suites run against the Rust build |
-| 6.8 | Native: window state, F11, `--query`, `--smoke-test`, `--screenshot` | Smoke test in CI |
+| 6.7 | The full test bridge (`window.__mr`, begun in WP 2.5) and the harness `target` option | The e2e suites run against the Rust build |
+| 6.8 | Native: window state, F11, `--query`, `--smoke-test` | Smoke test in CI |
 
 **Order:** 6.1 and 6.7 first. Then 6.2 to 6.6 in parallel.
 
@@ -335,7 +351,7 @@ show what the architecture is keeping room for.
 | Question | Answered at |
 |---|---|
 | Does Bevy through WebGPU run this on an iPhone? | G1 (M2), with real levels |
-| Can Rust reproduce the JS handling exactly? | M1, by traces |
+| Can Rust reproduce the JS simulation bit for bit? | WP 1.3, on the physics alone, before the rest of M1 |
 | Can the scenery be matched without endless tuning? | M3: Level 1 is the largest and proves the method |
 | Does it feel the same to drive? | M4 |
 | Is the in-engine UI good enough? | Early M6 |

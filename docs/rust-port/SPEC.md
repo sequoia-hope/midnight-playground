@@ -124,9 +124,10 @@ crates/
   mr_levels/     the six levels as data; Seaside's survey data loader
   mr_sim/        vehicles, physics, AI, traffic, collisions, race rules,
                  pursuit; SimState and step()
+  mr_scene/      scene data types and the .mrscene file format; data only
   mr_canvas/     the Canvas 2D subset the texture generators use (tiny-skia)
   mr_worldgen/   terrain, road, sky, sea, scenery, car models, textures;
-                 produces SceneDesc
+                 produces a mr_scene::Scene plus animators
   mr_audio/      Web Audio shaped facade and backends; engine, SFX, music,
                  radio
   mr_net/        protocol, transports, session (server), prediction and
@@ -147,13 +148,19 @@ docs/rust-port/  this spec, the roadmap, DEVIATIONS.md, DECISIONS.md
 
 ```
 mr_math ← mr_track ← mr_levels ← mr_sim ← mr_net ← mr_host
-                         ↑          ↑        ↑
-mr_canvas ← mr_worldgen ─┘          └────────┴── mr_game → mr_audio
+
+mr_scene ← mr_worldgen   (also uses mr_canvas, mr_math, mr_track, mr_levels)
+
+mr_game uses mr_sim, mr_net, mr_scene, mr_worldgen, mr_audio
 ```
 
 - `mr_math`, `mr_track`, `mr_levels`, `mr_sim`: no Bevy, wgpu, web-sys,
-  `std::time`, threads, `rand`, or `HashMap` iteration. `#![forbid(unsafe_code)]`.
+  `std::time`, threads, `rand`, or hash-map iteration. `#![forbid(unsafe_code)]`.
   They build for `wasm32-unknown-unknown` and native.
+- `mr_scene`: plain data and its reader and writer. No Bevy, no wgpu. Both
+  `mr_worldgen` (which produces scenes) and `mr_game` (which draws them)
+  depend on it, so the client can load an exported scene before any world
+  generation exists.
 - `mr_canvas`, `mr_worldgen`: no Bevy, no wgpu. `rayon` is allowed behind a
   native-only feature.
 - `mr_audio`: no Bevy. Backends are features (`web`, `native`, `null`).
@@ -186,12 +193,16 @@ those ticks produced.
 
 ### 4.1 Time
 
-The JS game steps physics in equal substeps of about 1/120 s that sum to the
-frame time, and steps AI, traffic and pursuit once per frame. The Rust
-simulation uses a **fixed tick of 1/120 s** for everything:
+The JS game steps player physics in equal substeps of about 1/120 s that sum
+to the frame time (`CarPhysics.update`), and steps AI, traffic, pursuit,
+collisions and the input ramp once per frame. The Rust simulation uses a
+**fixed tick of 1/120 s** for everything:
 
-- At 60 fps the JS physics already takes two steps of exactly 1/120 s, so
-  player handling is numerically the same.
+- It is close to what the JS does at 60 fps (two physics substeps of half
+  the frame time), and it is exactly what the JS does when run at a fixed
+  frame time of 1/120 s: one substep, everything else once. That fixed-dt
+  JS run is the reference the Rust is compared with (section 4.6), not the
+  JS at 60 fps.
 - The renderer interpolates between the previous and current tick, so motion
   is smooth at any display rate and input latency stays under 9 ms. (The JS
   project learned that a fixed step without interpolation lurches at speed.
@@ -202,23 +213,50 @@ simulation uses a **fixed tick of 1/120 s** for everything:
 - The whole simulation costs microseconds per tick, so 120 Hz is free, and a
   rollback of sixteen ticks stays well under a millisecond.
 
+Only `step()` fixes the tick. The module functions underneath keep their
+`dt` parameters as in the JS (`CarPhysics.update(frameDt)` with its substep
+rule included), because the JS unit tests call them at 1/60 s and at varying
+frame times, and those tests are ported as they are.
+
 ### 4.2 Numeric rules
 
-- Scalars are `f64` wherever JS used a Number. Arrays are `f32` wherever JS
-  used a `Float32Array` (all of Track's per-sample arrays), read back as
-  `f64`, as JS does.
-- Every transcendental function (`sin`, `cos`, `tan`, `atan2`, `exp`, `pow`,
-  `hypot`, ...) goes through `mr_math`, which calls the `libm` crate. Never
-  call `f64::sin` and friends directly: on native they use the platform's
-  library and differ between machines. No `mul_add`.
-- Port `mulberry32` and `hash2` with wrapping 32-bit integer arithmetic so
-  they are bit-exact. The world and the traffic depend on their sequences.
-- No `Math.random`. The state holds named `Mulberry32` streams. The JS
-  simulation calls `Math.random` in `AIDriver` (nitro timer, twice),
-  `PoliceDriver` (weave phase) and as `Pursuit`'s default generator; each
-  becomes a draw from a stream in the state.
-- Iterate in a fixed order. Use `Vec`, arrays or `BTreeMap`. Track's spatial
-  hash keys on integer cell coordinates, not strings.
+The aim is **bit-identical results** between the Rust simulation and the JS
+reference run, tick for tick. With thirty bodies and many thresholds (gear
+changes, the drifting flag, overtaking decisions, spawn checks, contact), a
+trace that is merely close stops being close within seconds, so a tolerance
+does not work. Bit-identical is achievable because `+ - * /` and `sqrt` on
+doubles are exact in both languages; the rest is discipline:
+
+- **One math kernel for both sides.** `mr_math` implements `sin`, `cos`,
+  `tan`, `atan`, `atan2`, `exp`, `hypot`, `pow` and `log` on the `libm`
+  crate (software implementations, the same bits on every platform). The
+  simulation never calls `f64::sin` and friends, which use the platform's
+  library on native. For the reference run, `mr_math` is compiled to wasm
+  and the JS oracle replaces `Math.sin` and the rest with it (roadmap
+  WP 0.3). The reference therefore differs from the live JS game by at most
+  the last bit of those functions, which is the difference the port has
+  anyway, and the Rust can be required to match it exactly. No attempt is
+  made to reproduce V8's own math library.
+- **JS semantics, in `mr_math::js`.** `Math.sign(0)` is 0 where
+  `f64::signum(0.0)` is 1 (this decides the handbrake and coasting terms at
+  a standstill, `CarPhysics.js:208,217`). `Math.round` rounds halves up
+  where Rust rounds away from zero (`Track.idx`). `Math.max` and `Math.min`
+  return NaN if either argument is NaN. `x || d` treats 0 as missing; `x ??
+  d` does not. Port each use through the matching helper.
+- **The same float widths at the same points.** Scalars are `f64`. Wherever
+  the JS stores into a `Float32Array`, round to `f32` at that point and read
+  back as `f64`: all of Track's per-sample arrays and its smoothing weights,
+  the collision circles (`Collisions.js:21`), Pursuit's cumulative turn
+  (`Pursuit.js:104`). Search each ported file for typed arrays.
+- **The same order.** Keep the JS order of arithmetic within an expression
+  (no reassociation, no `mul_add`). Where the JS iterates an object or a
+  Map, iterate in the JS insertion order, with an array or a vector of
+  pairs: `Object.entries(per)` at `Traffic.js:62` fixes both the colour
+  draws and the order of cars in collisions, and `POOL` at `Pursuit.js:110`
+  does the same for police units. A sorted map would silently change both.
+- **Integer hashing.** Port `mulberry32` and `hash2` with wrapping 32-bit
+  arithmetic so they are bit-exact.
+- **Random draws.** See section 4.3.
 
 ### 4.3 State and API
 
@@ -256,13 +294,62 @@ pub fn hash(state: &SimState) -> u64;   // for determinism and desync checks
 
 `players` is a vector from the first commit. Single-player is the one-player
 case of the same code, so multiplayer does not need a second pass through the
-simulation.
+simulation. State that JS keeps on `Race` for "the player" (lap, lap times,
+score, multiplier, wrong-way and stuck timers, parking target, pass timer,
+reset cooldown, damage, penalties) is per player, in `PlayerCar`.
 
-`step` follows the order of `Race.update` (`src/game/Race.js:182`): countdown
-and clock; reset; player control (cool-down driver, penalty hold, or input);
-player physics; rivals; circuit progress; traffic; pursuit; collisions and
-`writePos`; hit reactions; physics events; bonuses; wrong-way, stuck, lap and
-finish checks.
+**Plain data, no closures, no identity.** The JS keeps some state in forms
+that cannot be cloned or hashed. Each gets a data form:
+
+| JS | Rust |
+|---|---|
+| Parking targets as closures (`Race.js:476,490`) | An enum: circuit cool-down lap, or a lane and stopping point |
+| Height overrides as closures (`car.yFn`, `Traffic.js:151`; sawhorses) | An enum naming the surface: road, opposite carriageway, fixed |
+| `WeakMap`s and `Map`s keyed by car object (`Race.js:99,115-116`, `PursuitView.js:55`) | Fields on the car, or arrays indexed by the car's pool index |
+| A car's identity | Its index in its pool. The agent list is rebuilt each tick in the JS order (`Race.js:216`, then pursuit bodies appended at `:234`), because that order is the collision order |
+
+**Random streams.** In the live game the simulation and the presentation
+share `Math.random`: rival nitro timers (`AIDriver.js:21,110`), the police
+weave and callsigns (`PoliceDriver.js:60`, `Pursuit.js:110-116`, where
+`PursuitView` builds `Pursuit` with no generator of its own), and also
+sparks, smoke, audio and scenery animators. That sharing cannot be
+reproduced and is not kept. The Rust state holds named `Mulberry32` streams:
+`ai`, `police` (weave), `pursuit`, and `traffic` (which is already its own
+seeded stream in JS, seed 99). Seeds derive from the race seed in a fixed,
+documented way. Presentation draws never touch them. The JS gains optional
+generator parameters at those call sites, defaulting to `Math.random`, so
+the reference run can be given the same streams (roadmap WP 0.3).
+
+**Tick order.** `step` reproduces `Race.update` (`src/game/Race.js:182-416`).
+The order below is the contract; every item changes results if moved.
+
+1. Countdown and perfect start; race clock.
+2. Reset request (blocked while being busted or held).
+3. Build the agent list: players, rivals, active traffic, pursuit bodies.
+4. Player control: the cool-down driver after the finish, the penalty hold
+   (`PursuitView.holdControls`, which also sets `locked`), or the input.
+5. Player physics.
+6. Rivals; parking targets for those that finished.
+7. Circuit progress (`trackProgress`).
+8. Distance and odometer (`Race.js:226-229`); the odometer feeds traffic on
+   loops.
+9. Traffic.
+10. Pursuit update (`Pursuit.update`); bodies that joined this tick are
+    appended to the agent list.
+11. Collisions; then `writePos` for rivals, traffic and pursuit bodies.
+12. Per hit, in order: pursuit hit rules (`PursuitView.onHit`: unit health,
+    PIT push, damage, wreck arrest), traffic crash flag, cruise crash.
+13. Physics events: wall impact (cruise crash, pursuit wall damage), shift,
+    landing (air bonus).
+14. Bonuses: drift, near miss.
+15. Wrong-way and stuck timers.
+16. Cruise score, then lap check, then finish detection, then the finish
+    delay and results.
+17. Pursuit rule effects that the JS applies from `PursuitView.events`,
+    which runs inside `pv.sync` (`PursuitView.js:258`), after everything
+    above: release from a hold (`phys.reset`, unlock, repair, clear spiked
+    tyres), the barrier slowdown, the busted crash. They belong to the
+    simulation and stay at this point in the tick.
 
 **Events, not side effects.** JS `Race` calls the HUD, audio, rumble, camera
 and effects directly. The Rust simulation emits `SimEvent`s (`Countdown`,
@@ -270,12 +357,39 @@ and effects directly. The Rust simulation emits `SimEvent`s (`Countdown`,
 `Bonus`, `Lap`, `Finished`, pursuit events, ...) and the client turns them
 into text, sound, rumble and sparks.
 
-**What moves into the simulation.** Everything that affects the race:
-countdown and perfect start, reset, standings, laps, finish, the cool-down
-driver and parking, drift, near-miss and air bonuses, cruise scoring, wrong
-way and stuck timers. From `PursuitView.js`: damage, penalties and holds,
-wrecks, releases and statistics. Camera, effects, audio mapping, rumble and
-HUD text stay in the client.
+**What is simulation and what is not.** Everything that affects the race is
+simulation: all of the list above. Camera, effects, audio mapping, rumble
+and HUD text stay in the client. Two fields sit on the line:
+
+- `visualYaw` (a hit car's spin) looks visual but is part of the collision
+  shape (`Collisions.js:11`). It is simulation state.
+- Body pitch and roll are visual, but physics kicks the pitch spring on
+  landing (`CarPhysics.js:297`). In Rust the springs live in the client and
+  the kick travels in the `Land` event.
+
+**Data the world gives the simulation.** Two things the simulation needs are
+computed by scenery code in JS, not by the level files:
+
+- `Track.runout`, the drivable road past the last sample: 900 m on Sierra
+  (`City.js:48`), 700 m on Coast (`Harbor.js:57`), 0 on Streets. It moves
+  the road-end wall, parking, traffic stopping and the kinematic clamp.
+- `world.oppositeCarriageway` (`City.js:222`, `Harbor.js:179`): the range,
+  lanes and height of the far carriageway. Its cars draw from the traffic
+  stream and take part in AI awareness.
+
+`LevelRuntime` carries both as data. Until world generation is ported they
+are dumped from the JS world (roadmap WP 0.4) into `mr_levels`; when the
+scenery that computes them is ported (M3, M7), a test checks it reproduces
+the same values.
+
+**Vehicle dimensions.** Length, width, wheel radius and wheelbase per kind
+come from `CarModel.js` (thirteen kinds, `:1254-2010`) and the sawhorse from
+`PursuitView.js`. Physics and collisions read them. `mr_sim::dims` holds
+the table from M1, checked against a dump from JS; the car model port in M4
+must agree with it.
+
+**Inputs.** The reference run quantises inputs exactly as `InputFrame` does,
+so both sides integrate identical values.
 
 **Autodrive.** The `?autodrive=1` autopilot (`src/main.js:526-540`) is ported
 into `mr_sim` as an input generator. Tests, the headless CLI and RL baselines
@@ -290,7 +404,8 @@ use it.
 | `src/levels/*.js` | 690 | `mr_levels` (data and the Streets grid, cruise loop path) |
 | `src/levels/seaside/load.js`, `circuit.js`, `ground.js` | n/a | `mr_levels::seaside`; `tools/seaside/build.py` gains a binary output (`assets/seaside/`) |
 | `src/vehicles/CarPhysics.js` | 361 | `mr_sim::physics` (`CAR_SPECS`, `step`, `collide_walls`) |
-| `src/vehicles/Vehicle.js` (state only) | 95 | `mr_sim::vehicle`; `sync()` goes to `mr_game` |
+| `src/vehicles/Vehicle.js` (state only) | 95 | `mr_sim::vehicle`; `sync()` and the body springs go to `mr_game` |
+| Dimensions in `CarModel.js`; `runout` and the opposite carriageway from `City.js`, `Harbor.js`, `Streets.js` | n/a | `mr_sim::dims`, `mr_levels` world data (section 4.3) |
 | `src/vehicles/Kinematic.js`, `AIDriver.js`, `Traffic.js` | 494 | `mr_sim::{kinematic, ai, traffic}` |
 | `src/vehicles/Collisions.js` | 93 | `mr_sim::collisions` (the `Body` trait replaces duck typing) |
 | `src/game/Race.js` (rules) | ~300 of 570 | `mr_sim::race` |
@@ -313,25 +428,54 @@ The port does not build these, but the API must not block them:
 
 ### 4.6 Tests
 
+There are two reference runs of the JS, both with the shared math kernel,
+named random streams, quantised inputs and dt = 1/120:
+
+- **Module oracle (Node).** The pieces the JS unit tests already run under
+  Node (physics, kinematic cars, rivals, traffic, collisions, pursuit),
+  driven through staged scenarios in the order `Race` would call them.
+- **Game oracle (headless Chrome).** The real game, real `Race.update`, with
+  a fixed-dt hook and a recorder that captures simulation state after each
+  update. `Race` cannot run under Node (it needs the HUD's DOM, car models,
+  effects and a world), and a rewritten loop would be an oracle that is not
+  the game. Presentation still runs but draws from `Math.random`, which the
+  simulation no longer shares, so the recording is reproducible.
+
+Tests:
+
 1. **Ported unit tests.** `test/unit/{math,track,levels,seaside,physics,ai,traffic,pursuit}.test.js`
-   become Rust tests with the same assertions (about 210 tests).
-2. **Golden traces.** A Node harness (`tools/parity/sim-traces.mjs`) runs the
-   JS simulation at dt = 1/120 with `Math.random` replaced by a seeded
-   stream, over staged scenarios of up to ten seconds, and records state
-   every tick. Rust replays the same inputs and must agree at every tick to
-   1e-6 absolute plus 1e-6 relative. A mismatch that starts at a discrete
-   flip (a gear, the drifting flag) caused by a last-bit difference in a math
-   function is acceptable; move the scenario off the boundary and note it.
-3. **Whole-race statistics.** For each level, the field's finish and lap
-   times with autodrive agree with the JS (run in headless Chrome with a
-   fixed-dt hook) within 0.5 %, and the finishing order matches.
-4. **Determinism.** The same scenario gives the same `hash` every 120 ticks
-   on native and in wasm (run under Node). Cloning the state, stepping both
-   copies and comparing gives equality.
-5. **Fuzz.** Random inputs on every level: nothing becomes NaN, no body
-   passes a wall by more than 1 cm, the state never grows.
-6. **Speed.** A benchmark records ticks per second for a full Sierra field.
-   The floor is 200,000 per second on one desktop core.
+   become Rust tests with the same assertions, at the same dt (about 210
+   tests). The few that assert on README text are dropped and listed in
+   `DEVIATIONS.md`.
+2. **Module traces.** Each scenario in the catalogue (`parity/scenarios.md`,
+   written in WP 0.4: what it stages, on which level, with which bodies,
+   for how long) is replayed in Rust and must match the JS **exactly**: the
+   state hash at every tick, and the full state where the golden stores it.
+3. **Whole races.** For every level, in race mode and (where the level has
+   police) Hot Pursuit, the autopilot drives a full race in the game oracle.
+   Rust must match exactly, tick for tick, to the results. For the cruise
+   loop, which has no finish, the run is three minutes and the comparison
+   includes score, multiplier and distance.
+4. **Determinism.** The same run gives the same hashes on native and in wasm
+   (under Node). Cloning the state, stepping both copies and comparing gives
+   equality.
+5. **Fuzz.** Random inputs on every level: nothing becomes NaN, the state
+   does not grow, and no body is further outside the walls than the JS
+   reaches under the same fuzz (measured in M0; collisions can push a body
+   past a wall for a tick in the JS too, so "never past a wall" is not a
+   property of a faithful port).
+6. **Speed.** A benchmark records ticks per second for a full Sierra field,
+   beside the same measurement of the JS from M0. The Rust must not be
+   slower; the number is recorded for later RL targets.
+
+A golden stores a hash per tick and the full state every 120 ticks, so a
+mismatch can be localised without committing tens of megabytes. Staged
+scenarios are committed; whole races are regenerated on demand and cached.
+
+When a trace diverges, the cause is a port bug until shown otherwise:
+operation order, a JS semantic from section 4.2, a float width, an iteration
+order, or a draw from the wrong stream. Find the first differing field at
+the first differing tick.
 
 ## 5. World generation (`mr_canvas`, `mr_worldgen`)
 
@@ -341,8 +485,12 @@ crate that outputs data, not engine objects.
 
 ### 5.1 Scene description
 
+The scene types live in `mr_scene`, so the client can use them without the
+world generator.
+
 ```rust
-pub struct SceneDesc {
+// mr_scene: plain data
+pub struct Scene {
     pub meshes: Vec<MeshDesc>,        // positions, normals, uvs, colours,
                                       // named custom attributes, indices
     pub instances: Vec<InstanceDesc>, // mesh + transforms (+ colours, attrs)
@@ -350,8 +498,14 @@ pub struct SceneDesc {
     pub textures: Vec<TextureDesc>,   // RGBA8 / R8 pixels + sampler + flags
     pub nodes: Vec<NodeDesc>,         // groups, chunk bounds, cull distances
     pub lights: Vec<LightDesc>,
-    pub animators: Vec<Box<dyn Animator>>,
     pub night_params: Vec<NightParam>,// material property, day and night value
+}
+
+// mr_worldgen: what a level build returns
+pub struct WorldBuild {
+    pub scene: Scene,
+    pub animators: Vec<Box<dyn Animator>>,
+    pub sim_data: SimWorldData,       // runout, opposite carriageway (4.3)
 }
 ```
 
@@ -363,10 +517,16 @@ pub struct SceneDesc {
   `(dt, night, camera, player s)` and writes edits (a transform, instance
   matrices or colours, a material parameter, a UV offset) addressed by
   handle. The freight train, tumbleweeds, Ferris wheel, lighthouse beam,
-  boats, chaser bulbs, signals and the rest are all of this form.
-- The scene file format (`.mrscene`) is `SceneDesc` serialised. The JS game
-  can export one (roadmap M0), which gives the renderer real scenes before
-  any scenery is ported and gives world generation its golden reference.
+  boats, chaser bulbs, signals and the rest are all of this form. Animators
+  are code, so they are not part of a scene file.
+- **The scene file (`.mrscene`)** is a `Scene`: a JSON header (version,
+  nodes, materials with their kind and parameters, accessors) followed by
+  little-endian binary buffers, in the manner of glTF, so that JavaScript
+  can write it and Rust can read it. The JS game exports one per level
+  (roadmap WP 0.5), with animated objects at their rest pose. That gives the
+  renderer real scenes before any scenery is ported and gives world
+  generation its golden reference. For the export, each JS material carries
+  a tag naming its `MaterialKind`; adding those tags is part of WP 0.5.
 
 ### 5.2 The three.js geometry subset
 
@@ -384,7 +544,7 @@ down -Z, yaw θ has forward (cos θ, sin θ) in XZ. Bevy uses the same axes.
 Two that need care:
 
 - **Colours.** three.js converts hex colours from sRGB to linear. Vertex
-  colours and material colours in `SceneDesc` are linear.
+  colours and material colours in a `Scene` are linear.
 - **Texture orientation.** A three.js `CanvasTexture` is uploaded flipped
   (`flipY`), and the JS UVs and shader atlas math assume that. The Rust
   uploader flips rows for textures marked `flip_y` (canvas textures) and not
@@ -415,9 +575,13 @@ comparisons. The owner picks the final set from a gallery of sign textures.
 
 Scenery is placed on the terrain as drawn, so terrain heights must match the
 JS to well under a millimetre or props float and sink. Port `Terrain.js`,
-`TerrainMesh.js` and the noise functions with the same arithmetic in `f64`,
-and test heights at 10,000 sample points per level against the JS (tolerance
-1e-6 m). Scenery modules must draw from their seeded generators in the same
+`TerrainMesh.js` and the noise functions with the same arithmetic in `f64`
+and the rules of section 4.2, and test heights at 10,000 sample points per
+level against the JS run with the shared math kernel. They should be
+identical; the gate is 1e-9 m. The JS `**` operator cannot be redirected to
+the kernel, so WP 0.3 rewrites it as `Math.pow` in simulation and
+world-generation code (about forty places), which changes nothing in the
+live game. Scenery modules must draw from their seeded generators in the same
 order as the JS.
 
 ### 5.5 Building in steps
@@ -585,9 +749,12 @@ measured in M0):
 - Level load: no slower than JS on the web; at least twice as fast native.
 - Wasm memory high-water mark: under 512 MB on phones, and no growth across
   ten level switches.
-- Download: wasm under 10 MB gzip-compressed. Tracked in CI.
-- Time from navigation to menu on a phone over Wi-Fi: within 5 s of the JS
-  game's.
+- Download: the wasm file under 10 MB after gzip, measured by `cargo xtask
+  size` and tracked in CI. The dev server sends precompressed files from
+  `dist/` with `Content-Encoding`, so load times on phones are realistic.
+- Time from navigation to the menu on a phone over Wi-Fi: within 5 s of the
+  JS game's. (At G1 there is no menu yet; the gate there uses time to the
+  client's first rendered frame, before any scene loads.)
 
 ## 7. Audio (`mr_audio`)
 
@@ -958,19 +1125,28 @@ Five layers. A work package names the layers that gate it.
 | Layer | What | Tool | Passes when |
 |---|---|---|---|
 | L1 | Ported unit tests | `cargo test` | Same assertions as the JS tests pass |
-| L2 | Numeric goldens | `cargo xtask parity sim`, `audio-data` | Traces and generated arrays within tolerance (sections 4.6, 7.5) |
+| L2 | Numeric goldens | `cargo xtask parity sim`, `audio-data` | Simulation traces identical (section 4.6); generated audio arrays within tolerance (section 7.5) |
 | L3 | Structural goldens | `cargo xtask parity world`, `textures` | Geometry digests and textures within tolerance (section 5.7) |
 | L4 | Behaviour and pictures | e2e suites on the Rust build; `cargo xtask parity shots`, `materials`, `audio-render` | e2e green; picture and audio metrics within thresholds |
 | L5 | Owner sign-off | Side-by-side report; play test on the phone | Owner approves |
 
-**Reference capture.** `tools/parity/` drives the frozen JS game in headless
-Chrome (the existing harness) and in Node and writes goldens: simulation
-traces, Track and terrain dumps, scene exports, texture images, material
-test renders, audio buffers and offline renders, and screenshots. Small
-goldens are committed. Large ones are regenerated on demand and cached by
-the hash of the JS tree. The JS game gains a few hooks for this before it is
-frozen (fixed dt, seeded `Math.random`, scene export) and is then tagged
-`js-reference`.
+**Reference capture.** `tools/parity/` drives the JS game in headless Chrome
+(the existing harness) and in Node and writes goldens: simulation traces,
+Track and terrain dumps, scene exports, texture images, material test
+renders, audio buffers and offline renders, and screenshots. Small goldens
+are committed. Large ones are regenerated on demand and cached by the hash
+of the JS tree.
+
+To make that possible the JS game gains **parity hooks** during M0. A hook
+must change nothing when it is not switched on, and the JS suites must still
+pass with it in place. The hooks: a fixed-dt loop with several ticks per
+frame; replacement of the `Math` functions by the shared kernel; optional
+random-generator parameters where the simulation draws; a state recorder;
+quantised inputs; frozen traffic and particles for screenshots; a
+`MaterialKind` tag on every material and access to the shader patch
+functions for the material test scenes; the scene exporter; an audio call
+log. When M0's last capture tool is working, the JS is tagged `js-reference`
+and frozen. Until then the hooks may touch any JS file that needs one.
 
 **Screenshots.** For each level, camera stations every 250 m (chase view and
 a high view) at the route's own time of day, plus the menu's attract view,
@@ -1018,7 +1194,7 @@ not (`Sky.js:271`); `input.enabled` is never set false.
 | Shader compile hitches in the first seconds of a race | High | Medium | Warm-up pass; hitch gate |
 | Bevy upgrade churn stalls work | High | Medium | Pinned version; no plugins; shaders, UI widgets and post chain each in one module |
 | Scenery port drifts from JS in ways nobody notices | Medium | Medium | Geometry digests and textures compared automatically, not by eye |
-| Float differences make traces diverge | Medium | Low | `libm` everywhere; short traces with tolerance; statistics for long races |
+| Traces cannot be made bit-identical | Low | Medium | Both sides use one math kernel (section 4.2); WP 1.3 proves it on the physics alone before the rest of the simulation is ported. If it fails, fall back to tolerances on short staged traces and distributions over seeds for whole races, and record why |
 | Native audio differs audibly | Medium | Low | Offline band comparisons; tune trims per backend |
 | Bevy UI cannot reach the DOM version's polish | Medium | Medium | Owner reviews the menu and HUD early in M6; deviations listed |
 
