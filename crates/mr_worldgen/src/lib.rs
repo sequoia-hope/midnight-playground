@@ -6,10 +6,13 @@
 pub mod builder;
 pub mod color;
 pub mod color_builder;
+pub mod colorizer;
 pub mod geom;
 pub mod material;
 pub mod object;
 pub mod road;
+pub mod terrain;
+pub mod terrain_mesh;
 pub mod textures;
 pub mod three_geom;
 pub mod world;
