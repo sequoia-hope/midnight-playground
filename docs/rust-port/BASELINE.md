@@ -97,3 +97,39 @@ bench`; the JS one is `parity/golden/sim/bench.json`
 Both measured 2026-10-03 on the shared machine; the spread between runs
 is the load. A whole race with the Race rules runs at 130,000 to 180,000
 ticks/s natively (about 1,100 to 1,500 times real time).
+
+## The Rust client at WP 2.1 and 2.2 (first measurements)
+
+The Bevy client (stand-in materials, DECISIONS D103) loading each export,
+on the dev machine (RTX 3060), 2026-10-03, with the machine busy with
+unrelated work (load average 20 to 35 on 24 cores), so these are
+indications, not baselines. Native: the dev build (`cargo run -p mr_game`,
+dependencies optimised), `--screenshot`, from start to the screenshot of the
+first frame with every pipeline compiled; web: the dev wasm in headless
+Chrome on WebGPU (Vulkan), through the registered server, times from
+navigation.
+
+| Level | Export | Entities | Materials | Native: start to ready | Native peak RSS | Web: first frame | Web: download | Web: parse | Web: ready |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| sierra | 138 MB | 63,670 | 119 | 4.1 s | 839 MB | 1.4 s | 0.6–0.8 s | 0.11–0.22 s | 3.3–5.7 s |
+| coast | 210 MB | 28,673 | 143 | 3.6 s | 929 MB | 1.2–1.4 s | 0.6–1.0 s | 0.16–0.29 s | 3.7–4.7 s |
+| streets | 166 MB | 15,217 | 44 | 2.6 s | 861 MB | 1.2–1.3 s | 0.6–0.7 s | 0.22–0.28 s | 4.0–5.7 s |
+| desert | 107 MB | 19,117 | 62 | 2.5 s | 714 MB | 1.4 s | 0.1–0.5 s | 0.18 s | 4.4 s |
+| seaside | 39 MB | 24,316 | 23 | 1.4 s | 620 MB | 1.9 s | 0.1 s | 0.10 s | 3.8 s |
+| cruise | 181 MB | 25,270 | 47 | 2.9 s | 909 MB | 1.4 s | 0.8 s | 0.32 s | 4.9 s |
+| models | 26 MB | 652 | 168 | 1.0 s | 567 MB | 1.4 s | 0.07 s | 0.10 s | 2.3 s |
+
+Materials are one per JS material drawn: instance colours ride in the tint
+shader (D103); a material per distinct colour had given Sierra 1,838 and
+Streets 1,580. Web "first frame" is the client's first rendered frame,
+before the scene arrives (G1's load-time measure); "ready" is the scene up
+with every pipeline compiled. Ranges are over the dev and release builds and
+repeated runs. The dev wasm is 77 MB raw.
+
+**Release build** (`cargo xtask web --release`, fat LTO, `wasm-opt -Oz`;
+3 min 14 s at load average about 30): `mr_game_bg.wasm` 18.91 MB, **5.87 MB
+after gzip** (G1's limit: 10 MB). Flying Sierra and Coast at 60 m/s from
+s = 80 in headless Chrome (WebGPU, 1280 × 800), shadows off and on: a steady
+60 fps (the display rate) with no frame over 16.8 ms after the first second
+of flight; Coast with shadows had one 217 ms frame just after "ready" (a
+pipeline compiled late). Phones not measured yet.
