@@ -309,6 +309,10 @@ pub struct SceneGraph {
     /// What the JS would `console.warn` or `console.error` while building
     /// (a missing material, a scenery module that failed).
     pub log: Vec<String>,
+    /// The textures [`SceneGraph::cached_texture`] handed out, by image:
+    /// the JS texture module hands out one `THREE.Texture` per key, so a
+    /// second call returns the same texture (DECISIONS D271).
+    pub shared: Vec<(Image, TextureId)>,
 }
 
 impl SceneGraph {
@@ -383,12 +387,20 @@ impl SceneGraph {
         TextureId(self.textures.len() as u32 - 1)
     }
 
-    /// A texture from the cache as the JS module hands it out (its own
-    /// sampler, named `name`).
+    /// A texture from the cache as the JS module hands it out: the module
+    /// keeps one `THREE.Texture` per key, so every call for the same cached
+    /// picture returns the same texture (the first call's, named `name`;
+    /// DECISIONS D271). A [`SceneGraph::clone_texture`] of it is a texture
+    /// of its own.
     pub fn cached_texture(&mut self, c: &Arc<Cached>, layer: Layer, name: &str) -> TextureId {
         let image = Image::Cached(c.clone(), layer);
+        if let Some(&(_, id)) = self.shared.iter().find(|(im, _)| im.same(&image)) {
+            return id;
+        }
         let desc = image.texture().desc(name, 0);
-        self.add_texture(image, desc)
+        let id = self.add_texture(image.clone(), desc);
+        self.shared.push((image, id));
+        id
     }
 
     /// `texture.clone()`: the same pixels, a sampler of its own.
@@ -536,6 +548,10 @@ impl SceneGraph {
             self.materials.push(m);
         }
         self.textures.extend(other.textures);
+        // A part's cached textures stay its own (its materials hold them);
+        // later calls here still find this graph's first.
+        self.shared
+            .extend(other.shared.into_iter().map(|(im, t)| (im, b.texture(t))));
         for r in other.roots {
             match parent {
                 Some(p) => self.add(p, b.node(r)),

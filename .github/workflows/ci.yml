@@ -104,3 +104,5 @@ jobs:
           node tools/parity/audio-facade-ref.mjs --check
       - name: The terrain plan golden reproduces
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/terrain-plan.mjs --check
+      - name: The road plan golden reproduces
+        run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/road-plan.mjs --check
