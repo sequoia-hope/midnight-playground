@@ -61,7 +61,7 @@ jobs:
       - run: cargo xtask size --budget
 
   js:
-    name: JS unit tests (kernel off and on)
+    name: JS unit tests (kernel off and on), module traces
     runs-on: ubuntu-latest
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: 1
@@ -75,3 +75,5 @@ jobs:
       - run: npm run test:unit
       - name: Unit tests with the parity kernel
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs npm run test:unit
+      - name: Module traces reproduce the committed goldens
+        run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/sim-module.mjs --check
