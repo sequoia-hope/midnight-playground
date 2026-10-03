@@ -3319,6 +3319,7 @@ dependencies = [
 name = "mr_audio"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "js-sys",
  "mr_math",
  "serde_json",
