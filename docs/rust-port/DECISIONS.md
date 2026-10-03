@@ -986,3 +986,167 @@ Stores keep their array types: `Uint8ClampedArray` (ImageData) rounds half
 to even and clamps (`ImageData::set`), `Uint8Array` (the DataTexture)
 truncates, `Float32Array` lattices and noise go through `fround`. The
 noise textures are bit-identical to the JS.
+
+## WP 3.3 decisions
+
+## D190. The shape of the builders' API
+
+2026-10-03, WP 3.3. Each JS module is a module of `mr_worldgen`:
+`valley/Builder.js` is `builder`, `beach/ColorBuilder.js` is
+`color_builder`, `city/geom.js` is `geom`, `extrude`, `runs`, `chunks` and
+`groupRuns` of `Road.js` are in `road` (where the `Road` class joins them in
+WP 3.5), `THREE.Color` is `color`, the built-in materials are `material`.
+Methods keep the JS names and argument order; a JS default becomes a
+written-out argument (`set_frame(x, y, z, yaw)`, `beam(key, a, b, t)`) or a
+field of an options struct whose `None` is a property the JS object leaves
+out (`PrismOpts`, `ExtrudeOpts`, `BuildOpts`, `StaticOpts`). Two
+conveniences cover the common short calls: `put_at` (no rotation, unit
+scale) and `box_yaw` (`box` with only `ry`); `put` and `cbox` take the
+rotation and scale as `[x, y, z]` triples. `box` is `box_` (`box` is
+reserved in Rust). The JS `materials` object passed to `build` is a slice of
+`(key, MaterialId)` pairs. `add` and the shape methods return nothing: the
+JS returns the placed geometry, which no caller uses. `console.warn`
+(a bucket without a material, a missing or failing scenery module) goes to
+`SceneGraph::log`, which the build hands back as `WorldBuild::log`. Clippy's
+`too_many_arguments` is allowed in `builder` and `geom` (D130).
+
+## D191. The object tree and how it becomes a scene
+
+2026-10-03, WP 3.3. A world build makes objects, geometries, materials and
+textures into a `SceneGraph`: four arenas addressed by `NodeId`, `GeoId`,
+`MaterialId` and `TextureId`, the way the JS keeps object references. An
+`Object3D` holds what three's does and the exporter writes (name, type,
+position, quaternion, scale, the matrix last updated, `matrixAutoUpdate`,
+visibility, culling, render order, shadows, layers, plain `userData`,
+geometry and materials, instance data, a sprite's centre, a light);
+`add` re-parents as three's does. `SceneGraph::finish` walks the roots
+exactly as `scene-page.js` walks the JS scene (depth first, children in
+the order added) and numbers meshes, materials and textures as it first
+meets them, textures in parameter order then uniforms, pixel buffers shared
+by image (a cloned texture shares its source's). What no root reaches is
+left out, and so are night parameters of materials nothing draws (D24). A
+`HandleMap` turns build handles into scene indices. Auto-updated objects
+get `compose(position, quaternion, scale)` at assembly, as three's
+`updateMatrixWorld` gives them before the export; static ones keep the
+matrix of their last `updateMatrix()`. Bounds are computed where the JS
+computes them (`mergeGeometries` callers, `GeoBuilder.build`,
+`InstancedMesh.computeBoundingSphere/Box` with their side effect on the
+geometry); the bounding spheres three's renderer computes lazily for
+frustum culling before the export are not reproduced, so a digest should
+not compare them. three's `Sphere` operations the instanced bounds need are
+small free functions in `object`, leaving `three_geom` untouched.
+
+## D192. PaintBuilder and ColorBuilder are modes of one Builder
+
+2026-10-03, WP 3.3. In the JS both subclasses override `add`, and every
+shape method of `Builder` calls `this.add`, so a box drawn on a paint
+builder is painted. Rust has no virtual dispatch through a base struct's
+methods, so `Builder` carries a `Paint` mode (`None`, `Groups` for
+PaintBuilder, `Palette` with the channel for ColorBuilder) and `add` and
+`build` dispatch on it; `Builder::new_paint(groups)` and
+`Builder::new_color(palette)` are the constructors, `set_channel` is
+`B.channel = ...`. The groups and the palette keep the JS object's entry
+order (only looked up by key). ColorBuilder's fallback material
+(`MeshStandardMaterial({ vertexColors: true, roughness: 0.85 })`) is made
+when the first solid bucket needs it rather than at the top of `build`; a
+material nothing draws never reaches the scene, so the output is the same.
+
+## D193. THREE.Color
+
+2026-10-03, WP 3.3. `color::Color` ports three r180's Color with the
+colour management the game runs under (working space linear sRGB):
+`setHex` and `setStyle` convert from sRGB with three's `SRGBToLinear`,
+`getHex` converts back, `setRGB` and `setHSL` take working-space values;
+`pow` is the kernel's. `setStyle` handles `rgb()`/`rgba()` (integers and
+percentages), `hsl()`/`hsla()`, `#rgb` and `#rrggbb`; the CSS colour names
+(`'red'`) are not ported because the game never passes one, and an
+unrecognised style leaves the colour unchanged as three does after its
+warning. Every case in the golden is bit-identical.
+
+## D194. Materials carry three's full parameter list
+
+2026-10-03, WP 3.3. A JS material reaches the scene as every own property,
+in its JS order (D25). `Material::standard()` and the constructors for
+Physical, Lambert, Basic, LineBasic, Sprite and Points hold exactly that
+list with three r180's defaults (the golden checks all seven against a
+fresh three.js material), so a Rust-built material and an exported one
+read the same to the renderer. `Material::set(key, value)` is `setValues`
+for one key: a colour property takes a hex number, a CSS string or a
+`Color`; any other property is replaced; a key the class lacks is ignored
+(three warns); Physical's `reflectivity` sets `ior` through its accessor.
+A patched material is the built-in one with `kind(MaterialKind, opts)`,
+`program_key` and the patch's `uniform`s, as the JS tags it (D21, D22).
+Texture parameters hold a `TextureId`, renumbered at assembly.
+
+## D195. Animators write edits addressed by handle
+
+2026-10-03, WP 3.3. An `Animator` (a trait, implemented by any
+`FnMut(&UpdateCtx, &mut Vec<Edit>) + Send + Sync`) is one closure of
+`world.updaters`. `UpdateCtx` is the JS `(dt, night, camera, s)`;
+`CameraView` is what the updaters read of the camera: its position, its fov
+and the drawing buffer's height. An `Edit` is a target `Handle` (node,
+material, geometry, texture) and a `Change`: visibility, a transform, an
+instance matrix, colour or count, values written into an attribute, a
+material number or uniform, a material colour, a texture offset. That list
+covers the animated scenery of inventory section 10 and grows if a module
+needs more. `WorldBuild::update` runs the animators in order and resolves
+each edit to the scene (`SceneEdit`, `SceneRef`), dropping edits of what
+the scene left out; the night parameters are the client's to apply before
+it (`night_value`), as `World.update` applies them before the updaters.
+Animators are `Sync` so a world can be read from several threads (D196).
+
+## D196. A build is a list of jobs
+
+2026-10-03, WP 3.3. A `Job` has the JS progress label and fraction (shown
+before it runs, as `step(label, frac)` reports them) and either runs on the
+`&mut World` (`Job::Serial`), returning jobs to run next, or is a set of
+pure pieces (`Job::Parallel`) that each build a `Part` (a graph of their
+own and its animators) from a `&World`; the parts are merged in their order
+with their handles moved by the merge (`SceneGraph::append`, and animators
+wrapped to move their edits' handles), so the result is the same on one
+thread or many. With the `parallel` feature, natively, the pieces run on
+std's scoped threads, one batch per core; no thread pool crate is needed,
+so rayon is not added. `level_jobs` is `World.build`: Surveying the route
+(the Track; the level arrives prepared, D54), Shaping the land (the
+terrain, then each scenery module made and its `plan` run, a failing one
+dropped, then the fields), Sculpting terrain, Paving roads (road and sky),
+Filling the sea on levels with a sea, one job per surviving scenery module
+at `0.72 + k / n × 0.26` with its `label` or "Building scenery" (a failing
+`build` is logged and the build carries on), and Ready. The scenery jobs
+are queued by the "Shaping the land" job, since `n` counts the modules
+whose plan succeeded. The stages later packages port plug in through
+`Stages` (terrain, fields, terrain meshes, road, sky, sea), and the modules
+through the `Scenery` trait and a factory given each `SceneryInfo` (name,
+first zone, key, as `loadScenery` passes them); `SCENERY_LABELS` holds each
+class's label. `World` holds the level, the track, the graph, the root
+group `world:<id>`, the animators, the texture cache and the simulation's
+world data (`SimWorldData`, `mr_levels::world::WorldData`, filled by the
+scenery); later packages add their fields (terrain, road, sky, sea).
+
+## D197. The builders golden
+
+2026-10-03, WP 3.3. `tools/parity/builders.mjs` imports the game's own
+`valley/Builder.js`, `beach/ColorBuilder.js`, `city/geom.js` and `Road.js`
+under Node with the parity kernel (they need nothing from a browser) and
+records 44 cases in `parity/golden/builders/builders.json`: Color (hex,
+fractional and out-of-range hex, HSL both ways, offsetHSL, getHex, styles,
+the arithmetic), the seven built-in materials' defaults and ten made with
+options, Builder and PaintBuilder (frames pushed and popped, boxes rotated
+three ways, centred boxes, beams diagonal, straight up and straight down,
+indexed, non-indexed and lathe, torus and tube pieces, a piece without
+normals, a missing material, `castShadow` as a list and as `true`,
+`mergeAll` and its failure on mixed pieces), ColorBuilder (near and far
+channels, the fallback solid material and a given one), GeoBuilder (each
+degenerate quad branch, triangles, roof winding flips, prisms in both
+windings with every option, boxes with bottoms, with colour and cell
+attributes and without), `trs`, `yawOf`, `instanced` (with colours, empty,
+coincident centres), `staticMesh`, and `extrude` over Sierra, Coast, the
+cruise loop (past its length) and Desert (gaps, absolute heights, functions
+for `dy` and colour, skipped short ranges, the open road's runout) with
+`runs` over predicates; and the progress labels of `World.build` for every
+level but Seaside, computed from the levels' zones and the labels the
+scenery classes set. Meshes are compared by name, type, flags, matrix bits,
+material and geometry; geometries as in D134.
+`crates/mr_worldgen/tests/builders.rs` makes the same calls and is
+bit-identical in every case, native and in wasm. CI checks that the golden
+regenerates.

@@ -88,3 +88,5 @@ jobs:
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/seaside-golden.mjs --check
       - name: The three.js geometry golden reproduces
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/three-geom.mjs --check
+      - name: The builders golden reproduces
+        run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/builders.mjs --check
