@@ -1,8 +1,9 @@
 //! The client (SPEC 3, 6, 8). Only this crate depends on the engine.
 //!
 //! Roadmap M2 so far: the Bevy app shell (WP 2.1), the scene loader with
-//! the fly camera (WP 2.2), and three.js's shading, sky, environment,
-//! shadows, fog and post chain (WP 2.3). The client loads a level's scene
+//! the fly camera (WP 2.2), three.js's shading, sky, environment, shadows,
+//! fog and post chain (WP 2.3), and the terrain, road, sea and points kinds
+//! with stand-in cars from the simulation (WP 2.4). The client loads a level's scene
 //! export (or the car models), draws it as the JS game does for the kinds
 //! ported so far and flies the JS game's debug camera along the route, the
 //! sky following the route's time of day.
@@ -14,8 +15,10 @@
 //! - [`matscene`]: the material test scenes (SPEC 6.2 "Verification").
 //! - [`stations`]: the screenshot stations, flown natively (DECISIONS D17).
 //! - [`fly`]: the fly and attract cameras of `src/main.js`.
+//! - [`cars`]: stand-in cars driven by the simulation (WP 2.4).
 //! - [`status`]: what the page and the window title show.
 
+pub mod cars;
 pub mod convert;
 pub mod fly;
 pub mod loader;
@@ -80,6 +83,9 @@ pub struct Opts {
 #[derive(Resource, Default)]
 pub struct TrackRes {
     pub track: Option<Track>,
+    /// The level it was built from (Seaside prepared with its survey), for
+    /// the simulation of the stand-in cars.
+    pub level: Option<mr_track::Level>,
     /// Building it failed or does not apply; the camera stays where the
     /// scene was exported.
     pub none: bool,
@@ -171,6 +177,7 @@ fn make_track(mut tr: ResMut<TrackRes>, mut sky: ResMut<SkyRes>, opts: Res<Opts>
             s.override_p = opts.o.t;
             sky.sky = Some(s);
             tr.track = Some(t);
+            tr.level = Some(level);
         }
         Err(e) => {
             warn!("track {id}: {e}");
@@ -251,9 +258,13 @@ pub fn fly_system(
     mut sky_res: ResMut<SkyRes>,
     mut lighting: ResMut<Lighting>,
     mut env: ResMut<EnvRequest>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
 ) {
     // `Math.min(frameDt, 1 / 20)` (main.js tick).
     let dt = f64::from(time.delta_secs()).min(1.0 / 20.0);
+    let pixel_ratio = windows
+        .single()
+        .map_or(1.0, |w| f64::from(w.scale_factor()));
     let Some(track) = &tr.track else {
         // The models: the sky stays at Sierra's start around the grid.
         if tr.none {
@@ -261,7 +272,7 @@ pub fn fly_system(
             update_sky(
                 &mut sky_res,
                 &opts,
-                0.0,
+                (0.0, pixel_ratio),
                 0.0,
                 focus,
                 &mut lighting,
@@ -296,7 +307,7 @@ pub fn fly_system(
     update_sky(
         &mut sky_res,
         &opts,
-        world_dt,
+        (world_dt, pixel_ratio),
         status.s,
         cs.focus,
         &mut lighting,
@@ -304,12 +315,14 @@ pub fn fly_system(
     );
 }
 
-/// `Sky.update` and `refreshEnv` (main.js): the environment is rebuilt when
-/// the time of day has moved 2.5 % of the route since the last build.
+/// `Sky.update`, the updaters' per-frame uniforms (`render::lighting::Anim`)
+/// and `refreshEnv` (main.js): the environment is rebuilt when the time of
+/// day has moved 2.5 % of the route since the last build. `frame` is the
+/// world's dt and the pixel ratio.
 fn update_sky(
     sky_res: &mut SkyRes,
     opts: &Opts,
-    dt: f64,
+    (dt, pixel_ratio): (f64, f64),
     s: f64,
     focus: DVec3,
     lighting: &mut Lighting,
@@ -320,6 +333,8 @@ fn update_sky(
     };
     let mut next = lighting.clone();
     sky.update(dt, s, focus, &mut next);
+    next.anim.advance(dt, sky.night);
+    next.anim.pixel_ratio = pixel_ratio;
     next.shadows = opts.hq;
     next.env_intensity = ENV_INTENSITY;
     if *lighting != next {
@@ -401,6 +416,12 @@ pub fn app(o: Options, hq: bool) -> App {
         (enter_running, place_camera).chain(),
     )
     .add_systems(Update, fly_system.run_if(in_state(AppState::Running)))
+    .add_systems(
+        Update,
+        (cars::start_cars, cars::drive_cars)
+            .chain()
+            .run_if(in_state(AppState::Running)),
+    )
     .add_systems(
         Update,
         loader::apply_night

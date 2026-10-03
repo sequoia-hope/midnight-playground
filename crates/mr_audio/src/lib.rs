@@ -13,6 +13,12 @@
 //!   music's pulse wave and hall impulse response).
 //! - [`reference`]: every array of the audio reference
 //!   (`parity/golden/audio/arrays.json`), built in the JS order.
+//! - [`game`]: `GameAudio` (`Audio.js`, WP 5.3–5.5): buses, gates, volumes,
+//!   pause and unlock, the engine for every car, turbo, electric, damage,
+//!   the environment voices, the one-shots and the pursuit sounds; with
+//!   [`music`] and [`tracks`] (the sequencer and the songs), [`radio`] (the
+//!   recorded radio voice), [`session`] (the iPhone audio session) and
+//!   [`timers`] (its `setTimeout`s).
 
 #![forbid(unsafe_code)]
 // A JS index loop stays an index loop, so the port reads beside the JS line
@@ -20,11 +26,16 @@
 #![allow(clippy::needless_range_loop)]
 
 pub mod engine;
+pub mod game;
 pub mod music;
 pub mod noise;
+pub mod radio;
 pub mod reference;
 pub mod samples;
+pub mod session;
 pub mod shapes;
+pub mod timers;
+pub mod tracks;
 pub mod wa;
 
 use sha2::{Digest, Sha256};

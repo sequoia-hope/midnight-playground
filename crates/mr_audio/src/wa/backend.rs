@@ -199,4 +199,18 @@ pub trait Backend {
     fn render(&mut self) -> Option<Vec<Vec<f32>>> {
         None
     }
+
+    /// An offline context, handed over to render steered (the backend keeps
+    /// taking calls meanwhile, from the control function).
+    fn take_offline(&mut self) -> Option<Box<dyn OfflineRender>> {
+        None
+    }
+}
+
+/// An offline render that suspends every `frame` samples to run
+/// `control(k)` (frame k), as `OfflineAudioContext.suspend(t)` lets a page
+/// steer one (DECISIONS D45). The control's calls on the context go through
+/// the facade as usual.
+pub trait OfflineRender {
+    fn render(self: Box<Self>, frame: usize, control: Box<dyn FnMut(usize)>) -> Vec<Vec<f32>>;
 }

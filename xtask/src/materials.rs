@@ -8,8 +8,8 @@
 //!    `node tools/parity/scene-export.mjs` runs first if they are missing.
 //! 2. The Rust renders: the native client, `--materials <names> --out
 //!    parity/cache/<key>/materials/rust/` (`all` by default: the fixed scenes
-//!    and the kinds WP 2.3 ports; `every` adds the other kinds drawn as
-//!    their plain stand-ins).
+//!    and the kinds WP 2.3 and 2.4 port; `every` adds the other kinds drawn
+//!    as their plain stand-ins).
 //! 3. `cargo xtask parity shots --a <rust> --b <js> --label materials`: the
 //!    CIEDE2000 metric with SPEC 12's limits, the report in
 //!    `parity/report/shots-materials/`. Fails if a scene is over a limit.

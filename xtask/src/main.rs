@@ -73,7 +73,9 @@ fn usage() -> &'static str {
      \x20 parity materials [--only all|every|<names>] [--js-run a] [--rerun-js]\n\
      \x20                   the material test scenes rendered by the JS and the Rust client, compared\n\
      \x20 parity stations [--levels a,b] [--js-run a] [--rerun-js] [--label name]\n\
-     \x20                   the screenshot stations of the JS and the Rust client, compared"
+     \x20                 [--rust-run rust] [--base] [--gate level/name.png,...]\n\
+     \x20                   the screenshot stations of the JS and the Rust client, compared;\n\
+     \x20                   --base: terrain, road and sky only (WP 2.4's gate on Sierra)"
 }
 
 /// The repository root (the workspace root).
