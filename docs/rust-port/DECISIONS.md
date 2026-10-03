@@ -1385,3 +1385,125 @@ texture. Still open for WP 3.5: the JS texture cache hands out one
 `SceneGraph::cached_texture` makes a new texture per call; the road and sky
 must reuse the terrain's `TextureId` (or the graph learn to share by key) to
 match the export's texture count.
+
+## WP 3.5 decisions
+
+## D270. The shape of `road`, `sky`, `sea` and `stages`
+
+2026-10-03, WP 3.5. The `Road` class joins `extrude` and the run helpers
+in `mr_worldgen::road`; `Sky.js` is `sky`, `Sea.js` is `sea`, and the
+stages of `World.build` they fill are `stages`. `Road::new` makes the group
+`road` and takes the shared `tDetail`; `build` runs the JS methods in order
+(`classify_sides`, `build_surface`, `build_markings`, `build_barriers`,
+`build_lines`, `build_chevrons`, `build_viaduct`) on a `RoadCtx` (track,
+terrain, graph, texture cache, `noMarks`). `this.materials` is a list of
+(key, `MaterialId`) in the order the keys were made, `mat(key, make)` keeps
+one per key as the JS does (the chevrons' poles reuse the barriers' `post`,
+the viaduct the barriers' `concrete`), and setting the wood rails'
+`side` changes the one shared wood material, posts included, as in the
+JS. `track.sideL`/`sideR` live on the `Road` (`side_l`, `side_r`): only
+scenery reads them, so mr_track's `Track` is left alone; the same goes for
+`track.noMarks`, which is `World::no_marks`. `Road::set_night` and
+`dew_animator` write `uWet` as an edit of each asphalt material (the JS
+shares one uniform object between them). `Sea::new` makes the mesh and
+material (not added anywhere; the stage adds it to the root) and
+`Sea::animator` the updater. `World` gains `no_marks`, `road`, `sky` and
+`sea`; `WorldBuild` gains `sky`, `update_sky` and `resolve`. `Change` gains
+`Vector` (a vector uniform: `uSunDir`, the sea's `uOff2`) and `Light` (a
+light's colour, intensity and ground colour). `Material::shader()` is a
+fresh `ShaderMaterial` with three r180's own properties in their order
+(`forceSinglePass` true, `defines`, `linewidth`, ..., `glslVersion`), and
+`shader_source` carries its GLSL; the sky dome carries the JS `skyVert` and
+`skyFrag` verbatim (generated from `Sky.js`, so the export's shader text
+and ours hash the same). Each patch (asphalt, shoulder, markings, sea) is
+the built-in material with its kind and the uniforms the export lists,
+`clippingPlanes` last, as WP 3.4 did for the terrain. The GLSL of the
+patches and the fog-chunk rewrite (`MR_SUN_FOG`) are the renderer's.
+
+## D271. One texture per cached picture
+
+2026-10-03, WP 3.5; the fix D236 asked for. `SceneGraph::cached_texture`
+now returns the texture it made for the same cached picture (same
+`Arc<Cached>`, same layer) instead of a new one, as the JS module hands
+out one `THREE.Texture` per key; the graph keeps the list in a new field,
+`shared`. A `clone_texture` of it stays a texture of its own (a JS
+`texture.clone()`). Proved by the texture counts: the base exports hold 10
+(Sierra), 9 (Coast), 5 (Streets), 7 (Desert, one of them the lake bed's),
+7 (Seaside, two of them the photo and its mask) and 6 (cruise) textures,
+and the Rust scenes the same; before, the road, sky and sea each added a
+`terrainDetailTexture`. WP 3.4's terrain gate is unchanged (the terrain
+asked for three different pictures). A part built by a parallel job keeps
+its own shared list, appended after the world's; a texture both make is
+then two textures, which no ported module does yet.
+
+## D272. The time of day as data; the sky in a built scene
+
+2026-10-03, WP 3.5. `sky::SkyParams` is the level's keys prepared
+(`prepKeys`: colours through `THREE.Color`'s sRGB to linear), the sun's
+azimuth and the moon's direction; `sample(p)` is `Sky.sample`, and
+`frame(p)` everything `Sky.update` computes at a fraction of the route
+(`SkyFrame`: the dome's uniforms, the light's colour, intensity and
+direction, crossfading from sun to moon and kept above 0.12, the
+hemisphere light, fog colour and density, exposure, the night factor).
+`frame_at(s, override)` takes the player's distance: a point-to-point road
+runs from 0 to 1, a loop is pinned at 0.5, and `override` is `?t=`. This
+is the API the client calls for the time of day at s, with no scene
+needed. `sky::Sky` is the JS class in the scene: the dome (kind
+`SkyDome`, render order -10, scale 5000, not culled), the directional light
+with its 2048² shadow over ±70 m (near 1, far 600, bias -0.0004, normal
+bias 0.6), its target, and the hemisphere light, each a scene root as
+three keeps them. `Sky::update(dt, s, focus)` returns the frame and writes
+edits (uniforms, the lights' colours, the sun 300 m from the focus along
+the light, the target and dome at the focus); `WorldBuild::update_sky`
+resolves them to the scene, after which the client applies the night
+parameters at `frame.night` and runs `WorldBuild::update` (D195's order,
+`World.update`'s). The build leaves the scene as a first update at s = 0
+without a focus would (dt 0, lights and dome at their defaults), so a
+scene file shows the start's time of day.
+
+## D273. The scenery's road inputs are recorded until it is ported
+
+2026-10-03, WP 3.5. The road reads what scenery `plan()`s register:
+`track.fenceGaps` (Valley's driveways and store, Beach's cross streets),
+`track.noMarks` (Streets' crossings) and `track.runout` (City, Harbor,
+Streets; the road itself never samples past the finish, so runout changes
+nothing it draws). `tools/parity/road-plan.mjs` runs the plans under Node
+with the kernel (as `terrain-plan.mjs` does) and writes them to
+`parity/golden/road/<level>.json` as hex bits; each equals the world
+golden's track scalars (the browser's values after the whole build).
+`stages::RoadPlan::apply` registers them right after the scenery plans, in
+the "Shaping the land" job; `stages::level_stages(LevelSetup)` gives the
+terrain's stages with it plus the road, sky and sea stages. When a scenery
+module is ported, its `plan()` replaces its part of the recording.
+
+## D274. The L3 road, sky and sea gate, and what it found
+
+2026-10-03, WP 3.5. `tests/road.rs` builds each level through
+`level_jobs(level_stages(...))` and compares it with the golden
+`road-plan.mjs` writes from the browser's exports (`--base` for road and
+sky; the full export for the sea, which the base leaves out): per child of
+the group `road` a line of type, vertex and index counts, the SHA-256 of
+every attribute (`aLane` included) and the index, shadow flags, instance
+count and matrices, hashed together; each child's material, and each
+material parameter by parameter with its uniforms and textures (by
+sampler, and by pixels but for canvas textures, which are WP 3.2's
+threshold gate); `sideL`/`sideR` against the world golden; the sky's
+dome mesh, material (GLSL by hash), four root nodes, both lights, fog,
+exposure and night at the export's focus; the sea's node, mesh, material
+and wave normal map pixels; the texture count. The golden is compiled in,
+so the gate runs in CI and wasm; with the cache a failure is localised per
+mesh and attribute. What scenery does to the road after building it is
+replayed by the test, not the port: Streets' wetter asphalt
+(`asphalt2`: roughness 0.62, metalness 0.05, colour 0.72) and Desert's lake
+bed, whose material the JS puts on the asphalt and shoulders past the
+lake's start: the test finds the same 15 meshes with the JS predicate and
+checks the JS has its material there. The night parameters and the dew
+updater are applied at the export's night factor. Result: **identical on
+all six levels, native and wasm**: Sierra 117 road meshes (184,744
+vertices), Coast 101 (172,162), Streets 14 (49,132), Desert 62 (118,504),
+Seaside 10 (34,188), cruise 141 (274,508), every material equal; the sky
+equal everywhere; Coast's sea (239,093 vertices) and its wave normal map
+bit-identical. The tool also records `Sky.update` at 41 points along each
+route under Node (every value it sets, hashed); `sky_route_*` reproduce it
+bit for bit, so the time of day along the route is at parity, not only at
+the start. No port fix was needed.
