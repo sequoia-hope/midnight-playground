@@ -1,0 +1,1044 @@
+# Midnight Racer in Rust: port specification
+
+Status: proposed, 2026-10-03. Companions: [ROADMAP.md](ROADMAP.md)
+(milestones, work packages, gates) and three inventories of the JS game with
+file and line references, to port from:
+[rendering and world generation](inventory-rendering.md),
+[audio](inventory-audio.md),
+[UI, input, platform and tests](inventory-ui-input-tests.md).
+
+This document says what the Rust version is, how it is structured, and how we
+know each part is finished. It is written to be executed by an agent that has
+not seen the conversation that produced it. Where it describes the JavaScript
+game it cites the file to read; the JS source is the authority on behaviour,
+this document is the authority on structure.
+
+## 1. Goals
+
+The game is being rewritten in Rust so it can grow into a racing suite: more
+modes (pursuit, combat, kart-style), open-world areas beside the current
+routes, LAN multiplayer between browser tabs, more realistic physics, and
+reinforcement-learning agents trained on the simulation.
+
+The port comes first. Its goal is the game as it is today, with nothing
+missing and nothing redesigned.
+
+| Requirement | Decision (owner, 2026-10-03) |
+|---|---|
+| Platforms | Desktop browsers, iPhone Safari, Android browsers, and a native desktop app. All four must run well. |
+| Web renderer | **WebGPU is required** (owner, revising an earlier WebGL2-baseline answer). That means iPhone 11 or newer on iOS 26+, Android 12+ with current Chrome, and desktop Chrome, Edge and Safari. Firefox works only where it ships WebGPU (Windows, Apple Silicon Macs). A browser without WebGPU gets a page that says so. |
+| Look | Match the three.js game as closely as possible, judged side by side. |
+| Content | Generated in code for the port. The architecture includes a normal asset pipeline so later content can be authored. |
+| Multiplayer | A native host program first. The netcode is designed so a browser tab can be the host later. |
+| First multiplayer release | Two to eight humans in the existing race levels, AI filling the grid, traffic on. Hot Pursuit and the cruise loop stay single-player until later. |
+| Repository | This repo. The JS game stays live at the site root, frozen except for bug fixes, until the Rust build replaces it. |
+
+Not goals of the port: new gameplay, retuned handling, authored art, or the
+open-world design. Those come after cutover and each
+gets its own design document.
+
+### 1.1 Principles
+
+These are the rules that resolve most questions an implementer will have.
+
+1. **The JS game is the oracle.** Parity is measured against it by tests,
+   numeric traces, geometry digests and side-by-side pictures. A port that
+   "looks about right" is not done.
+2. **Port, don't improve.** Keep the same structure, constants, order of
+   operations and order of random draws as the JS. Keep the comments that
+   explain why. A change in behaviour is a *deviation*: it needs a reason and
+   an entry in `docs/rust-port/DEVIATIONS.md` (section 13 seeds the list).
+3. **The simulation is a library.** It has no engine, no renderer, no clock
+   and no global state. It steps a plain data structure by one fixed tick.
+   Multiplayer, replays, tests and RL all depend on this.
+4. **World generation is a library.** It turns a level into engine-neutral
+   scene data. The renderer can be replaced without touching it.
+5. **One implementation for every platform.** Platform differences live
+   behind small traits (storage, audio backend, gestures, rumble).
+6. **Deterministic by construction.** Fixed tick, seeded random streams held
+   in the state, software math functions. The same inputs give the same
+   result on native and in wasm.
+
+## 2. Engine decision
+
+**Use Bevy as the client framework, with our own shading model inside it, and
+keep the simulation, world generation and audio graph independent of it.**
+
+Three options were weighed.
+
+| Option | For | Against |
+|---|---|---|
+| **Bevy** (chosen) | Windowing, input, ECS, UI, asset pipeline, native and web from one codebase. On WebGPU the web build has the same renderer features as native. Custom materials and post-processing are supported. Room to grow: glTF, physics crates, tooling. | Wasm is large (25 to 35 MB raw, 6.5 to 8.5 MB compressed in recent third-party builds). No published evidence of a Bevy 3D game running well on iPhone Safari. About a hundred migration items per release, every three to five months. No wasm threads. |
+| Custom engine on wgpu and winit | Smallest wasm, full control of pipeline warm-up, a renderer that is a direct port of the three.js subset we use. | Everything else is ours to build and keep: scene management, culling, UI, text, input, gamepads, asset loading. That is the wrong place to spend effort on a project meant to keep expanding. |
+| Keep three.js for rendering, Rust for the simulation only | Lowest risk for the phone. | No native renderer, two languages forever, and not the rewrite that was asked for. |
+
+Why Bevy is workable here:
+
+- With WebGPU required, the web and native builds share one render path and
+  later work (open world, more lights, cascaded shadows, GPU-driven
+  culling) is not held back by WebGL2.
+- The port's own content is modest: one shadow-casting directional light, a
+  hemisphere light and at most three small local lights. It fits inside
+  Bevy's WebGL2 limits too (one directional light, one shadow cascade, no
+  compute), which is what makes a WebGL2 build a usable contingency.
+- Matching the three.js look by tuning Bevy's `StandardMaterial` would be
+  guesswork, because the lighting models differ. Instead the port brings its
+  own shading: custom Bevy materials whose WGSL reproduces the parts of
+  three.js r180's physical material that the game uses, fed by our own
+  light, fog and exposure uniforms (section 6). Bevy supplies meshes, views,
+  culling, batching and the shadow map.
+- The simulation (about 3,300 lines of JS), world generation (about 26,000)
+  and audio (about 3,500) sit in crates that do not depend on Bevy. If Bevy
+  fails on phones, the client crate is replaced and those crates are kept.
+
+**Gate G1** (roadmap M2) tests the risk early: a real level, exported from
+the JS game as a scene file, rendered by the Bevy client through WebGPU on
+the owner's iPhone and an Android phone. Safari is where the open WebGPU
+bugs are (Appendix A), so this gate matters most there. The fallbacks, in
+order:
+
+1. A WebGL2 build of the same client for the phones where WebGPU fails.
+   Bevy selects the backend at compile time, so this is a second wasm file
+   chosen by the page at load. CI keeps it compiling until cutover, and the
+   port's shaders avoid WebGPU-only features until G1 has passed on Safari.
+2. If Bevy itself misses its frame-time, memory, size or load-time budgets
+   and cannot be fixed: a small forward renderer on wgpu that consumes the
+   same scene data.
+
+**Version policy.** Bevy 0.19.1 is current; 0.20 is at its second release
+candidate and replaces Bevy's shader import dialect with WESL. Start the
+client on 0.20 if it is final when M2 begins, otherwise on 0.19.1 and migrate
+straight after G1, before many shaders exist. After that, pin the version and
+upgrade only between milestones. Use no third-party Bevy plugins unless a
+decision record justifies one: each is a reason an upgrade stalls.
+
+## 3. Architecture
+
+### 3.1 Workspace
+
+```
+Cargo.toml                 workspace root (repo root)
+crates/
+  mr_math/       scalar math on libm, mulberry32, hash2, simplex, fbm, ridged
+  mr_track/      level definition types, Track (1 m samples), road types
+  mr_levels/     the six levels as data; Seaside's survey data loader
+  mr_sim/        vehicles, physics, AI, traffic, collisions, race rules,
+                 pursuit; SimState and step()
+  mr_canvas/     the Canvas 2D subset the texture generators use (tiny-skia)
+  mr_worldgen/   terrain, road, sky, sea, scenery, car models, textures;
+                 produces SceneDesc
+  mr_audio/      Web Audio shaped facade and backends; engine, SFX, music,
+                 radio
+  mr_net/        protocol, transports, session (server), prediction and
+                 rollback (client)
+  mr_game/       the Bevy client: states, rendering adapter and shaders,
+                 camera, effects, HUD and menus, input, platform glue
+  mr_host/       native host binary: static files, WebSocket, authority
+  mr_py/         (later) PyO3 bindings: a Gymnasium environment
+xtask/           build, parity and size tooling (cargo xtask ...)
+assets/          fonts, Seaside survey data, radio clips
+tools/parity/    reference capture from the JS game (Node, headless Chrome)
+legacy/          the JS game, moved here at cutover (until then it stays at
+                 the repo root, untouched)
+docs/rust-port/  this spec, the roadmap, DEVIATIONS.md, DECISIONS.md
+```
+
+### 3.2 Dependency rules
+
+```
+mr_math ← mr_track ← mr_levels ← mr_sim ← mr_net ← mr_host
+                         ↑          ↑        ↑
+mr_canvas ← mr_worldgen ─┘          └────────┴── mr_game → mr_audio
+```
+
+- `mr_math`, `mr_track`, `mr_levels`, `mr_sim`: no Bevy, wgpu, web-sys,
+  `std::time`, threads, `rand`, or `HashMap` iteration. `#![forbid(unsafe_code)]`.
+  They build for `wasm32-unknown-unknown` and native.
+- `mr_canvas`, `mr_worldgen`: no Bevy, no wgpu. `rayon` is allowed behind a
+  native-only feature.
+- `mr_audio`: no Bevy. Backends are features (`web`, `native`, `null`).
+- `mr_net`: no Bevy. Transports are features.
+- Only `mr_game` depends on Bevy.
+
+`cargo xtask check-deps` enforces this from `cargo tree` and runs in CI.
+
+### 3.3 One frame
+
+```
+devices ─► input layer ─► InputFrame (quantised)
+                               │
+              session.advance(frame_dt, input)      mr_net (loopback in
+                               │                    single-player)
+                 0..n fixed ticks: mr_sim::step
+                               │
+              prev state, curr state, alpha, events
+                               │
+        ┌──────────────┬───────┴───────┬──────────────┐
+   transforms      camera, FX      audio.update     HUD
+   (interpolated)                  + event calls
+```
+
+The client never reads simulation state mid-tick and never writes it. It
+draws an interpolation between the last two ticks and reacts to the events
+those ticks produced.
+
+## 4. Simulation core (`mr_math`, `mr_track`, `mr_levels`, `mr_sim`)
+
+### 4.1 Time
+
+The JS game steps physics in equal substeps of about 1/120 s that sum to the
+frame time, and steps AI, traffic and pursuit once per frame. The Rust
+simulation uses a **fixed tick of 1/120 s** for everything:
+
+- At 60 fps the JS physics already takes two steps of exactly 1/120 s, so
+  player handling is numerically the same.
+- The renderer interpolates between the previous and current tick, so motion
+  is smooth at any display rate and input latency stays under 9 ms. (The JS
+  project learned that a fixed step without interpolation lurches at speed.
+  Interpolation is not optional.)
+- A frame runs at most six ticks (1/20 s, the JS clamp). Beyond that
+  single-player slows down; a multiplayer client resynchronises from a
+  snapshot.
+- The whole simulation costs microseconds per tick, so 120 Hz is free, and a
+  rollback of sixteen ticks stays well under a millisecond.
+
+### 4.2 Numeric rules
+
+- Scalars are `f64` wherever JS used a Number. Arrays are `f32` wherever JS
+  used a `Float32Array` (all of Track's per-sample arrays), read back as
+  `f64`, as JS does.
+- Every transcendental function (`sin`, `cos`, `tan`, `atan2`, `exp`, `pow`,
+  `hypot`, ...) goes through `mr_math`, which calls the `libm` crate. Never
+  call `f64::sin` and friends directly: on native they use the platform's
+  library and differ between machines. No `mul_add`.
+- Port `mulberry32` and `hash2` with wrapping 32-bit integer arithmetic so
+  they are bit-exact. The world and the traffic depend on their sequences.
+- No `Math.random`. The state holds named `Mulberry32` streams. The JS
+  simulation calls `Math.random` in `AIDriver` (nitro timer, twice),
+  `PoliceDriver` (weave phase) and as `Pursuit`'s default generator; each
+  becomes a draw from a stream in the state.
+- Iterate in a fixed order. Use `Vec`, arrays or `BTreeMap`. Track's spatial
+  hash keys on integer cell coordinates, not strings.
+
+### 4.3 State and API
+
+```rust
+/// Built once per level, shared, immutable. Track arrays, level data,
+/// survey grids (Seaside), racing line, speed profile.
+pub struct LevelRuntime { /* ... */ }
+
+/// Everything that changes. Plain data: Clone, PartialEq, serde.
+/// Target size under 32 KB so a ring of 64 past states is cheap.
+pub struct SimState {
+    pub tick: u32,
+    pub race: RaceState,            // countdown, clock, laps, standings, score
+    pub players: Vec<PlayerCar>,    // one in single-player
+    pub rivals: Vec<Rival>,
+    pub traffic: TrafficState,
+    pub pursuit: Option<PursuitState>,
+    pub rng: RngStreams,
+}
+
+/// One player's controls for one tick, already quantised, so the local
+/// simulation, the network and a replay all see identical values.
+pub struct InputFrame {
+    pub steer: i16,      // -32767..32767
+    pub throttle: u8,
+    pub brake: u8,
+    pub flags: u8,       // handbrake, nitro, analog, reset (edge)
+}
+
+pub fn step(level: &LevelRuntime, state: &mut SimState,
+            inputs: &[InputFrame], events: &mut Vec<SimEvent>);
+
+pub fn hash(state: &SimState) -> u64;   // for determinism and desync checks
+```
+
+`players` is a vector from the first commit. Single-player is the one-player
+case of the same code, so multiplayer does not need a second pass through the
+simulation.
+
+`step` follows the order of `Race.update` (`src/game/Race.js:182`): countdown
+and clock; reset; player control (cool-down driver, penalty hold, or input);
+player physics; rivals; circuit progress; traffic; pursuit; collisions and
+`writePos`; hit reactions; physics events; bonuses; wrong-way, stuck, lap and
+finish checks.
+
+**Events, not side effects.** JS `Race` calls the HUD, audio, rumble, camera
+and effects directly. The Rust simulation emits `SimEvent`s (`Countdown`,
+`Go`, `PerfectStart`, `Shift`, `Land`, `WallImpact`, `CarHit`, `NearMiss`,
+`Bonus`, `Lap`, `Finished`, pursuit events, ...) and the client turns them
+into text, sound, rumble and sparks.
+
+**What moves into the simulation.** Everything that affects the race:
+countdown and perfect start, reset, standings, laps, finish, the cool-down
+driver and parking, drift, near-miss and air bonuses, cruise scoring, wrong
+way and stuck timers. From `PursuitView.js`: damage, penalties and holds,
+wrecks, releases and statistics. Camera, effects, audio mapping, rumble and
+HUD text stay in the client.
+
+**Autodrive.** The `?autodrive=1` autopilot (`src/main.js:526-540`) is ported
+into `mr_sim` as an input generator. Tests, the headless CLI and RL baselines
+use it.
+
+### 4.4 Port map
+
+| JS | Lines | Rust |
+|---|---|---|
+| `src/util/math.js` | 106 | `mr_math` |
+| `src/track/Track.js`, `roadTypes.js` | 513 | `mr_track` |
+| `src/levels/*.js` | 690 | `mr_levels` (data and the Streets grid, cruise loop path) |
+| `src/levels/seaside/load.js`, `circuit.js`, `ground.js` | n/a | `mr_levels::seaside`; `tools/seaside/build.py` gains a binary output (`assets/seaside/`) |
+| `src/vehicles/CarPhysics.js` | 361 | `mr_sim::physics` (`CAR_SPECS`, `step`, `collide_walls`) |
+| `src/vehicles/Vehicle.js` (state only) | 95 | `mr_sim::vehicle`; `sync()` goes to `mr_game` |
+| `src/vehicles/Kinematic.js`, `AIDriver.js`, `Traffic.js` | 494 | `mr_sim::{kinematic, ai, traffic}` |
+| `src/vehicles/Collisions.js` | 93 | `mr_sim::collisions` (the `Body` trait replaces duck typing) |
+| `src/game/Race.js` (rules) | ~300 of 570 | `mr_sim::race` |
+| `src/game/Pursuit.js`, `PoliceDriver.js`, parts of `PursuitView.js` | ~1,200 | `mr_sim::pursuit` |
+
+### 4.5 Seams for later
+
+The port does not build these, but the API must not block them:
+
+- **Ground and walls.** `CarPhysics` reads the track through `project`,
+  `frame`, `surfaceY`, the wall distances and `looseAt`. Keep those calls
+  behind one small interface so a free-roaming ground (height field plus
+  static colliders) can be a second implementation.
+- **Vehicle model.** The handling code is one implementation of a
+  `VehicleModel`. Later ones: the same arcade equations off the corridor,
+  and a rigid-body car on Rapier (which has a ray-cast vehicle controller, a
+  cross-platform determinism mode, and no Bevy dependency).
+- **More than one track.** `LevelRuntime` holds its Track by value; nothing
+  assumes there is only one road in the world.
+
+### 4.6 Tests
+
+1. **Ported unit tests.** `test/unit/{math,track,levels,seaside,physics,ai,traffic,pursuit}.test.js`
+   become Rust tests with the same assertions (about 210 tests).
+2. **Golden traces.** A Node harness (`tools/parity/sim-traces.mjs`) runs the
+   JS simulation at dt = 1/120 with `Math.random` replaced by a seeded
+   stream, over staged scenarios of up to ten seconds, and records state
+   every tick. Rust replays the same inputs and must agree at every tick to
+   1e-6 absolute plus 1e-6 relative. A mismatch that starts at a discrete
+   flip (a gear, the drifting flag) caused by a last-bit difference in a math
+   function is acceptable; move the scenario off the boundary and note it.
+3. **Whole-race statistics.** For each level, the field's finish and lap
+   times with autodrive agree with the JS (run in headless Chrome with a
+   fixed-dt hook) within 0.5 %, and the finishing order matches.
+4. **Determinism.** The same scenario gives the same `hash` every 120 ticks
+   on native and in wasm (run under Node). Cloning the state, stepping both
+   copies and comparing gives equality.
+5. **Fuzz.** Random inputs on every level: nothing becomes NaN, no body
+   passes a wall by more than 1 cm, the state never grows.
+6. **Speed.** A benchmark records ticks per second for a full Sierra field.
+   The floor is 200,000 per second on one desktop core.
+
+## 5. World generation (`mr_canvas`, `mr_worldgen`)
+
+About 26,000 lines of JS build the worlds: terrain and road (3,500),
+scenery (20,500) and car models (2,400). They are ported one to one into a
+crate that outputs data, not engine objects.
+
+### 5.1 Scene description
+
+```rust
+pub struct SceneDesc {
+    pub meshes: Vec<MeshDesc>,        // positions, normals, uvs, colours,
+                                      // named custom attributes, indices
+    pub instances: Vec<InstanceDesc>, // mesh + transforms (+ colours, attrs)
+    pub materials: Vec<MaterialDesc>, // MaterialKind + parameters + textures
+    pub textures: Vec<TextureDesc>,   // RGBA8 / R8 pixels + sampler + flags
+    pub nodes: Vec<NodeDesc>,         // groups, chunk bounds, cull distances
+    pub lights: Vec<LightDesc>,
+    pub animators: Vec<Box<dyn Animator>>,
+    pub night_params: Vec<NightParam>,// material property, day and night value
+}
+```
+
+- `MaterialKind` is a closed enum: one variant per distinct shader in the JS
+  game (section 6.2). Parameters are plain numbers and texture handles.
+- Custom vertex attributes keep their JS names: `aLane`, `aSurf`, `cell`,
+  `aVar`, `ndata`, the flicker phase, and so on.
+- An `Animator` replaces a closure in `world.updaters`. Each frame it gets
+  `(dt, night, camera, player s)` and writes edits (a transform, instance
+  matrices or colours, a material parameter, a UV offset) addressed by
+  handle. The freight train, tumbleweeds, Ferris wheel, lighthouse beam,
+  boats, chaser bulbs, signals and the rest are all of this form.
+- The scene file format (`.mrscene`) is `SceneDesc` serialised. The JS game
+  can export one (roadmap M0), which gives the renderer real scenes before
+  any scenery is ported and gives world generation its golden reference.
+
+### 5.2 The three.js geometry subset
+
+The builders rely on three.js generators and, in places, on their exact
+vertex order and UV layout. `mr_worldgen::three_geom` is a line-by-line port
+(three.js is MIT) of: Box, Cylinder, Cone, Plane, Circle, Sphere,
+Icosahedron, Torus, Capsule, Lathe, Tube, Extrude (with bevel), Shape and
+`ShapeUtils.triangulateShape` (earcut), `CatmullRomCurve3`, and
+`BufferGeometryUtils.mergeGeometries`. Each is tested against a dump from
+three.js r180: same vertex count, same order, values within 1e-6.
+
+Conventions that carry over unchanged: Y up, right-handed, the camera looks
+down -Z, yaw θ has forward (cos θ, sin θ) in XZ. Bevy uses the same axes.
+
+Two that need care:
+
+- **Colours.** three.js converts hex colours from sRGB to linear. Vertex
+  colours and material colours in `SceneDesc` are linear.
+- **Texture orientation.** A three.js `CanvasTexture` is uploaded flipped
+  (`flipY`), and the JS UVs and shader atlas math assume that. The Rust
+  uploader flips rows for textures marked `flip_y` (canvas textures) and not
+  for the others (data textures, Seaside's photo). UVs and shader math stay
+  exactly as in JS.
+
+### 5.3 Canvas 2D (`mr_canvas`)
+
+Almost every texture is drawn with the browser's Canvas 2D API. `mr_canvas`
+implements the subset in use on tiny-skia, with the same method names, so
+texture code ports nearly line for line: rectangles, paths, arcs and
+ellipses, `roundRect`, linear and radial gradients, `globalAlpha`, the
+composite modes in use (`source-over`, `destination-out`, `lighter`, and any
+others found), `shadowBlur` and `shadowColor`, `fillText`, `strokeText`,
+`measureText`, `getImageData`, `putImageData`, `createImageData`,
+transforms and save/restore.
+
+**Fonts.** The JS names system fonts (Arial Black, Arial Narrow, Georgia,
+Brush Script MT, Segoe Script, Courier New), which differ per device: on the
+Linux reference machine most of them fall back to Noto Sans. The port
+bundles open-licence substitutes so every platform draws the same signs.
+First candidates: Archivo Black, Archivo Narrow, Gelasio, Yellowtail, Caveat,
+Courier Prime, and Rajdhani for the HUD. The reference capture injects the
+same files into the JS page with `@font-face`, so text matches in
+comparisons. The owner picks the final set from a gallery of sign textures.
+
+### 5.4 Exactness
+
+Scenery is placed on the terrain as drawn, so terrain heights must match the
+JS to well under a millimetre or props float and sink. Port `Terrain.js`,
+`TerrainMesh.js` and the noise functions with the same arithmetic in `f64`,
+and test heights at 10,000 sample points per level against the JS (tolerance
+1e-6 m). Scenery modules must draw from their seeded generators in the same
+order as the JS.
+
+### 5.5 Building in steps
+
+Wasm has one thread, so a level build must yield to keep the loading bar
+moving. `mr_worldgen` exposes a build as a list of jobs with the JS progress
+labels ("Surveying the route", "Shaping the land", "Sculpting terrain",
+"Paving roads", "Filling the sea", then each scenery's label). On the web the
+client runs jobs for a time slice per frame. On native, independent jobs run
+on a thread pool. Output is identical either way: jobs are pure and their
+results are assembled in a fixed order.
+
+Static meshes are uploaded to the GPU and the CPU copy is dropped. Wasm
+memory never shrinks, so the high-water mark is a budget (section 6.6).
+
+### 5.6 Port volume
+
+| Area | JS files | Lines |
+|---|---|---|
+| Infrastructure | `World`, `Terrain`, `TerrainMesh`, `Road`, `Sky`, `Sea`, `textures` | 2,900 |
+| Builders | `valley/Builder`, `beach/ColorBuilder`, `beach/atlas`, `city/geom`, `harbor/build`, `coast/kit`, `valley/ground` | ~1,000 |
+| Level 1 | `Mountain`, `Valley` (+ `valley/*`), `City` (+ `city/*`) | ~7,400 |
+| Level 2 | `Coast`, `Beach` (+ `beach/*`), `Harbor` (+ `harbor/*`) | ~5,400 |
+| Level 3 | `Streets` (+ `streets/*`) | ~3,200 |
+| Level 4 | `Desert` (+ `desert/*`) | ~3,100 |
+| Level 5 | `Raceway` (+ `raceway/*`), Seaside loader | ~1,100 |
+| Cars | `CarModel` | 2,400 |
+
+### 5.7 Parity tests
+
+- **Terrain and track.** Heights and all Track arrays against JS dumps.
+- **Geometry digest.** For each level, each mesh bucket in the Rust scene is
+  matched to one in the JS scene export (by material kind and bounds) and
+  compared: equal vertex and triangle counts, bounds within 1 cm, surface
+  area within 0.1 %, centroid within 1 cm. Instances: equal counts,
+  transforms within 1 mm. The report lists unmatched buckets on either side;
+  the gate is none.
+- **Textures.** Each generated texture against the JS canvas: mean absolute
+  difference under 3/255 per channel, with a side-by-side sheet for review.
+  Text regions are compared with the same fonts loaded on both sides.
+
+## 6. Rendering (`mr_game::render`)
+
+### 6.1 What to match
+
+Read from `src/main.js:55-111` and `src/world/Sky.js`; the full list with
+line references is in [inventory-rendering.md](inventory-rendering.md):
+
+- Camera: 62° vertical field of view, near 0.3. Wider with speed (+16°) and
+  nitro (+7°); a wider vertical field on portrait screens.
+- Target: half-float HDR with 4× MSAA. Bloom: three.js `UnrealBloomPass`,
+  strength 0.38, radius 0.35, threshold 0.92, always on. Then ACES filmic
+  tone mapping with the sky's exposure, then sRGB.
+- One directional light (sun, crossfading to moon) with one 2048² shadow map
+  over a ±70 m box that follows the focus, PCF-soft filtering, bias -0.0004,
+  normal bias 0.6. A hemisphere light. `FogExp2`, with the fog colour
+  shifted toward the sun's colour when looking at the sun.
+- Environment map: the sky dome prefiltered, intensity 0.7, refreshed when
+  time of day moves by 2.5 % of the route.
+- Local lights: the player's headlight spot, one shared police point light
+  (high quality only), the desert train's spot. Everything else that glows
+  is emissive colour above 1.0, additive points or additive ground quads.
+- "High quality": pixel ratio min(device, 1.5) instead of 1, shadows on, the
+  police light exists. Off by default on touch devices.
+
+The port reproduces this pipeline as it is, including the single shadow
+map. WebGPU makes better options available (cascades, more lights), but
+those are for after cutover: using them now would break the comparison.
+
+### 6.2 Shading model
+
+A WGSL library, `three_std`, reproduces the lighting of three.js r180's
+standard and physical materials for the features the game uses: base colour
+map and vertex colour, emissive, roughness and metalness, clearcoat and
+sheen (high-detail cars), environment reflection, transparency, the
+directional light with its shadow, the hemisphere light, one spot and one
+point light, and fog. It uses the same variable names as three.js where the
+JS patches refer to them (`diffuseColor`, `totalEmissiveRadiance`,
+`roughnessFactor`), so each patch ports as a block of shader code at the
+same point in the pipeline.
+
+Each JS `onBeforeCompile` patch and each `ShaderMaterial` becomes a
+`MaterialKind` built on that library:
+
+| Kind | JS source | What it adds |
+|---|---|---|
+| Terrain | `TerrainMesh.js:413` | Triplanar rock and ground, four detail scales from one packed texture, ground type from vertex colour and `aSurf`, derivative bump, optional draped photo and loose-ground mask |
+| Asphalt, Shoulder, Markings | `Road.js:111,277,147` | Wheel paths and oil from `aLane`, patches, dusty edges, night dampness; gravel fade; paint wear |
+| Sea | `Sea.js:115` | Depth foam, two scrolling normal scales, Fresnel alpha, glitter |
+| SkyDome | `Sky.js:42` | Gradient, sun and moon, clouds, stars |
+| CarLight | `CarModel.js:124` | Emission scaled by vertex colour |
+| PoliceGlow | `CarModel.js:2065` | Camera-facing quads with a minimum screen size |
+| TriplanarRock, Sandstone, Stucco, Siding | `Mountain.js:63`, `coast/kit.js:89`, `desert/parts.js:52`, `Beach.js:66`, `Valley.js:89` | World-space surface patterns |
+| CityAtlas, CityFacade, StreetAtlas, StreetFacade, ContainerAtlas | `city/cityTextures.js:160,493`, `streets/textures.js:349`, `streets/facades.js:395`, `harbor/textures.js:221` | Atlas cell per vertex, lit windows, street-light spill |
+| GlowPoints, FlickerPoints, GroundPool | `City.js:1518`, `desert/glow.js:14` | Sized, flickering, fog-softened glows |
+| Neon, AmbientProp | `streets/props.js:27,15` | Flicker modes; ambient emissive |
+| TrafficStreams, SkyGlow, Surf, LighthouseBeam, Steam, FloodBeam, Reflector | `City.js:1334,1389`, `Coast.js:26,72`, `streets/props.js:419`, `Desert.js:1786`, `Mountain.js:886` | Animated in the shader |
+| Particles, SkidMarks | `Effects.js:7,107` | Soft points; alpha quads |
+| Standard, Physical, Lambert, Basic, Line, Sprite | built-in | Plain versions |
+
+**Points.** WebGPU and wgpu have no point size. Every three.js `Points`
+object becomes instanced camera-facing quads with the size, minimum pixel
+size and soft falloff computed in the vertex shader.
+
+**Post-processing.** One module holds the chain: threshold bloom ported from
+`UnrealBloomPass`, ACES filmic with exposure as three.js applies it, sRGB.
+Bevy's tone mapping is turned off on the camera. Bevy's own bloom may stand
+in until the port passes the bloom comparison scene.
+
+**Sorting and offsets.** JS uses `renderOrder`, transparent sorting and
+`polygonOffset` decals. Map `renderOrder` to explicit sort keys and
+`polygonOffset` to depth bias, and check each use against a screenshot.
+
+**Verification.** A set of material test scenes (a sphere and a plane per
+material kind under fixed light, a bloom chart, a fog ramp, a shadow edge) is
+rendered by three.js and by the Rust client with the same parameters and
+compared per pixel. This isolates shading differences from geometry
+differences.
+
+### 6.3 Warm-up
+
+On the web, Bevy compiles pipelines synchronously the first time a material
+is drawn, on WebGPU as on WebGL2. During the loading screen the client draws one triangle with every
+material and mesh-layout combination the level uses, off screen. The gate is
+no frame over 50 ms in the first thirty seconds of a race.
+
+### 6.4 Culling and LOD
+
+Keep what the JS does: frustum culling per chunk (chunk sizes as in JS, 420
+to 720 m), the city loop's 2,000 m chunk cut-off, traffic and police far
+models at 95 m out and 85 m back, the three forest tiers, far blocks in
+Streets. Nothing streams; a level is built whole.
+
+### 6.5 Effects and camera
+
+Port `Effects.js` (smoke and sparks as CPU-simulated ring buffers, skid
+quads, nitro flame cones, headlight pools), `CameraRig.js` (chase, far and
+bumper views, field-of-view changes, sine shake, the intro swing) and
+`Vehicle.sync` (orientation from the road frame, pitch and roll springs,
+wheel spin, steer pivots, light setters). They run per rendered frame on the
+interpolated state. Per-frame random effects in JS (`Math.random() < 0.6`)
+become rates defined at 60 Hz, so they do not double on 120 Hz displays.
+
+### 6.6 Budgets
+
+Measured on the JS game, desktop Chrome on an RTX 3060, high quality, driving
+with the autopilot (peak values over the route, shadow and bloom passes
+included):
+
+| Level | Draw calls | Triangles | Textures | Geometries | Load | JS heap |
+|---|---|---|---|---|---|---|
+| Sierra to the City | 833 | 3.48 M | 67 | 563 | 8.9 s | 193 MB |
+| Coast Highway | 705 | 3.50 M | 89 | 517 | 7.0 s | 237 MB |
+| Downtown Streets | 686 | 1.98 M | 66 | 542 | 3.2 s | 461 MB |
+| Desert Run | 644 | 3.13 M | 60 | 394 | 4.9 s | 127 MB |
+| Seaside Raceway | 404 | 1.18 M | 31 | 199 | 2.5 s | 64 MB |
+| Night City Cruise | 721 | 2.06 M | 35 | 404 | 3.3 s | 319 MB |
+
+Rust budgets, per level and per reference device (the desktop above, the
+owner's iPhone, one Android phone from about 2021; the phone baselines are
+measured in M0):
+
+- Draw calls and triangles: no more than the JS figure plus 10 %.
+- Frame time: no worse than the JS game on the same device and settings.
+- Level load: no slower than JS on the web; at least twice as fast native.
+- Wasm memory high-water mark: under 512 MB on phones, and no growth across
+  ten level switches.
+- Download: wasm under 10 MB compressed as served. Tracked in CI.
+- Time from navigation to menu on a phone over Wi-Fi: within 5 s of the JS
+  game's.
+
+## 7. Audio (`mr_audio`)
+
+### 7.1 Decision
+
+The JS audio is a Web Audio graph of about 250 persistent nodes, with no
+AudioWorklet: built-in oscillators, filters, wave shapers, compressors and
+convolvers steered by parameter automation. The port keeps that graph and
+drives it from Rust through a facade with two backends:
+
+- **Web:** the browser's own Web Audio nodes through `web-sys`.
+- **Native:** the `web-audio-api` crate, a Rust implementation of the same
+  API (version 1.7.0 at the time of writing).
+- **Null:** records calls; used headless and by strict tests.
+
+Why not one Rust DSP engine everywhere: on the web that means wasm inside an
+AudioWorklet. The Rust audio engines that do this today need a nightly
+toolchain, shared memory and cross-origin isolation headers that GitHub
+Pages cannot set. It would also replace the browser's native DSP with wasm
+DSP on the phones where audio cost has already been a problem. Using the
+browser's nodes keeps the exact sound and the exact cost on the web.
+
+### 7.2 Facade
+
+`mr_audio::wa` exposes handles and methods shaped like Web Audio, limited to
+what the game uses: Oscillator (built-in types and periodic waves),
+BufferSource (loop, playback rate), Gain, BiquadFilter (lowpass, highpass,
+bandpass, peaking, both shelves), WaveShaper (curve, oversampling),
+DynamicsCompressor, Convolver, Delay, ChannelMerger, StereoPanner, Analyser;
+connect and disconnect, including node-to-parameter connections; parameter
+automation (`setValueAtTime`, linear and exponential ramps,
+`setTargetAtTime`, `cancelScheduledValues`); buffers; `decodeAudioData`;
+`currentTime`, suspend, resume and state; an offline context.
+
+### 7.3 Port map
+
+| JS | Rust | Notes |
+|---|---|---|
+| `Audio.js` graph, buses, `Gate` | `mr_audio::{graph, gate}` | The `Gate` (disconnect idle voices, tails, no steering before the context runs) is kept as is |
+| `Audio.js` engine cycles, profiles, steering | `mr_audio::engine` | `engineCycle` and `rumbleCycle` are pure math: port and test against JS output arrays |
+| `Audio.js` turbo, electric, damage, environment, rivals, sirens, tyres | `mr_audio::voices` | |
+| `Audio.js` one-shots | `mr_audio::oneshots` | |
+| `audio/samples.js` | `mr_audio::samples` | Pure sample math; outputs compared to JS buffers within 1e-5 |
+| `audio/Music.js`, `tracks.js` | `mr_audio::{music, tracks}` | Lookahead scheduler pumped from the frame loop and from a timer; song data as Rust constants |
+| `audio/radioLines.js`, `RadioVoice.js` | `mr_audio::radio` | Clips stay as MP3 files under `assets/radio/`; fetched on the web, read from disk native |
+| `music.html` | an in-game Music player screen | Sections, solo, seek, repeat, level meter and spectrum |
+
+The client calls the same interface the JS game does: `update(state)` each
+frame with the fields listed in [inventory-audio.md](inventory-audio.md)
+section 8 (rpm, throttle, speed,
+gear, boost, skid, slip, off-road, scrape, nitro, on-ground, and the electric
+car's motor, power and regen), per-frame setters (rival engines, sirens,
+mood, damage, spiked tyres), and event calls (shift, impact, landing, beep,
+whoosh, nitro burst, fanfare, pursuit stingers, radio lines, UI clicks).
+
+### 7.4 Browser rules
+
+Kept from the JS: create the context lazily; set
+`navigator.audioSession.type = "playback"` before creating it so iPhones
+play with the Silent switch on; resume on every pointer-up, touch-end, click
+and key-down, inside the event handler (section 8.4); suspend on pause and
+when the page is hidden; never await a resume.
+
+### 7.5 Tests
+
+- The strict fake backend from `test/unit/music.test.js` (invalid types,
+  non-finite times, exponential ramps to zero, mismatched wave arrays) is the
+  null backend's validation mode. The music, radio, pursuit-audio and
+  audio-session unit tests are ported with it.
+- Engine waveform arrays, drum kit and SFX buffers, noise beds and impulse
+  responses match the JS arrays numerically.
+- Offline renders (each car at a table of rpm and throttle, each song's
+  first thirty seconds, each one-shot) from Chrome and from the native
+  backend agree within 1.5 dB RMS per third-octave band. The web backend is
+  the same browser nodes, so it is checked by a recorded call log matching
+  the JS call log for the same scenario.
+
+## 8. UI, HUD, input and platform (`mr_game`)
+
+### 8.1 UI
+
+Menus, HUD and touch controls are drawn in-engine with Bevy UI, so native
+and web share one implementation. The DOM version is the visual reference;
+match layout, type, colour and motion. Effects with no direct equivalent
+(backdrop blur, gradient text) may be approximated and listed as deviations.
+
+- **Screens:** loading, menu (level tabs, level card with Race / Hot Pursuit
+  switch, car picks, options), pause, controller setup, results (race,
+  pursuit, circuit and cruise forms), music player. States and transitions
+  as in `src/main.js`.
+- **HUD:** every element in `src/game/HUD.js` and `hud.css`: position,
+  clock, lap panel, penalty, zone name and banner card, route bar with racer
+  dots, minimap, tachometer or the electric power meter, speed and gear,
+  nitro bar, damage bar, speed lines, centre pop text, toasts, heat stars,
+  bust and evade bar, radio line, hold card, cruise panel, now-playing pill,
+  stats overlay.
+- **Dials and minimap** are drawn each frame as generated 2D meshes (arcs,
+  ticks, polylines), not a CPU canvas. Speed lines are a full-screen UI
+  shader.
+- **Layout** follows the CSS breakpoints: width under 720, height under 780
+  and 500, portrait, and the compact touch layout. Safe-area insets come
+  from the page (section 8.4).
+- **Widgets** live in one module so a Bevy UI API change touches one place.
+- **Test ids.** Every interactive node carries the id its DOM element had
+  (`btn-start`, `opt-hq`, ...). The test bridge finds controls by id.
+
+The Bevy window is the whole page. Before wasm is ready, a small static HTML
+loading screen shows the logo and a download progress bar.
+
+### 8.2 Input
+
+Port `Input.js`, `Gamepad.js`, `MenuNav.js`, `PadSetup.js`,
+`TouchControls.js` and `TiltSteer.js` with their constants:
+
+- Keyboard map and one-shot actions; digital steering ramp (3.6/s in, 7/s
+  back, 9/s counter-steer); merge order of keys, touch, tilt and pad.
+- Gamepad bindings (`{button}` or `{axis, dir, rest}`), default map, dead
+  zone 0.12 with exponent 1.4, capture with an 8 s timeout, per-pad saved
+  maps, the mute set for held buttons across screens, menu navigation with
+  its repeat timing and spatial scoring.
+- Touch: floating stick with its range, dead and end zones and exponent; the
+  pedal slider bands and the drift strip; button modes; 14 px slop;
+  multi-touch; auto gas.
+- Tilt: `screenRoll`, `rollToSteer`, sensitivity, smoothing, and the sensor
+  states (off, waiting, live, none, insecure, ask, denied).
+
+The input layer runs at the tick rate and produces the quantised
+`InputFrame`. The steering ramp is part of the input layer, not the
+simulation.
+
+**Rumble.** Bevy's gamepad backend has no rumble on the web. A `Rumble`
+trait has a `web-sys` backend (`vibrationActuator.playEffect("dual-rumble")`
+with the JS resend rules) and a native backend (force feedback through
+gilrs). `kick` and `feel` behave as in `Gamepad.js`.
+
+### 8.3 Settings and records
+
+A `Store` trait: `localStorage` on the web, a JSON file in the user's config
+directory native. Keys and formats are exactly the JS ones (`mr.musicVol`,
+`mr.car`, `mr.best.<level>`, `mr.padMaps`, ...; the full table is in
+[inventory-ui-input-tests.md](inventory-ui-input-tests.md) section 3). The Rust build is served from the same
+origin, so players keep their settings, best times and controller maps.
+
+### 8.4 Platform glue
+
+| Concern | Web | Native |
+|---|---|---|
+| Gestures | A small script listens on the page for pointer-up, touch-end, click and key-down and, inside the handler, calls into wasm. The wasm side resumes audio and, if the pointer is on a control flagged for it, requests fullscreen, the landscape lock and motion permission. These must happen in the handler, not a frame later. | Not needed |
+| Fullscreen | Best effort; iPhones do not have it | F11, saved window state |
+| Tilt | `deviceorientation` through `web-sys` | None |
+| Visibility | `visibilitychange` pauses a race | Focus loss pauses |
+| Parameters | Query string, same names as today | `--query "level=sierra&autostart=super"` |
+| Haptic tick | `navigator.vibrate(8)` on touch buttons | None |
+| Shell | `index.html` with the manifest, og tags, icons and loading screen. It checks `navigator.gpu` first and shows a plain "this browser has no WebGPU" page, with what to use instead, when it is missing. | Window title and icon |
+| Desktop app | n/a | Replaces the Electron shell: `play.sh` runs the native binary; the desktop entry script stays |
+
+The same debug hooks exist: `level`, `pursuit`, `heat`, `cops`, `t`, the fly
+camera (`s`, `h`, `back`, `lat`, `yaw`, `pitch`), `timescale`, `stats`,
+`autodrive`, `autostart`, `touch`.
+
+### 8.5 Test bridge
+
+The e2e harness (`test/e2e/harness.js`) drives the JS game through
+`window.__race`, `__game`, `__audio` and friends, and through DOM selectors.
+The Rust web build exposes `window.__mr`:
+
+- `ready`, `mode`, `screen`
+- `ui(id)` returns `{x, y, w, h, visible, enabled, value}` for a test id
+- `race()`, `pursuit()`, `audio()`, `stats()` return JSON snapshots with the
+  field names the tests read today
+- `stage(cmd)` runs the staging commands the tests use (place the car, set
+  speeds, start a pursuit, place a roadblock)
+
+The harness gains a `target` option. With `target: "rust"`, `tap("#btn-start")`
+looks the id up through `ui()` and taps its centre. The e2e suites are then
+run against both builds until cutover.
+
+Headless Chrome needs WebGPU switched on for these runs (on the Linux dev
+machine: Vulkan and the unsafe-WebGPU flag alongside the harness's existing
+GPU flags). The harness's intercepted `https://` origin is a secure context
+already. CI machines have no GPU, so CI runs unit, parity-data and build
+jobs; the browser suites run on the dev machine, as they do today.
+
+Native has `--smoke-test` (run to ready, report errors, exit code) and
+`--screenshot <png> --after <frames>`.
+
+## 9. Multiplayer (`mr_net`, `mr_host`)
+
+### 9.1 Model
+
+**Server-authoritative, with every client simulating the whole world and
+rolling back when it guessed wrong.**
+
+- Each client runs the full simulation locally: its own car from its own
+  inputs, AI, traffic and police from the shared seed, and remote players
+  from their last known inputs.
+- Clients send their inputs, stamped with the tick they apply to. The host
+  runs the authoritative simulation and broadcasts each tick's inputs for
+  all players.
+- When a client learns that a remote input differed from its guess, it
+  restores its saved state for that tick and re-simulates to the present.
+  The state is small and a tick is cheap, so this is affordable every frame.
+- The host also sends a full snapshot with a state hash a few times a
+  second. A client whose hash differs adopts the snapshot. So determinism
+  across devices makes corrections rare, but nothing breaks if a browser's
+  arithmetic differs.
+
+This fits a racing game: car-to-car contact is resolved by the same code on
+both sides of it, with no interpolation delay between cars that are trading
+paint. On a LAN, guessing "same input as last tick" is almost always right.
+
+Single-player uses the same session with a loopback transport, so there is
+one code path.
+
+### 9.2 Parameters
+
+- Input delay: one tick on a LAN, adjustable.
+- Rollback window: 32 ticks (267 ms). Beyond it, resynchronise from a
+  snapshot.
+- Client clock: runs ahead of the host by half the round trip plus a margin,
+  nudged by small tick-rate changes rather than jumps.
+- Inputs are sent with the previous few ticks repeated, so one lost packet
+  costs nothing on an unreliable channel.
+- Snapshots: every 30 ticks, compressed.
+
+### 9.3 Protocol and transports
+
+Messages (binary, versioned): `Hello`, `Welcome` (slot, seed, level, laps,
+tick), lobby messages (car, ready, start), `Input`, `Inputs` (authoritative,
+per tick), `Snapshot`, `Ping`/`Pong`, `Leave`.
+
+```rust
+pub trait Transport {
+    fn send(&mut self, peer: PeerId, channel: Channel, bytes: &[u8]);
+    fn poll(&mut self, out: &mut Vec<NetEvent>);
+}
+pub enum Channel { Reliable, Unreliable }   // WebSocket maps both to itself
+```
+
+- **WebSocket** (first). The host serves the page over https and accepts
+  `wss://` on the same port. TCP ordering is acceptable on a LAN.
+- **WebRTC data channels** (second, via `matchbox_socket`, which is not tied
+  to Bevy). Needed for a tab to be host, and gives a true unreliable channel.
+  It needs a signalling service to introduce the peers. It is also the way a
+  page loaded from GitHub Pages can reach players on a LAN without anyone
+  holding a certificate (section 9.5).
+- **Loopback** (single-player, tests). A test transport adds latency, jitter,
+  loss and reordering.
+
+### 9.4 The host program
+
+`mr-host` is one native binary:
+
+- Serves the built web client as static files, with the cache rules of
+  `tools/serve.py`, and precompressed wasm.
+- Accepts WebSocket connections at `/ws` on the same port.
+- Runs the lobby and the authoritative simulation, headless.
+- **Port:** `--port`, then `$PORT`, then `proj port`, then exit with an
+  error. There is no default. When it is ready it replaces `tools/serve.py`
+  inside the registered `serve.sh`, so the project still uses one registered
+  port.
+- `--tls-cert` and `--tls-key` serve https and wss. Other devices need
+  this: WebGPU exists only in a secure context, and `http://192.168.x.x` is
+  not one. `http://localhost` is, so the machine running the host can play
+  without a certificate.
+
+### 9.5 Secure context: the consequence of requiring WebGPU
+
+Browsers expose WebGPU only to secure contexts: https pages and
+`http://localhost`. A page served by a LAN machine over plain http gets no
+WebGPU, so it cannot run the game at all. Every way of joining a LAN game
+therefore has to start from an https page.
+
+| How players load the game | What it needs | Notes |
+|---|---|---|
+| From `mr-host` over https | A certificate browsers trust for the host's name. For the owner's machine a Tailscale certificate does this today (another project here already serves that way). For guests not on the tailnet, a public DNS name that resolves to the LAN address with a certificate from DNS validation. | First multiplayer release. Works with no internet once set up. Everything works, tilt included. |
+| From GitHub Pages, peers connect by WebRTC | A signalling service reachable over wss (a small public service) to introduce the peers. Game traffic then stays on the LAN. | Second release; the same transport as tab-hosting. The native host can join as a WebRTC peer. Needs internet for the introduction. |
+| From GitHub Pages, WebTransport to `mr-host` with a certificate hash in the join link | Host generates a short-lived self-signed certificate; Chrome 100+, Firefox 125+, Safari 26.4+ | Experimental. Safari's WebTransport is new and Rust server interop with it is still being fixed. Not planned; revisit after the second release. |
+
+An https page cannot open `ws://` to a LAN address (mixed content), which is
+why "Pages plus a plain WebSocket host" is not on the list.
+
+The same rule affects development. The registered dev server speaks plain
+http, so the Rust build opens from `localhost` on the dev machine but not
+from a phone or another computer. For those, use the GitHub Pages build
+under `/next/` (as the JS game's tilt steering already requires), or give
+the dev server a certificate (roadmap M2).
+
+### 9.6 First release: race together
+
+Two to eight humans on any race level. The host picks level, laps and
+whether AI fills the grid. Traffic is on. Results list everyone. A player
+who drops out is driven by the AI to the finish. Open design points, to be
+settled in the M10 design note: what rival rubber-banding follows when there
+are several humans, grid order, and whether nitro bonuses change.
+
+### 9.7 Tab as host (later)
+
+The session code compiles to wasm, so a tab can run the authority. Clients
+connect by WebRTC through a signalling service. The host tab must stay in
+the foreground, because background tabs are throttled.
+
+## 10. Headless use and RL
+
+Not part of the port, but the simulation is built for it and it can start
+any time after M1:
+
+- `mr_sim::Env`: `reset(level, car, seed)`, `step(action)`, an observation
+  vector (speed, lateral offset, heading error, curvature and width ahead at
+  fixed distances, wall distances, nearby cars), reward terms, and state
+  save and restore.
+- Batched stepping across cores in Rust; `mr_py` exposes it to Python as a
+  Gymnasium vector environment through PyO3.
+- Observations are state vectors. Rendering pixels headless is a separate
+  later decision.
+
+## 11. Build, tooling, deployment
+
+- **Toolchain:** stable Rust, `wasm32-unknown-unknown`, `wasm-bindgen-cli`
+  pinned to the crate version, `wasm-opt`.
+- **`cargo xtask web [--release]`** builds the client and writes
+  `dist/next/` (already git-ignored): `index.html`, the JS glue, the wasm,
+  `assets/`. The registered server (`./serve.sh`, `proj up midnight-racer`)
+  serves the repo root, so the build is at `/dist/next/` on the project's
+  registered port. Do not start any other server, and never write a port
+  number into a script, config or default. That server speaks plain http,
+  so the build runs from `localhost` only; other devices use the Pages
+  build or a certificate (section 9.5).
+- **Profiles:** dev builds dependencies optimised. Release web builds use
+  fat LTO, one codegen unit, `panic = "abort"`, size-optimised where a
+  benchmark shows no frame-time cost, then `wasm-opt`.
+- **`cargo xtask parity ...`** runs the comparisons in section 12 and writes
+  a static report to `parity/report/` (git-ignored), viewed through the same
+  registered server at `/parity/report/`.
+- **CI (GitHub Actions):** format, clippy with warnings denied, native
+  tests, simulation tests in wasm, dependency rules, web build, size report,
+  the JS unit tests. On `main`, deploy to GitHub Pages: the JS game at the
+  root and the Rust build at `/next/`. This needs the repository's Pages
+  source switched from "branch" to "GitHub Actions" once, by the owner.
+- **Commits:** as today, finished and tested work goes straight to `main`.
+  The JS game at the root is not touched by Rust work, so the live site
+  keeps working throughout.
+- **`CLAUDE.md`** (created in M0) carries the working rules for agents:
+  the principles in section 1.1, how to run tests and parity, how to view
+  output locally, the port rule, and the file-ownership rule for parallel
+  work.
+
+## 12. Parity and acceptance
+
+Five layers. A work package names the layers that gate it.
+
+| Layer | What | Tool | Passes when |
+|---|---|---|---|
+| L1 | Ported unit tests | `cargo test` | Same assertions as the JS tests pass |
+| L2 | Numeric goldens | `cargo xtask parity sim`, `audio-data` | Traces and generated arrays within tolerance (sections 4.6, 7.5) |
+| L3 | Structural goldens | `cargo xtask parity world`, `textures` | Geometry digests and textures within tolerance (section 5.7) |
+| L4 | Behaviour and pictures | e2e suites on the Rust build; `cargo xtask parity shots`, `materials`, `audio-render` | e2e green; picture and audio metrics within thresholds |
+| L5 | Owner sign-off | Side-by-side report; play test on the phone | Owner approves |
+
+**Reference capture.** `tools/parity/` drives the frozen JS game in headless
+Chrome (the existing harness) and in Node and writes goldens: simulation
+traces, Track and terrain dumps, scene exports, texture images, material
+test renders, audio buffers and offline renders, and screenshots. Small
+goldens are committed. Large ones are regenerated on demand and cached by
+the hash of the JS tree. The JS game gains a few hooks for this before it is
+frozen (fixed dt, seeded `Math.random`, scene export) and is then tagged
+`js-reference`.
+
+**Screenshots.** For each level, camera stations every 250 m (chase view and
+a high view) at the route's own time of day, plus the menu's attract view,
+using the fly-camera parameters both builds accept. Moving things (traffic,
+particles) are frozen or hidden for the comparison. The metric is colour
+difference (CIEDE2000) on quarter-resolution images: mean under 3, and 95 %
+of 16-pixel blocks under 6. Before using these numbers, M0 measures the
+JS-against-JS noise floor and raises a threshold to twice the floor if
+needed. The report shows each pair with a difference map, sorted worst
+first.
+
+**Performance.** `cargo xtask perf` runs the autopilot through each level
+uncapped with CPU throttling, as the JS project already does, and compares
+frame time, draw calls and triangles with the JS baseline. Phone numbers are
+read from the stats overlay by the owner.
+
+## 13. Deviations register (initial)
+
+| Deviation | Reason |
+|---|---|
+| Fixed 120 Hz tick with interpolation, for all subsystems | Determinism, multiplayer, RL. JS steps AI and traffic once per frame. |
+| Seeded random streams instead of `Math.random` | Determinism |
+| Per-frame random effects become rates at 60 Hz | Same look at any display rate |
+| Points drawn as instanced quads | No point size in WebGPU |
+| Bundled fonts for generated textures and HUD | Same signs on every device; no web font request |
+| UI drawn in-engine; some CSS effects approximated | One UI for native and web |
+| Native audio through a Rust Web Audio implementation | One graph definition; small differences in compressor and oscillator behaviour |
+| Music player is a screen in the game, not a second page | One wasm app |
+| Seaside survey data in a binary file | No base64-in-JS loader |
+
+Known JS quirks to reproduce, not fix, unless the owner says otherwise: all
+headlight pools share one material, so one car's opacity wins
+(`Effects.js:249,273`); the shadow box is said to snap to texels but does
+not (`Sky.js:271`); `input.enabled` is never set false.
+
+## 14. Risks
+
+| Risk | Likelihood | Effect | Mitigation |
+|---|---|---|---|
+| Safari's WebGPU has bugs that break the game on iPhone (open reports of strobing output, rejected frames, tab kills) | Medium | High | Gate G1 on the owner's iPhone with a real exported level; WebGL2 build of the same client as the fallback, kept compiling until cutover |
+| Bevy on phones is too slow or too big | Medium | High | Same gate; fallback renderer on the same scene data |
+| Requiring WebGPU shuts out some players: iPhones not updated to iOS 26, Firefox on Linux and Android, older Android | Certain | Low to medium | Accepted by the owner. A clear message on unsupported browsers. The WebGL2 fallback build could be shipped for them if it matters later. |
+| A LAN game needs https, so the host needs a certificate or the internet | Certain | Medium | Section 9.5: certificate for the first release, WebRTC through a signalling service for the second |
+| Wasm memory growth across level switches gets tabs killed | Medium | High | CPU mesh copies dropped; memory high-water mark in the budgets; ten-switch test |
+| Shader compile hitches in the first seconds of a race | High | Medium | Warm-up pass; hitch gate |
+| Bevy upgrade churn stalls work | High | Medium | Pinned version; no plugins; shaders, UI widgets and post chain each in one module |
+| Scenery port drifts from JS in ways nobody notices | Medium | Medium | Geometry digests and textures compared automatically, not by eye |
+| Float differences make traces diverge | Medium | Low | `libm` everywhere; short traces with tolerance; statistics for long races |
+| Native audio differs audibly | Medium | Low | Offline band comparisons; tune trims per backend |
+| Bevy UI cannot reach the DOM version's polish | Medium | Medium | Owner reviews the menu and HUD early in M6; deviations listed |
+
+## 15. Open questions for the owner
+
+1. Font substitutes for the generated signs (section 5.3): pick from the
+   gallery in M3.
+2. Should the JS quirks listed in section 13 be fixed in the port?
+3. Rival rubber-banding with several humans (section 9.6).
+4. Which phones are the reference devices, and who reads their numbers at
+   each gate. They must be on iOS 26+ and Android 12+.
+5. For LAN games with guests who are not on the tailnet: is a public DNS
+   name with a certificate acceptable, or should guests wait for the WebRTC
+   release (section 9.5)?
+6. Is "Midnight Racer" still the name once it is a suite? Crate names use
+   `mr_` either way.
+
+## Appendix A. Ecosystem facts (checked 2026-10-03)
+
+| Item | Fact |
+|---|---|
+| Bevy | 0.19.1 (2026-08-13). 0.20 at rc.2 (2026-09-28); replaces the shader import dialect with WESL; deprecates the old UI `Button`/`Interaction`. |
+| Bevy on the web | WebGPU and WebGL2 are separate compile-time features, so supporting both means two wasm builds. No wasm threads. Pipeline compilation is synchronous on wasm. On WebGL2 only: one directional light, one shadow cascade, no compute-based features, clustered lights capped at 204. |
+| Bevy wasm size | Third-party builds on 0.19: 28 to 38 MB raw, 6.5 to 8.3 MB brotli after trimming features. |
+| WebGPU | Chrome and Edge 113+ on Windows, macOS and ChromeOS; Android 12+ from Chrome 121; Linux on recent Intel and NVIDIA from Chrome 144 to 148. Safari 26 on macOS, iOS and iPadOS (September 2025; iPhone 11 and newer can run it). Firefox on Windows and Apple Silicon Macs only. Apple reported iOS 26 on 79 % of all iPhones and 86 % of those from the last four years in June 2026. |
+| Safari WebGPU bugs open | Bevy #23753 (strobing output, no fix), Bevy #23956 (deferred rendering fails; the port uses forward), wgpu #9907 (long float literals rejected by WebKit's shader lexer), wgpu #10460 (staging-belt frames rejected, September 2026), wgpu #3735 (tab kills). |
+| Secure-context-only APIs | WebGPU, WebTransport, DeviceOrientation, AudioWorklet, Gamepad (per MDN). `http://192.168.x.x` is not a secure context. Plain `AudioContext`, WebSocket and WebRTC are not restricted. |
+| iPhone | No Fullscreen API. No gamepad haptics in Safari. |
+| Gamepad rumble | Not available through Bevy's gamepad backend on wasm. |
+| `web-audio-api` crate | 1.7.0. Native implementation of the Web Audio API. |
+| Rapier | 0.36.0 (2026-09-24). Ray-cast vehicle controller; cross-platform determinism feature; usable without Bevy. |
+| Avian | 0.7.0. No vehicle controller; tied to Bevy's ECS. |
+| `matchbox_socket` | 0.14.0. WebRTC data channels, native and wasm, needs signalling; not tied to Bevy. |
+| WebTransport | Safari 26.4 (March 2026), including certificate hashes; interop with Rust servers still being fixed. Not used in this plan. |
+| GitHub Pages | Cannot set COOP/COEP headers, so no wasm threads there without a service-worker workaround. Not needed by this plan. |
+
+Not verified: any first-hand report of a Bevy 3D game on iPhone Safari, on
+either backend; whether browsers enforce the secure-context rule for
+gamepads. G1 answers the first.
