@@ -541,3 +541,22 @@ while the Rust state takes its own shape. The goldens are compiled into the
 test, so the replay runs in wasm under Node too: the WP 1.3 traces are
 bit-identical native and in wasm. A failing replay keeps its own trace in
 `target/parity/<id>.trace` for `trace-inspect.mjs --diff`.
+
+## D59. Agent lists are views; collisions go through a `Body` trait
+
+2026-10-03, WP 1.4. The JS hands drivers lists of car objects and reads
+them live, so a rival updated earlier in the tick is seen where it now is;
+identity is `o === this`. In Rust a driver gets a slice of `AgentView`s
+(s, lat, dir, half sizes, speed along, gap) built from the current state
+just before it reads them, and its own index in that slice. Traffic, whose
+update moves its own cars while it reads the agent list, takes entries that
+are either one of its cars (read live) or a view of another body; the list
+is the one built at the start of the tick, so a car despawned during the
+update is still read, as in the JS. Collisions take a `BodySet` of
+`&mut dyn Body` (velocity, setVelocity, translate, addSpin), which the
+staged sim builds over its pools in agent order. Kinematic cars keep the
+JS's cached frame (`this.F`), because `velocity()`, `setVelocity()` and
+`translate()` use whatever frame was last computed. `yFn` is a `Surface`
+enum (road or opposite carriageway). Parking spots are a `Park` enum with
+`speed(s)` and `lat(s)`. Random draws come from counted `Stream`s
+(`mr_sim::rng`), seeded as `simStreams` seeds them.

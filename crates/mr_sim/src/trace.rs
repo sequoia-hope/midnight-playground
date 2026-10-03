@@ -6,8 +6,12 @@
 //! The record is built from views of the state ([`View`]), so it can follow
 //! the JS layout whatever shape the Rust state takes.
 
+use crate::ai::AiDriver;
 use crate::input::Input;
+use crate::kinematic::Kinematic;
+use crate::park::Park;
 use crate::physics::CarPhysics;
+use crate::traffic::{Traffic, TrafficCar};
 use crate::vehicle::Vehicle;
 
 pub const TRACE_VERSION: u32 = 1;
@@ -82,12 +86,12 @@ pub struct PlayerView<'a> {
 }
 
 /// Everything a record is written from. Pieces that later work packages
-/// add (race, rivals, traffic, pursuit) are optional.
+/// add (race, pursuit) are optional.
 pub struct View<'a> {
     pub tick: i32,
     pub players: Vec<PlayerView<'a>>,
-    pub n_rivals: i32,
-    pub n_traffic: i32,
+    pub rivals: &'a [AiDriver],
+    pub traffic: Option<&'a Traffic>,
     /// Draws so far from ai, police, pursuit, traffic; -1 for a stream that
     /// is not counted.
     pub streams: [i32; 4],
@@ -137,15 +141,78 @@ pub fn write_player(w: &mut Writer, p: &PlayerView) {
     w.bool(false);
 }
 
+/// Track coordinates and the world pose a kinematic car writes.
+pub fn write_kinematic(w: &mut Writer, k: &Kinematic) {
+    w.f64(k.s);
+    w.f64(k.lat);
+    w.f64(k.speed);
+    w.f64(k.lat_vel);
+    w.i32(k.dir);
+    w.f64(k.spin);
+    w.f64(k.spin_rate);
+    w.f64(k.stunned);
+    let v = &k.v;
+    for x in [v.x, v.y, v.z, v.yaw, v.visual_yaw, v.vx, v.vz] {
+        w.f64(x);
+    }
+}
+
+pub fn write_park(w: &mut Writer, park: Option<&Park>) {
+    match park {
+        None => w.i32(-1),
+        Some(Park::Circuit) => w.i32(0),
+        Some(Park::Lane {
+            stop_at,
+            lane_lat,
+            s0,
+            lat0,
+        }) => {
+            w.i32(1);
+            for x in [*stop_at, *lane_lat, *s0, *lat0] {
+                w.f64(x);
+            }
+        }
+    }
+}
+
+pub fn write_rival(w: &mut Writer, a: &AiDriver) {
+    write_kinematic(w, &a.k);
+    w.f64(a.avoid);
+    w.f64(a.avoid_timer);
+    w.f64(a.nitro);
+    w.f64(a.nitro_timer);
+    w.bool(a.finished);
+    w.opt(a.finish_time);
+    w.f64(a.throttle);
+    w.bool(a.nitro_active);
+    w.f64(a.hold);
+    w.opt(a.hold_lat);
+    w.f64(a.spiked);
+    w.opt(a.prog);
+    write_park(w, a.park.as_ref());
+}
+
+pub fn write_traffic_car(w: &mut Writer, c: &TrafficCar) {
+    w.bool(c.active);
+    write_kinematic(w, &c.k);
+    w.f64(c.crashed);
+    w.f64(c.cruise);
+    w.f64(c.lane_lat);
+    w.i32(c.lane.unwrap_or(-1));
+    w.opt(None); // passed (Race)
+    w.bool(false); // nearMissHit (Race)
+}
+
 /// The record of one tick.
 pub fn trace_record(view: &View) -> Vec<u8> {
     let mut w = Writer::default();
+    let tcars: &[TrafficCar] = view.traffic.map_or(&[], |t| &t.cars);
     w.i32(view.tick);
     w.bool(false); // hasRace
     w.bool(false); // hasPursuit
     w.i32(view.players.len() as i32);
-    w.i32(view.n_rivals);
-    w.i32(view.n_traffic);
+    w.i32(view.rivals.len() as i32);
+    w.i32(tcars.len() as i32);
     w.i32(0);
     w.i32(0);
     for p in &view.players {
@@ -154,7 +221,21 @@ pub fn trace_record(view: &View) -> Vec<u8> {
     for p in &view.players {
         write_player(&mut w, p);
     }
-    w.bool(false); // hasTraffic
+    for a in view.rivals {
+        write_rival(&mut w, a);
+    }
+    match view.traffic {
+        Some(t) => {
+            w.bool(true);
+            w.f64(t.next_spawn_s);
+            w.f64(t.next_opp_s);
+            w.i32(t.max_active as i32);
+        }
+        None => w.bool(false),
+    }
+    for c in tcars {
+        write_traffic_car(&mut w, c);
+    }
     for s in view.streams {
         w.i32(s);
     }
