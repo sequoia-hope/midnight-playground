@@ -177,9 +177,7 @@ impl BufferData {
     /// Parses `len` elements of `component` from little-endian bytes.
     pub fn from_le_bytes(component: Component, bytes: &[u8]) -> BufferData {
         fn take<const N: usize, T>(b: &[u8], f: fn([u8; N]) -> T) -> Vec<T> {
-            b.chunks_exact(N)
-                .map(|c| f(c.try_into().expect("chunks_exact gives N bytes")))
-                .collect()
+            b.as_chunks::<N>().0.iter().map(|c| f(*c)).collect()
         }
         match component {
             Component::F32 => BufferData::F32(take(bytes, f32::from_le_bytes)),
