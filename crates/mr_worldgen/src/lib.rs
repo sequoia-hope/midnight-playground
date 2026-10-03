@@ -20,4 +20,5 @@ pub mod terrain;
 pub mod terrain_mesh;
 pub mod textures;
 pub mod three_geom;
+pub mod valley;
 pub mod world;

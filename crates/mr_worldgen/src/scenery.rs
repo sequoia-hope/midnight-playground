@@ -31,7 +31,8 @@ use crate::world::{Scenery, SceneryInfo, World};
 pub type MakeScenery = fn(&SceneryInfo) -> Box<dyn Scenery>;
 
 /// The ported scenery modules by JS class name. Add one line per module.
-pub const PORTED: &[(&str, MakeScenery)] = &[];
+pub const PORTED: &[(&str, MakeScenery)] =
+    &[("Valley", |info| Box::new(crate::valley::Valley::new(info)))];
 
 /// The ported module of that name, made as `loadScenery` makes it.
 pub fn ported(info: &SceneryInfo) -> Option<Box<dyn Scenery>> {
