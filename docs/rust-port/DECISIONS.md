@@ -40,10 +40,16 @@ threads or the browser.
 profile (fat LTO, one codegen unit, `panic = "abort"`) and runs
 `wasm-opt -Oz`. SPEC 11 allows size optimisation where a benchmark shows no
 frame-time cost; there are no frames to time until M2, so WP 2.6 revisits
-`-Oz` against `-O3`. The Rust toolchain follows stable (`rust-toolchain.toml`)
-rather than a pinned version: the results the port compares are fixed by
-`libm` and IEEE arithmetic, not by the compiler. The `wasm-bindgen` crate is
-pinned exactly (`=0.2.129`), because its CLI must match.
+`-Oz` against `-O3`. The `wasm-bindgen` crate is pinned exactly
+(`=0.2.129`), because its CLI must match.
+
+The Rust toolchain is pinned too (`rust-toolchain.toml`, 1.99.0). It first
+followed `stable`, on the grounds that the compared results are fixed by
+`libm` and IEEE arithmetic, not by the compiler; but CI then picked up a
+newer stable than the dev machine's and failed on a clippy lint the older
+one did not have. Pinning keeps CI and every machine on the same lints.
+Upgrade it deliberately, between milestones, and rerun
+`cargo xtask kernel --check` when you do.
 
 ## D5. The WP 0.1 page reports WebGPU and secure context
 
