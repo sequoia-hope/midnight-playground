@@ -870,3 +870,119 @@ requires all of it to match. The SPEC's bar is 1e-6; the result is
 bit-identical in every case, native and in wasm
 (`cargo test --target wasm32-unknown-unknown -p mr_worldgen`). CI checks
 that the golden regenerates and runs mr_worldgen's tests in wasm.
+
+## WP 3.2 decisions
+
+## D150. The bundled fonts, registered under the names the JS asks for
+
+2026-10-03, WP 3.2. `assets/fonts/` holds unmodified files from the
+google/fonts repository with their licences (OFL; Yellowtail Apache 2.0),
+and `assets/fonts/fonts.json` maps each to the family name the game writes:
+"Arial Narrow" → Archivo Narrow, "Arial" → Arimo (not in SPEC 5.3's list,
+but plain Arial is the second most used family: sub-lines, price boards,
+harbour signs), "Arial Black" → Archivo Black, Georgia → Gelasio, "Brush
+Script MT" → Yellowtail, "Segoe Script" → Caveat (never reached: every list
+names Brush Script MT first), "Courier New" → Courier Prime, Rajdhani →
+Rajdhani; the generic families map to these (`sans-serif` → Arial and so
+on). "Helvetica Neue" is not mapped: it only follows "Arial Narrow".
+Variable fonts stay variable: the `wght` axis follows the requested weight
+within the face's range, as Chrome sets it. A single-weight face (Archivo
+Black, Yellowtail) is registered for the whole 100–900 range, so neither
+Chrome nor the port synthesises bold for it; the set covers every weight and
+style the game requests, so mr_canvas has no synthetic bold (a synthetic
+oblique, Skia's 0.25 skew, is there for the gallery). `FontBook::bundled()`
+compiles the files in (about 4 MB, most of it Arimo's and Rajdhani's
+non-Latin coverage: subsetting both sides to the characters in use is the
+obvious size fix once the owner has chosen). The alternatives for the
+gallery are fetched on demand into `target/font-candidates/`, not
+committed. The owner picks from `/parity/report/fonts/`.
+
+## D151. Exact-area coverage and own compositing, on tiny-skia's paths
+
+2026-10-03, WP 3.2. mr_canvas uses tiny-skia for the pixmap, path building
+and the stroker, but rasterises coverage itself (exact signed area per
+pixel, the nonzero rule, as font-rs and FreeType do) and composites in
+float with one rounding per draw. tiny-skia's own anti-aliasing is 4×4
+supersampling, up to 1/8 of a pixel off at an edge. Measured in Chrome 151
+(headless, GPU canvas): fillRect, rect paths, strokeRect and axis-aligned
+line strokes give exact area coverage; other paths give exact coverage
+across x but about four levels down y (the GPU's multisampling). Exact
+area is the closest single rule. Chrome's GPU canvas also reads the
+destination once per batch for `lighten`, so two overlapping `lighten`
+draws in a row do not see each other; the game never overlaps them
+(`cityTextures.js` draws disjoint cells), so that is not reproduced and the
+probe avoids it.
+
+## D152. Text: harfrust and skrifa, shaped and hinted as Chrome does
+
+2026-10-03, WP 3.2. Shaping is harfrust (the HarfBuzz project's Rust port),
+outlines and metrics are skrifa (Fontations, which Chrome's Skia uses for web
+fonts), both on read-fonts 0.43; glyphs are filled by D151's rasteriser so
+transforms, gradients, shadows and compositing apply to text as to paths.
+rustybuzz was tried first and dropped: it ignores GPOS variation deltas, so
+Arimo kerned R-T and T-space at wght 700, where the font's delta zeroes
+them (Chrome: "PORT MERIDIAN" 512.0 px, rustybuzz 509.69). ab_glyph and
+fontdue do no shaping. What the port does, each measured against Chrome:
+- shapes at the font size in 16.16 fixed point, word by word (Blink's
+  CachingWordShaper: nothing kerns across a space; "Grand Ave" 263.49);
+- baselines from Blink's normalised OS/2 typo metrics (`middle` is
+  (ascent − descent)/2 in 1/64 px) and rounded hhea ascent and descent;
+- glyph origins on Skia's grid: quarter pixel along the baseline, whole
+  pixel across it, when the transform keeps the axes (including quarter
+  turns, with SkScalarNearlyZero's tolerance);
+- outlines hinted by the light automatic hinter at the device size for
+  every face, even ones with TrueType instructions (cap heights match:
+  Arimo 45 px at 64 px where unhinted is 44.03, Rajdhani 42, Archivo Black
+  44.4);
+- A8 mask correction (`SkMaskGamma`, gamma 1.2, contrast 0.2, the fill
+  colour's luminance in 3 bits): white text's coverage becomes
+  `c^(1/1.2)`, black text's thins slightly, as in Chrome's pixels;
+- overlapping glyphs combine as separate masks do (1 − (1−a)(1−b)).
+Strokes and glyphs above 256 px per em are drawn as paths, without the
+mask correction (Skia's atlas limit; not measured).
+
+## D153. Canvas gradients are dithered
+
+2026-10-03, WP 3.2. Chrome draws canvas gradients with Skia's GPU dither:
+an 8×8 ordered pattern of ±½ level on the premultiplied colour channels,
+not alpha. On a translucent white gradient that shows as RGB dipping below
+255 after `getImageData`; with the dither the glow and smoke textures went
+from 1.69 and 1.44 levels mean difference to 0.58 and 0.87. Stops
+interpolate unpremultiplied and pad.
+
+## D154. The texture reference capture
+
+2026-10-03, WP 3.2. `tools/parity/textures.mjs` opens its own page
+(`tools/parity/textures.html`, the pattern of `audio-ref.html`) through the
+e2e harness with `?kernel=1`: `hooks.js` installs the kernel before
+`textures.js` evaluates, the page registers the bundled faces with
+`FontFace` under the JS names, and each case calls the module's export. It
+captures every generator of `textures.js` (asphalt in all three tones,
+checker 10 as the game uses it and the default 8, the six façade variants'
+map and emissive) and eleven of the signs the game draws through
+`signTexture` (freeway.js and Harbor.js, one per shape of call). It also
+captures eleven probes, small scenes in a tiny op language both sides
+interpret, for the parts of the canvas subset `textures.js` does not reach.
+The PNGs go to `parity/cache/<key>/textures/`; that key does not cover the
+fonts, so the committed summary (`parity/golden/textures/*.json`: Chrome
+version, fonts manifest hash, per image the SHA-256 and 8×8 block means)
+decides whether a cached image is current. The Rust tests check, always:
+bit-identity for `detailTexture` and `terrainDetailTexture` (pixel data
+only, no drawing), and block means within the gate; with the cache: mean
+absolute difference per channel under 3/255 (SPEC 5.7) and side-by-side
+sheets in `parity/report/textures/`. `--check` captures twice and compares
+with the golden.
+
+## D155. The shape of `mr_worldgen::textures`
+
+2026-10-03, WP 3.2. One function per JS generator, drawing on mr_canvas in
+the JS order, returning a `Texture` (unpremultiplied RGBA as uploaded, the
+source kind, wrap, colour space, anisotropy) with `desc()` for an
+`mr_scene::TextureDesc` (canvas textures flip on upload, data textures do
+not). The JS module's `Map` cache is a `TextureCache` owned by the world
+build, with the JS keys, including their quirk: a sign's key leaves out its
+font and border, so two signs differing only in those share a texture.
+Stores keep their array types: `Uint8ClampedArray` (ImageData) rounds half
+to even and clamps (`ImageData::set`), `Uint8Array` (the DataTexture)
+truncates, `Float32Array` lattices and noise go through `fround`. The
+noise textures are bit-identical to the JS.

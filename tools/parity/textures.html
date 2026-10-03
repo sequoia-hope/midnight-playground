@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Texture reference</title>
+<link rel="icon" href="data:,">
+<script type="importmap">
+{ "imports": {
+  "three": "../../vendor/three/build/three.module.js",
+  "three/addons/": "../../vendor/three/addons/"
+} }
+</script>
+</head>
+<body>
+<p>Driven by <code>tools/parity/textures.mjs</code> (open with <code>?kernel=1</code>).</p>
+<script type="module">
+// The browser half of the texture reference (roadmap WP 3.2, SPEC 5.7): the
+// shared textures of src/world/textures.js, drawn by Chrome's canvas with
+// the bundled fonts (assets/fonts/fonts.json) registered under the names
+// the game asks for, so text is compared like for like. hooks.js installs
+// the parity kernel (?kernel=1) before textures.js evaluates.
+import '../../src/parity/hooks.js';
+import * as T from '../../src/world/textures.js';
+
+// Every face of the manifest, as a FontFace of the family the JS names.
+const manifest = await (await fetch('../../assets/fonts/fonts.json')).json();
+for (const f of manifest.faces) {
+  const bytes = await (await fetch('../../assets/fonts/' + f.file)).arrayBuffer();
+  const face = new FontFace(f.family, bytes, { weight: f.weight.join(' '), style: f.style });
+  await face.load();
+  document.fonts.add(face);
+}
+await document.fonts.ready;
+
+window.__T = T;
+window.__manifest = manifest;
+
+// A canvas's pixels as getImageData gives them (unpremultiplied RGBA),
+// base64 for the trip to Node.
+window.__pixels = (c) => {
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let s = '';
+  for (let i = 0; i < d.length; i += 0x8000) s += String.fromCharCode.apply(null, d.subarray(i, i + 0x8000));
+  return { width: c.width, height: c.height, rgba: btoa(s) };
+};
+
+window.__ready = Math.__kernel === true;
+if (!window.__ready) document.body.textContent = 'Open with ?kernel=1: every capture is taken with the parity kernel.';
+</script>
+</body>
+</html>
