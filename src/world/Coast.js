@@ -124,11 +124,13 @@ function foamMaterial(swell = 1) {
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
     uTime: { value: 0 }, uBright: { value: 1 }, uSwell: { value: swell }, uColor: { value: new THREE.Color(0xeef4f5) },
   }]);
-  return new THREE.ShaderMaterial({
+  const m = new THREE.ShaderMaterial({
     vertexShader: foamVert, fragmentShader: foamFrag, uniforms,
     transparent: true, depthWrite: false, fog: true,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
+  m.userData.kind = 'Surf'; // MaterialKind for the scene export
+  return m;
 }
 
 // Flat ring on the water, uv.y = 0 at the inner (rock) edge → 1 outside.
@@ -990,6 +992,7 @@ export default class Coast {
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uColor: { value: new THREE.Color(1.0, 0.93, 0.78) }, uStrength: { value: 0.5 } }]),
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: true,
     });
+    beamMat.userData.kind = 'LighthouseBeam'; // MaterialKind for the scene export
     const pivot = new THREE.Group();
     pivot.position.set(L.x, y + H + 1.35, L.z);
     const b1 = new THREE.Mesh(beamGeo, beamMat);

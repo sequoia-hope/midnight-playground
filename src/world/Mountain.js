@@ -63,6 +63,7 @@ class SurfaceSampler {
 function rockMaterial(vertexColors = true) {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0, vertexColors });
   const tex = rockTexture();
+  m.userData.kind = 'TriplanarRock'; // MaterialKind for the scene export
   m.onBeforeCompile = (sh) => {
     sh.uniforms.tRock = { value: tex };
     sh.vertexShader = sh.vertexShader
@@ -883,6 +884,7 @@ export default class Mountain {
     const r = new THREE.PlaneGeometry(0.07, 0.16);
     r.translate(0, 0.8, 0.04);
     const reflMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.1, roughness: 0.3 });
+    reflMat.userData.kind = 'Reflector'; // MaterialKind for the scene export
     reflMat.onBeforeCompile = (sh) => {
       // Emissive takes the instance colour so one material does amber and white.
       sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n#ifdef USE_INSTANCING_COLOR\ntotalEmissiveRadiance *= vColor;\n#endif');

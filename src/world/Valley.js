@@ -87,6 +87,8 @@ function waterNormalTexture() {
 // read as clapboard or barn boards and roofs as courses of shingles without
 // a texture per building. Fades out where the pattern would alias.
 function surfaceDetail(mat, mode) {
+  mat.userData.kind = 'Siding'; // MaterialKind for the scene export
+  mat.userData.kindOpts = { mode };
   mat.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWP;\nvarying vec3 vWN;')

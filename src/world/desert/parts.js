@@ -52,6 +52,7 @@ function limb(a, b, r0, r1, seg = 6) {
 export function sandstoneMaterial(key = 'desert-rock') {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0, vertexColors: true });
   const tex = rockTexture();
+  m.userData.kind = 'Sandstone'; // MaterialKind for the scene export
   m.onBeforeCompile = (sh) => {
     sh.uniforms.tRock = { value: tex };
     sh.uniforms.tDetail = { value: detailTexture() };

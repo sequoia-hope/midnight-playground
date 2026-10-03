@@ -124,6 +124,7 @@ function lowPaint(color, rough = 0.5) {
 function lightMat(params, hi) {
   const m = new THREE.MeshStandardMaterial({ ...params, vertexColors: hi });
   if (hi) {
+    m.userData.kind = 'CarLight'; // MaterialKind for the scene export
     m.onBeforeCompile = (s) => {
       s.fragmentShader = s.fragmentShader
         .replace('#include <color_fragment>', '')
@@ -2063,7 +2064,7 @@ function glowGeometry(spots) {
   return g;
 }
 function glowMaterial() {
-  return new THREE.ShaderMaterial({
+  const m = new THREE.ShaderMaterial({
     uniforms: { map: { value: glowTexture() }, uRed: { value: new THREE.Color(0, 0, 0) }, uBlue: { value: new THREE.Color(0, 0, 0) }, uMin: { value: 0.02 } },
     vertexShader: `
       attribute vec2 corner;
@@ -2102,6 +2103,8 @@ function glowMaterial() {
       }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
+  m.userData.kind = 'PoliceGlow'; // MaterialKind for the scene export
+  return m;
 }
 
 // ── public ────────────────────────────────────────────────────────

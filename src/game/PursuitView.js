@@ -368,7 +368,8 @@ export class PursuitView {
 let sawhorseParts = null;
 // A sawhorse barrier: a striped board on two A-frame legs. Built as a
 // minimal vehicle model (+Z along the board) so it moves like one.
-function sawhorseModel() {
+// Exported (with spikeStrip) for the Rust port's scene export.
+export function sawhorseModel() {
   if (!sawhorseParts) {
     const c = document.createElement('canvas');
     c.width = 128; c.height = 16;
@@ -402,7 +403,7 @@ function sawhorseModel() {
 let spikeMat = null;
 // A spike strip across the road from lat0 to lat1 at s: a dark base with
 // rows of small steel pyramids.
-function spikeStrip(track, s, lat0, lat1) {
+export function spikeStrip(track, s, lat0, lat1) {
   spikeMat ??= new THREE.MeshStandardMaterial({ color: 0x3a3d42, metalness: 0.7, roughness: 0.35 });
   const f = track.frame(s);
   const w = lat1 - lat0, parts = [];

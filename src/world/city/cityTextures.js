@@ -158,6 +158,7 @@ export function buildingAtlas() {
 // the `cell` attribute picks which atlas column to sample. textureGrad keeps
 // mip selection continuous across the fract() wrap.
 export function patchAtlasMaterial(material) {
+  material.userData.kind = 'CityAtlas'; // MaterialKind for the scene export
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float cell;\nvarying float vCell;\nvarying vec2 vAUv;')
@@ -494,6 +495,7 @@ export function patchCityMaterial(material, { mask, ground = 0 }) {
   const u = { uMask: { value: mask }, uGround: { value: ground } };
   material.userData.cityUniforms = u;
   const arr = (a, f) => a.map(f).join(', ');
+  material.userData.kind = 'CityFacade'; // MaterialKind for the scene export
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, u);
     shader.vertexShader = shader.vertexShader

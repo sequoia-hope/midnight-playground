@@ -198,6 +198,7 @@ export class Sky {
       vertexShader: skyVert, fragmentShader: skyFrag, uniforms: this.uniforms,
       side: THREE.BackSide, depthWrite: false, depthTest: true, fog: false,
     });
+    mat.userData.kind = 'SkyDome'; // MaterialKind for the scene export
     this.dome = new THREE.Mesh(geo, mat);
     this.dome.frustumCulled = false;
     this.dome.renderOrder = -10;

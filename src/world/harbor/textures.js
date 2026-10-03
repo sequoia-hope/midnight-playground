@@ -220,6 +220,7 @@ export function containerGeometry() {
 
 export function containerMaterial() {
   const m = new THREE.MeshStandardMaterial({ map: containerAtlas(), roughness: 0.7, metalness: 0.25 });
+  m.userData.kind = 'ContainerAtlas'; // MaterialKind for the scene export
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float aVar;')

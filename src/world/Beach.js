@@ -63,6 +63,7 @@ function stuccoMaterial() {
     g.putImageData(img, 0, 0);
   }, { srgb: false });
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+  m.userData.kind = 'Stucco'; // MaterialKind for the scene export
   m.onBeforeCompile = (sh) => {
     sh.uniforms.tGrain = { value: noise };
     sh.vertexShader = sh.vertexShader

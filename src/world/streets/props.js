@@ -13,6 +13,8 @@ import { VENDING, STALL, POSTER, AWNING_C, S_TILE, puddleTexture } from './textu
 // A faint emissive proportional to albedo: the city's bounce light. Without
 // it anything a street lamp doesn't hit renders flat black at night.
 export function ambientPatch(mat, rgb, key) {
+  mat.userData.kind = 'AmbientProp'; // MaterialKind for the scene export
+  mat.userData.kindOpts = { rgb };
   mat.onBeforeCompile = (shader) => {
     shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>',
       `#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vec3(${rgb.map((v) => v.toFixed(4)).join(', ')});`);
@@ -25,6 +27,7 @@ export function ambientPatch(mat, rgb, key) {
 // 1 buzzes and drops out, 2 switches on and off, 3 has a dying tube that
 // stutters at a lower level.
 export function neonFlicker(mat, time, key) {
+  mat.userData.kind = 'Neon'; // MaterialKind for the scene export
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uNTime = time;
     shader.vertexShader = shader.vertexShader
@@ -448,6 +451,7 @@ export function buildSteam(S) {
     transparent: true, depthWrite: false, blending: THREE.CustomBlending,
     blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
   });
+  m.userData.kind = 'Steam'; // MaterialKind for the scene export
   const pts = new THREE.Points(g, m);
   pts.userData.dynamic = true;
   S.group.add(pts);

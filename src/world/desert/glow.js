@@ -19,6 +19,8 @@ export function flickerPoints(items, { size = 1, color = 0xffffff, rate = 1, dep
   g.setAttribute('ph', new THREE.BufferAttribute(ph, 1));
   g.computeBoundingSphere();
   const m = new THREE.PointsMaterial({ size, map: glowTexture(), color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true });
+  m.userData.kind = 'FlickerPoints'; // MaterialKind for the scene export
+  m.userData.kindOpts = { rate, depth, blink };
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = glowTime;
     sh.vertexShader = sh.vertexShader
@@ -60,6 +62,7 @@ export function flickerPools(items) {
   });
   geo.setAttribute('ph', new THREE.InstancedBufferAttribute(ph, 1));
   geo.setAttribute('fl', new THREE.InstancedBufferAttribute(fl, 1));
+  mat.userData.kind = 'GroundPool'; // MaterialKind for the scene export
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = glowTime;
     sh.vertexShader = sh.vertexShader

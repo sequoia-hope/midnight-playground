@@ -58,6 +58,7 @@ class Particles {
       transparent: true, depthWrite: false, fog: true,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
     });
+    m.userData.kind = 'Particles'; // MaterialKind for the scene export
     this.points = new THREE.Points(g, m);
     this.points.frustumCulled = false;
     this.geo = g;
@@ -109,6 +110,7 @@ class SkidMarks {
       vertexShader: 'attribute float alpha; varying float vA; void main(){ vA = alpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);} ',
       fragmentShader: 'varying float vA; void main(){ gl_FragColor = vec4(0.02,0.02,0.02, vA); }',
     });
+    m.userData.kind = 'SkidMarks'; // MaterialKind for the scene export
     this.mesh = new THREE.Mesh(g, m);
     this.mesh.frustumCulled = false;
     this.geo = g;

@@ -5,9 +5,11 @@
 //!   web [--release]   build the web client into dist/next/
 //!   size              report the size of the built wasm (raw and gzip)
 //!   kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits
+//!   parity scene-check [files]  read exported scenes back and check their digests
 
 mod deps;
 mod kernel;
+mod parity_scene;
 mod size;
 mod web;
 
@@ -29,6 +31,10 @@ fn main() -> ExitCode {
         "web" => web::run(rest),
         "size" => size::run(rest),
         "kernel" => kernel::run(rest),
+        "parity" => match rest.first().map(String::as_str) {
+            Some("scene-check") => parity_scene::run(&rest[1..]),
+            _ => Err(format!("unknown parity command\n\n{}", usage())),
+        },
         "-h" | "--help" | "help" => {
             println!("{}", usage());
             Ok(())
@@ -51,7 +57,8 @@ fn usage() -> &'static str {
      \x20 check-deps        enforce the crate dependency rules (SPEC 3.2)\n\
      \x20 web [--release]   build the web client into dist/next/\n\
      \x20 size [--budget]   report the built wasm's size; --budget fails over 10 MB gzip\n\
-     \x20 kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits"
+     \x20 kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits\n\
+     \x20 parity scene-check [files]  read exported .mrscene files back and check their digests"
 }
 
 /// The repository root (the workspace root).
