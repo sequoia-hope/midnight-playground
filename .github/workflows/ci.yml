@@ -58,6 +58,8 @@ jobs:
           echo "$RUNNER_TEMP/binaryen-version_116/bin" >> "$GITHUB_PATH"
       - name: Simulation crates' tests in wasm (Node)
         run: cargo test --target wasm32-unknown-unknown -p mr_math -p mr_track -p mr_levels -p mr_sim
+      - name: World generation's tests in wasm (Node)
+        run: cargo test --target wasm32-unknown-unknown -p mr_worldgen
       - name: Kernel in wasm is bit-identical to native
         run: cargo xtask kernel --check
       - run: cargo xtask web --release
@@ -84,3 +86,5 @@ jobs:
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/math-golden.mjs --check
       - name: The Seaside survey golden reproduces
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/seaside-golden.mjs --check
+      - name: The three.js geometry golden reproduces
+        run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/three-geom.mjs --check

@@ -3163,6 +3163,8 @@ dependencies = [
  "mr_math",
  "mr_scene",
  "mr_track",
+ "serde_json",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
