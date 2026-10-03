@@ -60,7 +60,7 @@ turns the JS game into reference data.
 | WP | Work | Output | Gate |
 |---|---|---|---|
 | 0.1 | Workspace, empty crates with the dependency rules, `xtask` (`check-deps`, `web`, `size`), `CLAUDE.md`, `DEVIATIONS.md`, `DECISIONS.md` | Cargo workspace at the repo root; `cargo xtask web` produces `dist/next/` with a wasm that clears the screen | Builds native and wasm; `check-deps` passes |
-| 0.2 | CI: format, clippy, tests, wasm tests, `check-deps`, web build, size report, JS unit tests. Pages deploy with the JS game at `/` and the Rust build at `/next/` | `.github/workflows/` | Green on `main`; `/next/` loads on a phone |
+| 0.2 | CI: format, clippy, tests, wasm tests, `check-deps`, web build, size report, JS unit tests. No deploy: GitHub Pages stays the JS game until M9 | `.github/workflows/` | Green on `main`; the live site is unchanged |
 | 0.3 | Parity hooks in the JS game: fixed dt (`?fixeddt=120`), seeded `Math.random` (`?seed=`), freeze traffic and particles for screenshots, scene export. Then tag `js-reference` | Small changes in `src/main.js`; `tools/parity/` | The JS suites still pass |
 | 0.4 | Simulation traces from Node (staged scenarios, dt 1/120, seeded) and whole-race statistics from headless Chrome | `tools/parity/sim-traces.mjs`, `parity/golden/sim/` (committed) | Two runs give identical files |
 | 0.5 | Scene export: walk `__world.root` and the car models, write `.mrscene` files (meshes, instances, material kind and parameters, textures) plus Track and terrain dumps | `tools/parity/scene-export.mjs`; goldens cached by JS tree hash | Sierra and Coast export and reload in the JS viewer with the same picture |
@@ -68,11 +68,11 @@ turns the JS game into reference data.
 | 0.7 | Audio reference: engine wave arrays, kit and SFX buffers, offline renders, a call log for a scripted drive | `parity/golden/audio/` | Reproducible |
 | 0.8 | Baselines: desktop numbers (already in SPEC 6.6) and the JS game's frame rate, load time and memory on the reference phones | A table in `docs/rust-port/BASELINE.md` | Owner reads the phone numbers |
 
-**Owner:** switch the repository's Pages source to GitHub Actions (once);
-read the stats overlay on the phones for 0.8.
+**Owner:** read the stats overlay on the phones for 0.8.
 
 **Exit:** goldens exist and are reproducible; the report page shows the JS
-compared with itself; CI deploys `/next/`.
+compared with itself; CI is green; the Rust build opens on a phone at the
+tailnet address under `dist/next/` (SPEC 9.5).
 
 ---
 
@@ -108,13 +108,13 @@ carries this game on the phones. Runs beside M1.
 
 | WP | Work | Gate |
 |---|---|---|
-| 2.1 | Client shell: Bevy app, window, states, the HTML shell with the WebGPU check and loading bar, the build pipeline, the gesture bridge stub. Choose the Bevy version (SPEC 2) and record it | Loads on desktop browsers, native, and both phones from `/next/` |
+| 2.1 | Client shell: Bevy app, window, states, the HTML shell with the WebGPU check and loading bar, the build pipeline, the gesture bridge stub. Choose the Bevy version (SPEC 2) and record it | Loads on desktop browsers, native, and both phones over the tailnet https address |
 | 2.2 | Scene loader: `.mrscene` to Bevy meshes, instances and textures, with CPU copies dropped | Sierra and Coast exports load |
 | 2.3 | `three_std` shading library, the plain material kinds, the post chain (bloom, tone mapping), fog, the shadow map, sky dome | L4 material test scenes within threshold |
 | 2.4 | Terrain, asphalt and sea kinds, so one level looks right; thirty moving stand-in cars; points as quads | Sierra screenshots within threshold at five stations |
 | 2.5 | Pipeline warm-up; performance, memory and size measurement; ten reloads | Numbers recorded |
 | 2.6 | A WebGL2 build of the same client, selected by the page when WebGPU is missing or fails | Compiles in CI; loads on the iPhone |
-| 2.7 | Dev access from other devices: a `tailscale serve` https front for the registered port, recorded in the registry (SPEC 9.5) | Owner opens the working-tree build on the phone over the tailnet, with WebGPU |
+| 2.7 | A phone outside the tailnet (the Android reference phone, if it is not on it): join it to the tailnet, or give `tools/serve.py` a TLS option | Both reference phones open the working-tree build with WebGPU |
 
 **Gate G1.** On the owner's iPhone and one Android phone, WebGPU build, high
 quality off, flying the Sierra and Coast exports along the route:
@@ -275,7 +275,7 @@ simulation (WP 1.6).
 | 9.2 | Full parity review: every level's report, every e2e suite, the deviations list | L5 |
 | 9.3 | Native app: `play.sh` runs the Rust binary; desktop entry; Electron removed | Smoke test |
 | 9.4 | `tools/og-image` against the Rust build; README rewritten | The preview picture regenerates |
-| 9.5 | Swap: Rust at the site root, JS under `/legacy/`, JS source moved to `legacy/`; records carry over | Best times from the JS game show in the Rust menu |
+| 9.5 | Swap: the owner switches the Pages source to GitHub Actions; a deploy job publishes Rust at the site root and JS under `/legacy/`; JS source moves to `legacy/`; records carry over | Best times from the JS game show in the Rust menu |
 
 **Owner:** final sign-off; a week of play before the swap.
 

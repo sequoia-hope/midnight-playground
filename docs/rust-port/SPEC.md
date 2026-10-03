@@ -31,7 +31,7 @@ missing and nothing redesigned.
 | Content | Generated in code for the port. The architecture includes a normal asset pipeline so later content can be authored. |
 | Multiplayer | A native host program first. The netcode is designed so a browser tab can be the host later. |
 | First multiplayer release | Two to eight humans in the existing race levels, AI filling the grid, traffic on. Hot Pursuit and the cruise loop stay single-player until later. |
-| Repository | This repo. The JS game stays live at the site root, frozen except for bug fixes, until the Rust build replaces it. |
+| Repository | This repo. The JS game is frozen except for bug fixes. GitHub Pages keeps serving it, unchanged, until the port is done; the Rust build is not published there before cutover. |
 
 Not goals of the port: new gameplay, retuned handling, authored art, or the
 open-world design. Those come after cutover and each
@@ -585,7 +585,7 @@ measured in M0):
 - Level load: no slower than JS on the web; at least twice as fast native.
 - Wasm memory high-water mark: under 512 MB on phones, and no growth across
   ten level switches.
-- Download: wasm under 10 MB compressed as served. Tracked in CI.
+- Download: wasm under 10 MB gzip-compressed. Tracked in CI.
 - Time from navigation to menu on a phone over Wi-Fi: within 5 s of the JS
   game's.
 
@@ -872,15 +872,18 @@ why "Pages plus a plain WebSocket host" is not on the list.
 
 The same rule affects development. The registered dev server speaks plain
 http, so by itself the Rust build opens from `localhost` on the dev machine
-but not from a phone or another computer. The dev machine is on a tailnet
-with https enabled, and other projects on it already use `tailscale serve`
-to put an https front on a local port. Do the same here: `tailscale serve`
-proxies `https://<machine>.<tailnet>.ts.net:<port>/` to the registered local
-port, WebSocket upgrades included. Any device on the tailnet then gets a
-secure context, so WebGPU and tilt work, with the working tree served live.
-This is the main way to test on phones; the GitHub Pages build under
-`/next/` is the way for devices off the tailnet. The https port is recorded
-in the registry (`web_url`) like the others, not written into the project.
+but not from a phone or another computer. `serve.sh` therefore also mounts
+the server on the dev machine's tailnet https address with `tailscale serve`,
+under the path `/midnight-racer/` (the registry records the address as the
+project's `web_url`; the trailing slash matters). Any device on the tailnet
+gets a secure context there, so WebGPU and tilt work, with the working tree
+served live: the JS game at `/midnight-racer/` and the Rust build at
+`/midnight-racer/dist/next/`. This is how the Rust build is tested on phones
+throughout the port. GitHub Pages plays no part until cutover.
+
+Because the game is always served under some sub-path (this mount, the
+`dist/next/` directory, the Pages project path), every URL the client uses
+must be relative: assets, the wasm, and later the WebSocket endpoint.
 
 The same front covers tailnet multiplayer: `mr-host` can stay plain http
 behind `tailscale serve`, and its own `--tls-cert` option is only needed for
@@ -934,12 +937,15 @@ any time after M1:
   registered server at `/parity/report/`.
 - **CI (GitHub Actions):** format, clippy with warnings denied, native
   tests, simulation tests in wasm, dependency rules, web build, size report,
-  the JS unit tests. On `main`, deploy to GitHub Pages: the JS game at the
-  root and the Rust build at `/next/`. This needs the repository's Pages
-  source switched from "branch" to "GitHub Actions" once, by the owner.
+  the JS unit tests. CI does not deploy. GitHub Pages keeps serving `main`
+  as it is, which is the JS game, until cutover. At cutover (roadmap M9) the
+  Pages source is switched from "branch" to "GitHub Actions" by the owner,
+  and a deploy job publishes the Rust build at the root with the JS game
+  under `/legacy/`.
 - **Commits:** as today, finished and tested work goes straight to `main`.
-  The JS game at the root is not touched by Rust work, so the live site
-  keeps working throughout.
+  The JS game at the root is not touched by Rust work, and nothing the
+  Rust build needs is served from Pages, so the live site keeps working
+  throughout. Build output stays out of git.
 - **`CLAUDE.md`** (created in M0) carries the working rules for agents:
   the principles in section 1.1, how to run tests and parity, how to view
   output locally, the port rule, and the file-ownership rule for parallel
