@@ -20,6 +20,8 @@ pub enum Surface {
     Road,
     /// The opposite carriageway: `oppY(track.frame(s))`.
     Opposite,
+    /// The road plus a height (a sawhorse flying off a roadblock).
+    Raised(f64),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -158,6 +160,7 @@ impl Kinematic {
         v.y = match self.surface {
             Surface::Road => t.surface_y(self.s, self.lat),
             Surface::Opposite => mr_levels::world::opp_y(&t.frame(self.s)),
+            Surface::Raised(h) => t.surface_y(self.s, self.lat) + h,
         };
         let base = kernel::atan2(f.fz, f.fx) + if self.dir < 0 { PI } else { 0.0 };
         let crab = kernel::atan2(self.lat_vel * self.dir as f64, js::max(4.0, self.speed));
@@ -171,6 +174,9 @@ impl Kinematic {
 
     pub fn view(&self) -> AgentView {
         AgentView {
+            id: crate::body::BodyId::Anon,
+            police: false,
+            kinematic_only: false,
             s: self.s,
             lat: self.lat,
             dir: self.dir,

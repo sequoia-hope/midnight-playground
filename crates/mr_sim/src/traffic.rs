@@ -75,7 +75,10 @@ impl Body for TrafficCar {
         self.k.add_spin(w)
     }
     fn view(&self) -> AgentView {
-        self.k.view()
+        AgentView {
+            kinematic_only: true,
+            ..self.k.view()
+        }
     }
 }
 
@@ -414,7 +417,7 @@ impl Traffic {
                 for a in agents {
                     let o = match a {
                         Agent::Traffic(j) if *j == ci => continue,
-                        Agent::Traffic(j) => self.cars[*j].k.view(),
+                        Agent::Traffic(j) => self.cars[*j].view(),
                         Agent::Other(v) => *v,
                     };
                     let ds = t.ds(c.k.s, o.s) * c.k.dir as f64;

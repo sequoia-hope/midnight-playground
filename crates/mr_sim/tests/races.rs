@@ -18,7 +18,9 @@ use std::sync::Arc;
 
 use mr_sim::autopilot::autopilot;
 use mr_sim::input::{Input, InputFrame};
-use mr_sim::race::{LevelRuntime, RaceOpts, SimState, cruise_results, results, step};
+use mr_sim::race::{
+    LevelRuntime, RaceOpts, SimState, cruise_results, pursuit_stats, results, step,
+};
 use mr_sim::trace::{TraceFile, fnv1a64, race_record, read_trace};
 use serde_json::Value;
 
@@ -42,6 +44,10 @@ fn cached(id: &str, final_hash: &str) -> Option<Vec<u64>> {
 }
 
 fn run(id: &str, level: &str, car: &'static str, stop_ticks: Option<u32>) {
+    run_heat(id, level, car, stop_ticks, None);
+}
+
+fn run_heat(id: &str, level: &str, car: &'static str, stop_ticks: Option<u32>, heat: Option<f64>) {
     let summary: Value = serde_json::from_str(SUMMARY).unwrap();
     let g = &summary["recordings"][id];
     let want_ticks = g["ticks"].as_u64().unwrap() as u32;
@@ -55,7 +61,8 @@ fn run(id: &str, level: &str, car: &'static str, stop_ticks: Option<u32>) {
         RaceOpts {
             car,
             seed: 1,
-            pursuit: false,
+            pursuit: heat.is_some(),
+            heat: heat.unwrap_or(1.0),
         },
     );
     let mut events = Vec::new();
@@ -139,6 +146,22 @@ fn run(id: &str, level: &str, car: &'static str, stop_ticks: Option<u32>) {
                 r.name
             );
         }
+        if let Some(p) = g.get("pursuit") {
+            let ps = pursuit_stats(&st).expect("a pursuit");
+            assert_eq!(ps.busts as i64, p["busts"].as_i64().unwrap(), "{id}: busts");
+            assert_eq!(
+                ps.wrecks as i64,
+                p["wrecks"].as_i64().unwrap(),
+                "{id}: wrecks"
+            );
+            assert_eq!(
+                ps.takedowns as i64,
+                p["takedowns"].as_i64().unwrap(),
+                "{id}: takedowns"
+            );
+            assert_eq!(ps.penalty, p["penalty"].as_f64().unwrap(), "{id}: penalty");
+            assert_eq!(ps.heat as i64, p["heat"].as_i64().unwrap(), "{id}: heat");
+        }
         if let Some(l) = g.get("laps") {
             let times: Vec<f64> = l["times"]
                 .as_array()
@@ -188,4 +211,29 @@ fn seaside_race() {
 #[test]
 fn cruise_three_minutes() {
     run("cruise-3min", "cruise", "sports", Some(3 * 60 * 120));
+}
+
+#[test]
+fn sierra_pursuit() {
+    run_heat("sierra-pursuit", "sierra", "sports", None, Some(1.0));
+}
+
+#[test]
+fn coast_pursuit() {
+    run_heat("coast-pursuit", "coast", "rally", None, Some(1.0));
+}
+
+#[test]
+fn streets_pursuit() {
+    run_heat("streets-pursuit", "streets", "muscle", None, Some(1.0));
+}
+
+#[test]
+fn desert_pursuit() {
+    run_heat("desert-pursuit", "desert", "electric", None, Some(1.0));
+}
+
+#[test]
+fn sierra_pursuit_from_heat_5() {
+    run_heat("sierra-pursuit-heat5", "sierra", "super", None, Some(5.0));
 }

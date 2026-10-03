@@ -7,10 +7,13 @@
 //! the JS layout whatever shape the Rust state takes.
 
 use crate::ai::AiDriver;
+use crate::body::BodyId;
 use crate::input::Input;
 use crate::kinematic::Kinematic;
 use crate::park::Park;
 use crate::physics::CarPhysics;
+use crate::police::Mode;
+use crate::pursuit::Pursuit;
 use crate::race::{PlayerRules, RaceStateKind, SimState};
 use crate::traffic::{Traffic, TrafficCar};
 use crate::vehicle::Vehicle;
@@ -86,6 +89,8 @@ pub struct PlayerView<'a> {
     pub input: Option<&'a Input>,
     /// Race's rule state for this player, and the race's parking rows.
     pub rules: Option<(&'a PlayerRules, Option<&'a [i32]>)>,
+    /// PursuitView's damage, wrecks, penalty and clock.
+    pub pursuit_view: Option<(f64, i32, f64, f64)>,
 }
 
 /// The race header (`race.state`, `time`, `countdown`, `throttleAt`).
@@ -104,6 +109,10 @@ pub struct View<'a> {
     pub players: Vec<PlayerView<'a>>,
     pub rivals: &'a [AiDriver],
     pub traffic: Option<&'a Traffic>,
+    pub pursuit: Option<&'a Pursuit>,
+    /// PursuitView's last damaging hit by each body (its clock), when there
+    /// is a PursuitView.
+    pub last_hit: Option<&'a LastHit>,
     /// Draws so far from ai, police, pursuit, traffic; -1 for a stream that
     /// is not counted.
     pub streams: [i32; 4],
@@ -183,8 +192,146 @@ pub fn write_player(w: &mut Writer, p: &PlayerView) {
         }
         None => w.bool(false),
     }
-    // PursuitView: not yet (WP 1.6).
-    w.bool(false);
+    match p.pursuit_view {
+        Some((damage, wrecks, penalty, t)) => {
+            w.bool(true);
+            w.f64(damage);
+            w.i32(wrecks);
+            w.f64(penalty);
+            w.f64(t);
+        }
+        None => w.bool(false),
+    }
+}
+
+fn mode_code(m: Mode) -> i32 {
+    m as i32
+}
+
+/// The pursuit section (trace-format.md, "if hasPursuit").
+pub fn write_pursuit(
+    w: &mut Writer,
+    pu: &Pursuit,
+    last_hit_police: impl Fn(usize) -> Option<f64>,
+    last_hit_saw: impl Fn(usize) -> Option<f64>,
+) {
+    w.i32(pu.state as i32);
+    w.i32(pu.heat);
+    w.i32(pu.max_heat);
+    for x in [
+        pu.heat_meter,
+        pu.bust,
+        pu.evade,
+        pu.time,
+        pu.spawn_t,
+        pu.prop_t,
+    ] {
+        w.f64(x);
+    }
+    w.opt(pu.patrol_t);
+    w.i32(pu.takedowns);
+    w.i32(pu.busts);
+    let n = pu.units.len();
+    let racer_ref = |ri: usize| pu.racers[ri].id.trace_ref();
+    match &pu.roadblock {
+        Some(rb) => {
+            w.bool(true);
+            w.f64(rb.s);
+            w.f64(rb.gap_lat);
+            w.bool(rb.heavy);
+            w.bool(rb.passed);
+            w.bool(rb.touched);
+            w.i32(rb.cars.len() as i32);
+            for &c in &rb.cars {
+                w.i32(BodyId::Police(n + c).trace_ref());
+            }
+        }
+        None => w.bool(false),
+    }
+    match &pu.spikes {
+        Some(sp) => {
+            w.bool(true);
+            w.f64(sp.s);
+            w.f64(sp.lat0);
+            w.f64(sp.lat1);
+            w.i32(BodyId::Police(n + sp.car).trace_ref());
+            w.bool(sp.passed);
+            let mut mask = 0i32;
+            for (i, &h) in sp.hit.iter().enumerate() {
+                if h {
+                    mask |= 1 << i;
+                }
+            }
+            w.i32(mask);
+        }
+        None => w.bool(false),
+    }
+    w.i32(pu.spots.len() as i32);
+    for s in &pu.spots {
+        w.bool(s.used);
+    }
+    w.i32(pu.racers.len() as i32);
+    for r in &pu.racers {
+        w.f64(r.bust);
+        w.f64(r.hold);
+        w.f64(r.hold_total);
+        w.i32(r.hold_reason.map_or(-1, |h| h as i32));
+        w.f64(r.grace);
+        w.bool(r.finished);
+        w.opt(r.prev_s);
+    }
+    for i in 0..n + pu.block_cars.len() {
+        let u = pu.police(i);
+        w.bool(u.active);
+        write_kinematic(w, &u.k);
+        w.i32(mode_code(u.mode));
+        w.i32(u.behaviour as i32);
+        w.f64(u.beh_t);
+        w.f64(u.mode_t);
+        w.i32(u.slot.map_or(-1, |s| s as i32));
+        w.i32(u.pit_side);
+        w.f64(u.pit_cooldown);
+        w.f64(u.pit_push.unwrap_or(0.0));
+        w.i32(u.target.map_or(-1, racer_ref));
+        for x in [
+            u.last_seen_s,
+            u.health,
+            u.disabled_t,
+            u.park_lat,
+            u.block_yaw,
+        ] {
+            w.f64(x);
+        }
+        w.opt(u.gap_lat);
+        w.f64(u.lane_lat);
+        w.f64(u.cap);
+        w.f64(u.weave);
+        w.opt(u.retarget);
+        w.bool(u.uturned);
+        w.f64(u.avoid.unwrap_or(0.0));
+        w.f64(u.avoid_timer.unwrap_or(0.0));
+        w.i32(u.siren as i32);
+        w.opt(last_hit_police(i));
+    }
+    for (i, b) in pu.sawhorses.iter().enumerate() {
+        w.bool(b.active);
+        w.bool(b.broken);
+        write_kinematic(w, &b.k);
+        w.f64(b.h);
+        w.f64(b.vy);
+        w.f64(b.age);
+        w.opt(b.gap_lat);
+        w.opt(last_hit_saw(i));
+    }
+}
+
+/// PursuitView's last damaging hit per body, by pool index (`lastHit`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LastHit {
+    pub rivals: Vec<Option<f64>>,
+    pub traffic: Vec<Option<f64>>,
+    pub police: Vec<Option<f64>>,
+    pub sawhorses: Vec<Option<f64>>,
 }
 
 /// Track coordinates and the world pose a kinematic car writes.
@@ -257,7 +404,7 @@ pub fn trace_record(view: &View) -> Vec<u8> {
     let tcars: &[TrafficCar] = view.traffic.map_or(&[], |t| &t.cars);
     w.i32(view.tick);
     w.bool(view.race.is_some());
-    w.bool(false); // hasPursuit
+    w.bool(view.pursuit.is_some());
     if let Some(r) = &view.race {
         w.i32(r.state);
         w.f64(r.time);
@@ -267,16 +414,25 @@ pub fn trace_record(view: &View) -> Vec<u8> {
     w.i32(view.players.len() as i32);
     w.i32(view.rivals.len() as i32);
     w.i32(tcars.len() as i32);
-    w.i32(0);
-    w.i32(0);
+    w.i32(
+        view.pursuit
+            .map_or(0, |p| (p.units.len() + p.block_cars.len()) as i32),
+    );
+    w.i32(view.pursuit.map_or(0, |p| p.sawhorses.len() as i32));
     for p in &view.players {
         write_input(&mut w, p.input);
     }
     for p in &view.players {
         write_player(&mut w, p);
     }
-    for a in view.rivals {
+    let has_pu = view.pursuit.is_some();
+    let lh =
+        |pool: fn(&LastHit) -> &Vec<Option<f64>>, i: usize| view.last_hit.and_then(|l| pool(l)[i]);
+    for (i, a) in view.rivals.iter().enumerate() {
         write_rival(&mut w, a);
+        if has_pu {
+            w.opt(lh(|l| &l.rivals, i));
+        }
     }
     match view.traffic {
         Some(t) => {
@@ -294,6 +450,17 @@ pub fn trace_record(view: &View) -> Vec<u8> {
             None => (None, false),
         };
         write_traffic_car(&mut w, c, passed, hit);
+        if has_pu {
+            w.opt(lh(|l| &l.traffic, i));
+        }
+    }
+    if let Some(pu) = view.pursuit {
+        write_pursuit(
+            &mut w,
+            pu,
+            |i| lh(|l| &l.police, i),
+            |i| lh(|l| &l.sawhorses, i),
+        );
     }
     for s in view.streams {
         w.i32(s);
@@ -420,6 +587,10 @@ pub fn race_record(st: &SimState, inputs: &[Input]) -> Vec<u8> {
             phys: &p.phys,
             input: inputs.get(i),
             rules: Some((&p.rules, r.park_rows.as_deref())),
+            pursuit_view: st
+                .pv
+                .as_ref()
+                .map(|pv| (pv.damage, pv.wrecks, pv.penalty, pv.t)),
         })
         .collect();
     trace_record(&View {
@@ -437,6 +608,8 @@ pub fn race_record(st: &SimState, inputs: &[Input]) -> Vec<u8> {
         players,
         rivals: &st.rivals,
         traffic: Some(&st.traffic),
+        pursuit: st.pv.as_ref().map(|pv| &pv.pursuit),
+        last_hit: st.pv.as_ref().map(|pv| &pv.last_hit),
         streams: st.rng.draws(),
     })
 }
