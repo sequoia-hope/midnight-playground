@@ -7,6 +7,7 @@ pub mod builder;
 pub mod color;
 pub mod color_builder;
 pub mod colorizer;
+pub mod flora;
 pub mod geom;
 pub mod material;
 pub mod object;
