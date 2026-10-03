@@ -227,22 +227,42 @@ trace that is merely close stops being close within seconds, so a tolerance
 does not work. Bit-identical is achievable because `+ - * /` and `sqrt` on
 doubles are exact in both languages; the rest is discipline:
 
-- **One math kernel for both sides.** `mr_math` implements `sin`, `cos`,
-  `tan`, `atan`, `atan2`, `exp`, `hypot`, `pow` and `log` on the `libm`
-  crate (software implementations, the same bits on every platform). The
-  simulation never calls `f64::sin` and friends, which use the platform's
+- **One math kernel for both sides.** `mr_math` implements every `Math`
+  function that is not exact by definition, on the `libm` crate (software
+  implementations, the same bits on every platform): `sin`, `cos`, `tan`,
+  `asin`, `acos`, `atan`, `atan2`, `exp`, `log`, `log2`, `pow`, `tanh` and
+  `hypot`. That is the full set the game and three.js use. `hypot` is
+  defined by the kernel for any argument count, since the JS calls it with
+  one, two and three: `abs` for one, `libm`'s for two, and the square root
+  of the left-to-right sum of squares for more. The simulation and world
+  generation never call `f64::sin` and friends, which use the platform's
   library on native. For the reference run, `mr_math` is compiled to wasm
-  and the JS oracle replaces `Math.sin` and the rest with it (roadmap
-  WP 0.3). The reference therefore differs from the live JS game by at most
-  the last bit of those functions, which is the difference the port has
-  anyway, and the Rust can be required to match it exactly. No attempt is
-  made to reproduce V8's own math library.
-- **JS semantics, in `mr_math::js`.** `Math.sign(0)` is 0 where
-  `f64::signum(0.0)` is 1 (this decides the handbrake and coasting terms at
-  a standstill, `CarPhysics.js:208,217`). `Math.round` rounds halves up
-  where Rust rounds away from zero (`Track.idx`). `Math.max` and `Math.min`
-  return NaN if either argument is NaN. `x || d` treats 0 as missing; `x ??
-  d` does not. Port each use through the matching helper.
+  and the JS oracle replaces those `Math` functions with it; any other
+  inexact `Math` function is replaced by one that throws, so nothing slips
+  through unnoticed (roadmap WP 0.3). The functions that are exact (`sqrt`,
+  `floor`, `ceil`, `round`, `trunc`, `abs`, `min`, `max`, `sign`, `imul`,
+  `fround`) are left alone. The reference therefore differs from the live
+  JS game by at most the last bit of the kernel functions, which is the
+  difference the port has anyway, and the Rust can be required to match it
+  exactly. No attempt is made to reproduce V8's own math library. Every
+  dump and golden that Rust is compared with (traces, Track arrays, terrain
+  heights, world data, scene exports) is taken with the kernel on.
+- **JS semantics, in `mr_math::js`.** Port each use through a helper that
+  behaves as JavaScript does:
+  - `Math.sign(0)` is 0 and `Math.sign(-0)` is -0, where `f64::signum`
+    gives ±1. This decides the handbrake and coasting terms at a standstill
+    (`CarPhysics.js:208,217`).
+  - `Math.round` is "floor of x + 0.5" as the language defines it, with its
+    edge cases: 0.49999999999999994 rounds to 0, and values in (-0.5, 0)
+    round to -0. Neither Rust's `round` nor a naive `floor(x + 0.5)` is the
+    same.
+  - `Math.max` and `Math.min` return NaN if either argument is NaN, and
+    order the zeros: `Math.max(-0, 0)` is +0. Rust's `f64::max` does neither
+    reliably, and the sign of a zero reaches `atan2` (`AIDriver.js:118`,
+    `Kinematic.js:77-81`).
+  - `x || d` treats 0 as missing; `x ?? d` does not.
+  - `Array.prototype.sort` is stable. Use `sort_by`, never
+    `sort_unstable_by` (`Race.js:140,515`, `Pursuit.js:551,553,669`).
 - **The same float widths at the same points.** Scalars are `f64`. Wherever
   the JS stores into a `Float32Array`, round to `f32` at that point and read
   back as `f64`: all of Track's per-sample arrays and its smoothing weights,
@@ -315,10 +335,14 @@ weave and callsigns (`PoliceDriver.js:60`, `Pursuit.js:110-116`, where
 sparks, smoke, audio and scenery animators. That sharing cannot be
 reproduced and is not kept. The Rust state holds named `Mulberry32` streams:
 `ai`, `police` (weave), `pursuit`, and `traffic` (which is already its own
-seeded stream in JS, seed 99). Seeds derive from the race seed in a fixed,
-documented way. Presentation draws never touch them. The JS gains optional
-generator parameters at those call sites, defaulting to `Math.random`, so
-the reference run can be given the same streams (roadmap WP 0.3).
+seeded stream in JS, seed 99, and stays so). The other three are seeded from
+the race seed: stream k (ai 0, police 1, pursuit 2) starts at
+`(seed + 0x9E3779B9 * (k + 1))` as an unsigned 32-bit value. Presentation
+draws never touch them. The JS gains optional generator parameters at those
+call sites, defaulting to `Math.random`, so the reference run can be given
+the same streams (roadmap WP 0.3). `PoliceDriver` is constructed inside
+`Pursuit` (`Pursuit.js:111,119`), so the police generator is passed through
+`PursuitView` and `Pursuit` to reach it.
 
 **Tick order.** `step` reproduces `Race.update` (`src/game/Race.js:182-416`).
 The order below is the contract; every item changes results if moved.
@@ -329,7 +353,8 @@ The order below is the contract; every item changes results if moved.
 4. Player control: the cool-down driver after the finish, the penalty hold
    (`PursuitView.holdControls`, which also sets `locked`), or the input.
 5. Player physics.
-6. Rivals; parking targets for those that finished.
+6. Rivals; parking targets for those that finished (before the player's
+   own, since they share the parking rows).
 7. Circuit progress (`trackProgress`).
 8. Distance and odometer (`Race.js:226-229`); the odometer feeds traffic on
    loops.
@@ -337,8 +362,17 @@ The order below is the contract; every item changes results if moved.
 10. Pursuit update (`Pursuit.update`); bodies that joined this tick are
     appended to the agent list.
 11. Collisions; then `writePos` for rivals, traffic and pursuit bodies.
-12. Per hit, in order: pursuit hit rules (`PursuitView.onHit`: unit health,
-    PIT push, damage, wreck arrest), traffic crash flag, cruise crash.
+12. Per hit, in order (`Race.js:243-256`):
+    - pursuit hit rules (`PursuitView.onHit`: unit health, PIT push, damage,
+      wreck arrest);
+    - the crash flag: with `other` being the body that is not the player,
+      or `h.a` when the player is not in the hit, a body that has a
+      `crashed` field is flagged if the hit is stronger than 0.15. So in a
+      hit between two non-player bodies only the one earlier in agent order
+      can be flagged. Reproduce this as it is;
+    - if the player is in the hit: mark that car as hit, which cancels its
+      near-miss bonus in step 14 (`nearMiss.set(other, 'hit')`), then the
+      cruise crash if the hit is stronger than 0.2.
 13. Physics events: wall impact (cruise crash, pursuit wall damage), shift,
     landing (air bonus).
 14. Bonuses: drift, near miss.
@@ -373,14 +407,18 @@ computed by scenery code in JS, not by the level files:
 - `Track.runout`, the drivable road past the last sample: 900 m on Sierra
   (`City.js:48`), 700 m on Coast (`Harbor.js:57`), 0 on Streets. It moves
   the road-end wall, parking, traffic stopping and the kinematic clamp.
-- `world.oppositeCarriageway` (`City.js:222`, `Harbor.js:179`): the range,
-  lanes and height of the far carriageway. Its cars draw from the traffic
-  stream and take part in AI awareness.
+- `world.oppositeCarriageway` (`City.js:222`, `Harbor.js:179`): the range
+  (`s0`, `s1`), the lane offsets (`OPP_LANES`, `city/freeway.js:26`) and the
+  height of the far carriageway. Its cars draw from the traffic stream and
+  take part in AI awareness.
 
-`LevelRuntime` carries both as data. Until world generation is ported they
-are dumped from the JS world (roadmap WP 0.4) into `mr_levels`; when the
-scenery that computes them is ported (M3, M7), a test checks it reproduces
-the same values.
+`LevelRuntime` carries both. Until world generation is ported, the numbers
+(`runout`, `s0`, `s1`, the lanes) are dumped from the JS world (roadmap
+WP 0.4) into `mr_levels`; when the scenery that computes them is ported
+(M3, M7), a test checks it reproduces the same values. The carriageway's
+height is not dumped: it is a formula, `oppY(f) = f.y + max(0.04, HALF *
+f.bank - 0.2)` (`city/freeway.js:64`), and is ported as that formula so the
+cars' heights come out identical.
 
 **Vehicle dimensions.** Length, width, wheel radius and wheelbase per kind
 come from `CarModel.js` (thirteen kinds, `:1254-2010`) and the sawhorse from
@@ -468,9 +506,38 @@ Tests:
    beside the same measurement of the JS from M0. The Rust must not be
    slower; the number is recorded for later RL targets.
 
-A golden stores a hash per tick and the full state every 120 ticks, so a
-mismatch can be localised without committing tens of megabytes. Staged
+**The trace record.** The goldens are written in M0, before the Rust state
+exists, and the Rust keeps some state in other shapes than the JS. So the
+thing compared is not either side's state but a **trace record** both can
+produce, defined once in `parity/trace-format.md` (WP 0.4) and versioned:
+
+- a header: tick, race state, clock, countdown;
+- per player: position, yaw, velocities, yaw rate, `s`, `lat`, steer angle,
+  on-ground flag, gear, rpm, shift timer, nitro, boost, drifting, slip,
+  skid, scrape, damage, spiked, and the rule state (progress, lap, score,
+  multiplier, timers);
+- per rival, per traffic car, per pursuit unit, block car and sawhorse, in
+  pool order with inactive ones included: active flag, `s`, `lat`, speed,
+  lateral velocity, direction, spin and spin rate, stunned, world position
+  and yaw, and the driver state that affects later ticks (avoid target and
+  timer, nitro timers, crashed, mode, target);
+- pursuit: heat, heat meter, state, bust and evade meters, holds, props;
+- the position of each named random stream.
+
+Numbers are written as the bits of an `f64` (or an `i32` for integers and
+enum codes), little-endian, in a fixed field order. Presentation-only fields
+are left out: body pitch and roll and their rates (`Vehicle.js:82-85`),
+brake light, anything the HUD keeps. The per-tick hash is 64-bit FNV-1a over
+the record's bytes. On the Rust side this is `mr_sim::trace_record()`, a
+separate function from `hash()`, which is free to cover the real state.
+
+A golden stores the hash for every tick and the full record every 120 ticks,
+so a mismatch can be localised without committing tens of megabytes. Staged
 scenarios are committed; whole races are regenerated on demand and cached.
+
+The recorder stops and fails the capture on any page error. The JS main
+loop catches exceptions and carries on (`main.js:577-580`), which would
+otherwise leave a half-run tick in the recording.
 
 When a trace diverges, the cause is a port bug until shown otherwise:
 operation order, a JS semantic from section 4.2, a float width, an iteration
