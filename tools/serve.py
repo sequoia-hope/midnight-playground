@@ -10,11 +10,16 @@ re-downloading them.
 """
 import argparse
 import functools
+import os
 import http.server
 from pathlib import Path
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    # The Rust build's wasm must be application/wasm for streaming compilation.
+    extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map,
+                      '.wasm': 'application/wasm', '.mrscene': 'application/octet-stream'}
+
     def pinned(self):
         # No path yet when the request line itself is bad (e.g. a browser
         # trying https on this port), and send_error still sends headers.
@@ -25,7 +30,32 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # old copy cached before this server existed must be replaced.
         if not self.pinned():
             del self.headers['If-Modified-Since']
+        gz = self.precompressed()
+        if gz:
+            return gz
         return super().send_head()
+
+    def precompressed(self):
+        """The Rust build under dist/: when `cargo xtask web --release` left a
+        `<file>.gz` beside the file and the browser takes gzip, send that with
+        Content-Encoding, so load times on phones are realistic (SPEC 6.6)."""
+        path = getattr(self, 'path', '').split('?', 1)[0].split('#', 1)[0]
+        if not path.startswith('/dist/') or 'gzip' not in self.headers.get('Accept-Encoding', ''):
+            return None
+        file = self.translate_path(path)
+        if not os.path.isfile(file) or not os.path.isfile(file + '.gz'):
+            return None
+        try:
+            f = open(file + '.gz', 'rb')
+        except OSError:
+            return None
+        self.send_response(200)
+        self.send_header('Content-Type', self.guess_type(file))
+        self.send_header('Content-Encoding', 'gzip')
+        self.send_header('Content-Length', str(os.fstat(f.fileno()).st_size))
+        self.send_header('Vary', 'Accept-Encoding')
+        self.end_headers()
+        return f
 
     def end_headers(self):
         self.send_header('Cache-Control', 'no-cache' if self.pinned() else 'no-store')

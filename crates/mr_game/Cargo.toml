@@ -20,8 +20,48 @@ mr_net.workspace = true
 mr_scene.workspace = true
 mr_worldgen.workspace = true
 mr_audio.workspace = true
+mr_track.workspace = true
+mr_levels.workspace = true
+# Bevy 0.19.1, pinned (SPEC 2's version policy; DECISIONS D100). Default
+# features off: the 3D renderer, windowing, states and input only. No UI,
+# text, audio, glTF, gizmos or picking yet; the packages that need them add
+# them. The platform-specific features are in the target tables below.
+bevy = { version = "=0.19.1", default-features = false, features = [
+    "std",
+    "async_executor",
+    "bevy_asset",
+    "bevy_log",
+    "bevy_state",
+    "bevy_window",
+    "bevy_winit",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_light",
+    "bevy_camera",
+    "bevy_mesh",
+    "bevy_image",
+    "bevy_color",
+    "bevy_material",
+    "bevy_shader",
+    "bevy_post_process",
+    "keyboard",
+    "mouse",
+    "touch",
+    # PNG encoding for screenshots (native --screenshot, the web test hook).
+    "png",
+] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+bevy = { version = "=0.19.1", default-features = false, features = [
+    "multi_threaded",
+    "x11",
+    "wayland",
+] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+# WebGPU only; the WebGL2 build is roadmap WP 2.7.
+bevy = { version = "=0.19.1", default-features = false, features = ["web", "webgpu"] }
 wasm-bindgen.workspace = true
 js-sys.workspace = true
-web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Navigator"] }
+web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Navigator", "Location", "Performance"] }

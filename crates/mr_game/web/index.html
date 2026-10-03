@@ -2,28 +2,195 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05060c">
 <title>Midnight Racer (Rust build)</title>
 <style>
   :root { color-scheme: dark; }
-  body { margin: 0; padding: 16px; background: #0b0d14; color: #e8ecf4;
-         font: 16px/1.5 system-ui, sans-serif; }
-  #out { padding: 12px 14px; border: 1px solid #2a3042; border-radius: 8px;
-         background: #141826; overflow-wrap: anywhere; }
-  #out[data-ready] { border-color: #3d8f5a; }
+  html, body { margin: 0; height: 100%; background: #05060c; color: #e8ecf4;
+               font: 16px/1.5 system-ui, sans-serif; overflow: hidden; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block;
+          outline: none; touch-action: none; }
+  .screen { position: fixed; inset: 0; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 14px; padding: 16px;
+            background: #05060c; text-align: center; }
+  .screen[hidden] { display: none; }
+  h1 { margin: 0; font-size: clamp(26px, 6vw, 44px); letter-spacing: 0.12em;
+       font-weight: 800; font-style: italic; }
+  h1 span { color: #ff3d6e; }
+  .bar { width: min(420px, 80vw); height: 6px; border-radius: 3px; background: #1b2032;
+         overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: #ff3d6e;
+           transition: width 120ms linear; }
+  #msg { margin: 0; color: #9aa3b8; font-size: 14px; min-height: 1.5em; }
+  #msg.error { color: #ff8a8a; white-space: pre-wrap; max-width: 46em; }
+  #nogpu p { max-width: 34em; margin: 0; color: #c5cbdb; }
 </style>
 </head>
 <body>
-<!-- Roadmap WP 0.1: the bare pipeline check. Every URL here is relative,
-     because the build is always served under a sub-path (SPEC 9.5). -->
-<p id="out">Loading wasm…</p>
+<!-- Roadmap WP 2.1: the Rust client's page. It checks for WebGPU first,
+     shows download progress while the wasm and the scene load, and bridges
+     user gestures into the wasm (SPEC 8.1, 8.4). Every URL here is
+     relative: the build is always served under a sub-path. -->
+<canvas id="game" tabindex="0"></canvas>
+<div id="loading" class="screen">
+  <h1>MIDNIGHT <span>RACER</span></h1>
+  <div class="bar"><i id="bar"></i></div>
+  <p id="msg">Starting…</p>
+</div>
+<div id="nogpu" class="screen" hidden>
+  <h1>MIDNIGHT <span>RACER</span></h1>
+  <p><strong>This browser has no WebGPU</strong>, which this build of the game needs.</p>
+  <p>Use a current Chrome or Edge (113 or newer on Windows, macOS or ChromeOS;
+     121 or newer on Android 12+), or Safari 26 on iOS, iPadOS or macOS.
+     The page must be opened over https (or on localhost): browsers only
+     offer WebGPU to secure pages.</p>
+  <p id="nogpu-why"></p>
+</div>
 <script type="module">
-  import init from './mr_game.js';
-  init().catch((e) => {
-    const out = document.getElementById('out');
-    out.textContent = 'Failed to start the wasm module: ' + e;
-    out.setAttribute('data-error', '1');
-  });
+  // The status the wasm publishes (state, progress, frames, ready, …), and
+  // the page's own: the start of SPEC 8.5's window.__mr.
+  const mr = (window.__mr = { state: 'boot', startMs: performance.now() });
+  const $ = (id) => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  const show = (frac, text) => {
+    if (frac !== null) $('bar').style.width = (100 * Math.max(0, Math.min(1, frac))).toFixed(1) + '%';
+    if (text !== null) $('msg').textContent = text;
+  };
+  const fail = (text) => {
+    mr.state = 'failed'; mr.error = text;
+    $('loading').hidden = false;
+    $('msg').className = 'error';
+    $('msg').textContent = text;
+  };
+  const MB = (n) => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
+
+  // Fetch with progress: onProgress(received, total or 0).
+  async function download(url, onProgress) {
+    const res = await fetch(url, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+    // A precompressed response's length is the compressed size: no fraction.
+    const total = res.headers.get('content-encoding') ? 0 : Number(res.headers.get('content-length')) || 0;
+    if (!res.body) return new Uint8Array(await res.arrayBuffer());
+    const reader = res.body.getReader();
+    let buf = new Uint8Array(total || 1 << 20), n = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (n + value.length > buf.length) {
+        const next = new Uint8Array(Math.max(buf.length * 2, n + value.length));
+        next.set(buf.subarray(0, n)); buf = next;
+      }
+      buf.set(value, n); n += value.length;
+      onProgress(n, total);
+    }
+    return buf.length === n ? buf : buf.slice(0, n);
+  }
+
+  async function main() {
+    // 1. WebGPU, before anything else is downloaded.
+    // Chrome can answer null while its GPU process is still starting (seen
+    // headless on Linux), so ask a few times before giving up.
+    let adapter = null;
+    for (let i = 0; i < 4 && !adapter && 'gpu' in navigator; i++) {
+      if (i) await new Promise((r) => setTimeout(r, 400));
+      adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null);
+    }
+    mr.adapter = adapter ? `${adapter.info?.vendor || ''} ${adapter.info?.architecture || ''}`.trim() : null;
+    mr.webgpu = !!adapter; mr.secure = window.isSecureContext;
+    if (!adapter) {
+      mr.state = 'nogpu';
+      $('loading').hidden = true; $('nogpu').hidden = false;
+      $('nogpu-why').textContent = !window.isSecureContext
+        ? 'This page is not a secure context (plain http on a network address).'
+        : ('gpu' in navigator ? 'navigator.gpu exists but gave no adapter.' : 'navigator.gpu is missing.');
+      return;
+    }
+
+    // 2. The client: wasm with progress (0–30 % of the bar).
+    const build = await fetch('build.json', { cache: 'no-cache' }).then((r) => r.json()).catch(() => ({}));
+    const glue = await import('./mr_game.js');
+    show(0, 'Loading the client…');
+    const wasmBytes = await download('mr_game_bg.wasm', (n, t) => show(t ? 0.3 * n / t : null, `Loading the client… ${MB(n)}`));
+    await glue.default({ module_or_path: wasmBytes });
+
+    // 3. The gesture bridge: inside the handler, into the wasm (SPEC 8.4).
+    for (const type of ['pointerup', 'touchend', 'click', 'keydown']) {
+      window.addEventListener(type, () => glue.gesture(type), { capture: true, passive: true });
+    }
+
+    // 4. Start the app: its first frame draws while the scene downloads.
+    // __mr.screenshot(name) saves the next frame as a download (test hook).
+    mr.screenshot = (name) => glue.screenshot(String(name));
+    glue.run();
+
+    // 5. The scene (30–80 %), and Seaside's survey for its Track.
+    const level = params.get('level') || 'sierra';
+    const sceneUrl = params.get('scene') || (build.scenes ? build.scenes + level + '.mrscene' : null);
+    mr.sceneUrl = sceneUrl;
+    if (level === 'seaside') {
+      download('../../assets/seaside/survey.bin', () => {})
+        .then((b) => glue.load_survey(b))
+        .catch((e) => glue.survey_failed(String(e.message || e)));
+    }
+    if (!sceneUrl) { glue.scene_failed('no scene: build.json has no scene directory and no ?scene= was given'); }
+    else {
+      let bytes;
+      try {
+        const t0 = performance.now();
+        bytes = await download(sceneUrl, (n, t) => show(t ? 0.3 + 0.5 * n / t : null, `Loading ${level}… ${MB(n)}${t ? ' of ' + MB(t) : ''}`));
+        mr.sceneMB = +(bytes.length / 1048576).toFixed(1);
+        mr.downloadMs = Math.round(performance.now() - t0);
+      } catch (e) {
+        glue.scene_failed(`${sceneUrl}: ${e.message || e}\n(make the exports with: node tools/parity/scene-export.mjs)`);
+      }
+      if (bytes) {
+        show(0.8, 'Reading the scene…');
+        // Let the bar paint before the synchronous parse.
+        await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+        const t0 = performance.now();
+        glue.load_scene(bytes);
+        mr.parseMs = Math.round(performance.now() - t0);
+        bytes = null;
+      }
+    }
+
+    // 6. Building (80–100 %), then hide the loading screen.
+    const poll = () => {
+      if (mr.state === 'failed') return fail(mr.error || 'failed');
+      if (mr.state === 'building') show(0.8 + 0.2 * (mr.progress || 0), 'Building the scene…');
+      if (mr.state === 'running') { show(1, ''); $('loading').hidden = true; $('game').focus(); return; }
+      requestAnimationFrame(poll);
+    };
+    poll();
+    if (params.has('stats')) statsPanel();
+  }
+
+  // ?stats=1: frame rate and the longest frame of each half second, from
+  // requestAnimationFrame as the JS game's panel measures them, and what the
+  // client reports. For reading on phones (roadmap G1).
+  function statsPanel() {
+    const el = Object.assign(document.createElement('div'), { id: 'stats' });
+    el.style.cssText = 'position:fixed;left:8px;bottom:8px;font:12px ui-monospace,monospace;color:#9f9;background:rgba(0,0,0,.6);padding:4px 8px;border-radius:4px;z-index:9;pointer-events:none;white-space:pre';
+    document.body.appendChild(el);
+    let t0 = performance.now(), last = null, n = 0, worst = 0;
+    const frame = (now) => {
+      requestAnimationFrame(frame);
+      if (last !== null) worst = Math.max(worst, now - last);
+      last = now; n++;
+      const dt = now - t0;
+      if (dt < 500) return;
+      const c = mr.counts || {};
+      mr.stats = { fps: +(1000 * n / dt).toFixed(1), worstMs: +worst.toFixed(1) };
+      el.textContent = `fps ${mr.stats.fps}  worst ${mr.stats.worstMs}ms  ${mr.adapter || ''}\n`
+        + `${mr.state} ${mr.level || ''} s ${Math.round(mr.s || 0)}  hq ${mr.hq ? 'on' : 'off'}\n`
+        + `first frame ${mr.firstFrameMs ? (mr.firstFrameMs / 1000).toFixed(2) + 's' : '…'}  ready ${mr.readyMs ? (mr.readyMs / 1000).toFixed(2) + 's' : '…'}\n`
+        + `entities ${c.entities ?? '…'}  materials ${c.materials ?? '…'}`;
+      t0 = now; n = 0; worst = 0;
+    };
+    requestAnimationFrame(frame);
+  }
+  main().catch((e) => fail('Failed to start: ' + (e && e.stack || e)));
 </script>
 </body>
 </html>
