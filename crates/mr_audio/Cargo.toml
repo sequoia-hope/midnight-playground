@@ -72,3 +72,7 @@ flate2 = "1"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
+
+[[example]]
+name = "render_scenarios"
+required-features = ["native"]
