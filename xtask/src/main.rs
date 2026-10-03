@@ -7,12 +7,16 @@
 //!   kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits
 //!   parity shots      compare two sets of screenshots (CIEDE2000), write a report
 //!   parity scene-check [files]  read exported scenes back and check their digests
+//!   parity materials  the material test scenes, JS and Rust, compared (WP 2.3)
+//!   parity stations   the screenshot stations, JS and Rust, compared (WP 2.5)
 
 mod deps;
 mod kernel;
+mod materials;
 mod parity_scene;
 mod shots;
 mod size;
+mod stations;
 mod web;
 
 use std::path::{Path, PathBuf};
@@ -36,6 +40,8 @@ fn main() -> ExitCode {
         "parity" => match rest.first().map(String::as_str) {
             Some("shots") => shots::run(&rest[1..]),
             Some("scene-check") => parity_scene::run(&rest[1..]),
+            Some("materials") => materials::run(&rest[1..]),
+            Some("stations") => stations::run(&rest[1..]),
             _ => Err(format!("parity: which comparison?\n\n{}", usage())),
         },
         "-h" | "--help" | "help" => {
@@ -63,7 +69,11 @@ fn usage() -> &'static str {
      \x20 kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits\n\
      \x20 parity shots --a <dir> --b <dir> [--label name]\n\
      \x20                   compare two sets of screenshots; report in parity/report/\n\
-     \x20 parity scene-check [files]  read exported .mrscene files back and check their digests"
+     \x20 parity scene-check [files]  read exported .mrscene files back and check their digests\n\
+     \x20 parity materials [--only all|every|<names>] [--js-run a] [--rerun-js]\n\
+     \x20                   the material test scenes rendered by the JS and the Rust client, compared\n\
+     \x20 parity stations [--levels a,b] [--js-run a] [--rerun-js] [--label name]\n\
+     \x20                   the screenshot stations of the JS and the Rust client, compared"
 }
 
 /// The repository root (the workspace root).
