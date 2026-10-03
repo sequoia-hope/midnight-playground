@@ -5,9 +5,11 @@
 //!   web [--release]   build the web client into dist/next/
 //!   size              report the size of the built wasm (raw and gzip)
 //!   kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits
+//!   parity shots      compare two sets of screenshots (CIEDE2000), write a report
 
 mod deps;
 mod kernel;
+mod shots;
 mod size;
 mod web;
 
@@ -29,6 +31,10 @@ fn main() -> ExitCode {
         "web" => web::run(rest),
         "size" => size::run(rest),
         "kernel" => kernel::run(rest),
+        "parity" => match rest.first().map(String::as_str) {
+            Some("shots") => shots::run(&rest[1..]),
+            _ => Err(format!("parity: which comparison?\n\n{}", usage())),
+        },
         "-h" | "--help" | "help" => {
             println!("{}", usage());
             Ok(())
@@ -51,7 +57,9 @@ fn usage() -> &'static str {
      \x20 check-deps        enforce the crate dependency rules (SPEC 3.2)\n\
      \x20 web [--release]   build the web client into dist/next/\n\
      \x20 size [--budget]   report the built wasm's size; --budget fails over 10 MB gzip\n\
-     \x20 kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits"
+     \x20 kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits\n\
+     \x20 parity shots --a <dir> --b <dir> [--label name]\n\
+     \x20                   compare two sets of screenshots; report in parity/report/"
 }
 
 /// The repository root (the workspace root).

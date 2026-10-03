@@ -10,3 +10,4 @@ flate2 = "1"
 serde_json = "1"
 mr_kernel = { path = "../tools/parity/kernel" }
 mr_math.workspace = true
+png = "0.18"
