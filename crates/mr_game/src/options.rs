@@ -66,6 +66,10 @@ pub struct Options {
     /// Natively: fly to each station of a `stations.json` (as
     /// `tools/parity/shots.mjs` writes it), save a PNG of each in `out`.
     pub stations: Option<String>,
+    /// `?cars=0|1`: the stand-in cars the simulation drives (WP 2.4). By
+    /// default on for a level, off with `freeze=1` (parity captures), the
+    /// material scenes and the stations.
+    pub cars: Option<bool>,
     /// Natively, with `materials` or `stations`: the directory the PNGs go to (one
     /// directory per group, as `tools/parity/materials.mjs` writes them).
     pub out: Option<String>,
@@ -86,6 +90,7 @@ impl Default for Options {
             t: None,
             materials: None,
             stations: None,
+            cars: None,
             out: None,
         }
     }
@@ -165,7 +170,14 @@ impl Options {
         o.freeze = get("freeze").is_some_and(|v| v == "1");
         o.t = get("t").map(number).filter(|t| t.is_finite());
         o.materials = get("mat").map(str::to_owned);
+        o.cars = get("cars").map(|v| v == "1" || v == "true");
         o
+    }
+
+    /// Whether the stand-in cars run (`cars`, else the default above).
+    pub fn cars_on(&self) -> bool {
+        self.cars
+            .unwrap_or(!self.freeze && self.materials.is_none() && self.stations.is_none())
     }
 
     /// Native command line: `--query "level=sierra&s=300"`, `--level`,
@@ -236,7 +248,7 @@ pub fn usage() -> &'static str {
      \n\
      levels: sierra coast streets desert seaside cruise, or models\n\
      query:  the JS game's names: level, s, h, back, lat, v, yaw, pitch, t, freeze=1; hq=0|1;\n\
-     \x20       scene=<file>; mat=<names> (the material test scenes)"
+     \x20       scene=<file>; mat=<names> (the material test scenes); cars=0|1 (stand-in cars)"
 }
 
 #[cfg(test)]
