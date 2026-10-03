@@ -210,3 +210,81 @@ every 2.5 % of a sprint route.
 (`tools/parity/rust-web.mjs`), Seaside ready 4.2 to 9.7 s after navigation (models 3.4 s) with
 the dev machine loaded; the WGSL compiles in Chrome's compiler and the
 screenshot matches the native one. Frame times on the phones: WP 2.6.
+
+## The Rust client at WP 2.4 (terrain, road, sea and points kinds)
+
+2026-10-03, desktop (RTX 3060, Linux, load average 30 to 50 from other
+work), JS tree key `2a65261c9506d9cd`, the metric as in the WP 2.3 section.
+
+**The gate** (`cargo xtask parity stations --base`): Sierra's
+terrain-road-sky export (`sierra.base.mrscene`, native client, 1280 × 800)
+against the JS game with only the terrain, road and sky drawn
+(`tools/parity/base-shots.mjs`, DECISIONS D292), at the five stations named
+in advance:
+
+| Station | Mean ΔE00 | Block 95 % |
+|---|---:|---:|
+| sierra/attract | 0.171 | 0.294 |
+| sierra/02000-chase | 0.159 | 0.321 |
+| sierra/04500-high | 0.149 | 0.262 |
+| sierra/07000-chase | 0.134 | 0.283 |
+| sierra/09500-high | 0.134 | 0.223 |
+
+Every base station of every level is within the limits too (progress, not
+gate; Seaside's include its draped photo):
+
+| Level | Stations | Within the limits | Median mean | Worst mean | Median block 95 % |
+|---|---:|---:|---:|---:|---:|
+| sierra | 81 | 81 | 0.15 | 0.21 | 0.28 |
+| coast | 67 | 67 | 0.15 | 0.21 | 0.32 |
+| streets | 43 | 43 | 0.11 | 0.13 | 0.21 |
+| desert | 63 | 63 | 0.12 | 0.15 | 0.23 |
+| seaside | 29 | 29 | 0.21 | 0.37 | 0.47 |
+| cruise | 115 | 115 | 0.14 | 0.17 | 0.26 |
+
+**Material test scenes** (`cargo xtask parity materials`, now including
+the WP 2.4 kinds): all eighteen within the limits; the new ones are
+Terrain 0.053 / 0.126, Asphalt 0.089 / 0.174, Shoulder 0.082 / 0.162,
+Markings 0.078 / 0.233, Sea 0.072 / 0.191 (mean / block 95 %); the WP 2.3
+scenes are unchanged (largest Physical and shadow-edge, 0.150). As
+stand-ins at WP 2.3 these five were at 9.5, 1.20, 0.42, 4.1 and 0.62 mean.
+`--only every`: the kinds still drawn as stand-ins are as before
+(StreetAtlas 25.9 down to Stucco 0.55).
+
+**Screenshot stations, full scenes** (`cargo xtask parity stations`, 398
+stations; progress, not gate; WP 2.3 in brackets):
+
+| Level | Stations | Within the limits | Median mean | Worst mean | Median block 95 % |
+|---|---:|---:|---:|---:|---:|
+| sierra | 81 | 48 (13) | 0.44 (4.27) | 14.79 | 1.28 (11.41) |
+| coast | 67 | 43 (21) | 0.87 (2.23) | 5.66 | 3.33 (8.52) |
+| streets | 43 | 0 (0) | 10.85 (11.01) | 12.98 | 34.20 (34.20) |
+| desert | 63 | 52 (9) | 0.27 (4.26) | 6.58 | 0.65 (9.50) |
+| seaside | 29 | 29 (2) | 0.20 (3.38) | 0.42 | 0.49 (18.39) |
+| cruise | 115 | 3 (3) | 3.79 (4.13) | 7.29 | 18.82 (18.88) |
+
+175 of 398 within the limits (WP 2.3: 48). What is left is the kinds of M3:
+the city and street façades and atlases (lit windows), the container
+atlas, sandstone and triplanar rock, the effect shaders (sky glow, traffic
+streams, surf, beams) and the animators (lamp pools and colours that follow
+the night). Side by side, the five gate stations, the same five in the full
+scene and four from other levels: `parity/report/wp24-side-by-side/` (from
+the worktree that ran them).
+
+**Web.** Release build: `mr_game_bg.wasm` 20.4 MB, 6.35 MB after gzip
+(WP 2.3: 6.26 MB). In headless Chrome on WebGPU (`rust-web.mjs`), scenes
+cut down to the new kinds (sea, terrain, road and points of Coast; glow
+points of Sierra; flicker points of Desert) compile and draw without
+errors, ready 2.2 to 3.1 s after navigation.
+
+**Timings.** `cargo xtask parity stations --base` on Sierra: 74 s with the
+JS shots cached (81 Rust stations).
+
+## Owner's phone check (G1, first look)
+
+2026-10-03: the owner opened the Bevy web build (WP 2.1–2.3, WebGPU) on
+their iPhone over the tailnet and reported that it "looked great". No
+numbers were taken; the phone model and iOS version are not recorded yet.
+The rest of G1 (frame time against the JS fly-camera baseline, ten minutes
+and ten reloads without a tab kill, no frame over 50 ms after warm-up) waits
+for WP 2.6's warm-up and the measurement pages.

@@ -41,10 +41,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// The scene definitions, as `tools/parity/materials.mjs` wrote them.
 pub const SCENES_JSON: &str = include_str!("../../../parity/golden/materials/scenes.json");
 
-/// The kinds this client draws as the JS does (WP 2.3): the plain ones and
-/// the sky. `all` renders these and the fixed scenes; `every` adds the
+/// The kinds this client draws as the JS does: the plain ones and the sky
+/// (WP 2.3), the terrain, road and sea (WP 2.4). `all` renders these and the fixed scenes; `every` adds the
 /// other kinds drawn as their plain stand-ins (for the record, not the gate).
-pub const PORTED_KINDS: [&str; 5] = ["Standard", "Physical", "Lambert", "Basic", "SkyDome"];
+pub const PORTED_KINDS: [&str; 10] = [
+    "Standard", "Physical", "Lambert", "Basic", "SkyDome", "Terrain", "Asphalt", "Shoulder",
+    "Markings", "Sea",
+];
 
 /// The scene definitions and the common setup.
 pub struct Defs {
@@ -736,9 +739,28 @@ fn run(
                 }
             };
             for o in objs {
-                let (lit, colors, material): (bool, bool, Option<Handle<ThreeMaterial>>) = match &o
-                    .material
-                {
+                // The patch uniforms an updater moves in the game are
+                // scene-wide here (`render::lighting::Anim`): take the
+                // values the export captured.
+                if let Mat::Three(m) = &o.material {
+                    let a = &mut lighting.anim;
+                    if let Some(w) = m.number("uWet") {
+                        a.wet = w;
+                    }
+                    if let Some(t) = m.number("uTime") {
+                        a.sea_time = t;
+                        a.glow_time = t;
+                    }
+                    if let Some(v) = m.get("uOff2").and_then(|v| v.get("vec")) {
+                        a.sea_off2 = [v[0].as_f64().unwrap_or(0.0), v[1].as_f64().unwrap_or(0.0)];
+                    }
+                }
+                let (lit, colors, extra, material): (
+                    bool,
+                    bool,
+                    Option<&'static str>,
+                    Option<Handle<ThreeMaterial>>,
+                ) = match &o.material {
                     Mat::Three(m) => {
                         // The textures this material refers to.
                         for t in m.textures() {
@@ -749,10 +771,11 @@ fn run(
                         (
                             crate::convert::stand_in(m) == crate::convert::StandIn::Lit,
                             convert::vertex_colors(m),
+                            convert::extra_attribute(m),
                             tm.map(|m| three_mats.add(m)),
                         )
                     }
-                    Mat::Sky(_) => (false, false, None),
+                    Mat::Sky(_) => (false, false, None, None),
                 };
                 let key = MeshKey {
                     mesh: o.mesh,
@@ -761,6 +784,7 @@ fn run(
                     draw: Draw::Triangles,
                     colors,
                     lit,
+                    extra,
                 };
                 let (start, count) =
                     convert::draw_span(&scratch, &scratch.meshes[o.mesh as usize], None);
@@ -894,7 +918,8 @@ mod tests {
         ] {
             assert!(names.contains(&n), "{n} in {names:?}");
         }
-        assert!(!names.contains(&"kind-Terrain"));
+        assert!(names.contains(&"kind-Terrain") && names.contains(&"kind-Sea"));
+        assert!(!names.contains(&"kind-CityFacade"));
         assert!(select(&d, "every").len() > all.len());
         assert_eq!(select(&d, "fog-ramp,kind-Basic").len(), 2);
         assert_eq!(

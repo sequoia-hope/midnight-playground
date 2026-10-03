@@ -5,16 +5,17 @@
 //! Every asset is created with `RenderAssetUsages::RENDER_WORLD`, so Bevy
 //! drops the CPU copy once it is on the GPU.
 //!
-//! The plain kinds draw with three_std (`render::material`); a patched kind
-//! draws as the plain version of its built-in type, as a stand-in, until its
-//! patch is ported (SPEC 6.2, roadmap WP 2.4). The `ShaderMaterial` effects
-//! other than the sky draw nothing for now ([`StandIn::Hidden`]).
+//! The plain kinds and the patched kinds ported so far draw with three_std
+//! (`render::material`); a patched kind not ported yet draws as the plain
+//! version of its built-in type, as a stand-in (SPEC 6.2). The
+//! `ShaderMaterial` effects other than the sky draw nothing for now
+//! ([`StandIn::Hidden`]). Points become camera-facing quads ([`build_mesh`]).
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::{Image, ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::math::{Affine2, Mat4};
-use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::mesh::{Indices, Mesh, MeshVertexAttribute, PrimitiveTopology};
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, VertexFormat};
 use mr_scene::{
     Buffer, BufferData, MaterialDesc, MaterialKind, MeshDesc, NodeType, Scene, TextureDesc, three,
 };
@@ -80,6 +81,32 @@ fn index_values(b: &Buffer) -> Vec<u32> {
 
 // ── Meshes ─────────────────────────────────────────────────────────────
 
+/// A patch's own vertex attribute, as one vec4 at shader location 8
+/// (`three_material.wgsl`'s `extra`): `aSurf` (terrain), `aLane` (asphalt),
+/// `aDepth` (sea), `gsize` (glow points), `ph` (flicker points) in its first
+/// components; for points the quad corner in z and w.
+pub const ATTRIBUTE_EXTRA: MeshVertexAttribute =
+    MeshVertexAttribute::new("MR_Extra", 0x6d72_4558_5452_4101, VertexFormat::Float32x4);
+
+/// The extra attribute a material's patch reads, if any.
+pub fn extra_attribute(m: &MaterialDesc) -> Option<&'static str> {
+    use crate::render::material::{Patch, PointsMode};
+    match Patch::of(m) {
+        Patch::Terrain { packed: true, .. } => Some("aSurf"),
+        Patch::Asphalt => Some("aLane"),
+        Patch::Sea => Some("aDepth"),
+        Patch::Points {
+            mode: PointsMode::Glow,
+            ..
+        } => Some("gsize"),
+        Patch::Points {
+            mode: PointsMode::Flicker { .. },
+            ..
+        } => Some("ph"),
+        _ => None,
+    }
+}
+
 /// How a node draws its geometry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Draw {
@@ -90,7 +117,8 @@ pub enum Draw {
     LineStrip,
     /// `LineLoop`: a closed strip, drawn as a list.
     LineLoop,
-    /// `Points`: one pixel each for now (WP 2.4 makes them quads).
+    /// `Points`: camera-facing quads (SPEC 6.2 "Points"), four vertices a
+    /// point, sized in the vertex shader.
     Points,
 }
 
@@ -119,6 +147,9 @@ pub struct MeshKey {
     pub colors: bool,
     /// The material is lit, so normals are computed if the geometry has none.
     pub lit: bool,
+    /// The patch attribute to carry as [`ATTRIBUTE_EXTRA`] (missing on the
+    /// geometry: zeros, three's default attribute value).
+    pub extra: Option<&'static str>,
 }
 
 /// The element range three draws for a node's geometry, or one group of it:
@@ -157,6 +188,9 @@ pub fn build_mesh(scene: &Scene, key: MeshKey) -> Option<Mesh> {
     if n == 0 || key.count == 0 {
         return None;
     }
+    if key.draw == Draw::Points {
+        return build_points(scene, m, key);
+    }
     let topology = match key.draw {
         Draw::Triangles => PrimitiveTopology::TriangleList,
         Draw::Lines | Draw::LineStrip | Draw::LineLoop => PrimitiveTopology::LineList,
@@ -188,6 +222,10 @@ pub fn build_mesh(scene: &Scene, key: MeshKey) -> Option<Mesh> {
         if same(b) {
             mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, items::<4>(b, 1.0));
         }
+    }
+
+    if let Some(name) = key.extra {
+        mesh.insert_attribute(ATTRIBUTE_EXTRA, extra_items(scene, m, name, n));
     }
 
     // The elements drawn: three's index (or vertex) range, as Bevy indices.
@@ -240,6 +278,82 @@ pub fn build_mesh(scene: &Scene, key: MeshKey) -> Option<Mesh> {
             mesh.compute_flat_normals();
         }
     }
+    Some(mesh)
+}
+
+/// The patch attribute `name` as vec4s (zeros where the geometry lacks it).
+fn extra_items(scene: &Scene, m: &MeshDesc, name: &str, n: usize) -> Vec<[f32; 4]> {
+    match m
+        .attribute(name)
+        .map(|a| &scene.buffers[a.accessor as usize])
+    {
+        Some(b) if b.count() == n => items::<4>(b, 0.0),
+        _ => vec![[0.0; 4]; n],
+    }
+}
+
+/// A `Points` geometry as quads: every drawn point becomes four vertices at
+/// its position, with the corner (±1, ±1) in the extra attribute's z and w
+/// for the vertex shader to push out in screen space, and two triangles.
+fn build_points(scene: &Scene, m: &MeshDesc, key: MeshKey) -> Option<Mesh> {
+    let pos = items::<3>(
+        &scene.buffers[m.attribute("position")?.accessor as usize],
+        0.0,
+    );
+    let n = pos.len();
+    let (s, c) = (key.start as usize, key.count as usize);
+    let drawn: Vec<usize> = match m.index {
+        Some(i) => {
+            let all = index_values(&scene.buffers[i as usize]);
+            let e = (s + c).min(all.len());
+            all[s.min(e)..e].iter().map(|&i| i as usize).collect()
+        }
+        None => (s..(s + c).min(n)).collect(),
+    };
+    if drawn.is_empty() || drawn.iter().any(|&i| i >= n) {
+        return None;
+    }
+    let colors = if key.colors {
+        m.attribute("color")
+            .map(|a| &scene.buffers[a.accessor as usize])
+            .filter(|b| b.count() == n)
+            .map(|b| items::<4>(b, 1.0))
+    } else {
+        None
+    };
+    let extra = key.extra.map(|name| extra_items(scene, m, name, n));
+    const CORNERS: [[f32; 2]; 4] = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
+    let q = drawn.len() * 4;
+    let mut p = Vec::with_capacity(q);
+    let mut col = Vec::with_capacity(if colors.is_some() { q } else { 0 });
+    let mut ex = Vec::with_capacity(q);
+    let mut idx = Vec::with_capacity(drawn.len() * 6);
+    for (k, &i) in drawn.iter().enumerate() {
+        let a = extra.as_ref().map_or(0.0, |e| e[i][0]);
+        for c in CORNERS {
+            p.push(pos[i]);
+            if let Some(cs) = &colors {
+                col.push(cs[i]);
+            }
+            ex.push([a, 0.0, c[0], c[1]]);
+        }
+        let b = (k * 4) as u32;
+        idx.extend_from_slice(&[b, b + 1, b + 2, b, b + 2, b + 3]);
+    }
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, p);
+    if colors.is_some() {
+        mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, col);
+    }
+    mesh.insert_attribute(ATTRIBUTE_EXTRA, ex);
+    mesh.insert_indices(if q <= 65536 {
+        Indices::U16(idx.into_iter().map(|i| i as u16).collect())
+    } else {
+        Indices::U32(idx)
+    });
     Some(mesh)
 }
 
@@ -554,6 +668,7 @@ mod tests {
             draw,
             colors: false,
             lit: true,
+            extra: None,
         };
         let tri = build_mesh(&s, key(Draw::Triangles, 3, 3)).unwrap();
         let idx: Vec<usize> = tri.indices().unwrap().iter().collect();
@@ -565,6 +680,45 @@ mod tests {
         let idx: Vec<usize> = ll.indices().unwrap().iter().collect();
         assert_eq!(idx, vec![0, 1, 1, 2, 2, 0]);
         assert!(build_mesh(&s, key(Draw::Triangles, 0, 0)).is_none());
+    }
+
+    #[test]
+    fn points_become_quads() {
+        let s = square();
+        let m = &s.meshes[0];
+        // The points drawn are the indexed ones (three draws a Points
+        // geometry's index too): 0, 1, 2 for the first group.
+        let key = MeshKey {
+            mesh: 0,
+            start: 0,
+            count: 3,
+            draw: Draw::Points,
+            colors: false,
+            lit: false,
+            extra: None,
+        };
+        let q = build_mesh(&s, key).unwrap();
+        assert_eq!(q.count_vertices(), 12);
+        let idx: Vec<usize> = q.indices().unwrap().iter().collect();
+        assert_eq!(&idx[..6], &[0, 1, 2, 0, 2, 3]);
+        assert_eq!(idx.len(), 18);
+        // Every corner of a point sits at the point; the corner is in zw.
+        let Some(bevy::mesh::VertexAttributeValues::Float32x3(p)) =
+            q.attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            panic!("positions")
+        };
+        assert_eq!(p[4..8], [[1.0, 0.0, 0.0]; 4]);
+        let Some(bevy::mesh::VertexAttributeValues::Float32x4(e)) = q.attribute(ATTRIBUTE_EXTRA)
+        else {
+            panic!("corners")
+        };
+        let corners: Vec<[f32; 2]> = e[..4].iter().map(|v| [v[2], v[3]]).collect();
+        assert_eq!(
+            corners,
+            vec![[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]]
+        );
+        assert_eq!(m.attribute("gsize"), None);
     }
 
     #[test]
