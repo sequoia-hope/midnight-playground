@@ -1725,3 +1725,123 @@ for bit and in order, and the road test the fence gaps, unpainted stretches
 and runout, so the goldens test each ported `plan()`. The goldens are
 compiled into the tests, so this runs in wasm too; CI checks that the split
 regenerates.
+
+## WP 3.8 decisions
+
+## D350. The shape of `mr_worldgen::city`
+
+2026-10-03, WP 3.8. `City.js` is `mr_worldgen::city` (`city/mod.rs`),
+`city/freeway.js` is `city::freeway`, `city/cityTextures.js` is
+`city::textures`; `city/geom.js` stays `mr_worldgen::geom` (WP 3.3).
+`City` holds what `plan()` decides (`sA`, the path, the loop's centre,
+inside side and waterfront); `build()` makes a `Build` that is the JS
+`this` while it builds (the grid, the rng 4242, the chunks, lamp spots,
+trees, glows, ...), with the world's track and terrain borrowed and its
+graph and texture cache mutable. The JS `ctx` City hands the freeway is
+`freeway::FwCtx` (`lampTint` a borrowed closure over `ledAt`'s data), the
+Freeway instance `freeway::Freeway`. `makePath` is `FwPath`, whose `frame`
+returns a `PFrame` (the track's `Frame` plus `ext`); `sweep` takes a
+profile of `prof(lat, |f, lat| y)` (every `lat` in the game is a number,
+and no profile sets `gap`, so neither is ported) and `SweepOpts` with the
+JS defaults. Freeway's `add` batches by (material, chunk, cast) in first-use
+order as the JS `Map` does (a chunk index of -0 is the key of 0); building
+chunks and the ground's `ChunkedGeo` keep insertion order with a
+`BTreeMap` used only for lookup. Where the JS draws from a generator inside
+an argument list, an object literal or a loop condition
+(`k < 2 + Math.floor(rng() * 3)` in `warehouse`), the port draws into
+locals in the same order. Level 1's inline park and the loop's `makePark`
+are one function with the two tree rules. The loop variants (WP 7.5's
+cruise city: districts, warehouses, container yards, the waterfront and
+ferris wheel, loop sites, sound-wall spans, chunked instancing and
+`fadeable`) are ported too: they share most of the code, and the gate
+covers them.
+
+## D351. City's plan and the world data it gives the simulation
+
+2026-10-03, WP 3.8. `plan()` raises `track.runout` to 900 (Sierra) and
+mirrors it into `World::sim_data.runout`; it registers the flattens under
+the westbound lanes behind the merge (Sierra) or the ring's flatten and the
+waterfront carve (cruise). City is registered in `scenery::PORTED`, so
+`tests/terrain.rs` and `tests/road.rs` run its real `plan()` in its place
+(D330) and require the registrations to equal the recording bit for bit:
+they do on both levels. `build()` sets `sim_data.opposite_carriageway`
+(s0 = sA, s1 = length, `OPP_LANES`, dir -1), as the JS sets
+`world.oppositeCarriageway`; its height is `mr_levels::world::opp_y`, which
+the freeway uses too (`freeway::opp_y`). `tests/city.rs` checks the runout,
+the carriageway and `oppY` at the dumped samples against `mr_levels::world`
+and `parity/golden/sim/world-data.json`: equal on Sierra and the loop.
+
+## D352. City's textures in the world's texture cache
+
+2026-10-03, WP 3.8. The module variables of `cityTextures.js` (the classic
+atlas, the façade atlas, the ads, tunnel tiles, sound wall, park) are
+entries of the world's `TextureCache` under `city:` keys, through two
+additions to `textures`: `TextureCache::cached_with(key, make)` and
+`lookup(key)`, plus `Texture::from_canvas`. The classic atlas is cached as
+a façade pair (map, emissive); the façade atlas as three entries (map,
+emissive, the non-sRGB mask). `drawImage` of a cached picture goes through
+a canvas rebuilt with `putImageData` (exact for the opaque pictures drawn
+here). `bannerTexture` and `atlasQuads`' canvas are new textures per call
+(`Image::Own`), as in the JS; atlas images are told apart by identity
+(`Arc::ptr_eq`), as `images.includes` does, so signs that share a cache key
+share a cell.
+
+## D353. City's updaters as animators
+
+2026-10-03, WP 3.8. Each `world.updaters.push` is an `Animator` in the JS
+order: the chase bulbs, lens and pool colours of the freeway; the neon
+colour, the fade list, the ferris wheel's rotor (a `Transform`), the lamps'
+pool and lens colours, the aircraft blink, the glow points, the traffic
+streams' uniforms and the sky glow. The fade updater is pushed by the first
+`fadeable()` call and reads a list that later calls extend; the port builds
+the list and inserts the animator at that first call's place. `uFogK` of
+the glow points and traffic streams reads `world.scene.fog`, and
+`world.scene` is the root group, which has no fog: it is always 0 in the
+JS, and in the port. `uHalfH` is `CameraView::viewport_height / 2` (the last
+value is kept on a frame without a camera).
+
+## D354. The L3 city gate, and what it found
+
+2026-10-03, WP 3.8. `tools/parity/city-golden.mjs` writes
+`parity/golden/city/{sierra,cruise}.json` from the cached full exports: per
+node under `city` (depth first) a line of type, name, every attribute's and
+the index's SHA-256, shadow flags, visibility, render order, culling,
+matrixAutoUpdate, the local matrix's bits (-0 written as 0, as the file's
+JSON does), the instance count and the SHA-256 of the instance matrices and
+colours; each drawable's material as an index into a table of material
+views (road-plan.mjs's `materialView`, hashed in a canonical form: keys
+sorted, numbers as f64 bits); per texture a material uses its 8×8 block
+means; the export's night factor, camera and drawing-buffer height.
+`tests/city.rs` builds each level through `level_jobs` with the scenery
+factory, replays City's animators once as the frozen export ran them (dt 0,
+the export's night and camera, after the night parameters), and compares.
+With the cache it shows failing nodes beside the JS ones, material views key
+by key, every texture's mean absolute difference and sheets in
+`parity/report/city/`. Result: **every node identical on both levels**:
+Sierra 102 nodes (584,426 vertices), the cruise loop 194 (1,901,864, with
+the 52 chunks the fade list hides at the export's camera), all 35 and 43
+materials equal parameter by parameter, uniforms and GLSL included; native
+and wasm. One port fix was needed, found by the loop: the westbound runs
+`if (cur) ... push` drop a run that starts at u = 0 (the loop's first one;
+the JS's 0 is falsy), so the loop has no outer barrier on its first stretch.
+Textures: every one without lettering is within WP 3.2's threshold (the
+façade atlas's map, emissive and mask 0.14, 0.02 and 0.10 levels mean
+absolute difference; tunnel tiles, sound wall, park, glow, concrete,
+asphalt under 0.6). The lettering (tunnel name banners, the finish and
+welcome banners, the gantry sign atlas, the billboard and roof-ad atlases)
+differs by 14 to 42 levels: the scene export draws text in whatever faces
+that machine's Chrome falls back to (a wide sans for "Arial Narrow"), while
+mr_canvas draws the bundled faces; the sheets show identical layout,
+colours, glow and stripes in another face. Until the export pins the same
+faces (the pending Roboto change), lettering textures — one canvas for both
+`map` and `emissiveMap`, 1024 px wide or more — are held to their block
+means within 12 levels, every other texture to 3. Rerun:
+`node tools/parity/city-golden.mjs` (with the cache), then
+`cargo test -p mr_worldgen --test city` (and in wasm).
+
+## D355. Small additions to shared modules
+
+2026-10-03, WP 3.8. `Terrain::far_cell(k)` reads the far field's `fs` and
+`fl` cells for City's nearest-cell lookups (`nearestS`, `sideAt`);
+`textures` gains the exports of D352; `lib.rs` the module and
+`scenery::PORTED` the line registering City. No existing behaviour changed.
