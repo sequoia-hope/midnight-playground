@@ -621,3 +621,115 @@ races, the module traces and the fuzz runs passing in wasm against the same
 JS-derived numbers. The determinism test steps a clone of a mid-race Hot
 Pursuit state beside the original and compares hashes every tick and the
 whole state at the end.
+
+## WP 3.1 decisions
+
+## D130. The shape of `three_geom`'s API
+
+2026-10-03, WP 3.1. A three.js generator class is a function named after
+it (`BoxGeometry` is `box_geometry`) that returns a `BufferGeometry`, and
+takes the constructor's arguments in their order with every default
+written out (three's defaults are in each doc comment;
+`ExtrudeOptions::THREE_DEFAULTS` and `ExtrudeOptions::flat(depth)` cover
+the options object, including the omitted `bevelSize` being
+`bevelThickness - 0.1`). Counts are `f64`, as in the JS: where three floors
+a count (`Math.floor(widthSegments)`), so does the port, so a builder can
+pass a computed count as the JS does. Where three uses a count unfloored
+(Circle's segments, a polyhedron's detail, Tube's segments, Extrude's
+curveSegments, steps and bevelSegments, ShapeGeometry's curveSegments), a
+fractional value would send the JS loops and index formulas somewhere the
+port does not follow, and the world code never passes one; the port
+refuses it with a panic naming this decision. The math types (`Vector2`,
+`Vector3`, `Quaternion`, `Euler`, `Matrix3`, `Matrix4`, `Box3`, `Sphere`)
+are `Copy` and their methods return the result instead of mutating
+`this`, with three's arithmetic in its order (`normalize` multiplies by the
+reciprocal, as `divideScalar` does); `+`, `-` and unary `-` are `add`,
+`sub` and `negate`. Geometry transforms mutate and return `&mut Self` so
+`g.rotateX(a).translate(x, y, z)` chains as in the JS. Clippy's
+`too_many_arguments`, `needless_range_loop`, `needless_late_init` and
+`explicit_counter_loop` are allowed in the module so the port keeps three's
+signatures and loops (D52).
+
+## D131. `BufferGeometry`: attributes in insertion order, typed arrays as `mr_scene::BufferData`
+
+2026-10-03, WP 3.1. Attributes are a vector of (name, attribute) with a JS
+object's order: setting an existing name keeps its place, deleting and
+setting again moves it to the end. The order is observable:
+`mergeGeometries` follows the first geometry's, and `LatheGeometry` sets
+`uv` before `normal`. An attribute's array is an `mr_scene::BufferData`, so
+geometry goes into a scene as it is (`to_mesh_desc`, `add_to_scene`);
+writes behave as stores into the JS typed array (`f32` rounding, integer
+wrap through ToInt32/ToUint32, three's `normalize`/`denormalize` for a
+normalized attribute). The index is a `BufferAttribute` too: `set_index`
+with a list picks `Uint16` or `Uint32` by three's `arrayNeedsUint32`, and
+`set_index_attribute` takes one as built (`TerrainMesh.js` and `Sea.js`
+choose the type themselves). Groups are `usize` start, count and material
+index. `toNonIndexed` on a geometry without an index returns a copy where
+three warns and returns `this`. Nothing was added to `mr_scene`.
+
+## D132. Curves, shapes and earcut
+
+2026-10-03, WP 3.1. three's `Curve` serves 2D and 3D; here the 2D curves
+that paths are made of are an enum (`Curve2`: line, quadratic and cubic
+Bézier, ellipse/arc, spline), `Path` holds them with the pen position, and
+`Shape` is a `Path` (by `Deref`) with holes. The 3D curves implement a
+`Curve3` trait whose provided methods are `Curve`'s (`getLengths`,
+`getUtoTmapping`, `getPointAt`, `getTangent(At)`, `computeFrenetFrames`);
+`LineCurve3` overrides what three's overrides. `CatmullRomCurve3` caches
+its arc lengths at the default 200 divisions in a `OnceLock`, as three
+caches them; the values are the same cached or not, and
+`update_arc_lengths` clears the cache after `points` change. Its shared
+scratch vector is reproduced: when both end points are extrapolated (a
+two-point open curve), the first reads what the second wrote.
+`triangulateShape` removes a closing duplicate from the contour and holes
+in place, as three's does (ShapeGeometry depends on it). Earcut keeps
+mapbox/earcut 3.0.1's code on an arena of nodes linked by index; node
+identity is index equality. The holes' `sort(compareXYSlope)` is a stable
+`sort_by` with a NaN comparison counted as equal.
+
+## D133. What `three_geom` leaves out
+
+2026-10-03, WP 3.1. Ported because the world or car code calls them (the
+counts in inventory-rendering section 4, and a grep of `src/`): the
+generators of SPEC 5.2 plus Dodecahedron, Octahedron and Tetrahedron
+(PolyhedronGeometry subclasses; `desert/parts.js` and `Harbor.js` use the
+first two); `BufferGeometry`'s `applyMatrix4`, `applyQuaternion`,
+`rotateX/Y/Z`, `translate`, `scale`, `lookAt`, `center`,
+`computeBoundingBox`, `computeBoundingSphere`, `computeVertexNormals`,
+`normalizeNormals`, `toNonIndexed`, attribute and group edits;
+`mergeGeometries` (with and without groups) and `mergeVertices` (any
+tolerance). Left out, because nothing in the game uses them:
+ExtrudeGeometry's `extrudePath` and custom `UVGenerator` (every call
+extrudes along +z with the world UVs), morph attributes, interleaved
+attributes, `computeTangents`, `setFromPoints`, serialisation, and the
+other generators (Ring, Edges, Wireframe). `THREE.Color` and `Object3D`
+belong with the builders (WP 3.3); only the part of `Object3D.lookAt` that
+`BufferGeometry.lookAt` uses is here. `mergeVertices` keys its table by the
+list of truncated integers the JS joins into a string; the table is a
+`BTreeMap` used only for lookup, never iterated, so no order leaks from it.
+
+## D134. The three_geom golden: bit-identical, native and wasm
+
+2026-10-03, WP 3.1. `tools/parity/three-geom.mjs` runs three.js r180 under
+Node with the parity kernel (the `three` specifier resolved to
+`vendor/three` by `test/unit/support/three.js`) over 141 cases: each
+generator over a spread of parameters (the world code's own calls among
+them: the Streets trapezoid, the Coast roof and hull, the beach surfboard
+with bevel, CarModel's bevelled extrude and caliper, the Valley barn and
+bale lathe, Beach's coaster rails as a closed centripetal tube; and the
+edges: minimum and fractional segments, partial sweeps, open and pointed
+cylinders, zero-height capsules, clamped lathe angles, bevel on and off,
+holes, clockwise and counter-clockwise outlines), Path sampling,
+triangulations (z-order hashed and not, with holes, duplicate ends,
+collinear and self-touching outlines), CatmullRomCurve3 samples and Frenet
+frames, transforms in every Euler order, normals, bounds, the matrix and
+quaternion functions, and merges (groups, attribute order, a Uint32 index,
+and the two failures that return null). `parity/golden/three_geom/three_geom.json`
+records each attribute's name, item size, array type, count, the FNV-1a 64
+of the typed array's bytes and its first 16 values as hex bits, the index
+(type, values as u32), groups and bounds; sequences as in the math golden
+(D51). `crates/mr_worldgen/tests/three_geom.rs` rebuilds every case and
+requires all of it to match. The SPEC's bar is 1e-6; the result is
+bit-identical in every case, native and in wasm
+(`cargo test --target wasm32-unknown-unknown -p mr_worldgen`). CI checks
+that the golden regenerates and runs mr_worldgen's tests in wasm.
