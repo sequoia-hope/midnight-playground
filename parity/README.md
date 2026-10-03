@@ -53,6 +53,8 @@ Every capture is taken with the kernel on.
 | `NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/flora.mjs [--check]` | `valley/flora.js`'s templates under Node (WP 3.6, D310) | `golden/flora/flora.json` |
 | `node tools/parity/mountain-scene.mjs [--check]` | The group `mountain` of the cached Sierra export as a digest (WP 3.6, D312) | `golden/mountain/sierra.json` |
 | `node tools/parity/mountain-textures.mjs [--check]` | The Sierra Pass scenery's lettered textures, drawn by the game in headless Chrome with the bundled fonts (WP 3.6, D313) | `cache/<key>/mountain/`, summary in `golden/mountain/textures.json` |
+| `node tools/parity/city-golden.mjs [--check]` | The group `city` of the cached Sierra and cruise exports as a digest: nodes, materials, texture block means (WP 3.8, D354) | `golden/city/<level>.json` |
+| `node tools/parity/city-textures.mjs [--check]` | City's lettered textures on Sierra and the cruise loop, drawn by the game in headless Chrome with the bundled fonts (WP 3.8, D354) | `cache/<key>/city/`, summary in `golden/city/textures.json` |
 | `node tools/parity/textures.mjs [--check]` | The shared textures of `src/world/textures.js` and canvas probes, in headless Chrome with the bundled fonts (WP 3.2) | `cache/<key>/textures/`, summary in `golden/textures/` |
 | `node tools/parity/fonts-gallery.mjs` | The font gallery: the game's sign strings in each bundled font and the alternatives, rendered by `mr_canvas` (WP 3.2) | `report/fonts/` |
 | `node tools/parity/sim-world.mjs [--check]` | What the simulation needs from the world: runout, the opposite carriageway, every vehicle's dimensions | `golden/sim/world-data.json` |
