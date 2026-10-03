@@ -437,6 +437,46 @@ impl Material {
         Material::built_in(MaterialKind::Points, "PointsMaterial", p)
     }
 
+    /// `new THREE.ShaderMaterial()`: three's `Material` with
+    /// `forceSinglePass` true, then the class's own properties (the
+    /// uniforms and the GLSL are the scene's `uniforms` and `shader`, which
+    /// [`Material::uniform`] and [`Material::shader_source`] fill). Its
+    /// kind is the tag the JS gives it ([`Material::kind`]).
+    pub fn shader() -> Material {
+        let mut p = params(&[MATERIAL]);
+        p.insert("forceSinglePass".into(), Value::Bool(true));
+        p.insert("defines".into(), Value::Object(Map::new()));
+        p.insert("linewidth".into(), num(1.0));
+        p.insert("wireframe".into(), Value::Bool(false));
+        p.insert("wireframeLinewidth".into(), num(1.0));
+        p.insert("fog".into(), Value::Bool(false));
+        p.insert("lights".into(), Value::Bool(false));
+        p.insert("clipping".into(), Value::Bool(false));
+        p.insert(
+            "extensions".into(),
+            json!({ "clipCullDistance": false, "multiDraw": false }),
+        );
+        p.insert(
+            "defaultAttributeValues".into(),
+            json!({ "color": [num(1.0), num(1.0), num(1.0)], "uv": [num(0.0), num(0.0)], "uv1": [num(0.0), num(0.0)] }),
+        );
+        p.insert("index0AttributeName".into(), Value::Null);
+        p.insert("uniformsNeedUpdate".into(), Value::Bool(false));
+        p.insert("glslVersion".into(), Value::Null);
+        let mut m = Material::built_in(MaterialKind::Standard, "ShaderMaterial", p);
+        m.desc.uniforms = Some(Map::new());
+        m
+    }
+
+    /// A `ShaderMaterial`'s `vertexShader` and `fragmentShader`.
+    pub fn shader_source(mut self, vertex: &str, fragment: &str) -> Material {
+        self.desc.shader = Some(mr_scene::ShaderSource {
+            vertex: vertex.to_string(),
+            fragment: fragment.to_string(),
+        });
+        self
+    }
+
     /// `setValues({ [key]: value })`.
     pub fn set(mut self, key: &str, value: impl Into<Param>) -> Material {
         self.set_value(key, value.into());
