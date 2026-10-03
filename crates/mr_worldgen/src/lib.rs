@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 
 pub mod builder;
+pub mod city;
 pub mod color;
 pub mod color_builder;
 pub mod colorizer;
