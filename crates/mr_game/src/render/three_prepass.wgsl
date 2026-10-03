@@ -15,6 +15,10 @@ struct ThreeParams {
     map_t1: vec4<f32>,
     emissive_t0: vec4<f32>,
     emissive_t1: vec4<f32>,
+    normal_t0: vec4<f32>,
+    normal_t1: vec4<f32>,
+    kind0: vec4<f32>,
+    kind1: vec4<f32>,
 };
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> material: ThreeParams;

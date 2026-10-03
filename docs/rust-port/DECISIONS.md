@@ -1550,3 +1550,152 @@ lookups inside branches are taken before the branches (WGSL wants
 implicit-derivative samples in uniform control flow), and GLSL's
 `smoothstep` with reversed edges is written out (`smooth_step`), since WGSL
 leaves it undefined.
+
+## WP 2.4 decisions
+
+## D290. The patched kinds are blocks of `three_material.wgsl`, picked by `Patch`
+
+2026-10-03, WP 2.4. Terrain, Asphalt, Shoulder, Markings and Sea are not
+new Bevy materials: `ThreeMaterial` gains a `Patch` in its key (from the
+material's kind tag and `kind_opts`, `render::material::Patch::of`), which
+becomes a shader def (`PATCH_TERRAIN` with `TERRAIN_PACKED` and
+`MR_PHOTO`, `PATCH_ASPHALT`, `PATCH_SHOULDER`, `PATCH_MARKINGS`,
+`PATCH_SEA`), and each JS `onBeforeCompile` replacement is a block of the
+same shader at the place of the three chunk it replaces or follows
+(`map_fragment`, `color_fragment`, `roughnessmap_fragment`,
+`normal_fragment_maps`, `opaque_fragment`), with the JS names and comments.
+Their textures bind beside the plain ones: `detail` (5, 6: `tDetail`, the
+sea's `tFoam`), `aux` (7, 8: `tRock`, the sea's `normalMap`), `photo` and
+`loose` (13 to 16: Seaside's `tPhoto` and `tLoose`); the uniforms that sit
+on the material (`uPhotoBox`, `normalScale`, the normal map's transform)
+are new `ThreeParams` rows (`kind0`, `kind1`, `normal_t0`, `normal_t1`;
+`patch` is a reserved word in WGSL). The sea's normal map brings three's
+tangent-space normal mapping without tangents (`getTangentFrame` from
+derivatives, `USE_NORMALMAP`), which the plain kinds could use as well; no
+plain material in the exports has a normal map. GLSL's `dFdy` runs up the
+window and WGSL's `dpdy` down the framebuffer, so `getTangentFrame` takes
+`-dpdy` (its frame changes sign with the flip; with `dpdy` as it is the
+ripples were mirrored and the sea test scene was at 0.88 ΔE00 instead of
+0.07). The terrain's bump (`mrPerturb`) and the geometry-roughness term are
+unchanged by the flip and use `dpdy` as it is. The unpacked terrain path
+(the `map` sampled from above, no `tDetail`) is ported too, though the game
+always passes the packed texture. The material test scenes' `all` (D175)
+now includes these five kinds, so `cargo xtask parity materials` gates
+them with WP 2.3's.
+
+Kept as the JS has it: the terrain's packed path does not sample `map`
+(the patch replaces `map_fragment` entirely), and `color_fragment` becomes
+`diffuseColor.rgb *= vc` (the photo-blended colour); the sea's
+`envMapIntensity` 1.3 has no effect, since three uses
+`scene.environmentIntensity` for a material without its own `envMap`.
+
+WGSL wants texture samples with implicit derivatives, and `dpdx`/`fwidth`,
+in uniform control flow. Where a patch samples inside a branch (the
+terrain's close grain `dC`, the rock faces, the varnish, the photo and its
+mask), the sample is taken unconditionally and the branch only chooses;
+the derivative bump (`mrPerturb`) takes its derivatives before its early
+return becomes an `if`. The value is the same wherever a 2×2 quad takes
+one side of the branch, which the JS comments say the conditions ensure.
+
+Eight material textures plus the globals and environment: WebGL2 (WP 2.7)
+allows 16 samplers per stage, including Bevy's view bindings; if the
+WebGL2 build runs out, `photo` and `loose` can share slots with `map` and
+`emissive_map`, which the packed terrain does not read.
+
+## D291. A patch's own vertex attribute rides at location 8
+
+2026-10-03, WP 2.4. `aSurf` (terrain), `aLane` (asphalt), `aDepth` (sea),
+`gsize` (glow points) and `ph` (flicker points) are carried as one vec4
+attribute, `convert::ATTRIBUTE_EXTRA`, at shader location 8 (the attribute
+missing from a geometry reads as zeros, three's default attribute value).
+`ThreeMaterial::specialize` rebuilds the vertex buffer layout with Bevy's
+standard attributes at Bevy's locations plus this one when the mesh has it,
+and sets `VERTEX_EXTRA`. Bevy's own prepass (the shadow map) builds its
+layout from the standard attributes and ignores it. Which attribute a mesh
+carries follows from its material (`convert::extra_attribute`), so it is
+part of the mesh cache key.
+
+## D292. The gate: the base export against the game with only terrain, road and sky drawn
+
+2026-10-03, WP 2.4. The JS screenshot stations (D17) are of the whole
+level, and `<level>.base.mrscene` holds only the terrain, the road group and
+the sky. `tools/parity/base-shots.mjs` takes the same stations from the same
+page (kernel on, frozen, seeded, fresh Chrome, 1280 × 800, high quality)
+after setting `visible = false` on every object of the scene other than the
+terrain group, `world.road.group` and the sky's dome, sun, target and
+hemisphere light, which is what the base export walks; three skips
+invisible objects in the main pass and the shadow map. The game is not
+changed. The shots go to `parity/cache/<key>/shots/<run>.base/`. `cargo
+xtask parity stations --base` runs both sides (the native client draws
+`<level>.base.mrscene` with `--scene`) and fails if a gate station is over
+SPEC 12's limits. The five gate stations were named before any comparison:
+`attract`, `02000-chase`, `04500-high`, `07000-chase` and `09500-high`
+(the pass in daylight, the valley from above, the interstate at dusk, the
+city at night), `stations::BASE_GATE`. `--rust-run` names the Rust output
+directory (default `rust`) so parallel runs need not share one.
+
+## D293. The updaters' uniforms are scene-wide state
+
+2026-10-03, WP 2.4. The JS moves some patch uniforms every frame from
+`world.updaters`: the asphalt's `uWet` (`smoothstep(0.55, 1, night) ×
+0.85`, set even when frozen), the sea's `uTime`, `uOff2` and normal-map
+offset, the desert's `glowTime`. There is one road, one sea and one flicker
+clock per level, so they are `render::lighting::Anim` in `Lighting` and two
+more texels of the globals row (`G_ANIM`, `G_ANIM2`), advanced in
+`update_sky` after `Sky.update` with the world's dt (0 under
+`?freeze=1`); no material is touched per frame. The sea's normal-map scroll
+is added to the uv transform of the export's offset. The material test
+scenes take the values the export captured. Two colour updaters are folded
+into the shaders the same way: GlowPoints' `color = 1.6 ×
+smoothstep(0.2, 0.7, night)` reads the sky's night factor from the globals;
+FlickerPoints' and the City's blinking light colours stay as exported until
+the scenery's animators exist (M3). The pixel ratio for point sizes rides
+there too.
+
+## D294. Points are quads expanded at load, sized in the vertex shader
+
+2026-10-03, WP 2.4. SPEC 6.2 says "instanced camera-facing quads". Bevy's
+material pipeline draws one mesh per entity and has no per-instance vertex
+buffers short of a custom draw command, so each `Points` geometry becomes a
+mesh of four vertices per drawn point (its position, colour and patch
+attribute repeated, the corner in the extra attribute's z and w) and two
+triangles, one draw per Points object as in three; the cost is four times
+the points' vertices (Sierra about 4,400 points, Cruise about 13,000), not
+worth a custom pipeline. The vertex shader ports `points_vert`: `size ×
+pixelRatio`, attenuated by `height / 2 / -z` (CSS height) with
+`sizeAttenuation`, GlowPoints' `× gsize`, minimum pixel size `uMinPx`,
+dimming `sqrt(raw / size)` and gentler fog, FlickerPoints' flicker or blink
+(its constants rounded to three decimals as the JS writes them into the
+GLSL); clamps to the GL point range (1 to 2047.9375 in Chrome on the dev
+machine); drops a point whose centre is outside the clip volume (GL ES 3.0
+§2.13.1) and pushes the corners out in clip space. The uv is
+`gl_PointCoord` with y flipped, through the map's transform, as
+`map_particle_fragment` samples it. The pixel ratio is the window's scale
+factor (rendered pixels per CSS pixel), so points keep their CSS size
+whatever resolution the client renders at. Plain Points, GlowPoints and
+FlickerPoints are drawn; TrafficStreams (a `ShaderMaterial` on points)
+stays hidden until its kind is ported (M3).
+
+## D295. Stand-in cars from the simulation
+
+2026-10-03, WP 2.4. The roadmap's thirty moving stand-ins are the cars of
+a real race: `mr_sim`'s `LevelRuntime` and `SimState` for the level
+(sports car, seed 1, no pursuit), stepped at 1/120 s in real time (at most
+30 ticks a frame), the player on the autopilot. Every slot is drawn: the
+player, the rivals and the whole traffic pool (Sierra: 50 slots, 1 + 5 +
+44, of which 14 are the oncoming cars on the far carriageway), traffic
+not on the road hidden (Traffic's own limit decides how many are out). Each is a box of its kind's dimensions in its
+colour on the ground under it, turned to its yaw, casting shadows, with a
+plain standard material (roughness 0.45, metalness 0.3). They are on by
+default for a level, off with `?cars=0`, with `freeze=1`, and for the
+material scenes and the stations, whose JS side has no race. The cars
+follow the race, not the camera: in the fly camera they are seen near
+their part of the route.
+
+## D296. A patch uniform's texture is found in the uniforms too
+
+2026-10-03, WP 2.4. `three_material` looked textures up only among the
+material's own parameters, so a patch's textures (`tDetail`, `tRock`,
+`tFoam`, which the export keeps under `uniforms`, D23) came out missing and
+bound Bevy's white fallback. It now uses `MaterialDesc::texture`, which
+looks in both.
