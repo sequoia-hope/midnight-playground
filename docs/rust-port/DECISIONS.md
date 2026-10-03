@@ -1672,3 +1672,27 @@ bit-identical. The tool also records `Sky.update` at 41 points along each
 route under Node (every value it sets, hashed); `sky_route_*` reproduce it
 bit for bit, so the time of day along the route is at parity, not only at
 the start. No port fix was needed.
+
+## WP 3.6 decisions
+
+## D310. `valley/flora.js` is `mr_worldgen::flora`, ported once for its three users
+
+2026-10-03, WP 3.6. Mountain, Valley and the Raceway import
+`valley/flora.js`, so it is ported whole (every export, `canopyGeometry`
+included) as a top-level module, owned by WP 3.6 and used by WP 3.7 and
+7.4. `makeNoise3D(seed)` is `make_noise3d` returning `Noise3D` (its
+closure is `noise(x, y, z)`; the `x & 255` lookups go through ToInt32, the
+value table is the JS `Float32Array`); `rockGeometry`'s options object is
+`RockOpts` (`Default` gives the JS defaults); `coniferGeometry(kind, lod,
+seed)`, `canopyGeometry(kind, seed, lod)`, `grassClumpGeometry(blades,
+seed)`, `flowerGeometry(n, seed)`, `shrubGeometry(seed, detail)` take the
+JS arguments with the defaults written out; `foliageMaterial(o)` takes
+the spread object as `(key, Param)` pairs set after the defaults. Seeds are
+`u32`; the derived ones (`seed * 7 + 3`, `seed + 11`) go through
+`js::to_uint32` as `mulberry32`'s `>>> 0` takes them.
+`tools/parity/flora.mjs` records every call the scenery makes plus the
+defaults and edges (noise past 2^31 and at negative lattice points, every
+rock option, both conifer kinds at the three levels, the four canopy
+kinds at both levels, the foliage material with each override) in
+`parity/golden/flora/flora.json`; `tests/flora.rs` is bit-identical,
+native and in wasm. CI checks that the golden regenerates.

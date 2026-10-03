@@ -98,6 +98,8 @@ jobs:
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/three-geom.mjs --check
       - name: The builders golden reproduces
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/builders.mjs --check
+      - name: The flora golden reproduces
+        run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/flora.mjs --check
       - name: The audio arrays and the facade conformance golden reproduce
         run: |
           node tools/parity/audio-ref.mjs arrays --check
