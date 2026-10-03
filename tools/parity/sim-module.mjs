@@ -8,14 +8,14 @@
 //     node tools/parity/sim-module.mjs [--only id,...] [--check] [--list]
 //
 // Writes parity/golden/sim/module/<id>.trace.gz (committed). --check
-// regenerates each in memory and fails unless it is byte for byte the
-// committed file.
+// regenerates each in memory and fails unless the trace is byte for byte the
+// committed one (compared after gunzip: zlib builds compress differently).
 
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { ROOT } from './lib/jstree.mjs';
-import { traceRecord, TraceWriter } from './lib/trace.mjs';
+import { traceRecord, TraceWriter, readTrace } from './lib/trace.mjs';
 import { Sim, level, player, rivals, grid, traffic, pursuit, simStreams, autopilot, quantiseInput } from './lib/node-sim.mjs';
 import { mulberry32 } from '../../src/util/math.js';
 
@@ -152,6 +152,7 @@ export const SCENARIOS = [
 
 const FRAME_DTS = [1 / 60, 1 / 144, 1 / 30, 0.025, 0.05];
 
+// The trace file's bytes, before gzip.
 export function run(sc) {
   const sim = sc.setup();
   const w = new TraceWriter({ id: sc.id, seed: SEED, ticks: sc.ticks, source: 'module' });
@@ -166,7 +167,15 @@ export function run(sc) {
     } else sim.step(inp);
     w.add(sim.tick, traceRecord(sim.view(inp)));
   }
-  return zlib.gzipSync(Buffer.from(w.finish()), { level: 9 });
+  return Buffer.from(w.finish());
+}
+
+// Compare traces, not gzip output: zlib versions compress differently.
+function firstDiff(a, b) {
+  const A = readTrace(new Uint8Array(a)), B = readTrace(new Uint8Array(b));
+  const n = Math.min(A.hashes.length, B.hashes.length);
+  for (let i = 0; i < n; i++) if (A.hashes[i][0] !== B.hashes[i][0] || A.hashes[i][1] !== B.hashes[i][1]) return `tick ${i + 1}`;
+  return A.hashes.length !== B.hashes.length ? `length ${A.hashes.length} vs ${B.hashes.length}` : 'the metadata or full records';
 }
 
 // parity/scenarios.md: the prose below plus the table from the catalogue.
@@ -239,14 +248,16 @@ function main() {
     const out = run(sc);
     const file = path.join(dir, sc.id + '.trace.gz');
     const ms = Date.now() - t0;
-    total += out.length;
     if (check) {
-      const same = fs.existsSync(file) && Buffer.compare(fs.readFileSync(file), out) === 0;
+      const old = fs.existsSync(file) ? zlib.gunzipSync(fs.readFileSync(file)) : null;
+      const same = old !== null && Buffer.compare(old, out) === 0;
       if (!same) bad++;
-      console.log(`${sc.id}: ${same ? 'identical' : 'DIFFERS'} (${ms} ms)`);
+      console.log(`${sc.id}: ${same ? 'identical' : `DIFFERS (${old ? 'first at ' + firstDiff(old, out) : 'no golden'})`} (${ms} ms)`);
     } else {
-      fs.writeFileSync(file, out);
-      console.log(`${sc.id}: ${sc.ticks} ticks, ${(out.length / 1024).toFixed(0)} KB, ${ms} ms`);
+      const gz = zlib.gzipSync(out, { level: 9 });
+      total += gz.length;
+      fs.writeFileSync(file, gz);
+      console.log(`${sc.id}: ${sc.ticks} ticks, ${(gz.length / 1024).toFixed(0)} KB, ${ms} ms`);
     }
   }
   console.log(`total ${(total / 1e6).toFixed(2)} MB`);
