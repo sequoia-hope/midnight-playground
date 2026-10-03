@@ -313,10 +313,12 @@ impl Sim {
                 v: &p.v,
                 phys: &p.phys,
                 input: Some(inp),
+                rules: None,
             })
             .collect();
         trace_record(&View {
             tick: self.tick as i32,
+            race: None,
             players,
             rivals: &self.ais,
             traffic: self.traf.as_ref(),

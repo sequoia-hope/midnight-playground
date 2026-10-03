@@ -560,3 +560,23 @@ JS's cached frame (`this.F`), because `velocity()`, `setVelocity()` and
 enum (road or opposite carriageway). Parking spots are a `Park` enum with
 `speed(s)` and `lat(s)`. Random draws come from counted `Stream`s
 (`mr_sim::rng`), seeded as `simStreams` seeds them.
+
+## D60. Race rules: one player for now, events, hash
+
+2026-10-03, WP 1.5. `mr_sim::race` ports Race.update's simulation in its
+order (SPEC 4.3). The state keeps `players` as a vector and each player's
+rule state on its `PlayerCar` (SPEC 4.3), but the rules run for
+`players[0]`: the race-wide things the JS does with "the player"
+(rubber-banding, traffic kept around it, standings) need the multiplayer
+design of M10 before they can mean anything with several. `parkRows` stays
+race-wide, as in the JS, since finishers share the parking rows. The
+WeakMaps keyed by traffic car (`passed`, `nearMiss`) are arrays by pool
+index on the player's rules; like the JS's, they are never cleared when a
+car is recycled. Race's HUD, audio, rumble, camera and effect calls are
+`SimEvent`s (countdown, GO, perfect start, physics events, car hits,
+crashes, near misses, whooshes, bonuses with their text and points, wrong
+way, laps, the finish and its place, results, resets). `hash(state)` is the
+FNV-1a 64 of the trace record without inputs. The whole-race test checks
+every tick against the cached recordings when they are present and, from
+the committed `races.json`, always the tick the results came, that tick's
+hash and the results, so it also runs in wasm and in CI without the cache.

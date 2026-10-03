@@ -14,6 +14,7 @@ pub mod input;
 pub mod kinematic;
 pub mod park;
 pub mod physics;
+pub mod race;
 pub mod rng;
 pub mod staged;
 pub mod trace;
