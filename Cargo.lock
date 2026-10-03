@@ -338,6 +338,7 @@ dependencies = [
 name = "mr_sim"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "mr_levels",
  "mr_math",
  "mr_track",
