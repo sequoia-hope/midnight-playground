@@ -309,6 +309,7 @@ name = "mr_math"
 version = "0.1.0"
 dependencies = [
  "libm",
+ "serde_json",
  "wasm-bindgen-test",
 ]
 

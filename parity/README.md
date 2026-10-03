@@ -6,7 +6,7 @@ parity hooks on (`src/parity/`).
 
 | Path | In git | What |
 |---|---|---|
-| `golden/` | yes | Small goldens: simulation traces of staged scenarios, digests, audio arrays, the kernel. Regenerating one must give an identical file. |
+| `golden/` | yes | Small goldens: simulation traces of staged scenarios, the math functions, digests, audio arrays, the kernel. Regenerating one must give an identical file. |
 | `cache/<key>/` | no | Large outputs regenerated on demand: whole-race recordings, scene exports, Track and terrain dumps, screenshots. `<key>` is a hash of the JS tree (`node tools/parity/lib/jstree.mjs`), so a changed game never reuses a stale capture. |
 | `report/` | no | The comparison report (`cargo xtask parity ...`), viewed through the registered server at `/parity/report/`. |
 | `trace-format.md` | yes | The trace record both sides produce (WP 0.4). |
@@ -40,6 +40,7 @@ Every capture is taken with the kernel on.
 | Command | What it makes | Where |
 |---|---|---|
 | `cargo xtask kernel [--check]` | The math kernel's wasm, checked bit for bit against native Rust | `tools/parity/kernel/mr_kernel.wasm` |
+| `NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/math-golden.mjs [--check]` | `util/math.js` and the JS semantics of SPEC 4.2 over fixed inputs, as f64 bits (WP 1.1) | `golden/math/math.json` |
 | `node tools/parity/sim-world.mjs [--check]` | What the simulation needs from the world: runout, the opposite carriageway, every vehicle's dimensions | `golden/sim/world-data.json` |
 | `NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/sim-module.mjs [--check] [--doc]` | Module traces of the staged scenarios (`scenarios.md`, which `--doc` regenerates) | `golden/sim/module/*.trace.gz` |
 | `node tools/parity/sim-race.mjs [--check] [--only id,...]` | Whole-race recordings from the real game; `--check` records each twice and compares | `cache/<key>/sim-races/*.trace`, summaries in `golden/sim/races.json` |
