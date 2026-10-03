@@ -29,3 +29,5 @@ const G_SPOT_COLOR: i32 = 21;   // rgb colour × intensity; w 1 if there is one
 const G_SPOT_CONE: i32 = 22;    // coneCos, penumbraCos
 const G_POINT_POS: i32 = 23;    // xyz; w distance
 const G_POINT_COLOR: i32 = 24;  // rgb colour × intensity; w decay (0 colour: none)
+const G_ANIM: i32 = 25;         // road uWet, sea uTime, sea uOff2 (xy)
+const G_ANIM2: i32 = 26;        // sea normal-map scroll (xy), glowTime, pixel ratio
