@@ -1808,6 +1808,116 @@ and runout, so the goldens test each ported `plan()`. The goldens are
 compiled into the tests, so this runs in wasm too; CI checks that the split
 regenerates.
 
+## D331. The shape of `mr_worldgen::valley`, and the L3 gate for zone 1
+
+2026-10-03, WP 3.7. `Valley.js` is `mr_worldgen::valley` (a directory:
+`valley/ground.js` is `valley::ground`, `valley/parts.js` `valley::parts`,
+Valley's canvas textures `valley::textures`; `valley/Builder.js` stayed
+`builder` (D190) and `valley/flora.js` is `flora` (D310)). `Valley` keeps the
+JS fields its `plan()` fills (the creek, its crossing, the farm, store, mill
+and windmill sites, the pads, the side roads; `this._fy`, `approxLand`'s
+memory of the last road height, is a field too) and implements `Scenery`;
+`plan()` takes the track and terrain out of the `World` and registers the
+pads' flattens, the fence gaps and the creek's carve in the JS order. The
+build runs on a `Bld` that borrows the track, the terrain and the graph
+(the JS `this.*` build state: the paint builder, `M`, trees, bales, cows,
+wheels, `avoid`, hedges, crop runs, the verge) and calls the JS methods in
+the JS order. `makeGround` is `Ground::new(&terrain)` (its height memo is
+dropped: the heights are a pure function, so the values are the same).
+The parts keep their JS signatures with the defaults written out; an
+`opts` object no caller fills (`farmhouse`, `barn`, `shed`, `silo` but its
+`metal`) and `generalStore`'s unused `rng` are left out. Valley is the first
+entry of `scenery::PORTED`. Its `plan()` reproduces Sierra's recorded
+registrations bit for bit (8 flattens, the 109-point creek carve, 7 fence
+gaps): the terrain (L2 heights and L3 meshes) and road goldens pass with it
+in place of the recording, native and in wasm.
+
+`tools/parity/valley-golden.mjs` writes `parity/golden/valley/sierra.json`
+from the cached full export: a line per child of the group `valley` (type,
+name, counts, every attribute's and the index's SHA-256, shadow flags,
+matrixAutoUpdate, the local matrix's bits, instance count and the SHA-256
+of the instance matrices and colours), each child's material in a table of
+material descriptions (as D274's), the canvas textures' 8×8 block means
+and the night parameters. `tests/valley.rs` builds Sierra through
+`level_jobs` with the scenery factory (Mountain and City replayed), applies
+the night parameters and one update (dt 0, s 0) as the export's frame had
+them, and requires every line and material to equal the JS's, localising a
+differing child to its first differing value when the cache has the
+export. Result: **all 63 children identical** (231,127 vertices: the
+driveways, side roads, creek, sails, poles and wires, the 13 builder
+buckets, 5 canopy sets and the trunks, 6 hedge cells, bales, cows,
+windpump wheels, the waterwheel, 13 crop cells, 10 verge chunks), all 28
+materials equal parameter by parameter (the three `Siding` kinds with
+their `mode`), the 6 night parameters equal, the creek's ripple normal map
+bit-identical; native and in wasm. No fix to a shared module was needed.
+
+## D332. The wood signs' plank noise: the page's `Math.random`, and the reference for text
+
+2026-10-03, WP 3.7. `woodSign` draws its plank noise from `Math.random`,
+which the scene export seeds (D20); every three.js object made before it
+draws four more (`generateUUID`), so the stream position at each sign
+depends on the whole page. `tools/parity/valley-node.mjs` runs Valley's
+plan and build under Node and counts the draws between the canvases the
+build creates: the store sign starts 252 draws after the valley sign, the
+mill sign 7,588. Fitting the export's sign pixels to the seeded stream with
+those offsets gives the valley sign's position, 11,880 (the best joint
+fit of the three signs); so `valley::SIGN_RANDOM_AT` is [11880, 12132,
+19468] and `page_random(n)` is mulberry32(0x5eed) after n draws. Away from
+the text, the Rust signs then equal the export's to 0.03–0.12 levels (RGB
+summed), 90–97 % of those pixels identical. A level built for play draws
+the same planks; nothing else in Valley reads `Math.random`.
+
+The export drew its text with the machine's fonts (Noto Sans fallbacks), so
+its sign pixels are not a like-for-like reference (mean differences 17–45
+levels). `tools/parity/valley-textures.mjs` captures the reference the way
+D154 does: `tools/parity/textures.html` with the bundled fonts and the
+kernel, the game's own `Valley.js` making the textures (`makeMaterials`,
+`buildMill` on a stub world, `buildCropsMesh` on one corn run), each canvas
+finding `Math.random` reset to its `SIGN_RANDOM_AT` position as it is
+created. `parity/golden/valley/textures.json` holds the summaries (Chrome
+version, fonts manifest hash, SHA-256 and block means). Against it: the
+valley sign 0.21/0.19/0.16, the store sign 0.24/0.31/0.26, the mill sign
+0.22/0.22/0.19, the neon "OPEN" 1.45/0.88/0.93 levels mean absolute
+difference (R/G/B; alpha 0), all under SPEC 5.7's 3. The test reads the
+fonts through the manifest, so a change of the bundled faces needs only a
+new capture.
+
+## D333. The corn strip is over the texture threshold
+
+2026-10-03, WP 3.7. The corn strip (`buildCropsMesh`'s 256×128 canvas,
+thin quadratic strokes on a transparent canvas, no text) comes out at
+4.56/4.95/2.04/4.20 levels mean absolute difference against Chrome, over
+the 3-level gate. The shapes match (the side-by-side sheet in
+`parity/report/valley/corn.png`); the difference is in the edges: Chrome's
+GPU canvas multisamples curved strokes, so its edge alpha is quantised (no
+pixel has alpha between 1 and 31) where mr_canvas gives exact area
+coverage (D151), and the unpremultiplied colour of a faint edge pixel that
+Chrome leaves transparent counts in full. Premultiplied, RGB is within
+(2.45/2.65/1.12), alpha is not (4.20); 1.4 % of pixels fall on the other
+side of the material's `alphaTest` 0.45. Reproducing Chrome's multisampled
+stroke coverage belongs to mr_canvas (WP 3.2's owner), so the test holds
+the corn strip to 6 levels until then and reports the numbers; every other
+Valley texture is within the gate.
+
+## D334. Valley's updater
+
+2026-10-03, WP 3.7. The closure `build()` pushes onto `world.updaters` is
+one `Animator`: `updateWheels(dt)` (each windpump wheel's angle advances
+by `dt × speed` and its instance matrix is `compose(position, Euler(0, yaw,
+a, 'YXZ'), 1)`, an `InstanceMatrix` edit per wheel; the waterwheel's
+`rotation.x -= dt × 0.6` and the sails' `rotation.z -= dt × 0.5` as
+`Transform` edits with the quaternion of their YXZ Euler), the creek's
+normal map offset (`TextureOffset`) and its emissive tint. The JS reads the
+sky's live `uHorizon` uniform, which `Sky.update` sets from the time of day
+at the player's distance; the animator holds the sky's `SkyParams` and its
+`?t=` override (taken at build time) and computes `frame_at(s).horizon`
+itself, the same value, since `UpdateCtx` carries `s` but not the sky.
+`tools/parity/valley-node.mjs` runs the JS updater over six frames (dt and
+s varied, the Sky updated before each as `World.update` does) and records
+every value it sets in `parity/golden/valley/animators.json`; the Rust
+animator reproduces all of them bit for bit, native and in wasm. CI checks
+that the golden regenerates.
+
 ## WP 2.4 decisions
 
 ## D290. The patched kinds are blocks of `three_material.wgsl`, picked by `Patch`
@@ -2312,3 +2422,4 @@ recapture the references, and mr_canvas's `tests/text.rs` needs Chrome's
 within the gate (largest mean absolute difference 0.87 of 255, gravel,
 which has no text; largest for text 0.53, the text-faces probe; Mountain's
 lettered canvases at most 0.74).
+
