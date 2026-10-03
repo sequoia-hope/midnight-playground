@@ -114,7 +114,7 @@ carries this game on the phones. Runs beside M1.
 | 2.4 | Terrain, asphalt and sea kinds, so one level looks right; thirty moving stand-in cars; points as quads | Sierra screenshots within threshold at five stations |
 | 2.5 | Pipeline warm-up; performance, memory and size measurement; ten reloads | Numbers recorded |
 | 2.6 | A WebGL2 build of the same client, selected by the page when WebGPU is missing or fails | Compiles in CI; loads on the iPhone |
-| 2.7 | Dev access from other devices: TLS option for the dev server, or confirm the Pages build is enough | Owner can open the Rust build on the phone |
+| 2.7 | Dev access from other devices: a `tailscale serve` https front for the registered port, recorded in the registry (SPEC 9.5) | Owner opens the working-tree build on the phone over the tailnet, with WebGPU |
 
 **Gate G1.** On the owner's iPhone and one Android phone, WebGPU build, high
 quality off, flying the Sierra and Coast exports along the route:
@@ -298,8 +298,8 @@ existing levels (SPEC 9).
 | 10.6 | Multiplayer simulation rules from 10.1; names and colours | Tests |
 | 10.7 | Lobby and results UI; join by address or QR code | Multi-tab e2e: four tabs complete a race |
 
-**Owner:** provide a certificate for the host (SPEC 9.5); a LAN race with
-real people.
+**Owner:** a race with real people, over the tailnet's https front first;
+decide how guests outside the tailnet join (SPEC 9.5).
 
 ---
 

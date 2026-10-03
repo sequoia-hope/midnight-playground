@@ -863,7 +863,7 @@ therefore has to start from an https page.
 
 | How players load the game | What it needs | Notes |
 |---|---|---|
-| From `mr-host` over https | A certificate browsers trust for the host's name. For the owner's machine a Tailscale certificate does this today (another project here already serves that way). For guests not on the tailnet, a public DNS name that resolves to the LAN address with a certificate from DNS validation. | First multiplayer release. Works with no internet once set up. Everything works, tilt included. |
+| From `mr-host` over https | A certificate browsers trust for the host's name. For devices on the owner's tailnet, `tailscale serve` in front of the host does this with no certificate handling in the game. For guests not on the tailnet, a public DNS name that resolves to the LAN address with a certificate from DNS validation. | First multiplayer release. Works with no internet once set up. Everything works, tilt included. |
 | From GitHub Pages, peers connect by WebRTC | A signalling service reachable over wss (a small public service) to introduce the peers. Game traffic then stays on the LAN. | Second release; the same transport as tab-hosting. The native host can join as a WebRTC peer. Needs internet for the introduction. |
 | From GitHub Pages, WebTransport to `mr-host` with a certificate hash in the join link | Host generates a short-lived self-signed certificate; Chrome 100+, Firefox 125+, Safari 26.4+ | Experimental. Safari's WebTransport is new and Rust server interop with it is still being fixed. Not planned; revisit after the second release. |
 
@@ -871,10 +871,20 @@ An https page cannot open `ws://` to a LAN address (mixed content), which is
 why "Pages plus a plain WebSocket host" is not on the list.
 
 The same rule affects development. The registered dev server speaks plain
-http, so the Rust build opens from `localhost` on the dev machine but not
-from a phone or another computer. For those, use the GitHub Pages build
-under `/next/` (as the JS game's tilt steering already requires), or give
-the dev server a certificate (roadmap M2).
+http, so by itself the Rust build opens from `localhost` on the dev machine
+but not from a phone or another computer. The dev machine is on a tailnet
+with https enabled, and other projects on it already use `tailscale serve`
+to put an https front on a local port. Do the same here: `tailscale serve`
+proxies `https://<machine>.<tailnet>.ts.net:<port>/` to the registered local
+port, WebSocket upgrades included. Any device on the tailnet then gets a
+secure context, so WebGPU and tilt work, with the working tree served live.
+This is the main way to test on phones; the GitHub Pages build under
+`/next/` is the way for devices off the tailnet. The https port is recorded
+in the registry (`web_url`) like the others, not written into the project.
+
+The same front covers tailnet multiplayer: `mr-host` can stay plain http
+behind `tailscale serve`, and its own `--tls-cert` option is only needed for
+guests outside the tailnet.
 
 ### 9.6 First release: race together
 
@@ -913,9 +923,9 @@ any time after M1:
   `assets/`. The registered server (`./serve.sh`, `proj up midnight-racer`)
   serves the repo root, so the build is at `/dist/next/` on the project's
   registered port. Do not start any other server, and never write a port
-  number into a script, config or default. That server speaks plain http,
-  so the build runs from `localhost` only; other devices use the Pages
-  build or a certificate (section 9.5).
+  number into a script, config or default. That server speaks plain http;
+  phones and other machines reach it through the tailnet's https front
+  (section 9.5).
 - **Profiles:** dev builds dependencies optimised. Release web builds use
   fat LTO, one codegen unit, `panic = "abort"`, size-optimised where a
   benchmark shows no frame-time cost, then `wasm-opt`.
