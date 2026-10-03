@@ -12,13 +12,17 @@ mr_math.workspace = true
 mr_track.workspace = true
 mr_levels.workspace = true
 
+[dev-dependencies]
+# The goldens (JSON numbers parsed exactly, D55) and the texture gate's
+# cached PNGs (tests/textures.rs).
+serde_json = { version = "1", features = ["float_roundtrip"] }
+png = "0.18"
+sha2 = "0.10"
+
 [features]
 # Native only: run independent build jobs on a thread pool (SPEC 5.5). rayon
 # joins here as an optional dependency when the first jobs exist.
 parallel = []
-
-[dev-dependencies]
-serde_json = { version = "1", features = ["float_roundtrip"] }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"

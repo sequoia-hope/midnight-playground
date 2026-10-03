@@ -3,4 +3,5 @@
 
 #![forbid(unsafe_code)]
 
+pub mod textures;
 pub mod three_geom;
