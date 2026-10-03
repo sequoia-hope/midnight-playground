@@ -1697,6 +1697,88 @@ kinds at both levels, the foliage material with each override) in
 `parity/golden/flora/flora.json`; `tests/flora.rs` is bit-identical,
 native and in wasm. CI checks that the golden regenerates.
 
+## D311. The shape of `mountain`; the parked cars behind a hook
+
+2026-10-03, WP 3.6. `Mountain.js` is `mr_worldgen::mountain`: `mod.rs`
+holds the module (`Mountain`, its `plan()` and `build()`, one method per
+JS `build*` in the JS order, the flag's and the waterfall's updaters as
+`Animator`s), `kit.rs` the helpers at the top of the JS file
+(`SurfaceSampler`, `instanced`, `placed`, `mergedMesh`, `bakeStatic`,
+`rockMaterial`), `canvas.rs` its canvas code (`SignAtlas`, `roundRect`,
+`diamond`, `panel`, and each picture it draws). It is registered with one
+line in `scenery::PORTED` (D330), so every level build, and the terrain
+and road gates, run its own `plan()`: the diner pull-out and the summit
+lookout register the same two flattens, bit for bit and in their place,
+as the recording. `this` during `build()` is a `Build` struct borrowing
+the track, the terrain, the road's `sideL`/`sideR` (D270), the graph and
+the texture cache. The JS's object items (`{ x, y, z, sx, ..., q?, rx?,
+col?, b? }`) are `Item` with `Option`s where the JS tests for
+`undefined`; `rx || 0` keeps its `||`. `SurfaceSampler`'s height cache
+keeps the JS semantics exactly (a `Map` keyed by the rounded 4 m cell,
+holding the height of the first point asked for in that cell: two
+points of one cell from different tiles can differ in the last bit, so
+the cache is part of the result), as a `BTreeMap` only looked up. The
+JS's `6.28` for a random yaw stays `6.28` (`TURN`), not 2π. three's
+shared `Sprite` geometry is `sprite_geometry()` (one geometry for the
+five spray sprites, so one mesh in the scene, as the export has it).
+The parked pickup and sedan come from `CarModel.js` (WP 4.1), which the
+JS imports optionally: `Mountain::parked_cars` is an optional
+`ParkedCars` hook (`buildVehicle(kind, { color, seed, lod: 'low' })` and
+`setHeadlights(0)`, returning the car's root), placed and turned as the
+JS does and merged by the ported `bake_static`. Until WP 4.1 sets it the
+two baked groups (15 meshes) are absent, as when the JS import fails.
+
+## D312. The L3 gate for zone 0, and what it found
+
+2026-10-03, WP 3.6. `tools/parity/mountain-scene.mjs` writes
+`parity/golden/mountain/sierra.json` from the cached Sierra export: the
+group `mountain` and its place under the root; per child its node (type,
+matrix, flags, render order, a sprite's centre), its mesh line (counts,
+SHA-256 of every attribute and of the index), its instances (count,
+SHA-256 of the matrices and colours, bounding sphere) and its material by
+index into a table (each material as `road.rs` describes it, those after
+the first of their class written as what differs from it, to keep the
+file at 120 KB); every canvas texture's size, SHA-256 and 8×8 block
+means; the export's camera and night factor. `tests/mountain.rs` builds
+Sierra through `level_jobs` (Mountain built, the other modules' plans
+replayed and their builds skipped), applies the night parameters at the
+export's night factor, runs the updaters once as the frozen export ran
+them (dt 0, the export's camera), and compares child by child. The golden
+is compiled in, so the gate runs in CI and wasm; with the cache it also
+compares every canvas texture's pixels and writes side-by-side sheets to
+`parity/report/mountain/`. Result: **every mesh and instance set
+identical**: 84 children (23,570 vertices, 54 instanced meshes holding
+29,048 instances: rocks, outcrops, scree, three tiers of conifers, grass,
+flowers, shrubs, snow poles, delineators, the pool's rim boulders; the
+snow, signs, gantry, banners, diner, lookout, flag, waterfall ribbons,
+pool, foam, sprays), every node, every attribute, index, instance matrix,
+colour and bounding sphere bit-identical, and all 34 materials equal
+parameter by parameter, uniforms and samplers included; the two baked
+cars left out (D311). No port fix to a shared module was needed. The
+canvas textures without lettering are within WP 3.2's threshold of the
+export (mean absolute difference at most 1.24 levels, the foam).
+
+## D313. Lettered textures are held to a capture with the bundled fonts
+
+2026-10-03, WP 3.6. The scene export draws text with the machine's fonts,
+so the sign atlas, the two start banners, the diner's neon and its pole
+sign differ from the port by 8 to 27 levels per channel against it, all
+of it in the glyphs (the sheets show the same layout, colours, shapes and
+shadows). `tools/parity/mountain-textures.mjs` captures them as WP 3.2's
+reference does: the game itself on Sierra (`?kernel=1&freeze=1&s=0`,
+`Math.random` seeded as the export seeds it) with every face of
+`assets/fonts/fonts.json` registered under the family the JS names before
+the page's scripts run, reading back each canvas the group `mountain`
+uses as both `map` and `emissiveMap` (six pictures, the snow poles' bands
+among them). It writes the RGBA to `parity/cache/<key>/mountain/` and a
+summary with the font manifest's hash to
+`parity/golden/mountain/textures.json`; `--check` captures twice. The
+test holds those six to it (block means always, every pixel with the
+cache) and reports them against the export too. Result with the WP 3.2
+fonts: mean absolute difference at most 0.66 levels (the neon's red, its
+shadow blur). When the bundled fonts change, rerun the tool: the gate
+then fails until the capture is refreshed, which is the point.
+
 ## WP 3.7 decisions
 
 ## D330. Scenery modules ported or replayed, each in its place
@@ -1725,3 +1807,300 @@ for bit and in order, and the road test the fence gaps, unpainted stretches
 and runout, so the goldens test each ported `plan()`. The goldens are
 compiled into the tests, so this runs in wasm too; CI checks that the split
 regenerates.
+
+## WP 2.4 decisions
+
+## D290. The patched kinds are blocks of `three_material.wgsl`, picked by `Patch`
+
+2026-10-03, WP 2.4. Terrain, Asphalt, Shoulder, Markings and Sea are not
+new Bevy materials: `ThreeMaterial` gains a `Patch` in its key (from the
+material's kind tag and `kind_opts`, `render::material::Patch::of`), which
+becomes a shader def (`PATCH_TERRAIN` with `TERRAIN_PACKED` and
+`MR_PHOTO`, `PATCH_ASPHALT`, `PATCH_SHOULDER`, `PATCH_MARKINGS`,
+`PATCH_SEA`), and each JS `onBeforeCompile` replacement is a block of the
+same shader at the place of the three chunk it replaces or follows
+(`map_fragment`, `color_fragment`, `roughnessmap_fragment`,
+`normal_fragment_maps`, `opaque_fragment`), with the JS names and comments.
+Their textures bind beside the plain ones: `detail` (5, 6: `tDetail`, the
+sea's `tFoam`), `aux` (7, 8: `tRock`, the sea's `normalMap`), `photo` and
+`loose` (13 to 16: Seaside's `tPhoto` and `tLoose`); the uniforms that sit
+on the material (`uPhotoBox`, `normalScale`, the normal map's transform)
+are new `ThreeParams` rows (`kind0`, `kind1`, `normal_t0`, `normal_t1`;
+`patch` is a reserved word in WGSL). The sea's normal map brings three's
+tangent-space normal mapping without tangents (`getTangentFrame` from
+derivatives, `USE_NORMALMAP`), which the plain kinds could use as well; no
+plain material in the exports has a normal map. GLSL's `dFdy` runs up the
+window and WGSL's `dpdy` down the framebuffer, so `getTangentFrame` takes
+`-dpdy` (its frame changes sign with the flip; with `dpdy` as it is the
+ripples were mirrored and the sea test scene was at 0.88 ΔE00 instead of
+0.07). The terrain's bump (`mrPerturb`) and the geometry-roughness term are
+unchanged by the flip and use `dpdy` as it is. The unpacked terrain path
+(the `map` sampled from above, no `tDetail`) is ported too, though the game
+always passes the packed texture. The material test scenes' `all` (D175)
+now includes these five kinds, so `cargo xtask parity materials` gates
+them with WP 2.3's.
+
+Kept as the JS has it: the terrain's packed path does not sample `map`
+(the patch replaces `map_fragment` entirely), and `color_fragment` becomes
+`diffuseColor.rgb *= vc` (the photo-blended colour); the sea's
+`envMapIntensity` 1.3 has no effect, since three uses
+`scene.environmentIntensity` for a material without its own `envMap`.
+
+WGSL wants texture samples with implicit derivatives, and `dpdx`/`fwidth`,
+in uniform control flow. Where a patch samples inside a branch (the
+terrain's close grain `dC`, the rock faces, the varnish, the photo and its
+mask), the sample is taken unconditionally and the branch only chooses;
+the derivative bump (`mrPerturb`) takes its derivatives before its early
+return becomes an `if`. The value is the same wherever a 2×2 quad takes
+one side of the branch, which the JS comments say the conditions ensure.
+
+Eight material textures plus the globals and environment: WebGL2 (WP 2.7)
+allows 16 samplers per stage, including Bevy's view bindings; if the
+WebGL2 build runs out, `photo` and `loose` can share slots with `map` and
+`emissive_map`, which the packed terrain does not read.
+
+## D291. A patch's own vertex attribute rides at location 8
+
+2026-10-03, WP 2.4. `aSurf` (terrain), `aLane` (asphalt), `aDepth` (sea),
+`gsize` (glow points) and `ph` (flicker points) are carried as one vec4
+attribute, `convert::ATTRIBUTE_EXTRA`, at shader location 8 (the attribute
+missing from a geometry reads as zeros, three's default attribute value).
+`ThreeMaterial::specialize` rebuilds the vertex buffer layout with Bevy's
+standard attributes at Bevy's locations plus this one when the mesh has it,
+and sets `VERTEX_EXTRA`. Bevy's own prepass (the shadow map) builds its
+layout from the standard attributes and ignores it. Which attribute a mesh
+carries follows from its material (`convert::extra_attribute`), so it is
+part of the mesh cache key.
+
+## D292. The gate: the base export against the game with only terrain, road and sky drawn
+
+2026-10-03, WP 2.4. The JS screenshot stations (D17) are of the whole
+level, and `<level>.base.mrscene` holds only the terrain, the road group and
+the sky. `tools/parity/base-shots.mjs` takes the same stations from the same
+page (kernel on, frozen, seeded, fresh Chrome, 1280 × 800, high quality)
+after setting `visible = false` on every object of the scene other than the
+terrain group, `world.road.group` and the sky's dome, sun, target and
+hemisphere light, which is what the base export walks; three skips
+invisible objects in the main pass and the shadow map. The game is not
+changed. The shots go to `parity/cache/<key>/shots/<run>.base/`. `cargo
+xtask parity stations --base` runs both sides (the native client draws
+`<level>.base.mrscene` with `--scene`) and fails if a gate station is over
+SPEC 12's limits. The five gate stations were named before any comparison:
+`attract`, `02000-chase`, `04500-high`, `07000-chase` and `09500-high`
+(the pass in daylight, the valley from above, the interstate at dusk, the
+city at night), `stations::BASE_GATE`. `--rust-run` names the Rust output
+directory (default `rust`) so parallel runs need not share one.
+
+## D293. The updaters' uniforms are scene-wide state
+
+2026-10-03, WP 2.4. The JS moves some patch uniforms every frame from
+`world.updaters`: the asphalt's `uWet` (`smoothstep(0.55, 1, night) ×
+0.85`, set even when frozen), the sea's `uTime`, `uOff2` and normal-map
+offset, the desert's `glowTime`. There is one road, one sea and one flicker
+clock per level, so they are `render::lighting::Anim` in `Lighting` and two
+more texels of the globals row (`G_ANIM`, `G_ANIM2`), advanced in
+`update_sky` after `Sky.update` with the world's dt (0 under
+`?freeze=1`); no material is touched per frame. The sea's normal-map scroll
+is added to the uv transform of the export's offset. The material test
+scenes take the values the export captured. Two colour updaters are folded
+into the shaders the same way: GlowPoints' `color = 1.6 ×
+smoothstep(0.2, 0.7, night)` reads the sky's night factor from the globals;
+FlickerPoints' and the City's blinking light colours stay as exported until
+the scenery's animators exist (M3). The pixel ratio for point sizes rides
+there too.
+
+## D294. Points are quads expanded at load, sized in the vertex shader
+
+2026-10-03, WP 2.4. SPEC 6.2 says "instanced camera-facing quads". Bevy's
+material pipeline draws one mesh per entity and has no per-instance vertex
+buffers short of a custom draw command, so each `Points` geometry becomes a
+mesh of four vertices per drawn point (its position, colour and patch
+attribute repeated, the corner in the extra attribute's z and w) and two
+triangles, one draw per Points object as in three; the cost is four times
+the points' vertices (Sierra about 4,400 points, Cruise about 13,000), not
+worth a custom pipeline. The vertex shader ports `points_vert`: `size ×
+pixelRatio`, attenuated by `height / 2 / -z` (CSS height) with
+`sizeAttenuation`, GlowPoints' `× gsize`, minimum pixel size `uMinPx`,
+dimming `sqrt(raw / size)` and gentler fog, FlickerPoints' flicker or blink
+(its constants rounded to three decimals as the JS writes them into the
+GLSL); clamps to the GL point range (1 to 2047.9375 in Chrome on the dev
+machine); drops a point whose centre is outside the clip volume (GL ES 3.0
+§2.13.1) and pushes the corners out in clip space. The uv is
+`gl_PointCoord` with y flipped, through the map's transform, as
+`map_particle_fragment` samples it. The pixel ratio is the window's scale
+factor (rendered pixels per CSS pixel), so points keep their CSS size
+whatever resolution the client renders at. Plain Points, GlowPoints and
+FlickerPoints are drawn; TrafficStreams (a `ShaderMaterial` on points)
+stays hidden until its kind is ported (M3).
+
+## D295. Stand-in cars from the simulation
+
+2026-10-03, WP 2.4. The roadmap's thirty moving stand-ins are the cars of
+a real race: `mr_sim`'s `LevelRuntime` and `SimState` for the level
+(sports car, seed 1, no pursuit), stepped at 1/120 s in real time (at most
+30 ticks a frame), the player on the autopilot. Every slot is drawn: the
+player, the rivals and the whole traffic pool (Sierra: 50 slots, 1 + 5 +
+44, of which 14 are the oncoming cars on the far carriageway), traffic
+not on the road hidden (Traffic's own limit decides how many are out). Each is a box of its kind's dimensions in its
+colour on the ground under it, turned to its yaw, casting shadows, with a
+plain standard material (roughness 0.45, metalness 0.3). They are on by
+default for a level, off with `?cars=0`, with `freeze=1`, and for the
+material scenes and the stations, whose JS side has no race. The cars
+follow the race, not the camera: in the fly camera they are seen near
+their part of the route.
+
+## D296. A patch uniform's texture is found in the uniforms too
+
+2026-10-03, WP 2.4. `three_material` looked textures up only among the
+material's own parameters, so a patch's textures (`tDetail`, `tRock`,
+`tFoam`, which the export keeps under `uniforms`, D23) came out missing and
+bound Bevy's white fallback. It now uses `MaterialDesc::texture`, which
+looks in both.
+
+
+## WP 5.3–5.5 decisions
+
+## D250. `setTimeout` is a task queue the driver runs; promises settle in `settle()`
+
+2026-10-03, WP 5.3. `Audio.js` and `Music.js` use `setTimeout` for the gate
+tails, the music's 25 ms scheduler, its track-change and retire callbacks,
+and the radio's 700 ms wait. `mr_audio::timers` is the reference's
+`VirtualTimers`: a timer set at time `now` for `ms` is due at
+`now + max(0, ms) / 1000`, due timers run in due order (ties in the order
+set), and each callback is a `Task` that `GameAudio` runs. The driver says
+when time has passed: the call-log playback runs the timers due by each
+call's tick at their due times (`run_due_timers`), and a live client calls
+`poll()` each frame, which runs the timers due by the audio clock. (A
+browser's timers run on wall time; on the audio clock they also stand
+still while the context is suspended, which changes nothing audible.) The
+JS's promise chains (`resume`, decoding, the radio's fetches and its race
+against the 700 ms) settle in `GameAudio::settle()`, which the driver calls
+after each call and each timer, as the reference settles microtasks.
+
+## D251. Music and the radio voice are ported in full, not stubbed
+
+2026-10-03, WP 5.3–5.5. An exact call-log match needs the whole sequencer:
+both drives play Midnight Run, so most of their 278k and 474k Web Audio
+calls are notes and drum hits, and the risers' noise draws from the shared
+`Math.random`. Stubbing music would leave the gate untestable. So
+`Music.js` and `tracks.js` are ported faithfully (`mr_audio::music`,
+`mr_audio::tracks`), as is `RadioVoice.js` with `clipId`
+(`mr_audio::radio`, fetching through a `Fetch` trait). The sirens, radio
+bus and burble live in `Audio.js` and come with `GameAudio`. Of WP 5.6's
+gates, `test/unit/music.test.js` is ported (`tests/music.rs`: notes, song
+data, every patch's oscillators, every song played start to finish in
+strict mode, the playlist); its "every part sounds" check reads a trace
+the sequencer keeps only when a test asks (`Music::trace_parts`). The
+per-song L4 renders and WP 5.7's radio tests are left to those packages.
+The coordinator approved the scope.
+
+## D252. Song data as structs and ordered slices
+
+2026-10-03, WP 5.3. `tracks.js`'s objects become structs with an `Option`
+per optional field (`None` is `undefined`; JS truthiness tests such as
+`if (P.fenv)` treat 0 and NaN as missing). Everything the JS iterates with
+`Object.entries` (progressions, drum lanes, parts, a section's parts, kit
+overrides) is a slice of pairs in source order, because the order of
+iteration is the order of Web Audio calls. A parsed chord carries an `id`
+for the JS object identity the voicing code compares.
+
+## D253. Steered offline renders on the native backend
+
+2026-10-03, WP 5.4. The reference renders steer an `OfflineAudioContext`
+every 384 frames through `suspend(t)` (D45). The facade gains
+`AudioContext::start_rendering_steered(frame, control)`; a backend hands
+over its offline context (`Backend::take_offline`) so the facade is free
+while it renders, and the control function's calls go through the facade as
+usual. On web-audio-api the native backend makes nodes from a clone of the
+context's base (so the offline context itself can render), schedules a
+`suspend_sync` per frame half a quantum early (the crate rounds a suspend
+time up to a quantum; `currentTime` there is exactly `k·frame/sampleRate`,
+as in Chrome), and reaches the non-`Send` control function through a
+thread-local, since the crate runs the suspend callbacks on the rendering
+thread. `examples/render_scenarios.rs` renders the reference's scenario
+table this way.
+
+## D254. web-audio-api 1.7.0's `setTargetAtTime` bug, worked around
+
+2026-10-03, WP 5.4. The crate evaluates a target curve that becomes current
+before its start time (after a ramp, or after a target that a later event
+ended) at that earlier time, where `e^(-(t - t0)/τ)` explodes: a linear
+ramp to 0.1 followed by a later `setTargetAtTime` held at 102.6. The native
+backend keeps each param's timeline as the facade sends it (the null
+backend's `Timeline`, pruned to the present so it stays short) and puts a
+`setValueAtTime(v, t)` with the value the param holds at `t` in front of
+every `setTargetAtTime(_, t, _)`. The curve then starts where the spec
+says.
+
+## D255. `GameAudio`'s shape
+
+2026-10-03, WP 5.3. `mr_audio::game::GameAudio` keeps `Audio.js`'s methods
+and order of calls; the graph is in `game/build.rs`, the per-frame steering
+in `game/steer.rs`, and the one-shots and pursuit sounds in
+`game/shots.rs`, in place of SPEC 7.3's suggested `graph`, `gate`,
+`voices` and `oneshots`. `update`'s `s` and the setters' items are structs
+of `Option`s (`CarState`, `Rival`, `SirenUnit`, `Volume`) so the JS's
+`??`, `||` and `!== undefined` read the same. What the JS takes from the
+browser (`window.AudioContext`, `navigator.audioSession`, `fetch`,
+`Math.random`) is a `Platform`; `session::ask_for_playback` takes the audio
+session behind a small trait, with the browser's under the `web` feature.
+`init` is synchronous, as the JS's is (its async body never awaits).
+
+## D256. Chrome's compressor kernel on the native backend
+
+2026-10-03, WP 5.4. The crate's DynamicsCompressor follows the spec's
+outline of Chrome's but lets transients through several dB hotter (an
+impact peaked at 0.52 against Chrome's 0.35) and delays by 384 frames
+instead of 288. Every SFX and music path goes through two of them, so no
+one-shot could meet SPEC 7.5's 1.5 dB. `wa/compressor.rs` ports Blink's
+`DynamicsCompressor` (adaptive release, knee, pre-delay, makeup gain) to
+a web-audio-api worklet processor, used for every compressor; with it a
+whole impact render agrees with Chrome's to 7e-6 per sample.
+
+## D257. Chrome's oscillator and buffer-source rules on the native backend
+
+2026-10-03, WP 5.4–5.5. The crate draws square and sawtooth with polyBLEP
+at full scale (Chrome's are 1.4 dB quieter: band-limited and normalised to
+the Gibbs peak), triangles and periodic waves without band-limiting (the
+electric car's triangles aliased down to 800 Hz), and ignores a built-in
+type set after a periodic wave (an electric rival kept the engine wave).
+`wa/oscillator.rs` ports Blink's `PeriodicWaveHandler` (36 band-limited
+tables, three per octave, crossfaded by pitch) and `OscillatorHandler`
+(2/3/5-point interpolation, start and end frames rounded up) as a worklet
+processor used for every oscillator. That also brings a Chrome quirk the
+reference hears: in the quantum an oscillator starts in, its a-rate params
+are read from the quantum's start, so a one-shot that automates from its
+start time (`setValueAtTime(147, t); start(t)`) plays its earlier value
+(440 Hz) for part of a quantum. Buffer sources stay the crate's, with two
+Chrome rules: a start offset is rounded to the nearest frame (Chrome
+starts on a whole frame; the crate interpolated, 0.7 dB off on noise), and
+a stop lands on Chrome's last frame.
+
+## D258. Only what the destination pulls on runs
+
+2026-10-03, WP 5.4. Chrome renders only nodes the destination pulls on: an
+oscillator a gate cuts off stops, phase and all, until it is connected
+again (the damage knock started 8 ms late in Chrome, because its gate opens
+a frame after the engine's). The crate runs everything. The native backend
+tracks which nodes reach the destination (links by target, a param link
+counting for its node) and freezes the Chrome oscillators that do not. An
+oscillator the facade lets go of before anything pulls on it (an FM
+modulator is wired up before its carrier) is held until it is pulled, so
+it can be told to run. Buffer sources are not frozen: for the noise beds
+that changes only which noise plays, not its level.
+
+## D259. The L4 comparison and where it stands
+
+2026-10-03, WP 5.4–5.5. `node tools/parity/audio-bands.mjs` renders the 104
+non-song scenarios of `renders.json` on the native backend
+(`examples/render_scenarios.rs`), analyses them with `lib/bands.mjs` and
+compares with Chrome's band levels at 1.5 dB, ignoring bands below -90 dB
+in both; `tools/parity/audio-render-js.mjs` saves Chrome's renders of
+chosen scenarios as WAVs for looking at a difference. 102 of 104 pass (the
+median worst band per scenario is under 0.2 dB). The two left are single
+bands 40 dB or more under the signal: `engine-rally-6500-1` at 25 Hz
+(-73.8 dB against -71.9) and `shot-radio-burble` at 126–316 Hz below the
+radio bus's 340 Hz high-passes (-73.8 against -80.2 at 158 Hz). The
+remaining native differences are the crate's own buffer sources (their
+sub-sample start position) and WaveShaper oversampling filters; every
+other node type was checked against Chrome sample by sample.
