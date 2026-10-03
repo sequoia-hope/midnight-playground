@@ -183,6 +183,15 @@ pub fn layout<'a>(book: &'a FontBook, spec: &FontSpec, text: &str) -> Layout<'a>
     if list.is_empty() {
         return out;
     }
+    // Then the book's fallback families, for characters none of the above
+    // has (a browser would go to a system font; D372).
+    for fam in &book.fallback {
+        if let Some(f) = book.select(fam, spec.weight, spec.italic)
+            && !list.iter().any(|g| std::ptr::eq(*g, f))
+        {
+            list.push(f);
+        }
+    }
     for f in &list {
         out.faces.push(UsedFace {
             face: f,
