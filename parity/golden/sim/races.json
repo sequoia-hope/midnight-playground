@@ -1,0 +1,464 @@
+{
+ "recordings": {
+  "sierra-race": {
+   "query": "parity=1&seed=1&ticks=16&level=sierra&autostart=sports&autodrive=1&pursuit=0",
+   "ticks": 24626,
+   "finalHash": "46dfa787cc7899b9",
+   "results": [
+    {
+     "place": 1,
+     "name": "Razor",
+     "time": 189.28333333332552,
+     "estimated": false
+    },
+    {
+     "place": 2,
+     "name": "Kaito",
+     "time": 193.69999999998817,
+     "estimated": false
+    },
+    {
+     "place": 3,
+     "name": "Nina",
+     "time": 194.24999999998766,
+     "estimated": false
+    },
+    {
+     "place": 4,
+     "name": "Duke",
+     "time": 194.44999999998748,
+     "estimated": false
+    },
+    {
+     "place": 5,
+     "name": "Vex",
+     "time": 195.4583333333199,
+     "estimated": false
+    },
+    {
+     "place": 6,
+     "name": "You",
+     "time": 198.02499999998423,
+     "estimated": false
+    }
+   ]
+  },
+  "coast-race": {
+   "query": "parity=1&seed=1&ticks=16&level=coast&autostart=muscle&autodrive=1&pursuit=0",
+   "ticks": 18184,
+   "finalHash": "717643249199a0dd",
+   "results": [
+    {
+     "place": 1,
+     "name": "Marlowe",
+     "time": 133.8833333333759,
+     "estimated": false
+    },
+    {
+     "place": 2,
+     "name": "Kaito",
+     "time": 134.80833333337506,
+     "estimated": false
+    },
+    {
+     "place": 3,
+     "name": "Vex",
+     "time": 137.07500000003967,
+     "estimated": false
+    },
+    {
+     "place": 4,
+     "name": "Razor",
+     "time": 137.90000000003892,
+     "estimated": false
+    },
+    {
+     "place": 5,
+     "name": "Nina",
+     "time": 138.2500000000386,
+     "estimated": false
+    },
+    {
+     "place": 6,
+     "name": "You",
+     "time": 144.34166666669972,
+     "estimated": false
+    }
+   ]
+  },
+  "streets-race": {
+   "query": "parity=1&seed=1&ticks=16&level=streets&autostart=super&autodrive=1&pursuit=0",
+   "ticks": 21003,
+   "finalHash": "70c7842cac86e2b7",
+   "results": [
+    {
+     "place": 1,
+     "name": "Razor",
+     "time": 149.1250000000287,
+     "estimated": false
+    },
+    {
+     "place": 2,
+     "name": "Kaito",
+     "time": 151.1583333333602,
+     "estimated": false
+    },
+    {
+     "place": 3,
+     "name": "Vex",
+     "time": 157.83333333335412,
+     "estimated": false
+    },
+    {
+     "place": 4,
+     "name": "Rook",
+     "time": 157.93333333335403,
+     "estimated": false
+    },
+    {
+     "place": 5,
+     "name": "Juno",
+     "time": 158.0250000000206,
+     "estimated": false
+    },
+    {
+     "place": 6,
+     "name": "You",
+     "time": 167.83333333334502,
+     "estimated": false
+    }
+   ]
+  },
+  "desert-race": {
+   "query": "parity=1&seed=1&ticks=16&level=desert&autostart=rally&autodrive=1&pursuit=0",
+   "ticks": 16659,
+   "finalHash": "b2fd7802b198b4b3",
+   "results": [
+    {
+     "place": 1,
+     "name": "Marlowe",
+     "time": 127.69166666671435,
+     "estimated": false
+    },
+    {
+     "place": 2,
+     "name": "Kaito",
+     "time": 128.2166666667144,
+     "estimated": false
+    },
+    {
+     "place": 3,
+     "name": "Rook",
+     "time": 129.5500000000465,
+     "estimated": false
+    },
+    {
+     "place": 4,
+     "name": "You",
+     "time": 131.63333333337795,
+     "estimated": false
+    },
+    {
+     "place": 5,
+     "name": "Razor",
+     "time": 131.8750000000444,
+     "estimated": false
+    },
+    {
+     "place": 6,
+     "name": "Duke",
+     "time": 132.27500000004403,
+     "estimated": false
+    }
+   ]
+  },
+  "seaside-race": {
+   "query": "parity=1&seed=1&ticks=16&level=seaside&autostart=electric&autodrive=1&pursuit=0",
+   "ticks": 31143,
+   "finalHash": "dcd8573b7970912e",
+   "results": [
+    {
+     "place": 1,
+     "name": "You",
+     "time": 252.33333333326817,
+     "estimated": false
+    },
+    {
+     "place": 2,
+     "name": "Razor",
+     "time": 259.56735024267005,
+     "estimated": true
+    },
+    {
+     "place": 3,
+     "name": "Kaito",
+     "time": 260.14660391813226,
+     "estimated": true
+    },
+    {
+     "place": 4,
+     "name": "Marlowe",
+     "time": 260.26652543447796,
+     "estimated": true
+    },
+    {
+     "place": 5,
+     "name": "Rook",
+     "time": 261.4076780973782,
+     "estimated": true
+    },
+    {
+     "place": 6,
+     "name": "Vex",
+     "time": 261.8068147767627,
+     "estimated": true
+    }
+   ],
+   "laps": {
+    "times": [
+     85.87500000001441,
+     83.22499999999613,
+     83.23333333325763
+    ],
+    "best": 83.22499999999613
+   }
+  },
+  "cruise-3min": {
+   "query": "parity=1&seed=1&ticks=16&level=cruise&autostart=sports&autodrive=1&pursuit=0",
+   "ticks": 21600,
+   "finalHash": "9543e934e9f51175",
+   "results": {
+    "cruise": true,
+    "score": 33872,
+    "dist": 9277.185370479932,
+    "top": 64.65555030932593,
+    "time": 176.0083333333376,
+    "nearMisses": 22
+   }
+  },
+  "sierra-pursuit": {
+   "query": "parity=1&seed=1&ticks=16&level=sierra&autostart=sports&autodrive=1&pursuit=1&heat=1",
+   "ticks": 28241,
+   "finalHash": "68688e1152f5981c",
+   "results": [
+    {
+     "place": 1,
+     "name": "Razor",
+     "time": 187.84999999999349,
+     "estimated": false
+    },
+    {
+     "place": 2,
+     "name": "Kaito",
+     "time": 194.233333333321,
+     "estimated": false
+    },
+    {
+     "place": 3,
+     "name": "Vex",
+     "time": 196.92499999998523,
+     "estimated": false
+    },
+    {
+     "place": 4,
+     "name": "Nina",
+     "time": 201.29999999998125,
+     "estimated": false
+    },
+    {
+     "place": 5,
+     "name": "Duke",
+     "time": 205.70833333331058,
+     "estimated": false
+    },
+    {
+     "place": 6,
+     "name": "You",
+     "time": 228.14999999995683,
+     "estimated": false
+    }
+   ]
+  },
+  "coast-pursuit": {
+   "query": "parity=1&seed=1&ticks=16&level=coast&autostart=rally&autodrive=1&pursuit=1&heat=1",
+   "ticks": 21487,
+   "finalHash": "31e6bc4b97455056",
+   "results": [
+    {
+     "place": 1,
+     "name": "Marlowe",
+     "time": 132.95000000004342,
+     "estimated": false
+    },
+    {
+     "place": 2,
+     "name": "Razor",
+     "time": 133.4333333333763,
+     "estimated": false
+    },
+    {
+     "place": 3,
+     "name": "Kaito",
+     "time": 135.07500000004148,
+     "estimated": false
+    },
+    {
+     "place": 4,
+     "name": "Nina",
+     "time": 140.52500000003653,
+     "estimated": false
+    },
+    {
+     "place": 5,
+     "name": "You",
+     "time": 171.8666666666747,
+     "estimated": false
+    },
+    {
+     "place": 6,
+     "name": "Vex",
+     "time": 179.53455186289133,
+     "estimated": true
+    }
+   ]
+  },
+  "streets-pursuit": {
+   "query": "parity=1&seed=1&ticks=16&level=streets&autostart=muscle&autodrive=1&pursuit=1&heat=1",
+   "ticks": 21268,
+   "finalHash": "802b3628534dcaee",
+   "results": [
+    {
+     "place": 1,
+     "name": "Razor",
+     "time": 153.31666666669156,
+     "estimated": false
+    },
+    {
+     "place": 2,
+     "name": "Vex",
+     "time": 162.1333333333502,
+     "estimated": false
+    },
+    {
+     "place": 3,
+     "name": "Juno",
+     "time": 163.05000000001604,
+     "estimated": false
+    },
+    {
+     "place": 4,
+     "name": "Kaito",
+     "time": 164.05000000001513,
+     "estimated": false
+    },
+    {
+     "place": 5,
+     "name": "Rook",
+     "time": 165.8500000000135,
+     "estimated": false
+    },
+    {
+     "place": 6,
+     "name": "You",
+     "time": 170.04166666667635,
+     "estimated": false
+    }
+   ]
+  },
+  "desert-pursuit": {
+   "query": "parity=1&seed=1&ticks=16&level=desert&autostart=electric&autodrive=1&pursuit=1&heat=1",
+   "ticks": 18089,
+   "finalHash": "6ac68bb3d379fd16",
+   "results": [
+    {
+     "place": 1,
+     "name": "Rook",
+     "time": 140.08333333337026,
+     "estimated": false
+    },
+    {
+     "place": 2,
+     "name": "You",
+     "time": 143.55000000003378,
+     "estimated": false
+    },
+    {
+     "place": 3,
+     "name": "Marlowe",
+     "time": 144.60000000003282,
+     "estimated": false
+    },
+    {
+     "place": 4,
+     "name": "Kaito",
+     "time": 147.81116631023653,
+     "estimated": true
+    },
+    {
+     "place": 5,
+     "name": "Duke",
+     "time": 148.02874027506175,
+     "estimated": true
+    },
+    {
+     "place": 6,
+     "name": "Razor",
+     "time": 160.73924855373156,
+     "estimated": true
+    }
+   ],
+   "pursuit": {
+    "busts": 0,
+    "wrecks": 1,
+    "takedowns": 5,
+    "penalty": 8,
+    "heat": 3
+   }
+  },
+  "sierra-pursuit-heat5": {
+   "query": "parity=1&seed=1&ticks=16&level=sierra&autostart=super&autodrive=1&pursuit=1&heat=5",
+   "ticks": 28059,
+   "finalHash": "c7d76ee7bc2a19e4",
+   "results": [
+    {
+     "place": 1,
+     "name": "Razor",
+     "time": 199.74166666664934,
+     "estimated": false
+    },
+    {
+     "place": 2,
+     "name": "Duke",
+     "time": 204.14999999997866,
+     "estimated": false
+    },
+    {
+     "place": 3,
+     "name": "Nina",
+     "time": 206.22499999997677,
+     "estimated": false
+    },
+    {
+     "place": 4,
+     "name": "Vex",
+     "time": 217.20833333330012,
+     "estimated": false
+    },
+    {
+     "place": 5,
+     "name": "Kaito",
+     "time": 220.2083333332974,
+     "estimated": false
+    },
+    {
+     "place": 6,
+     "name": "You",
+     "time": 226.63333333329155,
+     "estimated": false
+    }
+   ]
+  }
+ },
+ "format": "parity/trace-format.md",
+ "jsTree": "dad9513b74f7c5cc"
+}

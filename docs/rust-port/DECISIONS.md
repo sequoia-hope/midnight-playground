@@ -112,3 +112,62 @@ divides the same way, so both sides integrate identical values. It applies
 to the input from the player's devices or the autopilot, after the
 autopilot, not to the controls the race itself produces (the cool-down
 driver after the finish, the penalty hold).
+
+## D12. The trace record carries the input and spells out "missing"
+
+2026-10-03, WP 0.4. `parity/trace-format.md` is the definition. Beyond SPEC
+4.6's list it carries each tick's quantised input (so a Rust autopilot that
+drifts from the JS one shows up as an input difference, not a physics one),
+the counts of every pool up front, the rule state Race keeps in WeakMaps
+(each traffic car's last gap to the player and its near-miss mark,
+PursuitView's last damaging hit per body), the parking targets as data, and
+the four streams' draw counts. A value JS can leave `undefined` or `null` is
+written either as an explicit "missing" NaN payload (`0x7FF8_0000_0000_0D1E`)
+where the difference matters, or normalised to the value it is read as
+(e.g. a police car's `avoid` before its first swerve is 0); the format says
+which for each field.
+
+## D13. Small inert hooks for the trace
+
+2026-10-03, WP 0.4. To read state that JS keeps in closures, without
+changing behaviour: `Race.parkSpot` returns its parameters beside its two
+closures (`kind`, `stopAt`, `laneLat`, `s0`, `lat0`); `Traffic` takes an
+optional `rng` (default `mulberry32(seed)` as before), so the reference run
+can pass the same seed-99 stream with a draw counter; the `?autodrive=1`
+autopilot moved, unchanged, from `main.js` to `src/game/autopilot.js`, so the
+Node oracle drives with the same code. `?fuzz=N` swaps the autopilot for
+`fuzzer(N)` (`src/parity/sim.js`), a seeded random-controls generator the
+Rust fuzz test replays.
+
+## D14. Which races are recorded
+
+2026-10-03, WP 0.4. `tools/parity/sim-race.mjs`: every level in race mode,
+each with a different car so all five specs run (Sierra sports, Coast
+muscle, Streets super, Desert rally, Seaside electric); the cruise loop for
+three minutes; Hot Pursuit from heat 1 on the four levels with police; and
+one extra Sierra pursuit from heat 5, which is where roadblocks, spikes and
+boxing happen. Seed 1. Each runs until the tick Race reports its results.
+The files (about 1.5 to 2 MB each) live in the cache; their summaries
+(tick count, final hash, results) are committed in
+`parity/golden/sim/races.json`.
+
+## D15. Module scenarios run without Race's rules, gzipped and committed
+
+2026-10-03, WP 0.4. `Race` needs a DOM, so the Node scenarios
+(`parity/scenarios.md`) step the modules in Race's order but leave out
+Race's own rules and PursuitView's; they keep the crash flag and the
+pursuit's hit rules with the PIT yaw kick, which the traffic and police
+scenarios need to mean anything. 35 scenarios, 3.3 MB gzipped, committed.
+Their metadata holds only id, seed and tick count, so a documentation edit
+or an unrelated JS change does not change the files.
+
+## D16. Fuzz and speed baselines
+
+2026-10-03, WP 0.4. The fuzz baseline runs in the real game (so Race's
+rules are in it, as they will be in the Rust `step()`), three minutes per
+level in race mode and Hot Pursuit (heat 3), `fuzzer(1)`; excursion is
+`max(lat + halfW - wallR, -lat + halfW - wallL)` per body per tick, by class
+(`parity/golden/sim/fuzz.json`). The speed baseline is the Node full Sierra
+field without Race's rules or the trace, with V8's Math and with the kernel
+(`parity/golden/sim/bench.json`); it is machine-dependent, so the Rust
+benchmark is compared on the same machine.

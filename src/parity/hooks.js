@@ -8,13 +8,15 @@
 //   ?quant=1    the player's input is quantised as the Rust InputFrame is
 //   ?seed=N     rivals, police and the pursuit draw from seeded streams
 //   ?parity=1   all of the above (seed 1 unless ?seed is given)
+//   ?fuzz=N     with fixeddt: random controls from fuzzer(N) instead of the
+//               autopilot (the fuzz baseline; src/parity/sim.js)
 //   ?freeze=1   scenery animation holds still (world.update gets dt 0), for
 //               scene exports and screenshots; not part of parity=1
 //
 // Tools reach the state through window.__parity (the `parity` object).
 
 import { KERNEL_WASM, installKernel } from './kernel.js';
-import { simStreams, quantiseInput } from './sim.js';
+import { simStreams, quantiseInput, fuzzer } from './sim.js';
 
 const params = new URLSearchParams(location.search);
 const all = params.get('parity') === '1';
@@ -27,6 +29,9 @@ export const parity = {
   quantise: on('quant') ? quantiseInput : null,
   seed: params.has('seed') ? Number(params.get('seed')) : all ? 1 : null,
   freeze: params.get('freeze') === '1',
+  // Built per race (see streamsForRace), like the streams.
+  fuzz: params.has('fuzz') ? Number(params.get('fuzz')) : null,
+  fuzzInput: null,
   // Built per race from the seed (see streamsForRace).
   rngs: null,
   // A recorder sets this: called after every race.update in fixed-dt mode,
@@ -39,6 +44,7 @@ export const parity = {
 // Fresh streams for each race, so a restart replays the same draws.
 export function streamsForRace() {
   parity.rngs = parity.seed === null ? null : simStreams(parity.seed);
+  parity.fuzzInput = parity.fuzz === null ? null : fuzzer(parity.fuzz);
   return parity.rngs;
 }
 
@@ -56,4 +62,4 @@ if (parity.kernel) {
   installKernel(bytes);
 }
 
-if (parity.kernel || parity.fixed || parity.quantise || parity.seed !== null || parity.freeze) window.__parity = parity;
+if (parity.kernel || parity.fixed || parity.quantise || parity.seed !== null || parity.freeze || parity.fuzz !== null) window.__parity = parity;

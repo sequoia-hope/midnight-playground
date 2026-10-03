@@ -36,12 +36,14 @@ export class TrafficCar extends KinematicCar {
 }
 
 export class Traffic {
-  constructor(track, scene, buildVehicle, { level, world, count = 22, seed = 99 } = {}) {
+  // rng: the Rust port's reference run passes the same seed-99 stream with
+  // a draw counter (src/parity/sim.js); left out, it is made here.
+  constructor(track, scene, buildVehicle, { level, world, count = 22, seed = 99, rng = null } = {}) {
     this.track = track;
     this.scene = scene;
     this.rules = level.traffic;
     this.world = world;
-    this.rng = mulberry32(seed);
+    this.rng = rng ?? mulberry32(seed);
     this.cars = [];
     this.pool = {};
     const hasTractors = this.rules.some((r) => r.mix.some(([k]) => k === 'tractor'));

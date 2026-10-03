@@ -17,8 +17,8 @@ import { MenuNav } from './game/MenuNav.js';
 import { PadSetup } from './game/PadSetup.js';
 import { Race } from './game/Race.js';
 import { fmtTime } from './game/HUD.js';
+import { autopilot as autopilotFor } from './game/autopilot.js';
 import { LEVELS, levelById } from './levels/index.js';
-import { clamp, wrapAngle } from './util/math.js';
 
 // ── Settings (per-viewer conveniences only) ───────────────────────
 const params = new URLSearchParams(location.search);
@@ -525,35 +525,23 @@ function flyCamera(dt, f) {
   return f.s;
 }
 
-// Simple autopilot for automated tests (?autodrive=1).
-function autopilot(inp) {
-  const v = race.player, t = world.track;
-  const la = 10 + Math.hypot(v.vx, v.vz) * 0.35;
-  const p = t.pointAt(v.s + la, t.racingLine[t.idx(v.s + la)] * 0.6);
-  const want = Math.atan2(p.z - v.z, p.x - v.x);
-  const err = wrapAngle(want - v.yaw);
-  const target = t.speedProfile[t.idx(v.s + 15)] * 0.93;
-  const sp = Math.hypot(v.vx, v.vz);
-  inp.steer = clamp(err * 2.2, -1, 1);
-  inp.throttle = sp < target ? 1 : 0;
-  inp.brake = sp > target + 3 ? 1 : 0;
-  inp.handbrake = false;
-  inp.nitro = sp < target - 8 && Math.abs(err) < 0.1;
-  return inp;
-}
+// Simple autopilot for automated tests (?autodrive=1): src/game/autopilot.js.
+const autopilot = (inp) => autopilotFor(inp, race.player, world.track);
 
 // ── Main loop ─────────────────────────────────────────────────────
 const focus = new THREE.Vector3();
 let lastError = '';
 const timescale = Number(params.get('timescale') || 1); // test hook
 
-// ?stats=1 — frame time, draw calls and triangles.
+// ?stats=1 — frame time, draw calls and triangles; the time from navigation
+// to the menu, the longest frame, and the JS heap where the browser tells
+// (Chrome). The phone baselines are read from it (Rust port, WP 0.8).
 const statsEl = params.has('stats') ? Object.assign(document.createElement('div'), { id: 'stats' }) : null;
 if (statsEl) {
   statsEl.style.cssText = 'position:fixed;left:8px;bottom:8px;font:12px ui-monospace,monospace;color:#9f9;background:rgba(0,0,0,.6);padding:4px 8px;border-radius:4px;z-index:9;pointer-events:none;white-space:pre';
   document.body.appendChild(statsEl);
 }
-let statT0 = performance.now(), statN = 0, statMs = 0;
+let statT0 = performance.now(), statN = 0, statMs = 0, statWorst = 0, readyMs = null;
 window.__stats = {};
 renderer.info.autoReset = false;
 function updateStats(ms) {
@@ -561,9 +549,16 @@ function updateStats(ms) {
   const statT = performance.now() - statT0;
   if (statT < 500) return;
   const info = renderer.info;
-  window.__stats = { fps: +(1000 * statN / statT).toFixed(1), cpuMs: +(statMs / statN).toFixed(2), calls: info.render.calls, tris: info.render.triangles, geos: info.memory.geometries, tex: info.memory.textures };
-  if (statsEl) statsEl.textContent = `fps ${window.__stats.fps}  cpu ${window.__stats.cpuMs}ms\ncalls ${info.render.calls}  tris ${(info.render.triangles / 1e3).toFixed(0)}k`;
-  statT0 = performance.now(); statN = 0; statMs = 0;
+  const heap = performance.memory?.usedJSHeapSize;
+  window.__stats = {
+    fps: +(1000 * statN / statT).toFixed(1), cpuMs: +(statMs / statN).toFixed(2), calls: info.render.calls, tris: info.render.triangles, geos: info.memory.geometries, tex: info.memory.textures,
+    worstMs: +statWorst.toFixed(1), loadS: readyMs === null ? null : +(readyMs / 1000).toFixed(2), heapMB: heap ? Math.round(heap / 1048576) : null,
+  };
+  if (statsEl) {
+    const s = window.__stats;
+    statsEl.textContent = `fps ${s.fps}  cpu ${s.cpuMs}ms  worst ${s.worstMs}ms\ncalls ${info.render.calls}  tris ${(info.render.triangles / 1e3).toFixed(0)}k\nload ${s.loadS ?? '…'}s${s.heapMB === null ? '' : `  heap ${s.heapMB}MB`}`;
+  }
+  statT0 = performance.now(); statN = 0; statMs = 0; statWorst = 0;
 }
 
 // Frame time comes from the rAF timestamp, which marks the display's frame:
@@ -576,6 +571,7 @@ function frame(now) {
   const t0 = performance.now();
   const frameDt = lastFrameT === null ? 0 : Math.max(0, now - lastFrameT) / 1000;
   lastFrameT = now;
+  statWorst = Math.max(statWorst, frameDt * 1000);
   renderer.info.reset();
   try { tick(frameDt); updateStats(performance.now() - t0); } catch (e) {
     // Keep running; report each distinct error once.
@@ -613,7 +609,8 @@ function tick(frameDt) {
     // input read per tick (the Rust input layer runs at the tick rate).
     for (let i = 0; i < parity.fixed.ticks; i++) {
       let ti = i === 0 ? inp : input.update(parity.fixed.dt);
-      if (params.get('autodrive') === '1') ti = autopilot({ ...ti });
+      if (parity.fuzzInput) ti = parity.fuzzInput(ti);
+      else if (params.get('autodrive') === '1') ti = autopilot({ ...ti });
       if (parity.quantise) ti = parity.quantise(ti);
       race.update(parity.fixed.dt, ti);
       parity.onTick?.(race, ti);
@@ -648,4 +645,5 @@ await loadLevel(settings.level);
 mode = 'menu';
 showScreen(fly ? null : 'menu');
 if (params.has('autostart')) { if (CAR_SPECS[params.get('autostart')]) settings.car = params.get('autostart'); startRace(); }
+readyMs = performance.now(); // from navigation: the time to the menu
 window.__ready = true;

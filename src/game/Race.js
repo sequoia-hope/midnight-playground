@@ -100,7 +100,7 @@ export class Race {
     });
     this.progS = new Map([[this.player, this.player.s], ...this.ais.map((a) => [a, a.s])]);
 
-    this.traffic = new Traffic(track, this.group, buildVehicle, { level: this.level, world, count: this.cruise ? 30 : this.pursuitOn ? 18 : 22 });
+    this.traffic = new Traffic(track, this.group, buildVehicle, { level: this.level, world, count: this.cruise ? 30 : this.pursuitOn ? 18 : 22, rng: rngs?.traffic });
 
     this.cam = new CameraRig(camera, track, world.terrain);
     this.effects = new Effects(scene, renderer, camera);
@@ -476,7 +476,7 @@ export class Race {
     // easing off for the corners, and the racers still going pass on the left.
     if (this.laps) {
       const cool = (s) => Math.min(20, ...[0, 25, 50].map((d) => t.speedProfile[t.idx(s + d)] * 0.7));
-      return { speed: cool, lat: (s) => t.hw[t.idx(s)] - 2.2 };
+      return { speed: cool, lat: (s) => t.hw[t.idx(s)] - 2.2, kind: 'circuit' };
     }
     const front = Math.max(t.finishS + 60, t.roadEnd - PARK_GAP);
     const f = t.frame(front);
@@ -492,6 +492,8 @@ export class Race {
     return {
       speed: (s) => Math.min(COOL_CRUISE, stopSpeed(stopAt - s, COOL_DECEL)),
       lat: (s) => lerp(lat0, lat, smoothstep(s0, s0 + 300, s)),
+      // What the closures hold, as data (read by the Rust port's parity trace).
+      kind: 'lane', stopAt, laneLat: lat, s0, lat0,
     };
   }
 
