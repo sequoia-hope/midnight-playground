@@ -2224,3 +2224,79 @@ means within 12 levels, every other texture to 3. Rerun:
 `fl` cells for City's nearest-cell lookups (`nearestS`, `sideAt`);
 `textures` gains the exports of D352; `lib.rs` the module and
 `scenery::PORTED` the line registering City. No existing behaviour changed.
+
+## Font choice
+
+## D370. The owner's fonts: the Roboto family for the Arials
+
+2026-10-03, the owner's answer to SPEC 15 question 1, after the gallery:
+"roboto family promising; just pick some and proceed". So "Arial" is
+Roboto, "Arial Narrow" is Roboto Condensed and "Arial Black" is Roboto
+Black; Georgia (Gelasio), Brush Script MT (Yellowtail), Segoe Script
+(Caveat), Courier New (Courier Prime) and the HUD (Rajdhani) stay as D150
+had them. Roboto and Roboto Condensed are the variable files of
+google/fonts (`wght` 100–900, Roboto also `wdth` 75–100, left at 100), so
+every weight is a designed one, never synthetic: Arial and Arial Narrow are
+registered for 100–900 (the game asks for 400, 700 and 900), and Arial
+Black is Roboto's file registered at 900 only, so any weight asked of it
+draws Roboto Black (the game asks for bold). The game asks for italic only
+of Arial Narrow (900 italic: Roboto Condensed Black Italic) and Georgia, so
+Roboto Italic is not bundled; an italic Arial would get the synthetic
+oblique, in Chrome as in the port, since both register the same faces.
+Archivo Narrow, Archivo Black and Arimo's italic are gone. The owner may
+revisit this: the choice is `assets/fonts/fonts.json` alone (D373), and
+the gallery (`node tools/parity/fonts-gallery.mjs`, then
+`/parity/report/fonts/`) now shows the bundled set first with the old
+faces as alternatives.
+
+## D371. The bundled files are subsets of the google/fonts files
+
+2026-10-03. D150 left subsetting "once the owner has chosen".
+`assets/fonts/subset.py` fetches each file from google/fonts at a pinned
+commit (9710da1e, 2026-09-30; the Roboto files are checked by SHA-256 and
+are the ones the gallery showed) and keeps Basic Latin, Latin-1, – — ‘ ’ “ ”
+• …, the four arrows, − and ●, with fontTools' subsetter told to keep
+every layout feature, the legacy kern table, hinting instructions, all
+names and the .notdef box. Every character the game draws on a canvas is
+in that set (the JS signs use only ASCII and · — → ●). The OFL fonts have
+no Reserved Font Names; Yellowtail (Apache 2.0, 62 KB) is copied whole.
+The script is deterministic (no timestamp change), so running it again
+gives the same bytes. The bundled fonts went from 4.04 MB to 1.17 MB.
+Subsetting changes no pixel: the gallery drawn by mr_canvas from the
+subsets is byte-identical to the one drawn from the full files for every
+face kept (Gelasio, Caveat, Courier Prime, Rajdhani, Roboto Condensed,
+Roboto Black), and the JS reference is drawn from the same subsets.
+
+## D372. A fallback face for characters the family list lacks
+
+2026-10-03. Roboto has no → (U+2192), which the desert billboard's sub-line
+"SPEED TRIALS TONIGHT →" draws in `bold 62px Arial`; Arimo had it. A
+browser goes to a system font for a character no listed family has, so
+the port gains the same step: `fonts.json`'s `fallback` lists families
+tried after the font's own (FontBook::fallback; text.rs appends them to the
+face list, used only for characters the earlier faces lack, so metrics and
+everything else still come from the first family). The fallback is a 4 KB
+cut of Arimo (`arimo/Arimo[wght].ttf`, registered as family "Arimo") with
+only the symbols outside Latin-1, which also gives ● and → to Courier
+Prime, Yellowtail, Caveat and Rajdhani. Chrome's own fallback on the
+reference machine is a system font, so a reference capture of → would
+differ; no captured case draws one (all its text is in the listed faces).
+The missing-glyph box in the old gallery's Arial Black card was ★
+(U+2605) in the gallery's own alphabet line: no bundled face has it and the
+game never draws it. The line now shows the game's symbols (· → ● —),
+and no card has a box.
+
+## D373. The manifest is the only copy of the mapping
+
+2026-10-03. `crates/mr_canvas/build.rs` reads `assets/fonts/fonts.json`
+(with a small JSON reader of its own: the crate takes no build
+dependencies) and generates `BUNDLED`, `BUNDLED_GENERIC`,
+`BUNDLED_FALLBACK` and the files' bytes, each file included once even when
+two families use it (Arial and Arial Black share Roboto's bytes). Changing
+the fonts is a change to `fonts.json` and the files beside it; then
+`node tools/parity/textures.mjs` and `node tools/parity/mountain-textures.mjs`
+recapture the references, and mr_canvas's `tests/text.rs` needs Chrome's
+`measureText` numbers again. With Roboto, every texture and probe stays
+within the gate (largest mean absolute difference 0.87 of 255, gravel,
+which has no text; largest for text 0.53, the text-faces probe; Mountain's
+lettered canvases at most 0.74).

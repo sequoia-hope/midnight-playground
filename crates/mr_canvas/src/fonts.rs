@@ -5,7 +5,9 @@
 //! the port bundles open-licence substitutes under those names
 //! (`assets/fonts/fonts.json`, [`FontBook::bundled`]), so every platform
 //! draws the same signs. The JS reference capture registers the same files
-//! under the same names.
+//! under the same names. The faces are the owner's choice (DECISIONS D370:
+//! the Roboto family for the Arials), subsets of the google/fonts files
+//! (D371).
 
 use std::sync::{Arc, OnceLock};
 
@@ -30,145 +32,16 @@ pub struct FontBook {
     pub faces: Vec<Face>,
     /// `(generic, family)`: `sans-serif` → `arial`, and so on.
     pub generic: Vec<(String, String)>,
+    /// Families tried, after the font's own, for a character none of those
+    /// has: what a browser's system font fallback is to the port (DECISIONS
+    /// D372). Lower case.
+    pub fallback: Vec<String>,
 }
 
-/// The bundled faces: `(family, file, weight range, style)`, the table of
-/// `assets/fonts/fonts.json` (a test checks they agree).
-pub const BUNDLED: &[(&str, &str, (f32, f32), &str)] = &[
-    (
-        "Arial Narrow",
-        "archivonarrow/ArchivoNarrow[wght].ttf",
-        (400.0, 700.0),
-        "normal",
-    ),
-    (
-        "Arial Narrow",
-        "archivonarrow/ArchivoNarrow-Italic[wght].ttf",
-        (400.0, 700.0),
-        "italic",
-    ),
-    ("Arial", "arimo/Arimo[wght].ttf", (400.0, 700.0), "normal"),
-    (
-        "Arial",
-        "arimo/Arimo-Italic[wght].ttf",
-        (400.0, 700.0),
-        "italic",
-    ),
-    (
-        "Arial Black",
-        "archivoblack/ArchivoBlack-Regular.ttf",
-        (100.0, 900.0),
-        "normal",
-    ),
-    (
-        "Georgia",
-        "gelasio/Gelasio[wght].ttf",
-        (400.0, 700.0),
-        "normal",
-    ),
-    (
-        "Georgia",
-        "gelasio/Gelasio-Italic[wght].ttf",
-        (400.0, 700.0),
-        "italic",
-    ),
-    (
-        "Brush Script MT",
-        "yellowtail/Yellowtail-Regular.ttf",
-        (100.0, 900.0),
-        "normal",
-    ),
-    (
-        "Segoe Script",
-        "caveat/Caveat[wght].ttf",
-        (400.0, 700.0),
-        "normal",
-    ),
-    (
-        "Courier New",
-        "courierprime/CourierPrime-Regular.ttf",
-        (400.0, 400.0),
-        "normal",
-    ),
-    (
-        "Courier New",
-        "courierprime/CourierPrime-Bold.ttf",
-        (700.0, 700.0),
-        "normal",
-    ),
-    (
-        "Courier New",
-        "courierprime/CourierPrime-Italic.ttf",
-        (400.0, 400.0),
-        "italic",
-    ),
-    (
-        "Courier New",
-        "courierprime/CourierPrime-BoldItalic.ttf",
-        (700.0, 700.0),
-        "italic",
-    ),
-    (
-        "Rajdhani",
-        "rajdhani/Rajdhani-Regular.ttf",
-        (400.0, 400.0),
-        "normal",
-    ),
-    (
-        "Rajdhani",
-        "rajdhani/Rajdhani-Medium.ttf",
-        (500.0, 500.0),
-        "normal",
-    ),
-    (
-        "Rajdhani",
-        "rajdhani/Rajdhani-SemiBold.ttf",
-        (600.0, 600.0),
-        "normal",
-    ),
-    (
-        "Rajdhani",
-        "rajdhani/Rajdhani-Bold.ttf",
-        (700.0, 700.0),
-        "normal",
-    ),
-];
-
-/// The generic families, as `fonts.json` maps them.
-pub const BUNDLED_GENERIC: &[(&str, &str)] = &[
-    ("sans-serif", "Arial"),
-    ("serif", "Georgia"),
-    ("monospace", "Courier New"),
-    ("cursive", "Brush Script MT"),
-    ("system-ui", "Arial"),
-    ("ui-sans-serif", "Arial"),
-];
-
-macro_rules! font_bytes {
-    ($($file:literal),* $(,)?) => {
-        /// The bundled files' bytes, in the order of [`BUNDLED`].
-        const BUNDLED_BYTES: &[&[u8]] = &[$(include_bytes!(concat!("../../../assets/fonts/", $file))),*];
-    };
-}
-font_bytes!(
-    "archivonarrow/ArchivoNarrow[wght].ttf",
-    "archivonarrow/ArchivoNarrow-Italic[wght].ttf",
-    "arimo/Arimo[wght].ttf",
-    "arimo/Arimo-Italic[wght].ttf",
-    "archivoblack/ArchivoBlack-Regular.ttf",
-    "gelasio/Gelasio[wght].ttf",
-    "gelasio/Gelasio-Italic[wght].ttf",
-    "yellowtail/Yellowtail-Regular.ttf",
-    "caveat/Caveat[wght].ttf",
-    "courierprime/CourierPrime-Regular.ttf",
-    "courierprime/CourierPrime-Bold.ttf",
-    "courierprime/CourierPrime-Italic.ttf",
-    "courierprime/CourierPrime-BoldItalic.ttf",
-    "rajdhani/Rajdhani-Regular.ttf",
-    "rajdhani/Rajdhani-Medium.ttf",
-    "rajdhani/Rajdhani-SemiBold.ttf",
-    "rajdhani/Rajdhani-Bold.ttf",
-);
+// `BUNDLED`, `BUNDLED_GENERIC`, `BUNDLED_FALLBACK` and the files' bytes,
+// generated from `assets/fonts/fonts.json` by `build.rs`: the manifest is
+// the one place the mapping is written (DECISIONS D373).
+include!(concat!(env!("OUT_DIR"), "/bundled_fonts.rs"));
 
 impl FontBook {
     /// An empty book: text draws nothing until faces are added.
@@ -181,17 +54,17 @@ impl FontBook {
         static BOOK: OnceLock<Arc<FontBook>> = OnceLock::new();
         BOOK.get_or_init(|| {
             let mut b = FontBook::new();
-            for (k, &(family, file, weight, style)) in BUNDLED.iter().enumerate() {
-                b.add(
-                    family,
-                    Arc::from(BUNDLED_BYTES[k]),
-                    weight,
-                    style == "italic",
-                    file,
-                );
+            // One copy of each file, shared by the faces registered from it.
+            let data: Vec<Arc<[u8]>> = BUNDLED_FILES.iter().map(|(_, d)| Arc::from(*d)).collect();
+            for &(family, file, weight, style) in BUNDLED {
+                let k = BUNDLED_FILES.iter().position(|(f, _)| *f == file).unwrap();
+                b.add(family, data[k].clone(), weight, style == "italic", file);
             }
             for &(g, f) in BUNDLED_GENERIC {
                 b.set_generic(g, f);
+            }
+            for &f in BUNDLED_FALLBACK {
+                b.add_fallback(f);
             }
             Arc::new(b)
         })
@@ -224,6 +97,11 @@ impl FontBook {
         let g = generic.to_ascii_lowercase();
         self.generic.retain(|(k, _)| *k != g);
         self.generic.push((g, family.to_ascii_lowercase()));
+    }
+
+    /// Adds a family to the fallback list.
+    pub fn add_fallback(&mut self, family: &str) {
+        self.fallback.push(family.to_ascii_lowercase());
     }
 
     /// The face CSS font matching picks within a family, or `None` when the
@@ -396,12 +274,24 @@ mod tests {
         let f = |fam: &str, w: f32, i: bool| b.select(fam, w, i).map(|f| f.file.as_str());
         assert_eq!(
             f("Arial Narrow", 900.0, true),
-            Some("archivonarrow/ArchivoNarrow-Italic[wght].ttf")
+            Some("robotocondensed/RobotoCondensed-Italic[wght].ttf")
         );
         assert_eq!(
             f("arial narrow", 700.0, false),
-            Some("archivonarrow/ArchivoNarrow[wght].ttf")
+            Some("robotocondensed/RobotoCondensed[wght].ttf")
         );
+        assert_eq!(
+            f("Arial", 700.0, false),
+            Some("roboto/Roboto[wdth,wght].ttf")
+        );
+        // Arial Black is Roboto at its Black weight, whatever is asked, from
+        // the same bytes as Arial.
+        let black = b.select("Arial Black", 700.0, false).unwrap();
+        assert_eq!(black.weight, (900.0, 900.0));
+        assert!(Arc::ptr_eq(
+            &black.data,
+            &b.select("Arial", 400.0, false).unwrap().data
+        ));
         assert_eq!(
             f("Courier New", 900.0, false),
             Some("courierprime/CourierPrime-Bold.ttf")
@@ -420,23 +310,22 @@ mod tests {
         );
         assert_eq!(f("serif", 700.0, false), Some("gelasio/Gelasio[wght].ttf"));
         assert_eq!(f("Helvetica Neue", 700.0, false), None);
+        assert_eq!(b.fallback, ["arimo"]);
     }
 
     #[test]
-    fn bundled_table_matches_the_manifest() {
+    fn bundled_table_is_the_manifest() {
         let m = include_str!("../../../assets/fonts/fonts.json");
-        // A plain scan of the manifest's face lines, so the crate needs no
-        // JSON parser.
-        let faces: Vec<&str> = m.lines().filter(|l| l.contains("\"family\"")).collect();
-        assert_eq!(faces.len(), BUNDLED.len());
-        for (line, &(family, file, (w0, w1), style)) in faces.iter().zip(BUNDLED) {
-            let want = format!(
-                "{{ \"family\": \"{family}\", \"file\": \"{file}\", \"weight\": [{w0}, {w1}], \"style\": \"{style}\" }}"
+        assert_eq!(m.matches("\"family\"").count(), BUNDLED.len());
+        for &(family, file, _, _) in BUNDLED {
+            assert!(
+                m.contains(&format!("\"family\": \"{family}\", \"file\": \"{file}\"")),
+                "{family} {file}"
             );
-            assert_eq!(line.trim().trim_end_matches(','), want);
         }
         for &(g, f) in BUNDLED_GENERIC {
             assert!(m.contains(&format!("\"{g}\": \"{f}\"")), "generic {g}");
         }
+        assert_eq!(BUNDLED_FALLBACK, ["Arimo"]);
     }
 }
