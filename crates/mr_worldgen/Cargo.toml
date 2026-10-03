@@ -11,6 +11,9 @@ mr_canvas.workspace = true
 mr_math.workspace = true
 mr_track.workspace = true
 mr_levels.workspace = true
+# Material parameters are JSON values in the scene (mr_scene::MaterialDesc),
+# in the JS order.
+serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
 
 [dev-dependencies]
 # The goldens (JSON numbers parsed exactly, D55) and the texture gate's
@@ -20,8 +23,8 @@ png = "0.18"
 sha2 = "0.10"
 
 [features]
-# Native only: run independent build jobs on a thread pool (SPEC 5.5). rayon
-# joins here as an optional dependency when the first jobs exist.
+# Native only: run the pieces of a parallel build job on threads (SPEC 5.5;
+# std's scoped threads, DECISIONS D196). Ignored on wasm.
 parallel = []
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
