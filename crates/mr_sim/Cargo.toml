@@ -12,6 +12,7 @@ mr_levels.workspace = true
 
 [dev-dependencies]
 serde_json = { version = "1", features = ["float_roundtrip"] }
+flate2 = "1"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"

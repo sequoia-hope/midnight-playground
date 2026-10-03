@@ -5,4 +5,10 @@
 // Index loops stay index loops: they mirror the JS line for line (DECISIONS D52).
 #![allow(clippy::needless_range_loop)]
 
+pub mod autopilot;
 pub mod dims;
+pub mod input;
+pub mod physics;
+pub mod staged;
+pub mod trace;
+pub mod vehicle;

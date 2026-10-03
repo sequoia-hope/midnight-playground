@@ -33,3 +33,4 @@ each here when M1 ports the tests.
 | Test | JS file | Why |
 |---|---|---|
 | README: level lengths and rival counts match the data | `levels.test.js` | Asserts on README text (WP 1.2) |
+| README: the car table lists every car (its performance claims are kept) | `physics.test.js` | Asserts on README text (WP 1.3) |

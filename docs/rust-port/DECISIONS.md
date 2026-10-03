@@ -514,3 +514,30 @@ needs `CarPhysics` (WP 1.3) and "rivals rubber-band on race progress" needs
 use the JS names until world generation exists, and a rival's kind is
 checked against `CAR_SPECS` in `mr_sim`'s tests (WP 1.3). Each is ported in
 the package that brings what it needs.
+
+## D57. The shape of `mr_sim::physics` and `vehicle`
+
+2026-10-03, WP 1.3. `CarPhysics` holds only its own state (and its spec,
+which is a small copy); the vehicle and the track are passed to `update`,
+`step` and `reset`, where the JS object holds references to them. The
+`Vehicle` has no pitch and roll springs: physics' landing kick
+(`v.pitchV -= impact * 0.02`, on every landing) is emitted as
+`PhysEvent::Touchdown { impact }` beside the JS's own `land` event (only
+above 2.5 m/s), so the client's springs get the same kick. `accelLong`,
+`accelLat`, `brakeLight` and `visY` stay on the Vehicle: physics writes them
+and the client reads them. JS fields that start `undefined` (`offTrack`,
+`scrapeSide`) are `Option`s and the trace writes them as the JS writer does.
+The `cruise` input (the gearbox hint) is carried on `Input` but not in
+`InputFrame`, as `quantiseInput` passes it through.
+
+## D58. Module traces are replayed by `mr_sim::staged`
+
+2026-10-03, WP 1.3. The module oracle's staging (`tools/parity/lib/node-sim.mjs`)
+is ported as `mr_sim::staged`, which grows with the work packages; the test
+`crates/mr_sim/tests/module_phys.rs` transcribes each scenario's input
+function from the catalogue in `sim-module.mjs`. The trace record is written
+from views of the state (`mr_sim::trace`), so it can follow the JS layout
+while the Rust state takes its own shape. The goldens are compiled into the
+test, so the replay runs in wasm under Node too: the WP 1.3 traces are
+bit-identical native and in wasm. A failing replay keeps its own trace in
+`target/parity/<id>.trace` for `trace-inspect.mjs --diff`.
