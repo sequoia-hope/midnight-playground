@@ -42,6 +42,7 @@ and carry on with the option that best preserves parity.
 | Crate dependency rules (SPEC 3.2) | `cargo xtask check-deps` |
 | Web build into `dist/next/` | `cargo xtask web` (add `--release` for the optimised build) |
 | Wasm size report | `cargo xtask size` (after a release web build) |
+| A headless race (results, `--trace`, `--state-at`, `bench`) | `cargo run --release -p mr_sim --bin mr-sim -- race --level sierra` |
 | Native client | `cargo run -p mr_game` |
 | JS unit tests | `npm run test:unit` (and `npm run test:unit:kernel`, with the parity kernel) |
 | Rebuild and check the parity kernel | `cargo xtask kernel` (CI: `cargo xtask kernel --check`) |

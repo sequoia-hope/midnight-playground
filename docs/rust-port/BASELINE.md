@@ -79,3 +79,21 @@ about 20 on 24 cores), so the CPU figures and the worst frames are high;
 the GPU-bound frame rates are the useful part. Rerun on a quiet machine
 before comparing frame times closely. "Worst frame" includes the first
 frames after the page appears, when shaders compile.
+
+## Simulation speed (WP 1.7)
+
+SPEC 4.6 test 6: ticks per second for the full Sierra field (the player
+on the autopilot, five rivals, 22 traffic cars, collisions; no Race rules,
+no trace), median of five runs of 14,400 ticks, on the dev machine (Ryzen 9
+9900X). The Rust figure is `cargo run --release -p mr_sim --bin mr-sim --
+bench`; the JS one is `parity/golden/sim/bench.json`
+(`tools/parity/sim-bench.mjs`, Node, parity kernel on).
+
+| | ticks/s | best | load average |
+|---|---:|---:|---:|
+| JS (Node 22, kernel on) | 86,766 | 89,271 | 16.4 |
+| Rust (native, release) | 143,545 | 244,791 | 26.5 |
+
+Both measured 2026-10-03 on the shared machine; the spread between runs
+is the load. A whole race with the Race rules runs at 130,000 to 180,000
+ticks/s natively (about 1,100 to 1,500 times real time).

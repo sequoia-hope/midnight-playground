@@ -16,3 +16,9 @@ flate2 = "1"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
+
+# The command-line runner reads files and the clock, so it sits outside
+# src/, which the simulation rules cover (DECISIONS D62).
+[[bin]]
+name = "mr-sim"
+path = "bin/mr-sim.rs"

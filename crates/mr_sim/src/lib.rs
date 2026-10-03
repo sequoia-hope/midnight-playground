@@ -11,6 +11,7 @@ pub mod body;
 pub mod collisions;
 pub mod dims;
 pub mod field;
+pub mod fuzz;
 pub mod input;
 pub mod kinematic;
 pub mod park;
