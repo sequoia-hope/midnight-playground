@@ -444,6 +444,12 @@ impl Terrain {
         (self.far.fw, self.far.fh)
     }
 
+    /// The far field's cell `k` as stored: `T.fs[k]` (s along the road) and
+    /// `T.fl[k]` (the side). City's nearest-cell lookups read them.
+    pub fn far_cell(&self, k: usize) -> (f64, f64) {
+        (f64::from(self.far.fs[k]), f64::from(self.far.fl[k]))
+    }
+
     /// Road on a bridge/viaduct at sample i: the ground isn't raised to it.
     pub fn is_elevated(&self, t: &Track, i: usize) -> bool {
         if t.elevated[i] != 0 {
