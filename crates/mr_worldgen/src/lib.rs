@@ -11,6 +11,7 @@ pub mod geom;
 pub mod material;
 pub mod object;
 pub mod road;
+pub mod scenery;
 pub mod sea;
 pub mod sky;
 pub mod stages;

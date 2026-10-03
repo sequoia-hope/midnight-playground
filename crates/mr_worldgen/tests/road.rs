@@ -37,7 +37,7 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 mod common;
 
-use common::{hex, level, plan};
+use common::{hex, level};
 use mr_math::smoothstep;
 use mr_scene::digest::{SceneDigest, digest, sha256_hex};
 use mr_scene::{Scene, TextureSource};
@@ -46,8 +46,8 @@ use mr_worldgen::color::Color;
 use mr_worldgen::material::{Param, num};
 use mr_worldgen::object::{MaterialId, NodeId, SceneGraph};
 use mr_worldgen::road::MarkGap;
+use mr_worldgen::scenery::plan_only_factory;
 use mr_worldgen::stages::{LevelSetup, RoadPlan, level_stages};
-use mr_worldgen::terrain_mesh::{TerrainSetup, seaside_ground_color};
 use mr_worldgen::world::{Build, Change, World, level_jobs};
 use serde_json::{Value, json};
 
@@ -231,22 +231,51 @@ struct Built {
 }
 
 fn build(id: &str, g: &Value) -> Built {
+    // The scenery registers the plan: the ported modules' own plan(), the
+    // others replayed from the recordings (DECISIONS D330); their builds
+    // are skipped, so the scene holds what the base export holds.
     let setup = LevelSetup {
-        terrain: TerrainSetup {
-            plan: Some(plan(id)),
-            ground_color: (id == "seaside").then(|| seaside_ground_color(common::survey())),
-            ..TerrainSetup::default()
-        },
-        road: Some(road_plan(g)),
+        terrain: common::terrain_setup(id),
+        road: None,
     };
     let mut b = Build::new(
         World::new(level(id)),
-        level_jobs(level_stages(setup), |_| None),
+        level_jobs(
+            level_stages(setup),
+            plan_only_factory(Some(common::recording(id))),
+        ),
     );
     let mut labels = Vec::new();
     while let Some((label, _)) = b.progress() {
-        labels.push(label.to_string());
+        let label = label.to_string();
+        labels.push(label.clone());
         b.step().expect("the level builds");
+        if label == "Shaping the land" {
+            // What the road is told equals the recording, bit for bit.
+            let want = road_plan(g);
+            let t = b.world.track();
+            let gaps = |v: &[FenceGap]| {
+                v.iter()
+                    .map(|f| [f.s0, f.s1, f.side].map(f64::to_bits))
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(
+                gaps(&t.fence_gaps),
+                gaps(&want.fence_gaps),
+                "{id}: fenceGaps"
+            );
+            let marks = |v: &[MarkGap]| {
+                v.iter()
+                    .map(|f| [f.s0, f.s1].map(f64::to_bits))
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(
+                marks(&b.world.no_marks),
+                marks(&want.no_marks),
+                "{id}: noMarks"
+            );
+            assert_eq!(t.runout.to_bits(), want.runout.to_bits(), "{id}: runout");
+        }
     }
     // Road and sky in "Paving roads", after the terrain; the sea after.
     let at = |l: &str| labels.iter().position(|x| x == l);
