@@ -101,11 +101,11 @@ impl Rng for Mulberry32 {
     }
 }
 
-pub fn rrange(rng: &mut impl Rng, a: f64, b: f64) -> f64 {
+pub fn rrange<R: Rng + ?Sized>(rng: &mut R, a: f64, b: f64) -> f64 {
     a + (b - a) * rng.next_f64()
 }
 
-pub fn rpick<'a, T>(rng: &mut impl Rng, arr: &'a [T]) -> &'a T {
+pub fn rpick<'a, T, R: Rng + ?Sized>(rng: &mut R, arr: &'a [T]) -> &'a T {
     &arr[(rng.next_f64() * arr.len() as f64).floor() as usize]
 }
 

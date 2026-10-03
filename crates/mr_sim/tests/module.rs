@@ -1,6 +1,8 @@
-//! L2 gate of WP 1.3, the proof that bit-identical works: the physics
-//! scenarios of the module oracle (`parity/scenarios.md`, the `phys-*` rows)
-//! replayed in Rust, every tick's trace record hash equal to the JS golden.
+//! L2 gates of WP 1.3 onwards: the scenarios of the module oracle
+//! (`parity/scenarios.md`) replayed in Rust, every tick's trace record hash
+//! equal to the JS golden, and the full records it keeps byte for byte.
+//! WP 1.3 (the proof that bit-identical works) is the `phys-*` rows; WP 1.4
+//! adds the rivals, collisions and traffic.
 //!
 //! The scenarios are the catalogue in `tools/parity/sim-module.mjs`; each
 //! input function here is a transcription of its JS one.
@@ -13,7 +15,7 @@ mod common;
 use mr_math::{Mulberry32, js, kernel};
 use mr_sim::autopilot::autopilot;
 use mr_sim::input::{Input, quantise};
-use mr_sim::staged::Sim;
+use mr_sim::staged::{Sim, StageOpts};
 use mr_sim::trace::TraceFile;
 
 fn idle() -> Input {
@@ -35,6 +37,8 @@ struct Scenario {
     ticks: u32,
     level: &'static str,
     car: &'static str,
+    with_rivals: bool,
+    traffic_count: usize,
     input: InputFn,
     setup: Option<SetupFn>,
     frame_dt: bool,
@@ -46,6 +50,8 @@ fn sc(id: &str, ticks: u32, level: &'static str, car: &'static str, input: Input
         ticks,
         level,
         car,
+        with_rivals: false,
+        traffic_count: 0,
         input,
         setup: None,
         frame_dt: false,
@@ -65,7 +71,7 @@ const LEVEL_CARS: [(&str, &str); 6] = [
     ("cruise", "sports"),
 ];
 
-fn scenarios() -> Vec<Scenario> {
+fn phys_scenarios() -> Vec<Scenario> {
     let mut out = Vec::new();
     for car in ["sports", "muscle", "super", "rally", "electric"] {
         out.push(sc(
@@ -195,7 +201,14 @@ fn replay(s: &Scenario) -> Option<u32> {
         "{}: golden length",
         s.id
     );
-    let mut sim = Sim::new(common::stage(s.level), s.car);
+    let mut sim = Sim::new(
+        common::stage(s.level),
+        StageOpts {
+            car: s.car,
+            with_rivals: s.with_rivals,
+            traffic_count: s.traffic_count,
+        },
+    );
     if let Some(f) = &s.setup {
         f(&mut sim);
     }
@@ -242,10 +255,73 @@ fn replay(s: &Scenario) -> Option<u32> {
     None
 }
 
-#[test]
-fn physics_module_traces_are_identical() {
+fn ai_traffic_scenarios() -> Vec<Scenario> {
+    let mut out = Vec::new();
+    for (lvl, car) in LEVEL_CARS.iter().filter(|(l, _)| *l != "cruise") {
+        let mut s = sc(
+            &format!("ai-field-{lvl}"),
+            sec(60.0),
+            lvl,
+            car,
+            Box::new(|sim, _| auto(sim)),
+        );
+        s.with_rivals = true;
+        out.push(s);
+    }
+    let mut s = sc(
+        "collide-rear-pin",
+        sec(15.0),
+        "sierra",
+        "sports",
+        Box::new(|_, _| Input {
+            brake: 1.0,
+            ..idle()
+        }),
+    );
+    s.with_rivals = true;
+    s.setup = Some(Box::new(|sim| {
+        let t = sim.track.clone();
+        let f = t.frame(1500.0);
+        let p = sim.p.as_mut().unwrap();
+        let lat = f.wall_r - p.v.half_w - 0.5;
+        p.phys.reset(&mut p.v, &t, 1500.0, lat);
+        let plat = p.v.lat;
+        sim.ais.truncate(1);
+        let a = &mut sim.ais[0];
+        a.k.s = 1460.0;
+        a.k.lat = plat;
+        a.k.speed = 35.0;
+        a.bias = 4.0;
+        a.write_pos(&t);
+    }));
+    out.push(s);
+    for (lvl, car) in LEVEL_CARS {
+        let mut s = sc(
+            &format!("traffic-{lvl}"),
+            sec(60.0),
+            lvl,
+            car,
+            Box::new(|sim, _| auto(sim)),
+        );
+        s.traffic_count = if lvl == "cruise" { 30 } else { 22 };
+        out.push(s);
+    }
+    let mut s = sc(
+        "full-field-sierra",
+        sec(120.0),
+        "sierra",
+        "sports",
+        Box::new(|sim, _| auto(sim)),
+    );
+    s.with_rivals = true;
+    s.traffic_count = 22;
+    out.push(s);
+    out
+}
+
+fn check_all(scenarios: Vec<Scenario>) {
     let mut bad = Vec::new();
-    for s in scenarios() {
+    for s in scenarios {
         if let Some(tick) = replay(&s) {
             bad.push(format!("{} first differs at tick {tick}", s.id));
         }
@@ -254,4 +330,14 @@ fn physics_module_traces_are_identical() {
         bad.is_empty(),
         "{bad:#?}\n(the Rust traces are in target/parity/; diff one with\n  node tools/parity/trace-inspect.mjs target/parity/<id>.trace --diff <(gunzip -c parity/golden/sim/module/<id>.trace.gz))"
     );
+}
+
+#[test]
+fn physics_module_traces_are_identical() {
+    check_all(phys_scenarios());
+}
+
+#[test]
+fn rival_collision_and_traffic_module_traces_are_identical() {
+    check_all(ai_traffic_scenarios());
 }

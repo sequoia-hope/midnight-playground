@@ -7,9 +7,11 @@ use std::io::Read;
 use std::sync::{Arc, OnceLock};
 
 use mr_levels::{SeasideData, levels, seaside};
+use mr_sim::dims::Dims;
 use mr_sim::staged::{Stage, stage_level};
 use mr_sim::trace::{ReadTrace, read_trace};
-use mr_track::Level;
+use mr_sim::vehicle::Vehicle;
+use mr_track::{Level, Mode, Route, Track, Zone, seg};
 
 pub const SURVEY: &[u8] = include_bytes!("../../../../assets/seaside/survey.bin");
 
@@ -165,4 +167,72 @@ pub fn save_trace(id: &str, bytes: &[u8]) {
     let dir = format!("{}/../../target/parity", env!("CARGO_MANIFEST_DIR"));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(format!("{dir}/{id}.trace"), bytes).unwrap();
+}
+
+/// A dead-straight, flat road (x grows along it; +z is to the right):
+/// `straightTrack` in test/unit/support/sim.js.
+pub fn straight_track(length: f64, road: &'static str) -> Track {
+    Track::new(&straight_level(length, road)).unwrap()
+}
+
+/// The level of [`straight_track`].
+pub fn straight_level(length: f64, road: &'static str) -> Level {
+    Level {
+        id: "test-straight",
+        mode: Mode::Race,
+        num: "",
+        title: "",
+        desc: "",
+        laps: None,
+        lap_length: None,
+        start_height: Some(0.0),
+        start_heading: Some(0.0),
+        start_x: None,
+        start_z: None,
+        finish_runoff: Some(180.0),
+        elevation_smooth: None,
+        route: Route::Segments(vec![seg(length, 0.0, 0.0).zone(0).road(road)]),
+        elevation: None,
+        ground: None,
+        loose_ground: None,
+        sea_y: None,
+        zones: vec![Zone {
+            key: "test",
+            name: "TEST",
+            sub: "",
+            landform: "valley",
+            scenery: "",
+            color: "",
+            blend: None,
+            blend_offset: None,
+        }],
+        sky: Vec::new(),
+        sun_azimuth: 0.0,
+        moon_dir: None,
+        traffic_paint: None,
+        traffic: Vec::new(),
+        police: None,
+        rivals: Vec::new(),
+    }
+}
+
+/// A car with no model: the dimensions physics and AI read (`makeVehicle`).
+pub fn make_vehicle(kind: &'static str, mass: f64) -> Vehicle {
+    let (length, width, wheel_base) = match kind {
+        "sports" => (4.47, 1.9, 2.6),
+        "muscle" => (4.86, 1.95, 2.8),
+        "super" => (4.57, 2.05, 2.7),
+        "electric" => (4.74, 1.98, 2.9),
+        "rally" => (4.12, 1.9, 2.55),
+        _ => (4.6, 1.95, 2.7),
+    };
+    let dims = Dims {
+        length,
+        width,
+        height: 1.3,
+        wheel_radius: 0.34,
+        wheel_base,
+        track: None,
+    };
+    Vehicle::new(dims, kind, mass, "", 0xffffff)
 }
