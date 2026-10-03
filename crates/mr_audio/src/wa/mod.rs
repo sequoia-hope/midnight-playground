@@ -35,7 +35,13 @@ pub mod web;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod native;
 
-pub use backend::{Attr, Backend, BufferId, NodeId, Op, WaveId};
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod compressor;
+
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod oscillator;
+
+pub use backend::{Attr, Backend, BufferId, NodeId, OfflineRender, Op, WaveId};
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -1370,6 +1376,21 @@ impl AudioContext {
     pub fn start_rendering(&self) -> Option<Vec<Vec<f32>>> {
         self.flush_released();
         self.0.backend.borrow_mut().render()
+    }
+
+    /// An offline render suspended every `frame` samples (a multiple of the
+    /// 128-sample render quantum) to run `control(k)` at frame k, k >= 1:
+    /// `oc.suspend(k * frame / sampleRate).then(() => { control(k);
+    /// oc.resume(); })` for every k, then `startRendering()`. `None` for a
+    /// backend that cannot (a live context, the null backend).
+    pub fn start_rendering_steered(
+        &self,
+        frame: usize,
+        control: Box<dyn FnMut(usize)>,
+    ) -> Option<Vec<Vec<f32>>> {
+        self.flush_released();
+        let r = self.0.backend.borrow_mut().take_offline()?;
+        Some(r.render(frame, control))
     }
 
     /// A buffer is given to a node: its contents go to the backend once.

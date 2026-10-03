@@ -1,5 +1,9 @@
-//! The plain material kinds on three_std (SPEC 6.2): Standard, Physical,
-//! Lambert and Basic, and Line and Points drawn as basic. A JS material's
+//! The material kinds on three_std (SPEC 6.2): the plain ones (Standard,
+//! Physical, Lambert and Basic, Line drawn as basic), the patched kinds of
+//! WP 2.4 (Terrain, Asphalt, Shoulder, Markings, Sea: each JS
+//! `onBeforeCompile` patch as a block of shader code at the same point of
+//! `three_material.wgsl`, selected by [`Patch`]), and points (Points,
+//! GlowPoints, FlickerPoints) drawn as camera-facing quads. A JS material's
 //! parameters become a [`ThreeMaterial`]: its uniforms, its maps, and a
 //! [`ThreeKey`] that picks the shader variant, culling, blending and depth
 //! state the way three's `WebGLPrograms` and `WebGLState` do.
@@ -14,7 +18,74 @@ use bevy::render::render_resource::{
     RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError,
 };
 use bevy::shader::{ShaderDefVal, ShaderRef};
-use mr_scene::{MaterialDesc, Scene, TextureDesc, three};
+use mr_scene::{MaterialDesc, MaterialKind, Scene, TextureDesc, three};
+
+/// The JS patch a material carries, ported into `three_material.wgsl`
+/// (WP 2.4). `None` draws the plain built-in material.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub enum Patch {
+    #[default]
+    None,
+    /// `TerrainMesh.js` `patchTriplanar`: `packed` (the four-scale detail
+    /// texture; the game always passes it) and `photo` (Seaside's drape).
+    Terrain { packed: bool, photo: bool },
+    /// `Road.js` `patchAsphalt`.
+    Asphalt,
+    /// `Road.js`'s shoulder patch (gravel fading to its average).
+    Shoulder,
+    /// `Road.js` `patchMarkings`.
+    Markings,
+    /// `Sea.js` `patchMaterial`.
+    Sea,
+    /// A `PointsMaterial` drawn as quads (SPEC 6.2 "Points"):
+    /// `sizeAttenuation`, and the kind's patch.
+    Points { attenuate: bool, mode: PointsMode },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub enum PointsMode {
+    /// The built-in `PointsMaterial`.
+    #[default]
+    Plain,
+    /// `City.js` `glowPointsMaterial`: per-point size, a minimum pixel
+    /// size, a gentler fog.
+    Glow,
+    /// `desert/glow.js` `flickerPoints`: a per-point phase and the shared
+    /// clock; `blink` is the hard on/off chase.
+    Flicker { blink: bool },
+}
+
+fn kind_opt(m: &MaterialDesc, k: &str) -> Option<f64> {
+    let v = m.kind_opts.as_ref()?.get(k)?;
+    v.as_f64().or_else(|| v.as_bool().map(f64::from))
+}
+
+impl Patch {
+    /// The patch of a material, from its kind tag and options.
+    pub fn of(m: &MaterialDesc) -> Patch {
+        let flag = |k: &str| kind_opt(m, k).unwrap_or(0.0) != 0.0;
+        let points = |mode| Patch::Points {
+            attenuate: m.boolean("sizeAttenuation").unwrap_or(true),
+            mode,
+        };
+        match m.kind {
+            MaterialKind::Terrain => Patch::Terrain {
+                packed: flag("packed"),
+                photo: flag("packed") && flag("photo"),
+            },
+            MaterialKind::Asphalt => Patch::Asphalt,
+            MaterialKind::Shoulder => Patch::Shoulder,
+            MaterialKind::Markings => Patch::Markings,
+            MaterialKind::Sea => Patch::Sea,
+            MaterialKind::GlowPoints => points(PointsMode::Glow),
+            MaterialKind::FlickerPoints => points(PointsMode::Flicker {
+                blink: kind_opt(m, "blink").unwrap_or(0.0) > 0.0,
+            }),
+            _ if m.ty == "PointsMaterial" => points(PointsMode::Plain),
+            _ => Patch::None,
+        }
+    }
+}
 
 /// three's lighting model for a material type.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
@@ -56,6 +127,11 @@ pub struct ThreeKey {
     pub depth_test: bool,
     /// `polygonOffset` as a constant depth bias.
     pub depth_bias: i32,
+    /// The JS patch (WP 2.4), or points.
+    pub patch: Patch,
+    /// A tangent-space normal map (the sea's), with three's derivative
+    /// frame (no tangents).
+    pub normal_map: bool,
 }
 
 /// The material's uniforms (`three_material.wgsl`'s `ThreeParams`).
@@ -71,6 +147,14 @@ pub struct ThreeParams {
     pub map_t1: Vec4,
     pub emissive_t0: Vec4,
     pub emissive_t1: Vec4,
+    /// The normal map's uv transform rows.
+    pub normal_t0: Vec4,
+    pub normal_t1: Vec4,
+    /// Per patch: Terrain `uPhotoBox`; Sea `normalScale` (xy); Points
+    /// `size`, `uMinPx`, and the flicker's rate and depth.
+    pub kind0: Vec4,
+    /// Points: the flicker's blink rate.
+    pub kind1: Vec4,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
@@ -84,6 +168,21 @@ pub struct ThreeMaterial {
     #[texture(3)]
     #[sampler(4)]
     pub emissive_map: Option<Handle<Image>>,
+    /// The packed detail texture (`tDetail`; the sea's `tFoam`).
+    #[texture(5)]
+    #[sampler(6)]
+    pub detail: Option<Handle<Image>>,
+    /// The terrain's `tRock`, or the sea's `normalMap`.
+    #[texture(7)]
+    #[sampler(8)]
+    pub aux: Option<Handle<Image>>,
+    /// Seaside's draped photo (`tPhoto`) and loose-ground mask (`tLoose`).
+    #[texture(13)]
+    #[sampler(14)]
+    pub photo: Option<Handle<Image>>,
+    #[texture(15)]
+    #[sampler(16)]
+    pub loose: Option<Handle<Image>>,
     #[texture(
         10,
         sample_type = "float",
@@ -144,7 +243,7 @@ impl Material for ThreeMaterial {
     fn specialize(
         _pipeline: &MaterialPipeline,
         descriptor: &mut RenderPipelineDescriptor,
-        _layout: &MeshVertexBufferLayoutRef,
+        layout: &MeshVertexBufferLayoutRef,
         key: MaterialPipelineKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
         let k = key.bind_group_data;
@@ -162,6 +261,60 @@ impl Material for ThreeMaterial {
             return Ok(());
         }
         let mut defs: Vec<ShaderDefVal> = Vec::new();
+        // A patch's own attribute (aSurf, aLane, aDepth, gsize, ph, and the
+        // points' quad corners) at location 8, beside Bevy's standard ones.
+        if layout.0.contains(crate::convert::ATTRIBUTE_EXTRA) {
+            let mut attrs = vec![Mesh::ATTRIBUTE_POSITION.at_shader_location(0)];
+            for (a, at) in [
+                (Mesh::ATTRIBUTE_NORMAL, 1),
+                (Mesh::ATTRIBUTE_UV_0, 2),
+                (Mesh::ATTRIBUTE_UV_1, 3),
+                (Mesh::ATTRIBUTE_TANGENT, 4),
+                (Mesh::ATTRIBUTE_COLOR, 5),
+            ] {
+                if layout.0.contains(a) {
+                    attrs.push(a.at_shader_location(at));
+                }
+            }
+            attrs.push(crate::convert::ATTRIBUTE_EXTRA.at_shader_location(8));
+            descriptor.vertex.buffers = vec![layout.0.get_layout(&attrs)?];
+            defs.push("VERTEX_EXTRA".into());
+        }
+        match k.patch {
+            Patch::None => {}
+            Patch::Terrain { packed, photo } => {
+                defs.push("PATCH_TERRAIN".into());
+                if packed {
+                    defs.push("TERRAIN_PACKED".into());
+                }
+                if photo {
+                    defs.push("MR_PHOTO".into());
+                }
+            }
+            Patch::Asphalt => defs.push("PATCH_ASPHALT".into()),
+            Patch::Shoulder => defs.push("PATCH_SHOULDER".into()),
+            Patch::Markings => defs.push("PATCH_MARKINGS".into()),
+            Patch::Sea => defs.push("PATCH_SEA".into()),
+            Patch::Points { attenuate, mode } => {
+                defs.push("POINTS".into());
+                if attenuate {
+                    defs.push("USE_SIZEATTENUATION".into());
+                }
+                match mode {
+                    PointsMode::Plain => {}
+                    PointsMode::Glow => defs.push("POINTS_GLOW".into()),
+                    PointsMode::Flicker { blink } => {
+                        defs.push("POINTS_FLICKER".into());
+                        if blink {
+                            defs.push("FLICKER_BLINK".into());
+                        }
+                    }
+                }
+            }
+        }
+        if k.normal_map {
+            defs.push("USE_NORMALMAP".into());
+        }
         match k.model {
             Model::Physical => {
                 defs.push("LIT".into());
@@ -282,8 +435,9 @@ pub fn model_of(ty: &str) -> Option<Model> {
     }
 }
 
-/// A JS material as a [`ThreeMaterial`]: the plain version of its built-in
-/// type (a patched kind draws without its patch, as a stand-in). `images`
+/// A JS material as a [`ThreeMaterial`]: its built-in type with its patch
+/// where [`Patch`] has it (a patched kind not ported yet draws without its
+/// patch, as a stand-in). `images`
 /// are the scene's textures as Bevy images; `instance_color` says the
 /// geometry is an InstancedMesh with instanceColor.
 pub fn three_material(
@@ -298,10 +452,11 @@ pub fn three_material(
     let flag = |n: &str, d: bool| m.boolean(n).unwrap_or(d);
     let col = |n: &str, d: [f64; 3]| m.color(n).unwrap_or(d);
     let tex = |name: &str| {
-        let i = m.params.get(name).and_then(|_| m.texture(name))?;
+        let i = m.texture(name)?;
         let h = images.get(i as usize).cloned().flatten()?;
         Some((h, scene.textures.get(i as usize)?))
     };
+    let patch = Patch::of(m);
     let physical = m.ty == "MeshPhysicalMaterial";
     let c = col("color", [1.0; 3]);
     let opacity = num("opacity", 1.0);
@@ -348,14 +503,76 @@ pub fn three_material(
         physical: Vec4::new(num("ior", 1.5) as f32, 1.0, 0.0, 0.0),
         ..ThreeParams::default()
     };
-    // PointsMaterial's map is a point sprite; points draw one pixel for now.
-    let map = if m.ty == "PointsMaterial" {
-        None
-    } else {
-        tex("map")
-    };
+    // PointsMaterial's map is the point sprite, through its uvTransform
+    // (map_particle_fragment), which is the same matrix.
+    let map = tex("map");
     if let Some((_, t)) = &map {
         (p.map_t0, p.map_t1) = uv_rows(t);
+    }
+    // The patches' own textures and uniforms (WP 2.4).
+    let mut detail = None;
+    let mut aux = None;
+    let mut photo = None;
+    let mut loose = None;
+    let mut normal_map = false;
+    let vec = |n: &str| -> Option<Vec<f64>> {
+        let v = m.get(n)?.get("vec")?.as_array()?;
+        v.iter().map(serde_json::Value::as_f64).collect()
+    };
+    match patch {
+        Patch::Terrain { packed, photo: ph } => {
+            aux = tex("tRock").map(|(h, _)| h);
+            if packed {
+                detail = tex("tDetail").map(|(h, _)| h);
+            }
+            if ph {
+                photo = tex("tPhoto").map(|(h, _)| h);
+                loose = tex("tLoose").map(|(h, _)| h);
+                if let Some(b) = vec("uPhotoBox") {
+                    let g = |i: usize| b.get(i).copied().unwrap_or(0.0) as f32;
+                    p.kind0 = Vec4::new(g(0), g(1), g(2), g(3));
+                }
+            }
+        }
+        Patch::Asphalt | Patch::Markings => {
+            detail = tex("tDetail").map(|(h, _)| h);
+        }
+        Patch::Sea => {
+            detail = tex("tFoam").map(|(h, _)| h);
+            if let Some((h, t)) = tex("normalMap") {
+                aux = Some(h);
+                (p.normal_t0, p.normal_t1) = uv_rows(t);
+                normal_map = true;
+                let s = vec("normalScale").unwrap_or_else(|| vec![1.0, 1.0]);
+                p.kind0 = Vec4::new(
+                    s.first().copied().unwrap_or(1.0) as f32,
+                    s.get(1).copied().unwrap_or(1.0) as f32,
+                    0.0,
+                    0.0,
+                );
+            }
+        }
+        Patch::Points { mode, .. } => {
+            p.kind0 = Vec4::new(
+                num("size", 1.0) as f32,
+                m.number("uMinPx").unwrap_or(0.0) as f32,
+                kind_opt(m, "rate").unwrap_or(1.0) as f32,
+                kind_opt(m, "depth").unwrap_or(0.35) as f32,
+            );
+            if let PointsMode::Flicker { .. } = mode {
+                // flickerPoints writes these into its GLSL with toFixed(3).
+                let fixed3 = |x: f64| ((x * 1000.0).round() / 1000.0) as f32;
+                let rate = kind_opt(m, "rate").unwrap_or(1.0);
+                p.kind1 = Vec4::new(
+                    fixed3(13.0 * rate),
+                    fixed3(4.7 * rate),
+                    fixed3(29.0 * rate),
+                    fixed3(kind_opt(m, "blink").unwrap_or(0.0)),
+                );
+                p.kind0.w = fixed3(kind_opt(m, "depth").unwrap_or(0.35));
+            }
+        }
+        Patch::Shoulder | Patch::None => {}
     }
     let emissive_map = if lit { tex("emissiveMap") } else { None };
     if let Some((_, t)) = &emissive_map {
@@ -404,11 +621,17 @@ pub fn three_material(
         depth_write: flag("depthWrite", true),
         depth_test: flag("depthTest", true),
         depth_bias,
+        patch,
+        normal_map,
     };
     Some(ThreeMaterial {
         params: p,
         map: map.map(|(h, _)| h),
         emissive_map: emissive_map.map(|(h, _)| h),
+        detail,
+        aux,
+        photo,
+        loose,
         globals: shared.globals.clone(),
         env: shared.env.clone(),
         key,

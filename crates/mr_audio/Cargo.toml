@@ -10,6 +10,8 @@ mr_math.workspace = true
 # Array hashes: the audio reference names arrays by SHA-256 (the null
 # backend's call log, the parity tests).
 sha2 = "0.10"
+# The radio's clip index (`audio/radio/index.json`).
+serde_json = "1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true, optional = true }
@@ -64,5 +66,13 @@ null = []
 [dev-dependencies]
 serde_json = { version = "1", features = ["float_roundtrip"] }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+# The drive logs are gzipped (parity/golden/audio/drive-*.jsonl.gz).
+flate2 = "1"
+
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
+
+[[example]]
+name = "render_scenarios"
+required-features = ["native"]

@@ -38,6 +38,62 @@ pub const G_SPOT_COLOR: usize = 21;
 pub const G_SPOT_CONE: usize = 22;
 pub const G_POINT_POS: usize = 23;
 pub const G_POINT_COLOR: usize = 24;
+pub const G_ANIM: usize = 25;
+pub const G_ANIM2: usize = 26;
+
+/// The per-frame state the WP 2.4 patches read, which the JS keeps in
+/// uniforms its updaters move (`World.js`, `Sea.js`, `desert/glow.js`):
+/// one road and one sea per level, so they live with the scene-wide inputs.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Anim {
+    /// The asphalt's `uWet` (`Road.setNight`).
+    pub wet: f64,
+    /// The sea's `uTime` and `uOff2`.
+    pub sea_time: f64,
+    pub sea_off2: [f64; 2],
+    /// How far the sea's normal map has scrolled (`normalMap.offset`) since
+    /// the export, added to its uv transform.
+    pub sea_normal_offset: [f64; 2],
+    /// `glowTime` (the desert's flicker clock).
+    pub glow_time: f64,
+    /// three's pixel ratio: rendered pixels per CSS pixel (points' sizes).
+    pub pixel_ratio: f64,
+}
+
+impl Default for Anim {
+    fn default() -> Self {
+        Anim {
+            wet: 0.0,
+            sea_time: 0.0,
+            sea_off2: [0.0; 2],
+            sea_normal_offset: [0.0; 2],
+            glow_time: 0.0,
+            pixel_ratio: 1.0,
+        }
+    }
+}
+
+impl Anim {
+    /// One frame of the updaters, after `Sky.update` (`World.update`): the
+    /// road's damp follows nightfall (`World.js`: `road.setNight(smoothstep(
+    /// 0.55, 1.0, n) * 0.85)`, run even when frozen), the sea's ripples and
+    /// foam and the desert's flicker move with `dt` (0 when frozen).
+    pub fn advance(&mut self, dt: f64, night: f64) {
+        self.wet = smooth(0.55, 1.0, night) * 0.85;
+        self.sea_normal_offset[0] += dt * 0.012;
+        self.sea_normal_offset[1] += dt * 0.007;
+        self.sea_time += dt;
+        self.sea_off2[0] -= dt * 0.021;
+        self.sea_off2[1] += dt * 0.016;
+        self.glow_time += dt;
+    }
+}
+
+/// `util/math.js` `smoothstep`.
+fn smooth(a: f64, b: f64, x: f64) -> f64 {
+    let t = ((x - a) / (b - a)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
 
 /// A `DirectionalLightShadow` with an orthographic camera.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -141,6 +197,8 @@ pub struct Lighting {
     pub point: Option<Point>,
     /// The shadow map is on (the JS "high quality" setting).
     pub shadows: bool,
+    /// The patches' per-frame state (WP 2.4).
+    pub anim: Anim,
 }
 
 impl Default for Lighting {
@@ -155,6 +213,7 @@ impl Default for Lighting {
             spot: None,
             point: None,
             shadows: true,
+            anim: Anim::default(),
         }
     }
 }
@@ -312,6 +371,19 @@ impl Lighting {
             g[G_POINT_POS] = v3(dv(p.position), p.distance);
             g[G_POINT_COLOR] = v3(scaled(p.color, p.intensity), p.decay);
         }
+        let a = &self.anim;
+        g[G_ANIM] = [
+            a.wet as f32,
+            a.sea_time as f32,
+            a.sea_off2[0] as f32,
+            a.sea_off2[1] as f32,
+        ];
+        g[G_ANIM2] = [
+            a.sea_normal_offset[0] as f32,
+            a.sea_normal_offset[1] as f32,
+            a.glow_time as f32,
+            a.pixel_ratio as f32,
+        ];
         g
     }
 }

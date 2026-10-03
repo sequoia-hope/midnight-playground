@@ -345,6 +345,7 @@ fn spawn_node(
             draw,
             colors: convert::vertex_colors(mdesc),
             lit: mode == StandIn::Lit,
+            extra: convert::extra_attribute(mdesc),
         };
         let shadows = |e: &mut EntityCommands| {
             if !node.cast_shadow {
