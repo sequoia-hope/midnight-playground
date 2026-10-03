@@ -24,6 +24,7 @@ nothing unless its URL parameter is given:
 | `quant=1` | The player's input is quantised as the Rust `InputFrame` is. |
 | `seed=N` | Rivals, police and the pursuit draw from seeded streams (`src/parity/sim.js`). |
 | `parity=1` | All of the above, seed 1 unless `seed` is given. |
+| `freeze=1` | Scenery animation holds still (`world.update` gets dt 0), for scene exports and screenshots. Not part of `parity=1`. |
 
 In Node, `NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs` installs
 the kernel before anything runs (`npm run test:unit:kernel`).

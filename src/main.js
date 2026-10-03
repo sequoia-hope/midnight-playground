@@ -638,7 +638,7 @@ function tick(frameDt) {
     const f = track.frame(attract.s);
     focus.set(f.x, f.y, f.z);
   }
-  world.update(dt, s, focus, camera);
+  world.update(parity.freeze ? 0 : dt, s, focus, camera); // ?freeze=1: scenery holds still
   refreshEnv(world.sky.override ?? (track.loop ? 0.5 : s / track.length));
   composer.render();
 }

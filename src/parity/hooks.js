@@ -8,6 +8,8 @@
 //   ?quant=1    the player's input is quantised as the Rust InputFrame is
 //   ?seed=N     rivals, police and the pursuit draw from seeded streams
 //   ?parity=1   all of the above (seed 1 unless ?seed is given)
+//   ?freeze=1   scenery animation holds still (world.update gets dt 0), for
+//               scene exports and screenshots; not part of parity=1
 //
 // Tools reach the state through window.__parity (the `parity` object).
 
@@ -24,6 +26,7 @@ export const parity = {
   fixed: on('fixeddt') ? { dt: 1 / 120, ticks: Math.max(1, Number(params.get('ticks') || 2)) } : null,
   quantise: on('quant') ? quantiseInput : null,
   seed: params.has('seed') ? Number(params.get('seed')) : all ? 1 : null,
+  freeze: params.get('freeze') === '1',
   // Built per race from the seed (see streamsForRace).
   rngs: null,
   // A recorder sets this: called after every race.update in fixed-dt mode,
@@ -53,4 +56,4 @@ if (parity.kernel) {
   installKernel(bytes);
 }
 
-if (parity.kernel || parity.fixed || parity.quantise || parity.seed !== null) window.__parity = parity;
+if (parity.kernel || parity.fixed || parity.quantise || parity.seed !== null || parity.freeze) window.__parity = parity;
