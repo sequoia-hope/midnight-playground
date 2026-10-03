@@ -47,6 +47,12 @@ impl Texture {
         }
     }
 
+    /// A canvas as `new THREE.CanvasTexture(c)` uploads it (`repeat`:
+    /// `RepeatWrapping` both ways; `srgb`: `SRGBColorSpace`, else none).
+    pub fn from_canvas(c: &Canvas, repeat: bool, srgb: bool, aniso: f64) -> Texture {
+        Texture::canvas(c, repeat, srgb, aniso)
+    }
+
     /// The scene description, with the pixels in buffer `pixels`.
     pub fn desc(&self, name: &str, pixels: u32) -> TextureDesc {
         let canvas = self.source == TextureSource::Canvas;
@@ -123,6 +129,21 @@ impl Cached {
 impl TextureCache {
     pub fn new() -> TextureCache {
         TextureCache::default()
+    }
+
+    /// The cached picture under `key`, made by `make` the first time: for
+    /// the caches other texture modules keep (`city/cityTextures.js`), under
+    /// keys of their own.
+    pub fn cached_with(&mut self, key: &str, make: impl FnOnce() -> Cached) -> Arc<Cached> {
+        self.cached(key.to_string(), make)
+    }
+
+    /// The cached picture under `key`, if made.
+    pub fn lookup(&self, key: &str) -> Option<Arc<Cached>> {
+        self.entries
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.clone())
     }
 
     fn cached(&mut self, key: String, make: impl FnOnce() -> Cached) -> Arc<Cached> {
