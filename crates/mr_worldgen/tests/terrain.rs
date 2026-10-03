@@ -25,7 +25,7 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 mod common;
 
-use common::{plan, plan_json, terrain};
+use common::{plan, plan_json, planned_terrain, terrain};
 use mr_track::Track;
 use mr_worldgen::terrain::Terrain;
 use sha2::{Digest, Sha256};
@@ -106,8 +106,35 @@ fn cached(_id: &str) -> Option<(Vec<f64>, Vec<f64>)> {
 }
 
 fn heights(id: &str) {
+    // The plan registered by the scenery (the ported modules' own plan(),
+    // the others replayed, DECISIONS D330) is the recorded one, bit for bit
+    // and in its order.
     let p = plan(id);
-    let (_, t, tr) = terrain(id, Some(&p));
+    let (_, t, tr) = planned_terrain(id);
+    assert_eq!(tr.flattens.len(), p.flattens.len(), "{id}: flattens");
+    for (k, (f, w)) in tr.flattens.iter().zip(&p.flattens).enumerate() {
+        let bits = |f: &mr_worldgen::terrain::Flatten| {
+            [f.x, f.z, f.r, f.falloff, f.y.unwrap_or(f64::NAN)].map(f64::to_bits)
+        };
+        assert_eq!(bits(f), bits(w), "{id}: flatten {k} {f:?}, the JS {w:?}");
+    }
+    assert_eq!(tr.carves.len(), p.carves.len(), "{id}: carves");
+    for (k, (c, w)) in tr.carves.iter().zip(&p.carves).enumerate() {
+        let pts = |c: &mr_worldgen::terrain::Carve| {
+            c.points
+                .iter()
+                .map(|p| p.map(f64::to_bits))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(pts(c), pts(w), "{id}: carve {k}'s points");
+        assert_eq!(
+            [c.width, c.depth].map(f64::to_bits),
+            [w.width, w.depth].map(f64::to_bits),
+            "{id}: carve {k}"
+        );
+        assert_eq!(c.under_road, w.under_road, "{id}: carve {k}");
+    }
+    assert_eq!(tr.desert_rail, p.desert_rail, "{id}: the railway bed");
     // The flattens the JS resolved (a height of null: the landform there).
     let pj = plan_json(id);
     for (k, f) in tr.flattens.iter().enumerate() {
@@ -317,24 +344,23 @@ fn inside_the_barriers_the_terrain_is_the_run_off() {
 // ── L3 through the job list ─────────────────────────────────────────────
 
 /// A level built through `level_jobs` with the terrain's stages (the
-/// scenery modules missing, their plan replayed), and the progress it
-/// reported.
+/// scenery's plans registered by the ported modules or replayed, their
+/// builds skipped: DECISIONS D330), and the progress it reported.
 fn level_build(id: &str) -> (Vec<(String, f64)>, mr_worldgen::world::WorldBuild) {
-    use mr_worldgen::terrain_mesh::{TerrainSetup, seaside_ground_color, terrain_stages};
+    use mr_worldgen::scenery::plan_only_factory;
+    use mr_worldgen::terrain_mesh::terrain_stages;
     use mr_worldgen::world::{Build, Stages, World, level_jobs};
-    let setup = TerrainSetup {
-        plan: Some(plan(id)),
-        ground_color: (id == "seaside").then(|| seaside_ground_color(common::survey())),
-        ..TerrainSetup::default()
-    };
-    let (terrain, fields, terrain_meshes) = terrain_stages(setup);
+    let (terrain, fields, terrain_meshes) = terrain_stages(common::terrain_setup(id));
     let stages = Stages {
         terrain: Some(terrain),
         fields: Some(fields),
         terrain_meshes: Some(terrain_meshes),
         ..Stages::default()
     };
-    let build = Build::new(World::new(common::level(id)), level_jobs(stages, |_| None));
+    let build = Build::new(
+        World::new(common::level(id)),
+        level_jobs(stages, plan_only_factory(Some(common::recording(id)))),
+    );
     let mut progress = Vec::new();
     let wb = build
         .run(|label, f| progress.push((label.to_string(), f)))

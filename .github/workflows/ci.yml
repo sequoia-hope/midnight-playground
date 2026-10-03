@@ -108,3 +108,5 @@ jobs:
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/terrain-plan.mjs --check
       - name: The road plan golden reproduces
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/road-plan.mjs --check
+      - name: The scenery plan split reproduces
+        run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/scenery-plan.mjs --check

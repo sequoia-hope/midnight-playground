@@ -23,7 +23,7 @@ mod common;
 
 use std::path::PathBuf;
 
-use common::{plan, root, terrain};
+use common::{planned_terrain, root};
 use mr_scene::digest::{SceneDigest, digest};
 use mr_scene::{BufferData, Scene};
 use mr_worldgen::object::SceneGraph;
@@ -130,8 +130,7 @@ fn check(id: &str) {
     let (js_group, js_meshes) = terrain_meshes(&js);
 
     // The Rust terrain.
-    let p = plan(id);
-    let (_, _, tr) = terrain(id, Some(&p));
+    let (_, _, tr) = planned_terrain(id);
     let photo = (id == "seaside").then(|| {
         // The photo decoded as Chrome decoded it (the JPEG decoder is the
         // client's; DECISIONS D234).
