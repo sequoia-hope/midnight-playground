@@ -754,7 +754,9 @@ impl Assembly<'_> {
             Some((_, p)) => *p,
             None => {
                 let t = e.image.texture();
-                let p = self.buffer(4, BufferData::U8(t.rgba.clone()));
+                // One component per channel: RGBA, or R8 (Seaside's loose
+                // ground mask).
+                let p = self.buffer(e.desc.channels, BufferData::U8(t.rgba.clone()));
                 self.pixels.push((e.image.clone(), p));
                 p
             }

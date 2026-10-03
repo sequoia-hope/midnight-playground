@@ -70,7 +70,9 @@ impl Texture {
             flip_y: canvas,
             color_space: if self.srgb { "srgb" } else { "" }.to_string(),
             premultiply_alpha: false,
-            unpack_alignment: 4,
+            // three's DataTexture sets unpackAlignment 1; a canvas texture
+            // keeps Texture's 4.
+            unpack_alignment: if canvas { 4 } else { 1 },
             generate_mipmaps: true,
             wrap_s: wrap,
             wrap_t: wrap,
