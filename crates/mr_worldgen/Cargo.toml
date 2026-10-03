@@ -12,6 +12,12 @@ mr_math.workspace = true
 mr_track.workspace = true
 mr_levels.workspace = true
 
+[dev-dependencies]
+# The texture gate (tests/textures.rs): the golden summary, cached PNGs.
+serde_json = "1"
+png = "0.18"
+sha2 = "0.10"
+
 [features]
 # Native only: run independent build jobs on a thread pool (SPEC 5.5). rayon
 # joins here as an optional dependency when the first jobs exist.

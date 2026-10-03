@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Font gallery</title>
+<style>
+:root { --bg: #f6f4ef; --fg: #1c1d21; --muted: #5d6068; --card: #ffffff; --line: #ddd8cc; --accent: #0b6b3a; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #16181d; --fg: #e8e6e1; --muted: #9a9ca3; --card: #1f2229; --line: #30343c; --accent: #5fd08f; }
+}
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+main { max-width: 1500px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 26px; margin: 0 0 6px; }
+h2 { font-size: 20px; margin: 36px 0 2px; }
+p { margin: 4px 0; color: var(--muted); max-width: 900px; }
+.why { margin-bottom: 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
+figure { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+figcaption { margin-bottom: 8px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+figcaption a { color: var(--muted); font-size: 13px; }
+.tag { background: var(--accent); color: var(--bg); border-radius: 4px; padding: 0 6px; font-size: 12px; font-weight: 600; }
+img { width: 100%; height: auto; display: block; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Font gallery</h1>
+<p>The JS game names system fonts that differ per device; the Rust port bundles open-licence substitutes under those names (SPEC 5.3). Each card draws the game's own sign strings, in the game's font strings, with one candidate standing in for the named family, rendered by <code>mr_canvas</code> as the port will draw them. The bundled default is first in each row. Pick one per family; <code>assets/fonts/fonts.json</code> holds the choice.</p>
+<p>Regenerate with <code>node tools/parity/fonts-gallery.mjs</code>.</p>

@@ -1,0 +1,33 @@
+{
+ "note": "The fonts the Rust port draws text with (SPEC 5.3, WP 3.2): open-licence substitutes for the system fonts the JS names, registered under those names. mr_canvas::fonts::bundled() holds the same table (a test checks), and tools/parity/textures.html registers these faces with FontFace for the JS reference. weight is the face's weight range (a variable font's wght axis follows the requested weight within it); a single-weight face is given the whole range so that no browser synthesises bold or oblique for it. generic maps the CSS generic families to a family above.",
+ "faces": [
+  { "family": "Arial Narrow", "file": "archivonarrow/ArchivoNarrow[wght].ttf", "weight": [400, 700], "style": "normal" },
+  { "family": "Arial Narrow", "file": "archivonarrow/ArchivoNarrow-Italic[wght].ttf", "weight": [400, 700], "style": "italic" },
+  { "family": "Arial", "file": "arimo/Arimo[wght].ttf", "weight": [400, 700], "style": "normal" },
+  { "family": "Arial", "file": "arimo/Arimo-Italic[wght].ttf", "weight": [400, 700], "style": "italic" },
+  { "family": "Arial Black", "file": "archivoblack/ArchivoBlack-Regular.ttf", "weight": [100, 900], "style": "normal" },
+  { "family": "Georgia", "file": "gelasio/Gelasio[wght].ttf", "weight": [400, 700], "style": "normal" },
+  { "family": "Georgia", "file": "gelasio/Gelasio-Italic[wght].ttf", "weight": [400, 700], "style": "italic" },
+  { "family": "Brush Script MT", "file": "yellowtail/Yellowtail-Regular.ttf", "weight": [100, 900], "style": "normal" },
+  { "family": "Segoe Script", "file": "caveat/Caveat[wght].ttf", "weight": [400, 700], "style": "normal" },
+  { "family": "Courier New", "file": "courierprime/CourierPrime-Regular.ttf", "weight": [400, 400], "style": "normal" },
+  { "family": "Courier New", "file": "courierprime/CourierPrime-Bold.ttf", "weight": [700, 700], "style": "normal" },
+  { "family": "Courier New", "file": "courierprime/CourierPrime-Italic.ttf", "weight": [400, 400], "style": "italic" },
+  { "family": "Courier New", "file": "courierprime/CourierPrime-BoldItalic.ttf", "weight": [700, 700], "style": "italic" },
+  { "family": "Rajdhani", "file": "rajdhani/Rajdhani-Regular.ttf", "weight": [400, 400], "style": "normal" },
+  { "family": "Rajdhani", "file": "rajdhani/Rajdhani-Medium.ttf", "weight": [500, 500], "style": "normal" },
+  { "family": "Rajdhani", "file": "rajdhani/Rajdhani-SemiBold.ttf", "weight": [600, 600], "style": "normal" },
+  { "family": "Rajdhani", "file": "rajdhani/Rajdhani-Bold.ttf", "weight": [700, 700], "style": "normal" }
+ ],
+ "generic": { "sans-serif": "Arial", "serif": "Georgia", "monospace": "Courier New", "cursive": "Brush Script MT", "system-ui": "Arial", "ui-sans-serif": "Arial" },
+ "sources": {
+  "archivonarrow": { "name": "Archivo Narrow", "licence": "OFL.txt", "url": "https://github.com/google/fonts/tree/main/ofl/archivonarrow" },
+  "arimo": { "name": "Arimo", "licence": "OFL.txt", "url": "https://github.com/google/fonts/tree/main/ofl/arimo" },
+  "archivoblack": { "name": "Archivo Black", "licence": "OFL.txt", "url": "https://github.com/google/fonts/tree/main/ofl/archivoblack" },
+  "gelasio": { "name": "Gelasio", "licence": "OFL.txt", "url": "https://github.com/google/fonts/tree/main/ofl/gelasio" },
+  "yellowtail": { "name": "Yellowtail", "licence": "LICENSE.txt (Apache 2.0)", "url": "https://github.com/google/fonts/tree/main/apache/yellowtail" },
+  "caveat": { "name": "Caveat", "licence": "OFL.txt", "url": "https://github.com/google/fonts/tree/main/ofl/caveat" },
+  "courierprime": { "name": "Courier Prime", "licence": "OFL.txt", "url": "https://github.com/google/fonts/tree/main/ofl/courierprime" },
+  "rajdhani": { "name": "Rajdhani", "licence": "OFL.txt", "url": "https://github.com/google/fonts/tree/main/ofl/rajdhani" }
+ }
+}
