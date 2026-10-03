@@ -10,18 +10,27 @@
 //! `decodeAudioData`) settle at the next [`super::AudioContext::settle`],
 //! which the client calls every frame.
 
-use super::backend::{Attr, Backend, BufferId, NodeId, Op, WaveId};
+use super::backend::{Attr, Backend, BufferId, NodeId, OfflineRender, Op, WaveId};
+use super::compressor::ChromeCompressor;
+use super::oscillator::{BasicType, ChromeOscillator, OscMessage, WaveTables, basic_tables};
+use super::timeline::{Event, EventKind, Timeline};
 use super::{
     AudioError, BiquadFilterType, ContextState, Decoded, Dest, ErrorName, NodeKind, OscillatorType,
-    OverSampleType, ParamId, ParamName, Pending,
+    OverSampleType, ParamId, ParamName, Pending, param_spec, params_of,
 };
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use web_audio_api::context::{
     AudioContext as WaContext, AudioContextLatencyCategory, AudioContextOptions, AudioContextState,
-    BaseAudioContext, OfflineAudioContext,
+    BaseAudioContext, ConcreteBaseAudioContext, OfflineAudioContext,
 };
-use web_audio_api::node::{self as wn, AudioNode, AudioScheduledSourceNode};
-use web_audio_api::{AudioBuffer, AudioParam, PeriodicWave, PeriodicWaveOptions};
+use web_audio_api::node::{
+    self as wn, AudioNode, AudioNodeOptions, AudioScheduledSourceNode, ChannelCountMode,
+    ChannelInterpretation,
+};
+use web_audio_api::worklet::{AudioWorkletNode, AudioWorkletNodeOptions};
+use web_audio_api::{AudioBuffer, AudioParam};
 
 // One per live node, in a map: the size of the largest variant does not matter.
 #[allow(clippy::large_enum_variant)]
@@ -29,10 +38,12 @@ enum NativeNode {
     Destination(wn::AudioDestinationNode),
     Gain(wn::GainNode),
     Biquad(wn::BiquadFilterNode),
-    Osc(wn::OscillatorNode),
+    /// Chrome's oscillator (see [`super::oscillator`]).
+    Osc(AudioWorkletNode),
     Src(wn::AudioBufferSourceNode),
     Shaper(wn::WaveShaperNode),
-    Comp(wn::DynamicsCompressorNode),
+    /// Chrome's compressor kernel (see [`super::compressor`]).
+    Comp(AudioWorkletNode),
     Conv(wn::ConvolverNode),
     Delay(wn::DelayNode),
     Merger(wn::ChannelMergerNode),
@@ -66,15 +77,15 @@ impl NativeNode {
             (NativeNode::Biquad(n), P::Detune) => n.detune(),
             (NativeNode::Biquad(n), P::Q) => n.q(),
             (NativeNode::Biquad(n), P::Gain) => n.gain(),
-            (NativeNode::Osc(n), P::Frequency) => n.frequency(),
-            (NativeNode::Osc(n), P::Detune) => n.detune(),
+            (NativeNode::Osc(n), P::Frequency) => &n.parameters()["frequency"],
+            (NativeNode::Osc(n), P::Detune) => &n.parameters()["detune"],
             (NativeNode::Src(n), P::PlaybackRate) => n.playback_rate(),
             (NativeNode::Src(n), P::Detune) => n.detune(),
-            (NativeNode::Comp(n), P::Threshold) => n.threshold(),
-            (NativeNode::Comp(n), P::Knee) => n.knee(),
-            (NativeNode::Comp(n), P::Ratio) => n.ratio(),
-            (NativeNode::Comp(n), P::Attack) => n.attack(),
-            (NativeNode::Comp(n), P::Release) => n.release(),
+            (NativeNode::Comp(n), P::Threshold) => &n.parameters()["threshold"],
+            (NativeNode::Comp(n), P::Knee) => &n.parameters()["knee"],
+            (NativeNode::Comp(n), P::Ratio) => &n.parameters()["ratio"],
+            (NativeNode::Comp(n), P::Attack) => &n.parameters()["attack"],
+            (NativeNode::Comp(n), P::Release) => &n.parameters()["release"],
             (NativeNode::Delay(n), P::DelayTime) => n.delay_time(),
             (NativeNode::Pan(n), P::Pan) => n.pan(),
             _ => return None,
@@ -88,6 +99,10 @@ pub trait NativeContext: BaseAudioContext {
     fn suspend_now(&self) -> Result<(), AudioError>;
     fn close_now(&self) -> Result<(), AudioError>;
     fn render_now(&mut self) -> Option<Vec<Vec<f32>>>;
+    /// An offline context, to render steered (`Err`: a live one, given back).
+    fn into_offline(self) -> Result<Box<dyn OfflineRender>, Self>
+    where
+        Self: Sized;
 }
 
 fn offline_only(what: &str) -> AudioError {
@@ -116,6 +131,10 @@ impl NativeContext for WaContext {
     fn render_now(&mut self) -> Option<Vec<Vec<f32>>> {
         None
     }
+
+    fn into_offline(self) -> Result<Box<dyn OfflineRender>, Self> {
+        Err(self)
+    }
 }
 
 impl NativeContext for OfflineAudioContext {
@@ -139,15 +158,80 @@ impl NativeContext for OfflineAudioContext {
                 .collect(),
         )
     }
+
+    fn into_offline(self) -> Result<Box<dyn OfflineRender>, Self> {
+        Ok(Box::new(Steered(self)))
+    }
+}
+
+/// A steered render's control function.
+type Control = Box<dyn FnMut(usize)>;
+
+thread_local! {
+    /// The control function of the steered render running on this thread.
+    /// The crate's suspend callbacks must be `Send + 'static`; the render
+    /// runs them on the calling thread, so they reach the (non-`Send`)
+    /// control through here.
+    static CONTROL: RefCell<Option<Control>> = RefCell::new(None);
+}
+
+/// An offline render steered every `frame` samples (`suspend(t)` then the
+/// control, as the reference renders do, DECISIONS D45 and D253).
+struct Steered(OfflineAudioContext);
+
+impl OfflineRender for Steered {
+    fn render(self: Box<Self>, frame: usize, control: Box<dyn FnMut(usize)>) -> Vec<Vec<f32>> {
+        let mut c = self.0;
+        let len = c.length();
+        let sr = c.sample_rate() as f64;
+        assert!(
+            frame.is_multiple_of(128) && frame > 0,
+            "a control frame of whole render quanta"
+        );
+        let mut k = 1;
+        while k * frame < len {
+            // The crate rounds a suspend time up to a render quantum; half a
+            // quantum early lands exactly on frame k (currentTime there is
+            // k * frame / sampleRate, as in Chrome).
+            let t = (k * frame - 64) as f64 / sr;
+            c.suspend_sync(t, move |_| {
+                CONTROL.with(|cb| {
+                    if let Some(f) = cb.borrow_mut().as_mut() {
+                        f(k)
+                    }
+                })
+            });
+            k += 1;
+        }
+        CONTROL.with(|cb| *cb.borrow_mut() = Some(control));
+        let b = c.start_rendering_sync();
+        CONTROL.with(|cb| *cb.borrow_mut() = None);
+        (0..b.number_of_channels())
+            .map(|ch| b.get_channel_data(ch).to_vec())
+            .collect()
+    }
 }
 
 /// The `web-audio-api` crate behind the facade.
 pub struct NativeBackend<C: NativeContext> {
-    ctx: C,
+    /// Taken out while an offline render runs (nodes are made on `base`).
+    ctx: Option<C>,
+    base: ConcreteBaseAudioContext,
     nodes: HashMap<NodeId, NativeNode>,
     buffers: HashMap<BufferId, AudioBuffer>,
-    waves: HashMap<WaveId, PeriodicWave>,
+    waves: HashMap<WaveId, Arc<WaveTables>>,
     tasks: Vec<Box<dyn FnOnce()>>,
+    /// Each param's automation as the facade sent it (DECISIONS D254): the
+    /// value a `setTargetAtTime` starts from.
+    timelines: HashMap<ParamId, Timeline>,
+    /// The graph's links by target node (a param's node for a param), and
+    /// the nodes the destination pulls on (D258).
+    ins: HashMap<NodeId, Vec<NodeId>>,
+    reach: HashSet<NodeId>,
+    /// Oscillators the facade let go of before anything pulled on them (an
+    /// FM modulator wired up before its carrier): held until they are
+    /// pulled, so they can be told to run.
+    detached: HashMap<NodeId, NativeNode>,
 }
 
 impl NativeBackend<WaContext> {
@@ -182,17 +266,22 @@ impl NativeBackend<OfflineAudioContext> {
 impl<C: NativeContext> NativeBackend<C> {
     fn with(ctx: C) -> Self {
         NativeBackend {
-            ctx,
+            base: ctx.base().clone(),
+            ctx: Some(ctx),
             nodes: HashMap::new(),
             buffers: HashMap::new(),
             waves: HashMap::new(),
             tasks: Vec::new(),
+            timelines: HashMap::new(),
+            ins: HashMap::new(),
+            reach: HashSet::new(),
+            detached: HashMap::new(),
         }
     }
 
     /// The crate's own context, for what the facade does not cover.
     pub fn raw(&self) -> &C {
-        &self.ctx
+        self.ctx.as_ref().expect("the context (not rendering)")
     }
 
     fn param(&self, p: ParamId) -> Option<&AudioParam> {
@@ -200,15 +289,45 @@ impl<C: NativeContext> NativeBackend<C> {
     }
 
     fn create(&self, kind: NodeKind, arg: Option<f64>) -> NativeNode {
-        let c = &self.ctx;
+        let c = &self.base;
         match kind {
             NodeKind::Destination => NativeNode::Destination(c.destination()),
             NodeKind::Gain => NativeNode::Gain(c.create_gain()),
             NodeKind::BiquadFilter => NativeNode::Biquad(c.create_biquad_filter()),
-            NodeKind::Oscillator => NativeNode::Osc(c.create_oscillator()),
+            NodeKind::Oscillator => NativeNode::Osc(AudioWorkletNode::new::<ChromeOscillator>(
+                c,
+                AudioWorkletNodeOptions {
+                    number_of_inputs: 0,
+                    number_of_outputs: 1,
+                    output_channel_count: vec![1],
+                    parameter_data: HashMap::new(),
+                    processor_options: basic_tables(BasicType::Sine, c.sample_rate()),
+                    audio_node_options: AudioNodeOptions {
+                        channel_count: 1,
+                        channel_count_mode: ChannelCountMode::Explicit,
+                        channel_interpretation: ChannelInterpretation::Speakers,
+                    },
+                },
+            )),
             NodeKind::BufferSource => NativeNode::Src(c.create_buffer_source()),
             NodeKind::WaveShaper => NativeNode::Shaper(c.create_wave_shaper()),
-            NodeKind::DynamicsCompressor => NativeNode::Comp(c.create_dynamics_compressor()),
+            NodeKind::DynamicsCompressor => {
+                NativeNode::Comp(AudioWorkletNode::new::<ChromeCompressor>(
+                    c,
+                    AudioWorkletNodeOptions {
+                        number_of_inputs: 1,
+                        number_of_outputs: 1,
+                        output_channel_count: vec![2],
+                        parameter_data: HashMap::new(),
+                        processor_options: c.sample_rate(),
+                        audio_node_options: AudioNodeOptions {
+                            channel_count: 2,
+                            channel_count_mode: ChannelCountMode::ClampedMax,
+                            channel_interpretation: ChannelInterpretation::Speakers,
+                        },
+                    },
+                ))
+            }
             NodeKind::Convolver => NativeNode::Conv(c.create_convolver()),
             NodeKind::Delay => NativeNode::Delay(c.create_delay(arg.unwrap_or(1.0))),
             NodeKind::ChannelMerger => {
@@ -219,6 +338,89 @@ impl<C: NativeContext> NativeBackend<C> {
         }
     }
 
+    /// A node newly connected to what the destination pulls on: it and
+    /// everything upstream of it are pulled too.
+    fn pull_from(&mut self, node: NodeId) {
+        let mut stack = vec![node];
+        while let Some(n) = stack.pop() {
+            if !self.reach.insert(n) {
+                continue;
+            }
+            self.set_frozen(n, false);
+            if let Some(v) = self.ins.get(&n) {
+                stack.extend(v.iter().copied());
+            }
+        }
+    }
+
+    /// After a disconnect: what does the destination still pull on?
+    fn recompute_reach(&mut self) {
+        let mut reach = HashSet::new();
+        let mut stack = vec![0];
+        while let Some(n) = stack.pop() {
+            if !reach.insert(n) {
+                continue;
+            }
+            if let Some(v) = self.ins.get(&n) {
+                stack.extend(v.iter().copied());
+            }
+        }
+        let lost: Vec<NodeId> = self.reach.difference(&reach).copied().collect();
+        self.reach = reach;
+        for n in lost {
+            self.set_frozen(n, true);
+        }
+    }
+
+    /// Chrome renders only the nodes the destination pulls on: an
+    /// oscillator cut off by a gate stops, phase and all, until it is
+    /// connected again (D258).
+    fn set_frozen(&mut self, node: NodeId, frozen: bool) {
+        if let Some(NativeNode::Osc(o)) = self.nodes.get(&node) {
+            o.port().post_message(OscMessage::Frozen(frozen));
+        } else if !frozen && let Some(NativeNode::Osc(o)) = self.detached.remove(&node) {
+            // Connected now: the crate keeps it alive without the handle.
+            o.port().post_message(OscMessage::Frozen(false));
+        }
+    }
+
+    /// Update a param's mirrored timeline (pruned to the present).
+    fn mirror(&mut self, p: ParamId, f: impl FnOnce(&mut Timeline)) {
+        let now = self.base.current_time();
+        if let Some(tl) = self.timelines.get_mut(&p) {
+            f(tl);
+            if tl.events.len() > 16 {
+                tl.prune(now);
+            }
+        }
+    }
+
+    /// `start(args)` on a source.
+    fn start(&mut self, node: NodeId, args: &[f64]) {
+        // Chrome starts a buffer at the frame nearest the offset (its read
+        // index begins whole); the crate interpolates between two (D257).
+        let sr = self.base.sample_rate() as f64;
+        let mut a = [0.0; 3];
+        let args: &[f64] = if args.len() >= 2 {
+            a[..args.len()].copy_from_slice(args);
+            a[1] = (a[1] * sr).round() / sr;
+            &a[..args.len()]
+        } else {
+            args
+        };
+        match (self.nodes.get_mut(&node), args) {
+            (Some(NativeNode::Osc(o)), []) => o.port().post_message(OscMessage::Start(0.0)),
+            (Some(NativeNode::Osc(o)), [t, ..]) => o.port().post_message(OscMessage::Start(*t)),
+            (Some(NativeNode::Src(s)), []) => s.start(),
+            (Some(NativeNode::Src(s)), [t]) => s.start_at(*t),
+            (Some(NativeNode::Src(s)), [t, o]) => s.start_at_with_offset(*t, *o),
+            (Some(NativeNode::Src(s)), [t, o, d, ..]) => {
+                s.start_at_with_offset_and_duration(*t, *o, *d)
+            }
+            _ => {}
+        }
+    }
+
     fn settle_later(&mut self, done: Pending<()>, r: Result<(), AudioError>) {
         self.tasks.push(Box::new(move || done.resolve(r)));
     }
@@ -226,15 +428,15 @@ impl<C: NativeContext> NativeBackend<C> {
 
 impl<C: NativeContext> Backend for NativeBackend<C> {
     fn sample_rate(&self) -> f64 {
-        self.ctx.sample_rate() as f64
+        self.base.sample_rate() as f64
     }
 
     fn current_time(&self) -> f64 {
-        self.ctx.current_time()
+        self.base.current_time()
     }
 
     fn state(&self) -> ContextState {
-        match self.ctx.state() {
+        match self.base.state() {
             AudioContextState::Running => ContextState::Running,
             AudioContextState::Closed => ContextState::Closed,
             AudioContextState::Suspended => ContextState::Suspended,
@@ -247,20 +449,33 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
             Op::New { node, kind, arg } => {
                 let n = self.create(kind, arg);
                 self.nodes.insert(node, n);
+                if kind == NodeKind::Destination {
+                    self.reach.insert(node);
+                }
+                let sr = self.base.sample_rate() as f64;
+                for &p in params_of(kind) {
+                    if let Some((v, _, _)) = param_spec(kind, p, sr, arg.unwrap_or(1.0)) {
+                        self.timelines
+                            .insert(ParamId { node, name: p }, Timeline::new(v));
+                    }
+                }
             }
             Op::Attr { node, attr } => {
                 let buffers = &self.buffers;
+                let base = &self.base;
                 let Some(n) = self.nodes.get_mut(&node) else {
                     return;
                 };
                 match (n, attr) {
                     (NativeNode::Osc(o), Attr::Type(s)) => {
-                        o.set_type(match OscillatorType::from_js(s) {
-                            Some(OscillatorType::Square) => wn::OscillatorType::Square,
-                            Some(OscillatorType::Sawtooth) => wn::OscillatorType::Sawtooth,
-                            Some(OscillatorType::Triangle) => wn::OscillatorType::Triangle,
-                            _ => wn::OscillatorType::Sine,
-                        })
+                        let t = match OscillatorType::from_js(s) {
+                            Some(OscillatorType::Square) => BasicType::Square,
+                            Some(OscillatorType::Sawtooth) => BasicType::Sawtooth,
+                            Some(OscillatorType::Triangle) => BasicType::Triangle,
+                            _ => BasicType::Sine,
+                        };
+                        o.port()
+                            .post_message(OscMessage::Wave(basic_tables(t, base.sample_rate())));
                     }
                     (NativeNode::Biquad(b), Attr::Type(s)) => {
                         b.set_type(match BiquadFilterType::from_js(s) {
@@ -306,31 +521,73 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                 }
             }
             Op::Value { param, v } => {
+                let now = self.base.current_time();
+                self.mirror(param, |tl| tl.set_value(v, now));
                 if let Some(p) = self.param(param) {
                     p.set_value(v as f32);
                 }
             }
             Op::SetValue { param, v, t } => {
+                self.mirror(param, |tl| {
+                    tl.insert(Event {
+                        kind: EventKind::Set,
+                        v,
+                        t,
+                    })
+                });
                 if let Some(p) = self.param(param) {
                     p.set_value_at_time(v as f32, t);
                 }
             }
             Op::LinRamp { param, v, t } => {
+                self.mirror(param, |tl| {
+                    tl.insert(Event {
+                        kind: EventKind::Lin,
+                        v,
+                        t,
+                    })
+                });
                 if let Some(p) = self.param(param) {
                     p.linear_ramp_to_value_at_time(v as f32, t);
                 }
             }
             Op::ExpRamp { param, v, t } => {
+                self.mirror(param, |tl| {
+                    tl.insert(Event {
+                        kind: EventKind::Exp,
+                        v,
+                        t,
+                    })
+                });
                 if let Some(p) = self.param(param) {
                     p.exponential_ramp_to_value_at_time(v as f32, t);
                 }
             }
             Op::SetTarget { param, v, t, tc } => {
+                // web-audio-api 1.7.0 evaluates a target curve that becomes
+                // current before its start time (after a ramp, or a target
+                // that another event ended) at that earlier time, where
+                // e^(-(t - t0) / tc) explodes. Anchoring the curve with the
+                // value the param holds at its start, in a set event at the
+                // same time, makes it start where it should (D254).
+                let mut hold = None;
+                self.mirror(param, |tl| {
+                    hold = Some(tl.at(t));
+                    tl.insert(Event {
+                        kind: EventKind::Target { tc },
+                        v,
+                        t,
+                    });
+                });
                 if let Some(p) = self.param(param) {
+                    if let Some(h) = hold {
+                        p.set_value_at_time(h as f32, t);
+                    }
                     p.set_target_at_time(v as f32, t, tc);
                 }
             }
             Op::Cancel { param, t } => {
+                self.mirror(param, |tl| tl.cancel(t));
                 if let Some(p) = self.param(param) {
                     p.cancel_scheduled_values(t);
                 }
@@ -352,6 +609,14 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                 if let Some(d) = dest {
                     src.node().connect_from_output_to_input(d, o, i);
                 }
+                let target = match to {
+                    Dest::Node(d) => d,
+                    Dest::Param(p) => p.node,
+                };
+                self.ins.entry(target).or_default().push(from);
+                if self.reach.contains(&target) && !self.reach.contains(&from) {
+                    self.pull_from(from);
+                }
             }
             Op::Disconnect { from, to } => {
                 let Some(src) = self.nodes.get(&from) else {
@@ -370,30 +635,39 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                         }
                     }
                 }
-            }
-            Op::Start { node, args } => match (self.nodes.get_mut(&node), args) {
-                (Some(NativeNode::Osc(o)), []) => o.start(),
-                (Some(NativeNode::Osc(o)), [t, ..]) => o.start_at(*t),
-                (Some(NativeNode::Src(s)), []) => s.start(),
-                (Some(NativeNode::Src(s)), [t]) => s.start_at(*t),
-                (Some(NativeNode::Src(s)), [t, o]) => s.start_at_with_offset(*t, *o),
-                (Some(NativeNode::Src(s)), [t, o, d, ..]) => {
-                    s.start_at_with_offset_and_duration(*t, *o, *d)
+                match to {
+                    None => {
+                        for v in self.ins.values_mut() {
+                            v.retain(|n| *n != from);
+                        }
+                    }
+                    Some(d) => {
+                        let target = match d {
+                            Dest::Node(d) => d,
+                            Dest::Param(p) => p.node,
+                        };
+                        if let Some(v) = self.ins.get_mut(&target) {
+                            v.retain(|n| *n != from);
+                        }
+                    }
                 }
-                _ => {}
-            },
+                self.recompute_reach();
+            }
+            Op::Start { node, args } => self.start(node, args),
             Op::Stop { node, args } => match (self.nodes.get_mut(&node), args) {
-                (Some(NativeNode::Osc(o)), []) => o.stop(),
-                (Some(NativeNode::Osc(o)), [t, ..]) => o.stop_at(*t),
+                (Some(NativeNode::Osc(o)), []) => o.port().post_message(OscMessage::Stop(0.0)),
+                (Some(NativeNode::Osc(o)), [t, ..]) => o.port().post_message(OscMessage::Stop(*t)),
                 (Some(NativeNode::Src(s)), []) => s.stop(),
-                (Some(NativeNode::Src(s)), [t, ..]) => s.stop_at(*t),
+                (Some(NativeNode::Src(s)), [t, ..]) => {
+                    s.stop_at(t - 0.5 / self.base.sample_rate() as f64)
+                }
                 _ => {}
             },
             Op::SetPeriodicWave { node, wave } => {
                 if let Some(w) = self.waves.get(&wave).cloned()
                     && let Some(NativeNode::Osc(o)) = self.nodes.get_mut(&node)
                 {
-                    o.set_periodic_wave(w);
+                    o.port().post_message(OscMessage::Wave(w));
                 }
             }
             Op::Wave {
@@ -402,12 +676,13 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                 imag,
                 disable_normalization,
             } => {
-                let w = self.ctx.create_periodic_wave(PeriodicWaveOptions {
-                    real: Some(real.to_vec()),
-                    imag: Some(imag.to_vec()),
-                    disable_normalization: disable_normalization.unwrap_or(false),
-                });
-                self.waves.insert(wave, w);
+                let w = WaveTables::new(
+                    real,
+                    imag,
+                    disable_normalization.unwrap_or(false),
+                    self.base.sample_rate(),
+                );
+                self.waves.insert(wave, Arc::new(w));
             }
             Op::Buffer {
                 buffer,
@@ -416,7 +691,7 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                 sample_rate,
             } => {
                 let b =
-                    self.ctx
+                    self.base
                         .create_buffer(channels as usize, length as usize, sample_rate as f32);
                 self.buffers.insert(buffer, b);
             }
@@ -435,23 +710,23 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
     }
 
     fn resume(&mut self, done: Pending<()>) {
-        let r = self.ctx.resume_now();
+        let r = self.ctx.as_ref().map_or(Ok(()), |c| c.resume_now());
         self.settle_later(done, r);
     }
 
     fn suspend(&mut self, done: Pending<()>) {
-        let r = self.ctx.suspend_now();
+        let r = self.ctx.as_ref().map_or(Ok(()), |c| c.suspend_now());
         self.settle_later(done, r);
     }
 
     fn close(&mut self, done: Pending<()>) {
-        let r = self.ctx.close_now();
+        let r = self.ctx.as_ref().map_or(Ok(()), |c| c.close_now());
         self.settle_later(done, r);
     }
 
     fn decode(&mut self, buffer: BufferId, bytes: &[u8], done: Pending<Decoded>) {
         let r = match self
-            .ctx
+            .base
             .decode_audio_data_sync(std::io::Cursor::new(bytes.to_vec()))
         {
             Ok(b) => {
@@ -469,7 +744,15 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
     }
 
     fn release_node(&mut self, node: NodeId) {
-        self.nodes.remove(&node);
+        // (Its links stay in `ins`: the crate keeps a connected node alive,
+        // as a browser does.)
+        if let Some(n) = self.nodes.remove(&node)
+            && matches!(n, NativeNode::Osc(_))
+            && !self.reach.contains(&node)
+        {
+            self.detached.insert(node, n);
+        }
+        self.timelines.retain(|p, _| p.node != node);
     }
 
     fn release_buffer(&mut self, buffer: BufferId) {
@@ -499,7 +782,17 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
     }
 
     fn render(&mut self) -> Option<Vec<Vec<f32>>> {
-        self.ctx.render_now()
+        self.ctx.as_mut()?.render_now()
+    }
+
+    fn take_offline(&mut self) -> Option<Box<dyn OfflineRender>> {
+        match self.ctx.take()?.into_offline() {
+            Ok(r) => Some(r),
+            Err(c) => {
+                self.ctx = Some(c);
+                None
+            }
+        }
     }
 }
 
