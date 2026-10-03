@@ -10,6 +10,7 @@ pub mod colorizer;
 pub mod flora;
 pub mod geom;
 pub mod material;
+pub mod mountain;
 pub mod object;
 pub mod road;
 pub mod scenery;
