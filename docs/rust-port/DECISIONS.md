@@ -1697,6 +1697,88 @@ kinds at both levels, the foliage material with each override) in
 `parity/golden/flora/flora.json`; `tests/flora.rs` is bit-identical,
 native and in wasm. CI checks that the golden regenerates.
 
+## D311. The shape of `mountain`; the parked cars behind a hook
+
+2026-10-03, WP 3.6. `Mountain.js` is `mr_worldgen::mountain`: `mod.rs`
+holds the module (`Mountain`, its `plan()` and `build()`, one method per
+JS `build*` in the JS order, the flag's and the waterfall's updaters as
+`Animator`s), `kit.rs` the helpers at the top of the JS file
+(`SurfaceSampler`, `instanced`, `placed`, `mergedMesh`, `bakeStatic`,
+`rockMaterial`), `canvas.rs` its canvas code (`SignAtlas`, `roundRect`,
+`diamond`, `panel`, and each picture it draws). It is registered with one
+line in `scenery::PORTED` (D330), so every level build, and the terrain
+and road gates, run its own `plan()`: the diner pull-out and the summit
+lookout register the same two flattens, bit for bit and in their place,
+as the recording. `this` during `build()` is a `Build` struct borrowing
+the track, the terrain, the road's `sideL`/`sideR` (D270), the graph and
+the texture cache. The JS's object items (`{ x, y, z, sx, ..., q?, rx?,
+col?, b? }`) are `Item` with `Option`s where the JS tests for
+`undefined`; `rx || 0` keeps its `||`. `SurfaceSampler`'s height cache
+keeps the JS semantics exactly (a `Map` keyed by the rounded 4 m cell,
+holding the height of the first point asked for in that cell: two
+points of one cell from different tiles can differ in the last bit, so
+the cache is part of the result), as a `BTreeMap` only looked up. The
+JS's `6.28` for a random yaw stays `6.28` (`TURN`), not 2π. three's
+shared `Sprite` geometry is `sprite_geometry()` (one geometry for the
+five spray sprites, so one mesh in the scene, as the export has it).
+The parked pickup and sedan come from `CarModel.js` (WP 4.1), which the
+JS imports optionally: `Mountain::parked_cars` is an optional
+`ParkedCars` hook (`buildVehicle(kind, { color, seed, lod: 'low' })` and
+`setHeadlights(0)`, returning the car's root), placed and turned as the
+JS does and merged by the ported `bake_static`. Until WP 4.1 sets it the
+two baked groups (15 meshes) are absent, as when the JS import fails.
+
+## D312. The L3 gate for zone 0, and what it found
+
+2026-10-03, WP 3.6. `tools/parity/mountain-scene.mjs` writes
+`parity/golden/mountain/sierra.json` from the cached Sierra export: the
+group `mountain` and its place under the root; per child its node (type,
+matrix, flags, render order, a sprite's centre), its mesh line (counts,
+SHA-256 of every attribute and of the index), its instances (count,
+SHA-256 of the matrices and colours, bounding sphere) and its material by
+index into a table (each material as `road.rs` describes it, those after
+the first of their class written as what differs from it, to keep the
+file at 120 KB); every canvas texture's size, SHA-256 and 8×8 block
+means; the export's camera and night factor. `tests/mountain.rs` builds
+Sierra through `level_jobs` (Mountain built, the other modules' plans
+replayed and their builds skipped), applies the night parameters at the
+export's night factor, runs the updaters once as the frozen export ran
+them (dt 0, the export's camera), and compares child by child. The golden
+is compiled in, so the gate runs in CI and wasm; with the cache it also
+compares every canvas texture's pixels and writes side-by-side sheets to
+`parity/report/mountain/`. Result: **every mesh and instance set
+identical**: 84 children (23,570 vertices, 54 instanced meshes holding
+29,048 instances: rocks, outcrops, scree, three tiers of conifers, grass,
+flowers, shrubs, snow poles, delineators, the pool's rim boulders; the
+snow, signs, gantry, banners, diner, lookout, flag, waterfall ribbons,
+pool, foam, sprays), every node, every attribute, index, instance matrix,
+colour and bounding sphere bit-identical, and all 34 materials equal
+parameter by parameter, uniforms and samplers included; the two baked
+cars left out (D311). No port fix to a shared module was needed. The
+canvas textures without lettering are within WP 3.2's threshold of the
+export (mean absolute difference at most 1.24 levels, the foam).
+
+## D313. Lettered textures are held to a capture with the bundled fonts
+
+2026-10-03, WP 3.6. The scene export draws text with the machine's fonts,
+so the sign atlas, the two start banners, the diner's neon and its pole
+sign differ from the port by 8 to 27 levels per channel against it, all
+of it in the glyphs (the sheets show the same layout, colours, shapes and
+shadows). `tools/parity/mountain-textures.mjs` captures them as WP 3.2's
+reference does: the game itself on Sierra (`?kernel=1&freeze=1&s=0`,
+`Math.random` seeded as the export seeds it) with every face of
+`assets/fonts/fonts.json` registered under the family the JS names before
+the page's scripts run, reading back each canvas the group `mountain`
+uses as both `map` and `emissiveMap` (six pictures, the snow poles' bands
+among them). It writes the RGBA to `parity/cache/<key>/mountain/` and a
+summary with the font manifest's hash to
+`parity/golden/mountain/textures.json`; `--check` captures twice. The
+test holds those six to it (block means always, every pixel with the
+cache) and reports them against the export too. Result with the WP 3.2
+fonts: mean absolute difference at most 0.66 levels (the neon's red, its
+shadow blur). When the bundled fonts change, rerun the tool: the gate
+then fails until the capture is refreshed, which is the point.
+
 ## WP 3.7 decisions
 
 ## D330. Scenery modules ported or replayed, each in its place
