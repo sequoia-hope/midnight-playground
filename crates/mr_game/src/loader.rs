@@ -9,16 +9,17 @@
 //! which Bevy batches back into instanced draws.
 
 use crate::convert::{self, Draw, MeshKey, StandIn};
+use crate::render::lighting::{Lighting, Point, Spot};
+use crate::render::material::three_material;
+use crate::render::pmrem::EnvRequest;
+use crate::render::{SharedImages, SkyMaterial, ThreeMaterial};
 use crate::status::Status;
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::light::{NotShadowCaster, NotShadowReceiver};
-use bevy::math::{DVec3, Mat4, Vec3};
+use bevy::math::{DVec3, Mat4, Vec3, Vec4};
 use bevy::mesh::MeshTag;
-use bevy::pbr::{ExtendedMaterial, MaterialExtension};
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
-use bevy::render::render_resource::AsBindGroup;
-use bevy::shader::ShaderRef;
 use mr_scene::{MaterialKind, NodeType, Scene};
 use std::collections::HashMap;
 
@@ -29,6 +30,55 @@ pub struct SceneEntity;
 /// The sky dome, which follows the focus as `Sky.update` moves it.
 #[derive(Component)]
 pub struct SkyDome;
+
+/// `world.nightMaterials` (`World.js` `addNight`): material properties that
+/// follow nightfall, `value = day + (night - day) × n`. Every one in the
+/// exports is an `emissiveIntensity`.
+#[derive(Resource, Default)]
+pub struct NightMaterials {
+    pub entries: Vec<NightEntry>,
+    /// The night factor last applied.
+    pub last: Option<f64>,
+}
+
+pub struct NightEntry {
+    pub materials: Vec<Handle<ThreeMaterial>>,
+    /// The material's `emissive` colour (three's uniform is colour ×
+    /// intensity).
+    pub emissive: [f64; 3],
+    pub day: f64,
+    pub night: f64,
+}
+
+/// Sets the night-following properties for the sky's night factor (`World
+/// .update`), when it has changed.
+pub fn apply_night(
+    sky: Res<crate::SkyRes>,
+    mut night: ResMut<NightMaterials>,
+    mut assets: ResMut<Assets<ThreeMaterial>>,
+) {
+    let Some(n) = sky.sky.as_ref().map(|s| s.night) else {
+        return;
+    };
+    if night.last == Some(n) {
+        return;
+    }
+    night.last = Some(n);
+    for e in &night.entries {
+        let k = e.day + (e.night - e.day) * n;
+        for h in &e.materials {
+            if let Some(mut m) = assets.get_mut(h) {
+                let w = m.params.emissive.w;
+                m.params.emissive = Vec4::new(
+                    (e.emissive[0] * k) as f32,
+                    (e.emissive[1] * k) as f32,
+                    (e.emissive[2] * k) as f32,
+                    w,
+                );
+            }
+        }
+    }
+}
 
 /// What a finished build leaves behind for the camera and the HUD.
 #[derive(Resource, Default, Clone, Debug)]
@@ -57,32 +107,8 @@ pub struct Counts {
     pub invisible: usize,
 }
 
-/// A stand-in material with three's per-instance colour: `StandardMaterial`
-/// whose base colour is multiplied by a colour carried in the instance's
-/// [`MeshTag`] (`tint.wgsl`). One material per JS material, so instances
-/// keep batching whatever their colours.
-pub type TintMaterial = ExtendedMaterial<StandardMaterial, InstanceTint>;
-
-#[derive(Asset, AsBindGroup, Reflect, Debug, Clone, Default)]
-pub struct InstanceTint {
-    /// Unused by the shader; a bind group needs a binding.
-    #[uniform(100)]
-    pub reserved: u32,
-}
-
-impl MaterialExtension for InstanceTint {
-    fn fragment_shader() -> ShaderRef {
-        "embedded://mr_game/tint.wgsl".into()
-    }
-}
-
-/// Registers the tint material and its shader.
-pub fn tint_plugin(app: &mut App) {
-    bevy::asset::embedded_asset!(app, "tint.wgsl");
-    app.add_plugins(MaterialPlugin::<TintMaterial>::default());
-}
-
-/// A linear colour in 0..2 as the tag `tint.wgsl` unpacks: 10 bits a channel.
+/// A linear colour in 0..2 as the tag `three_material.wgsl` unpacks (three's
+/// instanceColor): 10 bits a channel.
 pub fn pack_tint(c: [f32; 3]) -> u32 {
     let q = |x: f32| ((x * 511.5).round().clamp(0.0, 1023.0)) as u32;
     q(c[0]) | (q(c[1]) << 10) | (q(c[2]) << 20)
@@ -103,12 +129,11 @@ pub struct Build {
     scene: Scene,
     step: Step,
     cursor: usize,
-    /// three's pre-ACES exposure factor (`toneMappingExposure / 0.6`).
-    exposure: f32,
     images: Vec<Option<Handle<Image>>>,
     meshes: HashMap<MeshKey, Option<Handle<Mesh>>>,
-    materials: HashMap<u32, Option<Handle<StandardMaterial>>>,
-    tinted: HashMap<u32, Option<Handle<TintMaterial>>>,
+    /// Per JS material and whether its instances carry colours.
+    materials: HashMap<(u32, bool), Option<Handle<ThreeMaterial>>>,
+    shared: SharedImages,
     visible: Vec<bool>,
     /// Per node, a translation added to its world matrix: zero for a level;
     /// for the models scene, where every model sits at the origin, each
@@ -119,12 +144,7 @@ pub struct Build {
 }
 
 impl Build {
-    pub fn new(scene: Scene) -> Build {
-        let exposure = scene
-            .environment
-            .as_ref()
-            .map_or(1.0, |e| e.tone_mapping_exposure) as f32
-            / 0.6;
+    pub fn new(scene: Scene, shared: SharedImages) -> Build {
         // three hides a node when it or any ancestor is invisible.
         let mut visible = vec![true; scene.nodes.len()];
         let mut stack: Vec<(u32, bool)> = scene.roots.iter().map(|&r| (r, true)).collect();
@@ -142,11 +162,10 @@ impl Build {
             .map_or(0, |&r| scene.nodes[r as usize].children.len().div_ceil(8));
         Build {
             offset,
-            exposure,
             images: Vec::new(),
             meshes: HashMap::new(),
             materials: HashMap::new(),
-            tinted: HashMap::new(),
+            shared,
             visible,
             out: if grid {
                 // The models' grid frames the view.
@@ -192,34 +211,15 @@ impl Build {
     fn material(
         &mut self,
         index: u32,
-        assets: &mut Assets<StandardMaterial>,
-    ) -> Option<Handle<StandardMaterial>> {
-        let (scene, exposure, images) = (&self.scene, self.exposure, &self.images);
+        instance_color: bool,
+        assets: &mut Assets<ThreeMaterial>,
+    ) -> Option<Handle<ThreeMaterial>> {
+        let (scene, images, shared) = (&self.scene, &self.images, &self.shared);
         self.materials
-            .entry(index)
+            .entry((index, instance_color))
             .or_insert_with(|| {
                 let m = &scene.materials[index as usize];
-                convert::build_material(scene, m, None, exposure, images).map(|m| assets.add(m))
-            })
-            .clone()
-    }
-
-    fn tinted_material(
-        &mut self,
-        index: u32,
-        assets: &mut Assets<TintMaterial>,
-    ) -> Option<Handle<TintMaterial>> {
-        let (scene, exposure, images) = (&self.scene, self.exposure, &self.images);
-        self.tinted
-            .entry(index)
-            .or_insert_with(|| {
-                let m = &scene.materials[index as usize];
-                convert::build_material(scene, m, None, exposure, images).map(|base| {
-                    assets.add(TintMaterial {
-                        base,
-                        extension: InstanceTint::default(),
-                    })
-                })
+                three_material(scene, m, images, shared, instance_color).map(|m| assets.add(m))
             })
             .clone()
     }
@@ -231,42 +231,30 @@ impl Build {
         }
     }
 
-    /// The sky dome's mesh: its sphere with the stand-in sky colours baked
-    /// into vertex colours (times the exposure: it is unlit).
-    fn sky_mesh(&self, mesh: u32, material: u32) -> Option<Mesh> {
-        let key = MeshKey {
-            mesh,
-            start: 0,
-            count: u32::MAX,
-            draw: Draw::Triangles,
-            colors: false,
-            lit: false,
-        };
-        let m = &self.scene.meshes[mesh as usize];
-        let (start, count) = convert::draw_span(&self.scene, m, None);
-        let mut out = convert::build_mesh(
-            &self.scene,
-            MeshKey {
-                start,
-                count,
-                ..key
-            },
-        )?;
-        let mat = &self.scene.materials[material as usize];
-        let pos = match out.attribute(Mesh::ATTRIBUTE_POSITION)? {
-            bevy::mesh::VertexAttributeValues::Float32x3(p) => p.clone(),
-            _ => return None,
-        };
-        let k = self.exposure;
-        let colors: Vec<[f32; 4]> = pos
+    /// The sky dome's material: `tNoise` is its one texture.
+    fn sky_material(
+        &self,
+        material: u32,
+        assets: &mut Assets<SkyMaterial>,
+    ) -> Option<Handle<SkyMaterial>> {
+        let m = &self.scene.materials[material as usize];
+        let noise = m.texture("tNoise")?;
+        let noise = self.images.get(noise as usize).cloned().flatten()?;
+        Some(assets.add(SkyMaterial {
+            globals: self.shared.globals.clone(),
+            noise,
+        }))
+    }
+
+    /// The sky dome's noise texture, for the environment map's sky.
+    pub fn sky_noise(&self) -> Option<Handle<Image>> {
+        let m = self
+            .scene
+            .materials
             .iter()
-            .map(|p| {
-                let c = convert::sky_color(mat, *p);
-                [c[0] * k, c[1] * k, c[2] * k, 1.0]
-            })
-            .collect();
-        out.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
-        Some(out)
+            .find(|m| m.kind == MaterialKind::SkyDome)?;
+        let i = m.texture("tNoise")?;
+        self.images.get(i as usize).cloned().flatten()
     }
 }
 
@@ -308,7 +296,7 @@ fn spawn_node(
     i: usize,
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
-    materials: (&mut Assets<StandardMaterial>, &mut Assets<TintMaterial>),
+    materials: (&mut Assets<ThreeMaterial>, &mut Assets<SkyMaterial>),
 ) -> usize {
     let node = b.scene.nodes[i].clone();
     let Some(mesh) = node.mesh else { return 0 };
@@ -370,14 +358,14 @@ fn spawn_node(
             }
         };
         if mode == StandIn::Sky {
-            let Some(m) = b.sky_mesh(mesh, mi) else {
+            let Some(m) = b.mesh(key, meshes) else {
                 continue;
             };
-            let Some(mat) = b.material(mi, materials.0) else {
+            let Some(mat) = b.sky_material(mi, materials.1) else {
                 continue;
             };
             let mut e = commands.spawn((
-                Mesh3d(meshes.add(m)),
+                Mesh3d(m),
                 MeshMaterial3d(mat),
                 Transform::from_matrix(world),
                 SceneEntity,
@@ -395,7 +383,7 @@ fn spawn_node(
         };
         match &instances {
             None => {
-                let Some(mat) = b.material(mi, materials.0) else {
+                let Some(mat) = b.material(mi, false, materials.0) else {
                     continue;
                 };
                 let t = Transform::from_matrix(world);
@@ -431,22 +419,20 @@ fn spawn_node(
                         })
                         .collect()
                 };
+                let tinted = inst.colors.is_some();
+                let Some(mat) = b.material(mi, tinted, materials.0) else {
+                    continue;
+                };
                 for (m, tint) in list {
                     let t = Transform::from_matrix(m);
-                    let mut e = commands.spawn((Mesh3d(mesh_h.clone()), t, SceneEntity));
-                    match tint {
-                        Some(c) => {
-                            let Some(mat) = b.tinted_material(mi, materials.1) else {
-                                continue;
-                            };
-                            e.insert((MeshMaterial3d(mat), MeshTag(pack_tint(c))));
-                        }
-                        None => {
-                            let Some(mat) = b.material(mi, materials.0) else {
-                                continue;
-                            };
-                            e.insert(MeshMaterial3d(mat));
-                        }
+                    let mut e = commands.spawn((
+                        Mesh3d(mesh_h.clone()),
+                        MeshMaterial3d(mat.clone()),
+                        t,
+                        SceneEntity,
+                    ));
+                    if let Some(c) = tint {
+                        e.insert(MeshTag(pack_tint(c)));
                     }
                     shadows(&mut e);
                     spawned += 1;
@@ -457,167 +443,48 @@ fn spawn_node(
     spawned
 }
 
-/// Spawns the scene's lights. The hemisphere light becomes the camera's
-/// ambient light (Bevy has no hemisphere light); returns its colour times
-/// brightness.
-fn spawn_lights(b: &Build, commands: &mut Commands, hq: bool) -> Option<LinearRgba> {
-    let mut ambient = None;
-    let pi = std::f32::consts::PI;
-    if b.scene.lights.is_empty() {
-        // The models scene has no lights of its own: a sun from the front
-        // left, high, at a level's usual intensity.
-        commands.spawn((
-            DirectionalLight {
-                illuminance: 3.0,
-                shadow_maps_enabled: hq,
-                ..default()
-            },
-            Transform::from_xyz(-30.0, 60.0, 40.0).looking_at(Vec3::ZERO, Vec3::Y),
-            SceneEntity,
-        ));
-    }
+/// The scene's local lights: its first spot light (the desert train's) and
+/// point light, as three holds them. The sun, hemisphere light and fog follow
+/// the sky (`render::sky`), not the export.
+fn scene_lights(b: &Build, lighting: &mut Lighting) {
+    lighting.spot = None;
+    lighting.point = None;
     for l in &b.scene.lights {
         let node = &b.scene.nodes[l.node as usize];
-        let pos = convert::mat4(&node.matrix_world).w_axis.truncate();
-        let color = Color::linear_rgb(l.color[0] as f32, l.color[1] as f32, l.color[2] as f32);
-        let target = l
-            .target
-            .map(|t| Vec3::new(t[0] as f32, t[1] as f32, t[2] as f32));
+        if !b.visible[l.node as usize] {
+            continue;
+        }
+        let p = convert::mat4(&node.matrix_world)
+            .w_axis
+            .truncate()
+            .as_dvec3();
         match l.ty {
-            NodeType::DirectionalLight => {
-                let to = target.unwrap_or(Vec3::ZERO);
-                let up = if (to - pos).normalize_or_zero().y.abs() > 0.999 {
-                    Vec3::Z
-                } else {
-                    Vec3::Y
-                };
-                commands.spawn((
-                    DirectionalLight {
-                        color,
-                        // three: radiance = colour × intensity, diffuse
-                        // = albedo/π × that; Bevy's illuminance is the same
-                        // quantity with Bevy's 1/π in its diffuse.
-                        illuminance: l.intensity as f32,
-                        shadow_maps_enabled: hq && l.cast_shadow,
-                        ..default()
-                    },
-                    // One cascade over about the JS's ±70 m box (SPEC 6.1).
-                    bevy::light::CascadeShadowConfigBuilder {
-                        num_cascades: 1,
-                        minimum_distance: 0.3,
-                        maximum_distance: 140.0,
-                        first_cascade_far_bound: 140.0,
-                        overlap_proportion: 0.2,
-                    }
-                    .build(),
-                    Transform::from_translation(pos).looking_at(to, up),
-                    SceneEntity,
-                ));
+            NodeType::SpotLight if lighting.spot.is_none() => {
+                let t = l
+                    .target
+                    .map_or(p - DVec3::Y, |t| DVec3::new(t[0], t[1], t[2]));
+                lighting.spot = Some(Spot {
+                    color: l.color,
+                    intensity: l.intensity,
+                    position: p,
+                    target: t,
+                    distance: l.distance.unwrap_or(0.0),
+                    decay: l.decay.unwrap_or(2.0),
+                    angle: l.angle.unwrap_or(std::f64::consts::FRAC_PI_3),
+                    penumbra: l.penumbra.unwrap_or(0.0),
+                });
             }
-            NodeType::HemisphereLight => {
-                // The sky colour from above, the ground colour from below; an
-                // ambient light averages the two, weighted to the sky as most
-                // of what is seen faces up. three's diffuse divides by π,
-                // Bevy's ambient does not.
-                let g = l.ground_color.unwrap_or([0.0; 3]);
-                let k = l.intensity as f32 / pi;
-                let mix = |i: usize| (l.color[i] as f32 * 0.75 + g[i] as f32 * 0.25) * k;
-                ambient = Some(LinearRgba::rgb(mix(0), mix(1), mix(2)));
-            }
-            NodeType::SpotLight => {
-                let angle = l.angle.unwrap_or(std::f64::consts::FRAC_PI_3) as f32;
-                let pen = l.penumbra.unwrap_or(0.0) as f32;
-                commands.spawn((
-                    SpotLight {
-                        color,
-                        // three's candela to Bevy's lumens.
-                        intensity: l.intensity as f32 * 4.0 * pi,
-                        range: l.distance.filter(|d| *d > 0.0).unwrap_or(1000.0) as f32,
-                        outer_angle: angle,
-                        inner_angle: angle * (1.0 - pen),
-                        shadow_maps_enabled: false,
-                        ..default()
-                    },
-                    Transform::from_translation(pos)
-                        .looking_at(target.unwrap_or(pos - Vec3::Y), Vec3::Y),
-                    SceneEntity,
-                ));
-            }
-            NodeType::PointLight => {
-                commands.spawn((
-                    PointLight {
-                        color,
-                        intensity: l.intensity as f32 * 4.0 * pi,
-                        range: l.distance.filter(|d| *d > 0.0).unwrap_or(1000.0) as f32,
-                        shadow_maps_enabled: false,
-                        ..default()
-                    },
-                    Transform::from_translation(pos),
-                    SceneEntity,
-                ));
+            NodeType::PointLight if lighting.point.is_none() => {
+                lighting.point = Some(Point {
+                    color: l.color,
+                    intensity: l.intensity,
+                    position: p,
+                    distance: l.distance.unwrap_or(0.0),
+                    decay: l.decay.unwrap_or(2.0),
+                });
             }
             _ => {}
         }
-    }
-    ambient
-}
-
-/// The camera settings a scene asks for: fog, clear colour, exposure and
-/// ambient light (the scene's environment, or neutral ones for models).
-pub fn apply_environment(
-    b: &Build,
-    ambient: Option<LinearRgba>,
-    camera: &mut EntityCommands,
-    clear: &mut ClearColor,
-) {
-    let k = b.exposure;
-    // Bevy's exposure scales lit colour by 2^-ev100 / 1.2; three's ACES
-    // scales it by exposure / 0.6 before the same fit.
-    let ev100 = -(1.2 * k).log2();
-    camera.insert(bevy::camera::Exposure { ev100 });
-    // Without the sky's environment map (WP 2.3) three's image-based light is
-    // missing; the stand-in adds the fog colour, which is the sky near the
-    // horizon, at the environment intensity.
-    let env = b.scene.environment.as_ref();
-    let fog_c = env
-        .and_then(|e| e.fog.as_ref())
-        .map(|f| f.color.map(|x| x as f32));
-    let env_k = env.map_or(0.0, |e| e.environment_intensity) as f32;
-    let amb = ambient.unwrap_or(LinearRgba::rgb(0.25, 0.25, 0.27));
-    let amb = match fog_c {
-        Some(f) => LinearRgba::rgb(
-            amb.red + f[0] * env_k * 0.5,
-            amb.green + f[1] * env_k * 0.5,
-            amb.blue + f[2] * env_k * 0.5,
-        ),
-        None => amb,
-    };
-    camera.insert(AmbientLight {
-        color: Color::LinearRgba(amb),
-        brightness: 1.0,
-        ..default()
-    });
-    if let Some(f) = env.and_then(|e| e.fog.as_ref()) {
-        let c = f.color.map(|x| x as f32 * k);
-        let falloff = match (f.ty.as_str(), f.density) {
-            ("FogExp2", Some(d)) => bevy::pbr::FogFalloff::ExponentialSquared { density: d as f32 },
-            _ => bevy::pbr::FogFalloff::Linear {
-                start: f.near.unwrap_or(1.0) as f32,
-                end: f.far.unwrap_or(1000.0) as f32,
-            },
-        };
-        // The JS fog picks up the sun's colour toward the sun (Sky.js's fog
-        // patch: fogSun⁴ × 0.035 + fogSun²⁴ × 0.07); Bevy's directional
-        // scattering is one power term, close enough for a stand-in.
-        camera.insert(bevy::pbr::DistanceFog {
-            color: Color::linear_rgb(c[0], c[1], c[2]),
-            directional_light_color: Color::linear_rgba(0.05, 0.05, 0.05, 1.0),
-            directional_light_exponent: 6.0,
-            falloff,
-        });
-        *clear = ClearColor(Color::linear_rgb(c[0], c[1], c[2]));
-    } else {
-        *clear = ClearColor(Color::linear_rgb(0.08, 0.09, 0.11));
     }
 }
 
@@ -644,14 +511,13 @@ pub fn build_step(
     mut commands: Commands,
     build: Option<ResMut<Build>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut tinted: ResMut<Assets<TintMaterial>>,
+    mut materials: ResMut<Assets<ThreeMaterial>>,
+    mut sky_materials: ResMut<Assets<SkyMaterial>>,
     mut images: ResMut<Assets<Image>>,
     mut status: ResMut<Status>,
     mut next: ResMut<NextState<AppState>>,
-    mut clear: ResMut<ClearColor>,
-    camera: Query<Entity, With<Camera3d>>,
-    opts: Res<crate::Opts>,
+    mut lighting: ResMut<Lighting>,
+    mut env: ResMut<EnvRequest>,
 ) {
     let Some(mut build) = build else { return };
     let b = &mut *build;
@@ -676,7 +542,7 @@ pub fn build_step(
                         i,
                         &mut commands,
                         &mut meshes,
-                        (&mut materials, &mut tinted),
+                        (&mut materials, &mut sky_materials),
                     );
                     b.cursor += 1;
                 } else {
@@ -684,10 +550,13 @@ pub fn build_step(
                 }
             }
             Step::Lights => {
-                let ambient = spawn_lights(b, &mut commands, opts.hq);
-                if let Ok(cam) = camera.single() {
-                    apply_environment(b, ambient, &mut commands.entity(cam), &mut clear);
-                }
+                scene_lights(b, &mut lighting);
+                // A scene without a dome (the models) still gets the sky's
+                // noise for its environment: `terrainDetailTexture`, made by
+                // the ported generator.
+                env.noise = b
+                    .sky_noise()
+                    .or_else(|| crate::render::sky::noise_image().map(|i| images.add(i)));
                 b.step = Step::Done;
             }
             Step::Done => break,
@@ -697,8 +566,7 @@ pub fn build_step(
     if matches!(b.step, Step::Done) {
         let c = &mut b.out.counts;
         c.meshes = b.meshes.values().filter(|m| m.is_some()).count();
-        c.materials = b.materials.values().filter(|m| m.is_some()).count()
-            + b.tinted.values().filter(|m| m.is_some()).count();
+        c.materials = b.materials.values().filter(|m| m.is_some()).count();
         c.images = b.images.iter().filter(|m| m.is_some()).count();
         c.hidden_kinds = std::mem::take(&mut b.hidden);
         b.out.camera = b.scene.environment.as_ref().map(|e| {
@@ -721,6 +589,27 @@ pub fn build_step(
         );
         status.counts = Some(loaded.counts.clone());
         commands.insert_resource(loaded);
+        let entries = b
+            .scene
+            .night_params
+            .iter()
+            .filter(|p| p.prop == "emissiveIntensity")
+            .map(|p| NightEntry {
+                materials: [false, true]
+                    .iter()
+                    .filter_map(|&t| b.materials.get(&(p.material, t)).cloned().flatten())
+                    .collect(),
+                emissive: b.scene.materials[p.material as usize]
+                    .color("emissive")
+                    .unwrap_or([0.0; 3]),
+                day: p.day,
+                night: p.night,
+            })
+            .collect();
+        commands.insert_resource(NightMaterials {
+            entries,
+            last: None,
+        });
         // Dropping the build drops the Scene: the CPU copies go here.
         commands.remove_resource::<Build>();
         next.set(AppState::Running);

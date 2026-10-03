@@ -1,23 +1,20 @@
-//! `mr_scene` data to Bevy assets: meshes, images and stand-in materials
-//! (roadmap WP 2.2). Pure conversions, no ECS; `loader` spawns the results.
+//! `mr_scene` data to Bevy assets: meshes and images (roadmap WP 2.2), and
+//! how each material kind draws for now ([`stand_in`]). Pure conversions, no
+//! ECS; `loader` spawns the results, `render::material` makes the materials.
 //!
 //! Every asset is created with `RenderAssetUsages::RENDER_WORLD`, so Bevy
 //! drops the CPU copy once it is on the GPU.
 //!
-//! Materials are stand-ins (SPEC 2.4, 6.2): every kind draws with Bevy's
-//! `StandardMaterial`, lit or unlit as its three.js base type is, with the
-//! colour, map, emissive, roughness, metalness, side, blending and fog of the
-//! JS material. The patches (`onBeforeCompile`) and `ShaderMaterial`s are not
-//! ported yet; the effect shaders among them draw nothing for now
-//! ([`StandIn::Hidden`]).
+//! The plain kinds draw with three_std (`render::material`); a patched kind
+//! draws as the plain version of its built-in type, as a stand-in, until its
+//! patch is ported (SPEC 6.2, roadmap WP 2.4). The `ShaderMaterial` effects
+//! other than the sky draw nothing for now ([`StandIn::Hidden`]).
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::{Image, ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::math::{Affine2, Mat4};
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
-use bevy::pbr::StandardMaterial;
-use bevy::prelude::{AlphaMode, Color, Handle, LinearRgba};
-use bevy::render::render_resource::{Extent3d, Face, TextureDimension, TextureFormat};
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use mr_scene::{
     Buffer, BufferData, MaterialDesc, MaterialKind, MeshDesc, NodeType, Scene, TextureDesc, three,
 };
@@ -421,11 +418,11 @@ pub fn uv_transform(t: &TextureDesc) -> Affine2 {
 /// How a material kind draws for now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StandIn {
-    /// Lit `StandardMaterial` from the JS material's parameters.
+    /// Lit (three's standard, physical or Lambert model).
     Lit,
-    /// Unlit, colour (times the exposure) from the parameters.
+    /// Unlit (three's basic model: basic, line and points materials).
     Unlit,
-    /// The sky dome: unlit, vertex colours computed from its uniforms.
+    /// The sky dome (`render::sky`).
     Sky,
     /// An effect shader not ported yet: not drawn.
     Hidden,
@@ -450,141 +447,7 @@ pub fn stand_in(m: &MaterialDesc) -> StandIn {
 
 /// Whether the material reads the geometry's vertex colours.
 pub fn vertex_colors(m: &MaterialDesc) -> bool {
-    m.boolean("vertexColors").unwrap_or(false) || stand_in(m) == StandIn::Sky
-}
-
-/// The stand-in material for a JS material. `tint` is an instance colour
-/// (three multiplies the vertex colour by it); `exposure` is the factor
-/// three's tone mapping applies before ACES (`toneMappingExposure / 0.6`),
-/// which Bevy's view exposure gives lit materials but not unlit ones.
-pub fn build_material(
-    scene: &Scene,
-    m: &MaterialDesc,
-    tint: Option<[f32; 3]>,
-    exposure: f32,
-    images: &[Option<Handle<Image>>],
-) -> Option<StandardMaterial> {
-    let mode = stand_in(m);
-    if mode == StandIn::Hidden {
-        return None;
-    }
-    let tex = |name: &str| {
-        m.params
-            .get(name)
-            .and_then(|_| m.texture(name))
-            .and_then(|i| images.get(i as usize).cloned().flatten())
-    };
-    let c = m.color("color").unwrap_or([1.0; 3]);
-    let t = tint.unwrap_or([1.0; 3]);
-    let rgb = [c[0] as f32 * t[0], c[1] as f32 * t[1], c[2] as f32 * t[2]];
-    let opacity = m.number("opacity").unwrap_or(1.0) as f32;
-    let lit = mode == StandIn::Lit;
-    let k = if lit { 1.0 } else { exposure };
-    let mut mat = StandardMaterial {
-        base_color: Color::linear_rgba(rgb[0] * k, rgb[1] * k, rgb[2] * k, opacity),
-        unlit: !lit,
-        fog_enabled: m.boolean("fog").unwrap_or(true) && mode != StandIn::Sky,
-        ..StandardMaterial::default()
-    };
-    if mode != StandIn::Sky {
-        mat.base_color_texture = tex("map");
-        if let Some(i) = m.texture("map")
-            && let Some(td) = scene.textures.get(i as usize)
-        {
-            mat.uv_transform = uv_transform(td);
-        }
-    }
-    if lit {
-        mat.perceptual_roughness = m.number("roughness").unwrap_or(1.0) as f32;
-        mat.metallic = m.number("metalness").unwrap_or(0.0) as f32;
-        if m.ty == "MeshLambertMaterial" {
-            mat.perceptual_roughness = 1.0;
-            mat.reflectance = 0.0;
-        }
-        if let Some(e) = m.color("emissive") {
-            let ei = m.number("emissiveIntensity").unwrap_or(1.0);
-            mat.emissive =
-                LinearRgba::rgb((e[0] * ei) as f32, (e[1] * ei) as f32, (e[2] * ei) as f32);
-            // three's tone mapping exposure applies to emission too.
-            mat.emissive_exposure_weight = 1.0;
-        }
-        mat.emissive_texture = tex("emissiveMap");
-        if m.ty == "MeshPhysicalMaterial" {
-            mat.clearcoat = m.number("clearcoat").unwrap_or(0.0) as f32;
-            mat.clearcoat_perceptual_roughness =
-                m.number("clearcoatRoughness").unwrap_or(0.0) as f32;
-        }
-    }
-    let side = m.number("side").unwrap_or(0.0) as u32;
-    (mat.cull_mode, mat.double_sided) = match side {
-        three::BACK_SIDE => (Some(Face::Front), false),
-        three::DOUBLE_SIDE => (None, true),
-        _ => (Some(Face::Back), false),
-    };
-    let blending = m.number("blending").unwrap_or(1.0) as u32;
-    let alpha_test = m.number("alphaTest").unwrap_or(0.0) as f32;
-    mat.alpha_mode = if blending == three::ADDITIVE_BLENDING {
-        AlphaMode::Add
-    } else if m.boolean("transparent").unwrap_or(false) {
-        AlphaMode::Blend
-    } else if alpha_test > 0.0 {
-        AlphaMode::Mask(alpha_test)
-    } else {
-        AlphaMode::Opaque
-    };
-    if m.boolean("polygonOffset").unwrap_or(false) {
-        // three's offset is (factor, units), negative toward the camera;
-        // Bevy's bias is a constant, positive toward the camera. The scale
-        // is a stand-in, checked by eye on the road markings.
-        let f = m.number("polygonOffsetFactor").unwrap_or(0.0);
-        let u = m.number("polygonOffsetUnits").unwrap_or(0.0);
-        mat.depth_bias = (-(f + u) * 32.0) as f32;
-    }
-    Some(mat)
-}
-
-/// The sky dome's colour toward a direction: the gradient, sun glow and
-/// horizon haze of `Sky.js`'s fragment shader without clouds, stars and
-/// moon, for the stand-in dome's vertex colours.
-pub fn sky_color(m: &MaterialDesc, d: [f32; 3]) -> [f32; 3] {
-    let col = |n: &str| m.color(n).map_or([0.0; 3], |c| c.map(|x| x as f32));
-    let vec3 = |n: &str| {
-        m.get(n)
-            .and_then(|v| v.get("vec"))
-            .and_then(|v| v.as_array())
-            .map_or([0.0, 1.0, 0.0], |a| {
-                [0, 1, 2].map(|i| a.get(i).and_then(|x| x.as_f64()).unwrap_or(0.0) as f32)
-            })
-    };
-    let (zen, hor, gnd, sun_c) = (
-        col("uZenith"),
-        col("uHorizon"),
-        col("uGround"),
-        col("uSunColor"),
-    );
-    let sun_dir = vec3("uSunDir");
-    let haze_k = m.number("uHaze").unwrap_or(0.0) as f32;
-    let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(1e-6);
-    let d = d.map(|x| x / len);
-    let h = d[1];
-    let sd = d[0] * sun_dir[0] + d[1] * sun_dir[1] + d[2] * sun_dir[2];
-    let sun_amt = sd.max(0.0);
-    let t = h.clamp(0.0, 1.0).powf(0.45);
-    let sun2 = sun_amt * sun_amt;
-    let glow = (sun2 * sun2 * sun2) * 0.35 * (1.0 - t) + sun2 * 0.08 * (1.0 - t) * (1.0 - t);
-    let haze_add = sun2 * sun2 * 0.06 + sun_amt.powf(24.0) * 0.1;
-    let haze = (-h.max(0.0) * 16.0).exp() * haze_k;
-    let smooth = |e0: f32, e1: f32, x: f32| {
-        let u = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
-        u * u * (3.0 - 2.0 * u)
-    };
-    let below = smooth(0.0, -0.06, h);
-    std::array::from_fn(|i| {
-        let mut c = hor[i] + (zen[i] - hor[i]) * t + sun_c[i] * glow;
-        let hz = gnd[i] + sun_c[i] * haze_add;
-        c += (hz - c) * haze;
-        c + (hz - c) * below
-    })
+    m.boolean("vertexColors").unwrap_or(false) && stand_in(m) != StandIn::Sky
 }
 
 #[cfg(test)]

@@ -1,20 +1,28 @@
 //! The client (SPEC 3, 6, 8). Only this crate depends on the engine.
 //!
-//! Roadmap M2 so far: the Bevy app shell (WP 2.1) and the scene loader with
-//! the fly camera (WP 2.2). The client loads a level's scene export (or the
-//! car models), draws it with stand-in materials and flies the JS game's
-//! debug camera along the route.
+//! Roadmap M2 so far: the Bevy app shell (WP 2.1), the scene loader with
+//! the fly camera (WP 2.2), and three.js's shading, sky, environment,
+//! shadows, fog and post chain (WP 2.3). The client loads a level's scene
+//! export (or the car models), draws it as the JS game does for the kinds
+//! ported so far and flies the JS game's debug camera along the route, the
+//! sky following the route's time of day.
 //!
 //! - [`options`]: the query string (web) or command line (native).
-//! - [`convert`]: `mr_scene` data to Bevy meshes, images and materials.
+//! - [`convert`]: `mr_scene` data to Bevy meshes and images.
 //! - [`loader`]: builds a scene into entities, a slice per frame.
+//! - [`render`]: three_std, the materials, sky, environment, shadow, post.
+//! - [`matscene`]: the material test scenes (SPEC 6.2 "Verification").
+//! - [`stations`]: the screenshot stations, flown natively (DECISIONS D17).
 //! - [`fly`]: the fly and attract cameras of `src/main.js`.
 //! - [`status`]: what the page and the window title show.
 
 pub mod convert;
 pub mod fly;
 pub mod loader;
+pub mod matscene;
 pub mod options;
+pub mod render;
+pub mod stations;
 pub mod status;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -23,7 +31,7 @@ pub mod native;
 mod web;
 
 use bevy::camera::{Hdr, PerspectiveProjection, Projection};
-use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::light::DirectionalLightShadowMap;
 use bevy::math::DVec3;
 use bevy::prelude::*;
@@ -32,6 +40,8 @@ use loader::{AppState, Build, Loaded, SkyDome};
 use mr_scene::Scene;
 use mr_track::Track;
 use options::{FlyParams, Options};
+use render::pmrem::EnvRequest;
+use render::{Lighting, SharedImages, SkyState};
 use status::Status;
 use std::sync::Mutex;
 
@@ -83,14 +93,26 @@ pub struct CameraState {
     pub focus: DVec3,
 }
 
+/// The sky of the level (none until its Track is built), and where the
+/// environment map was last built (`main.js` `envAt`).
+#[derive(Resource, Default)]
+pub struct SkyRes {
+    pub sky: Option<SkyState>,
+    pub env_at: Option<f64>,
+}
+
 /// The JS camera: 62° vertical field of view, near 0.3, far 9000
-/// (`main.js:60`); HDR with 4× MSAA (`:61`); ACES filmic (`:57`).
+/// (`main.js:60`); a half-float target with 4× MSAA (`:61`); the bloom,
+/// ACES filmic and sRGB of three's post chain (`render::post`) in place of
+/// Bevy's tone mapping.
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
         Hdr,
         Msaa::Sample4,
-        Tonemapping::AcesFitted,
+        Tonemapping::None,
+        DebandDither::Disabled,
+        render::post::ThreePost,
         Projection::Perspective(PerspectiveProjection {
             fov: 62f32.to_radians(),
             near: 0.3,
@@ -101,8 +123,9 @@ fn spawn_camera(mut commands: Commands) {
     ));
 }
 
-/// Builds the level's Track (Seaside once its survey is in).
-fn make_track(mut tr: ResMut<TrackRes>, opts: Res<Opts>) {
+/// Builds the level's Track (Seaside once its survey is in) and its sky.
+/// Without a level (the models), the sky is Sierra's at the start.
+fn make_track(mut tr: ResMut<TrackRes>, mut sky: ResMut<SkyRes>, opts: Res<Opts>) {
     if tr.track.is_some() || tr.none {
         return;
     }
@@ -110,6 +133,11 @@ fn make_track(mut tr: ResMut<TrackRes>, opts: Res<Opts>) {
     let known = mr_levels::levels().iter().any(|l| l.id == id);
     if !known {
         tr.none = true;
+        if sky.sky.is_none() {
+            let mut s = SkyState::new(&mr_levels::level_by_id("sierra"), false, 1.0);
+            s.override_p = Some(0.0);
+            sky.sky = Some(s);
+        }
         return;
     }
     let mut level = mr_levels::level_by_id(id);
@@ -133,8 +161,15 @@ fn make_track(mut tr: ResMut<TrackRes>, opts: Res<Opts>) {
         }
     }
     match Track::new(&level) {
-        Ok(t) => {
+        Ok(mut t) => {
+            // The scenery's runout past the last sample (the world data the
+            // simulation uses too), so the fly camera reaches the road's end
+            // as the JS one does.
+            t.runout = mr_levels::world::world_data(level.id).runout;
             info!("track {id}: {:.0} m", t.length);
+            let mut s = SkyState::new(&level, t.is_loop, t.length);
+            s.override_p = opts.o.t;
+            sky.sky = Some(s);
             tr.track = Some(t);
         }
         Err(e) => {
@@ -149,6 +184,7 @@ fn receive_scene(
     mut commands: Commands,
     mut status: ResMut<Status>,
     mut next: ResMut<NextState<AppState>>,
+    shared: Res<SharedImages>,
 ) {
     let Some(r) = inbox().scene.take() else {
         return;
@@ -163,7 +199,7 @@ fn receive_scene(
                 scene.textures.len()
             );
             status.state = "building";
-            commands.insert_resource(Build::new(scene));
+            commands.insert_resource(Build::new(scene, shared.clone()));
             next.set(AppState::Building);
         }
         Err(e) => {
@@ -199,20 +235,42 @@ fn place_camera(
 
 /// The fly camera (`?s=`), else the attract camera, along the Track. Up and
 /// Down change the fly camera's speed by 10 m/s (a dev convenience the JS
-/// does not have).
-fn fly_system(
+/// does not have). Then the sky at the camera's s (`world.update` →
+/// `Sky.update`) and the environment map when the time of day has moved
+/// (`refreshEnv`).
+#[allow(clippy::too_many_arguments)]
+pub fn fly_system(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     tr: Res<TrackRes>,
+    opts: Res<Opts>,
     mut cs: ResMut<CameraState>,
     mut cam: Query<&mut Transform, (With<Camera3d>, Without<SkyDome>)>,
     mut sky: Query<&mut Transform, With<SkyDome>>,
     mut status: ResMut<Status>,
+    mut sky_res: ResMut<SkyRes>,
+    mut lighting: ResMut<Lighting>,
+    mut env: ResMut<EnvRequest>,
 ) {
-    let Some(track) = &tr.track else { return };
-    let Ok(mut t) = cam.single_mut() else { return };
     // `Math.min(frameDt, 1 / 20)` (main.js tick).
     let dt = f64::from(time.delta_secs()).min(1.0 / 20.0);
+    let Some(track) = &tr.track else {
+        // The models: the sky stays at Sierra's start around the grid.
+        if tr.none {
+            let focus = cs.focus;
+            update_sky(
+                &mut sky_res,
+                &opts,
+                0.0,
+                0.0,
+                focus,
+                &mut lighting,
+                &mut env,
+            );
+        }
+        return;
+    };
+    let Ok(mut t) = cam.single_mut() else { return };
     let cs = &mut *cs;
     if let Some(f) = cs.fly.as_mut() {
         if keys.just_pressed(KeyCode::ArrowUp) {
@@ -233,22 +291,72 @@ fn fly_system(
         status.s = cs.attract.s;
     }
     loader::follow_focus(cs.focus, &mut sky);
+    // ?freeze=1: the scenery (and the sky's clock) holds still.
+    let world_dt = if opts.o.freeze { 0.0 } else { dt };
+    update_sky(
+        &mut sky_res,
+        &opts,
+        world_dt,
+        status.s,
+        cs.focus,
+        &mut lighting,
+        &mut env,
+    );
 }
+
+/// `Sky.update` and `refreshEnv` (main.js): the environment is rebuilt when
+/// the time of day has moved 2.5 % of the route since the last build.
+fn update_sky(
+    sky_res: &mut SkyRes,
+    opts: &Opts,
+    dt: f64,
+    s: f64,
+    focus: DVec3,
+    lighting: &mut Lighting,
+    env: &mut EnvRequest,
+) {
+    let Some(sky) = sky_res.sky.as_mut() else {
+        return;
+    };
+    let mut next = lighting.clone();
+    sky.update(dt, s, focus, &mut next);
+    next.shadows = opts.hq;
+    next.env_intensity = ENV_INTENSITY;
+    if *lighting != next {
+        *lighting = next;
+    }
+    let p = sky
+        .override_p
+        .unwrap_or(if sky.is_loop { 0.5 } else { s / sky.length });
+    if sky_res.env_at.is_none_or(|at| (p - at).abs() >= 0.025) {
+        sky_res.env_at = Some(p);
+        env.generation += 1;
+    }
+}
+
+/// `scene.environmentIntensity` (main.js `refreshEnv`).
+pub const ENV_INTENSITY: f64 = 0.7;
 
 /// The Bevy app for these options. The platform modules add where the scene
 /// comes from and how status is shown.
 pub fn app(o: Options, hq: bool) -> App {
     let mut app = App::new();
     let title = format!("{} — {}", banner(), o.level);
+    let materials = o.materials.clone();
     #[cfg(not(target_arch = "wasm32"))]
     let window = {
-        let (w, h) = o.size.unwrap_or((1280, 800));
+        // The material test scenes are 512 × 512 (scenes.json).
+        let (w, h) = o.size.unwrap_or(if materials.is_some() {
+            (512, 512)
+        } else {
+            (1280, 800)
+        });
         Window {
             title,
-            resolution: bevy::window::WindowResolution::new(w, h),
+            resolution: bevy::window::WindowResolution::new(w, h).with_scale_factor_override(1.0),
             // A screenshot run draws without showing a window, where the
             // platform allows it.
-            visible: o.screenshot.is_none(),
+            visible: o.screenshot.is_none() && materials.is_none() && o.stations.is_none(),
             ..default()
         }
     };
@@ -265,7 +373,9 @@ pub fn app(o: Options, hq: bool) -> App {
     }))
     // The JS shadow map is 2048² (Sky.js).
     .insert_resource(DirectionalLightShadowMap { size: 2048 })
-    .insert_resource(ClearColor(Color::linear_rgb(0.02, 0.025, 0.04)))
+    // three's default clear colour; the sky dome covers it.
+    .insert_resource(ClearColor(Color::BLACK))
+    .insert_resource(SkyRes::default())
     .insert_resource(Status {
         state: "waiting",
         ..default()
@@ -290,12 +400,29 @@ pub fn app(o: Options, hq: bool) -> App {
         OnEnter(AppState::Running),
         (enter_running, place_camera).chain(),
     )
-    .add_systems(Update, fly_system.run_if(in_state(AppState::Running)));
+    .add_systems(Update, fly_system.run_if(in_state(AppState::Running)))
+    .add_systems(
+        Update,
+        loader::apply_night
+            .after(fly_system)
+            .run_if(resource_exists::<loader::NightMaterials>),
+    );
     app.sub_app_mut(bevy::render::RenderApp).add_systems(
         bevy::render::Render,
         status::count_pipelines.in_set(bevy::render::RenderSystems::Cleanup),
     );
-    loader::tint_plugin(&mut app);
+    app.add_plugins(render::ThreeRenderPlugin);
+    if let Some(which) = &materials {
+        let out = app.world().resource::<Opts>().o.out.clone();
+        matscene::plugin(&mut app, which, out);
+    }
+    let (stations, out) = {
+        let o = &app.world().resource::<Opts>().o;
+        (o.stations.clone(), o.out.clone())
+    };
+    if let Some(path) = stations {
+        stations::plugin(&mut app, &path, out);
+    }
     #[cfg(not(target_arch = "wasm32"))]
     native::plugin(&mut app);
     #[cfg(target_arch = "wasm32")]
