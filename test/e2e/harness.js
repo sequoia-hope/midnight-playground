@@ -211,7 +211,10 @@ export async function openGame(browser, { device = 'desktop', query = '', storag
     }, Object.fromEntries(Object.entries(storage).map(([k, v]) => [k, JSON.stringify(v)])));
   }
   if (init) await page.evaluateOnNewDocument(init, ...initArgs);
-  await page.goto(BASE + page_ + (query ? '?' + query.replace(/^\?/, '') : ''));
+  // MR_QUERY adds parameters to every page, e.g. MR_QUERY=kernel=1 runs the
+  // whole suite with the Rust port's parity kernel on (src/parity/hooks.js).
+  const q = [query.replace(/^\?/, ''), process.env.MR_QUERY || ''].filter(Boolean).join('&');
+  await page.goto(BASE + page_ + (q ? '?' + q : ''));
   await game.waitReady();
   return game;
 }

@@ -5,8 +5,8 @@
 //! unchecked.
 
 use crate::{Result, cargo, output, root};
-use std::collections::BTreeSet;
-use std::path::Path;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 struct Rule {
     krate: &'static str,
@@ -166,7 +166,8 @@ const IMPURE: &[&str] = &[
 ];
 
 pub fn run(_args: &[String]) -> Result {
-    let members = members()?;
+    let dirs = members()?;
+    let members: BTreeSet<String> = dirs.keys().cloned().collect();
     let mut problems = Vec::new();
 
     for m in &members {
@@ -180,7 +181,7 @@ pub fn run(_args: &[String]) -> Result {
     for rule in RULES.iter().filter(|r| members.contains(r.krate)) {
         check_tree(rule, &members, &mut problems)?;
         if rule.pure || rule.exact_math {
-            check_source(rule, &mut problems)?;
+            check_source(rule, &dirs[rule.krate], &mut problems)?;
         }
     }
 
@@ -195,7 +196,8 @@ pub fn run(_args: &[String]) -> Result {
     }
 }
 
-fn members() -> Result<BTreeSet<String>> {
+/// Workspace members and their crate directories.
+fn members() -> Result<BTreeMap<String, PathBuf>> {
     let json = output(cargo().args(["metadata", "--no-deps", "--format-version", "1"]))?;
     let meta: serde_json::Value =
         serde_json::from_str(&json).map_err(|e| format!("cargo metadata: {e}"))?;
@@ -203,7 +205,13 @@ fn members() -> Result<BTreeSet<String>> {
         .as_array()
         .ok_or("cargo metadata: no packages")?
         .iter()
-        .filter_map(|p| p["name"].as_str().map(str::to_owned))
+        .filter_map(|p| {
+            let name = p["name"].as_str()?.to_owned();
+            let dir = Path::new(p["manifest_path"].as_str()?)
+                .parent()?
+                .to_path_buf();
+            Some((name, dir))
+        })
         .collect())
 }
 
@@ -254,12 +262,8 @@ fn matches(pattern: &str, name: &str) -> bool {
     }
 }
 
-fn check_source(rule: &Rule, problems: &mut Vec<String>) -> Result {
-    let dir = root().join("crates").join(rule.krate).join("src");
-    if !dir.is_dir() {
-        // Tooling crates outside crates/ have no source rules.
-        return Ok(());
-    }
+fn check_source(rule: &Rule, crate_dir: &Path, problems: &mut Vec<String>) -> Result {
+    let dir = crate_dir.join("src");
     if rule.pure {
         let lib = std::fs::read_to_string(dir.join("lib.rs"))
             .map_err(|e| format!("{}: reading lib.rs: {e}", rule.krate))?;
@@ -312,7 +316,7 @@ fn calls_method(code: &str, name: &str) -> bool {
     code.contains(&method) || code.contains(&assoc64) || code.contains(&assoc32)
 }
 
-fn rust_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) -> Result {
+fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result {
     let entries = std::fs::read_dir(dir).map_err(|e| format!("reading {}: {e}", dir.display()))?;
     for entry in entries {
         let path = entry.map_err(|e| e.to_string())?.path();

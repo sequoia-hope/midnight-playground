@@ -10,6 +10,7 @@
     "app:smoke": "electron . --smoke-test",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "node --test 'test/unit/*.test.js'",
+    "test:unit:kernel": "NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node --test 'test/unit/*.test.js'",
     "test:e2e": "node --test --test-concurrency=2 'test/e2e/*.test.js'"
   },
   "devDependencies": {

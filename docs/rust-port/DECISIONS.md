@@ -50,3 +50,65 @@ pinned exactly (`=0.2.129`), because its CLI must match.
 2026-10-03, WP 0.1. The bare wasm page prints whether `navigator.gpu` exists
 and whether the page is a secure context, so opening it on a candidate
 reference phone over the tailnet already answers the first question of G1.
+
+## D6. The kernel includes `log10`
+
+2026-10-03, WP 0.3. SPEC 4.2 lists thirteen functions as the full set the
+game and three.js use. three.js's `BufferGeometryUtils.mergeVertices` also
+calls `Math.log10`, and world generation calls `mergeVertices` (desert props
+and parts, valley flora), so a kernel-on world build would have thrown.
+`log10` joins the kernel. The functions that throw when the kernel is on are
+the remaining inexact ones: `sinh`, `cosh`, `asinh`, `acosh`, `atanh`,
+`cbrt`, `expm1`, `log1p`.
+
+## D7. The kernel's `pow` and `hypot` follow ECMAScript at their edges
+
+2026-10-03, WP 0.3. C's `pow(1, NaN)` and `pow(-1, ±inf)` are 1; JS's are
+NaN. C's `hypot` is left to `libm`, but the kernel spells out JS's rule (any
+infinity gives +Infinity, else any NaN gives NaN) rather than rely on it.
+Otherwise the kernel-on reference could take a branch the live game does not.
+
+## D8. The kernel's wasm is committed
+
+2026-10-03, WP 0.3. `tools/parity/kernel/mr_kernel.wasm` (20 KB) is in git,
+so the JS oracle runs, and `npm run test:unit:kernel` passes, without a Rust
+build, and the `js-reference` tag carries the exact kernel its goldens were
+taken with. `cargo xtask kernel` rebuilds it and checks a million inputs per
+function against native Rust; CI runs `cargo xtask kernel --check`, which
+checks both a fresh build and the committed file and writes nothing. The
+check hashes outputs with every NaN taken as the canonical quiet NaN, since
+wasm does not fix NaN payloads (a NaN in the simulation is a bug either way).
+
+## D9. How the hooks are switched on
+
+2026-10-03, WP 0.3. URL parameters, read by `src/parity/hooks.js`, the first
+module `main.js` imports, so the kernel is in place before any other module
+computes at load time (it fetches the wasm synchronously for that reason):
+`kernel=1`, `fixeddt=1` (with `ticks=N` per frame, default 2), `quant=1`,
+`seed=N`, or `parity=1` for all of them with seed 1. In fixed-dt mode the
+input layer is also read once per tick and the frame's game time is the ticks
+run, so everything (camera, effects, scenery) follows game time, not the
+clock. The e2e harness adds `MR_QUERY` to every page, so the whole suite runs
+with any hook on (`MR_QUERY=kernel=1 npm run test:e2e`).
+
+## D10. Generator parameters default to `Math.random`, one per stream
+
+2026-10-03, WP 0.3. `AIDriver` takes `opts.rng`, `PoliceDriver` a fourth
+argument `rng`, `Pursuit` a `policeRng` beside its existing `rng`, and
+`PursuitView` passes `rng` and `policeRng` through; `Race` takes `rngs`
+(`{ ai, police, pursuit }`, from `simStreams(seed)` in `src/parity/sim.js`).
+Every default is `Math.random`, including `policeRng` when only `rng` is
+given (the unit tests pass a seeded `rng` to `Pursuit` and leave the police
+weave on `Math.random`, as before). The streams count their draws, so a
+trace can record where each one is.
+
+## D11. Input quantisation
+
+2026-10-03, WP 0.3. `quantiseInput` (`src/parity/sim.js`) turns the steer
+into `Math.round(clamp(steer, -1, 1) * 32767) / 32767` and throttle and brake
+into `Math.round(clamp(x, 0, 1) * 255) / 255`; `handbrake`, `nitro` and
+`analog` become booleans. The Rust `InputFrame` stores the integers and
+divides the same way, so both sides integrate identical values. It applies
+to the input from the player's devices or the autopilot, after the
+autopilot, not to the controls the race itself produces (the cool-down
+driver after the finish, the penalty hold).

@@ -33,7 +33,9 @@ export const UNIT_TYPES = {
 const BLOCK_MASS = 6000; // roadblock cars barely move when you hit them
 
 export class PoliceDriver extends KinematicCar {
-  constructor(vehicle, track, type = 'patrol') {
+  // rng: the weave's phase. Math.random in the game; the Rust port's
+  // reference run passes a seeded stream through Pursuit (src/parity/sim.js).
+  constructor(vehicle, track, type = 'patrol', rng = Math.random) {
     super(vehicle, track);
     this.police = true;
     this.type = type;
@@ -57,7 +59,7 @@ export class PoliceDriver extends KinematicCar {
     this.laneLat = 0;
     this.siren = 'off';     // 'off' | 'flash' | 'disabled'
     this.cap = 60;          // top speed (m/s), set by the Pursuit from heat
-    this.weave = Math.random() * 10;
+    this.weave = rng() * 10;
   }
 
   get mass() { return this.mode === 'block' ? BLOCK_MASS : this.spec.mass; }

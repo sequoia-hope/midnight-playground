@@ -318,7 +318,7 @@ export default class Mountain {
   }
 
   excluded(x, z) {
-    for (const e of this.exclusions) if ((x - e.x) ** 2 + (z - e.z) ** 2 < e.r * e.r) return true;
+    for (const e of this.exclusions) if (Math.pow(x - e.x, 2) + Math.pow(z - e.z, 2) < e.r * e.r) return true;
     return false;
   }
 
@@ -391,7 +391,7 @@ export default class Mountain {
         if (kind === 1) {
           // Boulders heaped at the foot of the rock wall.
           if (rng() < 0.5) {
-            const size = lerp(0.5, 2.4, rng() ** 1.6);
+            const size = lerp(0.5, 2.4, Math.pow(rng(), 1.6));
             const [x, z] = at(wall + 0.7 + size + rng() * rng() * 6);
             addRock(ch, x, z, size, 0.3, { yaw: roadYaw });
           }
@@ -402,14 +402,14 @@ export default class Mountain {
             addRock(ch, x, z, size, 0.5, { stretch: lerp(1.2, 2.2, rng()), flat: lerp(0.5, 0.9, rng()), yaw: roadYaw, onSlope: true });
           }
         } else if (rng() < 0.12) {
-          const size = lerp(0.6, 2.2, rng() ** 2);
+          const size = lerp(0.6, 2.2, Math.pow(rng(), 2));
           const [x, z] = at(wall + 2 + rng() * 10);
           addRock(ch, x, z, size, 0.35);
         }
         // Scree along the shoulder, thickest below the rock walls.
         const nScree = kind === 1 ? 1 + (rng() < 0.45 ? 1 : 0) : rng() < 0.25 ? 1 : 0;
         for (let k = 0; k < nScree; k++) {
-          const size = lerp(0.1, 0.5, rng() ** 1.5);
+          const size = lerp(0.1, 0.5, Math.pow(rng(), 1.5));
           const [x, z] = at(wall + 0.7 + size + rng() * rng() * 4);
           addRock(scree, x, z, size, 0.25);
         }
@@ -431,7 +431,7 @@ export default class Mountain {
         this.surf.sample(px, pz, S);
         if (S.slope < 0.85) continue;
         if (r0 > 0.22 * smoothstep(0.85, 1.6, S.slope)) continue;
-        const size = lerp(3, 9, rng() ** 1.5) * (far.d < 60 ? 0.6 : 1);
+        const size = lerp(3, 9, Math.pow(rng(), 1.5)) * (far.d < 60 ? 0.6 : 1);
         const ci = clamp(Math.floor(far.s / CHUNK), 0, nChunks - 1);
         addRock(far.d < 45 ? big[ci] : outcrops[ci], px, pz, size, 0.42, { stretch: lerp(1.0, 1.8, rng()), flat: lerp(0.7, 1.1, rng()), onSlope: true, dark: true });
       }
@@ -497,7 +497,7 @@ export default class Mountain {
         const alt = smoothstep(line - 50, line + 15, S.h);
         if (rng() > 1 - alt) continue;
         // Stunted near the tree line.
-        const sc = lerp(0.7, 1.9, rng() ** 1.3) * (0.8 + f * 0.35) * (1 - alt * 0.35);
+        const sc = lerp(0.7, 1.9, Math.pow(rng(), 1.3)) * (0.8 + f * 0.35) * (1 - alt * 0.35);
         const ci = clamp(Math.floor(far.s / CHUNK), 0, nChunks - 1);
         const fir = firMask(px, pz) ? rng() < 0.8 : rng() < 0.15;
         const list = far.d < VERGE ? (fir ? verge.fir : verge.spruce)[ci] : mid[ci];
@@ -606,7 +606,7 @@ export default class Mountain {
         if (rng() < (kind === 1 ? 0.06 : 0.22)) {
           const lat = side * (wall + (kind === 1 ? 1.4 : 2.5 + rng() * 22));
           const x = S.x + S.rx * lat, z = S.z + S.rz * lat;
-          const sz = lerp(0.6, 1.6, rng() ** 1.4);
+          const sz = lerp(0.6, 1.6, Math.pow(rng(), 1.4));
           if (this.excluded(x, z) || !this.clearOfRoad(x, z, sz)) continue;
           this.surf.sample(x, z, H);
           if (H.slope > 1.0 || H.h > 295) continue;
@@ -650,7 +650,7 @@ export default class Mountain {
           const rr = R * (r / RINGS) * (r === RINGS ? edge : lerp(1, edge, 0.5));
           const x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr;
           this.surf.sample(x, z, H);
-          pos.push(x, H.h + lift * (r === RINGS ? 0.4 : 1) + mound * (1 - (r / RINGS) ** 2), z);
+          pos.push(x, H.h + lift * (r === RINGS ? 0.4 : 1) + mound * (1 - Math.pow(r / RINGS, 2)), z);
           // Thin, dirty edge; clean, bright middle.
           const v = r === RINGS ? 0.62 : r === RINGS - 1 ? 0.88 : 1;
           col.push(v, v, v * 1.02);
@@ -679,7 +679,7 @@ export default class Mountain {
       if (!this.clearOfRoad(x, z, 25) || this.excluded(x, z)) continue;
       // Only on ground that stays gentle across the whole patch; on a steep
       // face a draped disc reads as a white shard.
-      const R = lerp(4, 14, rng() ** 1.5);
+      const R = lerp(4, 14, Math.pow(rng(), 1.5));
       const h0 = H.h;
       let steep = false;
       for (let j = 0; j < 6 && !steep; j++) {
@@ -1201,12 +1201,12 @@ export default class Mountain {
         const p = spine[spine.length - 1 - r]; // top first
         if (r > 0) { const q = spine[spine.length - r]; v += Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z); }
         const frac = r / (spine.length - 1);
-        const halfW = lerp(w0, w1, frac ** 0.8) * (1 + 0.12 * Math.sin(r * 0.9));
+        const halfW = lerp(w0, w1, Math.pow(frac, 0.8)) * (1 + 0.12 * Math.sin(r * 0.9));
         for (let c = 0; c < cols; c++) {
           const u = c / (cols - 1);
           const a = (u - 0.5) * 2 * halfW;
           // Bulge the middle outward so the sheet reads as falling water.
-          const bulge = off + (1 - (2 * u - 1) ** 2) * 0.25;
+          const bulge = off + (1 - Math.pow(2 * u - 1, 2)) * 0.25;
           pos.push(p.x + S.fx * a - S.rx * side * bulge, p.y + 0.35, p.z + S.fz * a - S.rz * side * bulge);
           uv.push(u, v / 6);
         }

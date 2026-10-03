@@ -19,8 +19,8 @@ export const FAR_OUT = 95, FAR_IN = 85;
 export function farLod(v, x, z) {
   const m = v.model;
   if (!m.setFar) return;
-  const d2 = (v.x - x) ** 2 + (v.z - z) ** 2;
-  m.setFar(d2 > (m.isFar ? FAR_IN : FAR_OUT) ** 2);
+  const d2 = Math.pow(v.x - x, 2) + Math.pow(v.z - z, 2);
+  m.setFar(d2 > Math.pow(m.isFar ? FAR_IN : FAR_OUT, 2));
 }
 
 export class TrafficCar extends KinematicCar {

@@ -600,7 +600,7 @@ export default class Streets {
     const near = b.tier === 0;
     if (D === 2) {
       const r = Math.hypot(b.cx - this.core.x, b.cz - this.core.z);
-      const core = Math.exp(-((r / 520) ** 2));
+      const core = Math.exp(-Math.pow(r / 520, 2));
       if (near && rng() < 0.12 && core < 0.8) { this.plaza(b); return; }
       if (rng() < 0.35 + core * 0.55) { this.towerBlock(b, core); return; }
       for (const l of this.lots(b, [16, 30], 30)) {
@@ -1127,7 +1127,7 @@ export default class Streets {
     const bx0 = b.i * PX + HW + WALK, bx1 = (b.i + 1) * PX - HW - WALK;
     const bz0 = b.j * PZ + HW + WALK, bz1 = (b.j + 1) * PZ - HW - WALK;
     const r = Math.hypot(b.cx - this.core.x, b.cz - this.core.z);
-    const core = b.district === 2 ? Math.exp(-((r / 700) ** 2)) : 0;
+    const core = b.district === 2 ? Math.exp(-Math.pow(r / 700, 2)) : 0;
     const halves = rng() < 0.5 ? [[bx0, bz0, bx1, (bz0 + bz1) / 2 - 1], [bx0, (bz0 + bz1) / 2 + 1, bx1, bz1]]
       : [[bx0, bz0, (bx0 + bx1) / 2 - 1, bz1], [(bx0 + bx1) / 2 + 1, bz0, bx1, bz1]];
     for (const [x0, z0, x1, z1] of halves) {

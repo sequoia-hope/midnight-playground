@@ -15,10 +15,13 @@ export class AIDriver extends KinematicCar {
     this.bias = opts.bias ?? 0;          // preferred offset from the line
     this.name = opts.name || 'AI';
     this.power = opts.power ?? 500;
+    // Random draws (nitro timing). Math.random in the game; the Rust port's
+    // reference run passes a seeded stream (src/parity/sim.js).
+    this.rng = opts.rng ?? Math.random;
     this.avoid = 0;
     this.avoidTimer = 0;
     this.nitro = 0;
-    this.nitroTimer = 4 + Math.random() * 10;
+    this.nitroTimer = 4 + this.rng() * 10;
     this.finished = false;
     this.finishTime = null;
     this.throttle = 0;
@@ -107,7 +110,7 @@ export class AIDriver extends KinematicCar {
 
     // Speed controller.
     this.nitroTimer -= dt;
-    if (!park && this.nitroTimer < 0 && this.nitro <= 0 && Math.abs(F.kappa) < 0.004 && this.speed > 30) { this.nitro = 2.5; this.nitroTimer = 12 + Math.random() * 14; }
+    if (!park && this.nitroTimer < 0 && this.nitro <= 0 && Math.abs(F.kappa) < 0.004 && this.speed > 30) { this.nitro = 2.5; this.nitroTimer = 12 + this.rng() * 14; }
     const nitroing = this.nitro > 0;
     if (nitroing) { this.nitro -= dt; vT *= 1.12; }
     const acc = Math.min(9, this.power / Math.max(this.speed, 5)) + (nitroing ? 4 : 0);

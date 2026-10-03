@@ -35,7 +35,7 @@ const TRAFFIC_COLORS = [0xb8bcc2, 0x2b2f36, 0xe8e6e0, 0x7a1f1f, 0x1f3a5f, 0x4a5a
 const PI = Math.PI;
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 const smooth = (a, b, v) => { const t = clamp01((v - a) / (b - a)); return t * t * (3 - 2 * t); };
-const bump = (v, c, w) => Math.exp(-(((v - c) / w) ** 2));
+const bump = (v, c, w) => Math.exp(-Math.pow((v - c) / w, 2));
 const inRange = (v, a, b) => v >= a && v <= b;
 const AMBER = [1, 0.42, 0.06];
 
@@ -662,7 +662,7 @@ function airfoil(chord, thick, n = 7, camber = 0.05) {
   const up = [], lo = [];
   for (let i = 0; i <= n; i++) {
     const x = (1 - Math.cos((i / n) * PI)) / 2;
-    const yt = 5 * thick * (0.2969 * Math.sqrt(x) - 0.126 * x - 0.3516 * x * x + 0.2843 * x ** 3 - 0.1036 * x ** 4) * chord;
+    const yt = 5 * thick * (0.2969 * Math.sqrt(x) - 0.126 * x - 0.3516 * x * x + 0.2843 * Math.pow(x, 3) - 0.1036 * Math.pow(x, 4)) * chord;
     const yc = -camber * chord * 4 * x * (1 - x);
     up.push([(0.5 - x) * chord, yc + yt]);
     lo.push([(0.5 - x) * chord, yc - yt]);
@@ -992,7 +992,7 @@ function wheelGeometry(r, w, lod, style) {
       const st = [0, 0.35, 0.7, 1];
       const ring = st.map((s) => {
         const rr = hubR * 0.9 + (rimR * 0.97 - hubR * 0.9) * s;
-        const x = faceX - dish * (1 - s) ** 1.6;
+        const x = faceX - dish * Math.pow(1 - s, 1.6);
         const ww = (w0 + (w1 - w0) * s) / 2;
         const c = Math.cos(th), sn = Math.sin(th);
         const P2 = (t, xx) => [xx, rr * c - t * sn, rr * sn + t * c];
@@ -1135,7 +1135,7 @@ function shaper({ W, z0, z1, nose = 0.1, tail = 0.06, taperLen = 0.6, noseLen = 
     f -= tuck * (1 - smooth(tuckY[0], tuckY[1], y));
     let hw = (W / 2) * f;
     const d = Math.min(z1 - z, z - z0);
-    if (d < endR) hw -= endR - Math.sqrt(Math.max(0, endR * endR - (endR - d) ** 2));
+    if (d < endR) hw -= endR - Math.sqrt(Math.max(0, endR * endR - Math.pow(endR - d, 2)));
     if (hips) hw += hips * bump(z, hipZ, hipW) * smooth(hipY[0] - 0.2, hipY[0], y) * (1 - smooth(hipY[1], hipY[1] + 0.15, y));
     if (crease) hw += crease.d * Math.max(0, 1 - Math.abs(y - crease.y) / crease.h) * (crease.z ? smooth(crease.z[0], crease.z[0] + 0.3, z) * (1 - smooth(crease.z[1] - 0.3, crease.z[1], z)) : 1);
     for (const [zc, yc, R] of arches) {

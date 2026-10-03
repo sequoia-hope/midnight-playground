@@ -37,8 +37,8 @@ function ramp(t, P) {
   const a = FLAT, b = P - FLAT, L = b - a, m = 1 / (L - EASE);
   if (t <= a) return 0;
   if (t >= b) return 1;
-  if (t < a + EASE) return (m * (t - a) ** 2) / (2 * EASE);
-  if (t > b - EASE) return 1 - (m * (b - t) ** 2) / (2 * EASE);
+  if (t < a + EASE) return (m * Math.pow(t - a, 2)) / (2 * EASE);
+  if (t > b - EASE) return 1 - (m * Math.pow(b - t, 2)) / (2 * EASE);
   return m * (EASE / 2 + (t - a - EASE));
 }
 

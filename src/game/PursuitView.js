@@ -21,7 +21,9 @@ const DAMAGE_CAR = 0.11;
 const DAMAGE_WALL = 0.1;
 
 export class PursuitView {
-  constructor(race, { heat = 1, cops = 6, flash = true, hq = true } = {}) {
+  // rng, policeRng: seeded streams for the Rust port's reference run
+  // (src/parity/sim.js); left out, Pursuit draws from Math.random.
+  constructor(race, { heat = 1, cops = 6, flash = true, hq = true, rng, policeRng } = {}) {
     this.race = race;
     this.flash = flash;
     const { track, level, buildVehicle, group } = race;
@@ -39,7 +41,7 @@ export class PursuitView {
       group.add(m.root);
       return new Vehicle(m, { kind, mass: UNIT_TYPES[type].mass, name: 'Police' });
     };
-    this.pursuit = new Pursuit({ track, level, makeUnit, heat, maxUnits: cops, playerTop: topSpeed(race.spec), flash });
+    this.pursuit = new Pursuit({ track, level, makeUnit, heat, maxUnits: cops, playerTop: topSpeed(race.spec), flash, rng, policeRng });
     window.__pursuit = this.pursuit;
     this.pursuit.setRacers([
       { body: race.playerBody, player: true, name: 'You' },

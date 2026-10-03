@@ -126,7 +126,7 @@ export function hoodooGeometry(seed) {
     r += 0.16 * Math.exp(-t * 16);                  // pedestal flare
     for (let k = 0; k < necks; k++) {
       const c = 0.3 + (k + 0.5) / necks * 0.6 + (rng() - 0.5) * 0.05;
-      r *= 1 - 0.38 * Math.exp(-(((t - c) / 0.06) ** 2));
+      r *= 1 - 0.38 * Math.exp(-Math.pow((t - c) / 0.06, 2));
     }
     // Hard beds stand proud, soft beds weather back.
     r *= 1 + 0.07 * Math.sin(t * 38 + rng() * 0.3);
@@ -573,7 +573,7 @@ export function crackDecalTexture(seed = 5) {
     let d1 = 1e9, d2 = 1e9, own = null;
     for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
       const c = cellAt(ci + di, cj + dj);
-      const d = (x - c[0]) ** 2 + (y - c[1]) ** 2;
+      const d = Math.pow(x - c[0], 2) + Math.pow(y - c[1], 2);
       if (d < d1) { d2 = d1; d1 = d; own = c; } else if (d < d2) d2 = d;
     }
     const e = Math.sqrt(d2) - Math.sqrt(d1);

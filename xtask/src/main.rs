@@ -4,8 +4,10 @@
 //!   check-deps        enforce the crate dependency rules (SPEC 3.2)
 //!   web [--release]   build the web client into dist/next/
 //!   size              report the size of the built wasm (raw and gzip)
+//!   kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits
 
 mod deps;
+mod kernel;
 mod size;
 mod web;
 
@@ -26,6 +28,7 @@ fn main() -> ExitCode {
         "check-deps" => deps::run(rest),
         "web" => web::run(rest),
         "size" => size::run(rest),
+        "kernel" => kernel::run(rest),
         "-h" | "--help" | "help" => {
             println!("{}", usage());
             Ok(())
@@ -47,7 +50,8 @@ fn usage() -> &'static str {
      commands:\n\
      \x20 check-deps        enforce the crate dependency rules (SPEC 3.2)\n\
      \x20 web [--release]   build the web client into dist/next/\n\
-     \x20 size [--budget]   report the built wasm's size; --budget fails over 10 MB gzip"
+     \x20 size [--budget]   report the built wasm's size; --budget fails over 10 MB gzip\n\
+     \x20 kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits"
 }
 
 /// The repository root (the workspace root).

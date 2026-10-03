@@ -1,3 +1,6 @@
+// Parity hooks for the Rust port (off unless asked for); first, so they run
+// before any other game module.
+import { parity, streamsForRace } from './parity/hooks.js';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -380,7 +383,7 @@ async function startRace() {
     } : null;
     race = new Race({
       world, scene, camera, renderer, input, audio, buildVehicle, carKind: settings.car,
-      onFinish: showResults, pursuit,
+      onFinish: showResults, pursuit, rngs: streamsForRace(),
     });
     race.hud.mph = settings.mph;
     race.hud.bestScore = store.get('bestScore.' + world.level.id, 0);
@@ -577,11 +580,13 @@ function frame(now) {
   try { tick(frameDt); updateStats(performance.now() - t0); } catch (e) {
     // Keep running; report each distinct error once.
     if (String(e) !== lastError) { lastError = String(e); console.error(e); }
+    parity.errors.push(e); // a reference recording must not carry on past one
   }
 }
 function tick(frameDt) {
-  const dt = Math.min(frameDt, 1 / 20) * timescale;
-  let inp = input.update(dt);
+  // With the fixed-dt parity hook, game time is the ticks run, not the clock.
+  const dt = parity.fixed ? parity.fixed.dt * parity.fixed.ticks : Math.min(frameDt, 1 / 20) * timescale;
+  let inp = input.update(parity.fixed ? parity.fixed.dt : dt);
   const pads = input.pads.state;
   if (pads.connected !== padShown) { padShown = pads.connected; document.body.classList.toggle('pad', padShown); }
   // Esc, P or Start: on the Controller screen they leave it, not the pause.
@@ -603,8 +608,21 @@ function tick(frameDt) {
     s = flyCamera(dt, fly);
     const f = track.frame(track.loop ? fly.s - fly.back : Math.max(0, fly.s - fly.back));
     focus.set(f.x, f.y, f.z);
+  } else if (race && (mode === 'race' || mode === 'results') && parity.fixed) {
+    // Parity hook (?fixeddt=1): fixed ticks, the same number every frame,
+    // input read per tick (the Rust input layer runs at the tick rate).
+    for (let i = 0; i < parity.fixed.ticks; i++) {
+      let ti = i === 0 ? inp : input.update(parity.fixed.dt);
+      if (params.get('autodrive') === '1') ti = autopilot({ ...ti });
+      if (parity.quantise) ti = parity.quantise(ti);
+      race.update(parity.fixed.dt, ti);
+      parity.onTick?.(race, ti);
+    }
+    s = race.player.s;
+    focus.set(race.player.x, race.player.y, race.player.z);
   } else if (race && (mode === 'race' || mode === 'results')) {
     if (params.get('autodrive') === '1') inp = autopilot({ ...inp });
+    if (parity.quantise) inp = parity.quantise(inp);
     race.update(dt, inp);
     s = race.player.s;
     focus.set(race.player.x, race.player.y, race.player.z);

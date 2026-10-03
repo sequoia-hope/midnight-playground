@@ -1127,7 +1127,7 @@ export default class Valley {
           const [x, z] = alongV ? fromUV(a, b) : fromUV(b, a);
           let ok = this.inValley(x, 0.85);
           if (ok) { const d = T.roadInfo(x, z).d; ok = d > 15 && d < 200; }
-          if (ok) for (const o of avoid) if ((x - o.p[0]) ** 2 + (z - o.p[1]) ** 2 < (o.r + 1.5) ** 2) { ok = false; break; }
+          if (ok) for (const o of avoid) if (Math.pow(x - o.p[0], 2) + Math.pow(z - o.p[1], 2) < Math.pow(o.r + 1.5, 2)) { ok = false; break; }
           if (ok && nearCreek) ok = this.creekDist(x, z) > 14;
           if (ok) ok = slopeAt(x, z) < 0.2;
           if (!ok) { flush(); continue; }

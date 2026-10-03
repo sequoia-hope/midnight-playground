@@ -29,7 +29,9 @@ const PARK_GAP = 240;    // front row, metres short of the road's end
 const PARK_ROW = 13;     // spacing of the rows behind it
 
 export class Race {
-  constructor({ world, scene, camera, renderer, input, audio, buildVehicle, carKind = 'sports', onFinish, pursuit = null }) {
+  // rngs: { ai, police, pursuit } seeded streams for the Rust port's reference
+  // run (src/parity/sim.js); null in the game, which uses Math.random.
+  constructor({ world, scene, camera, renderer, input, audio, buildVehicle, carKind = 'sports', onFinish, pursuit = null, rngs = null }) {
     Object.assign(this, { world, scene, camera, renderer, input, audio, buildVehicle, onFinish });
     this.pads = input.pads ?? null;
     const track = (this.track = world.track);
@@ -82,7 +84,7 @@ export class Race {
       m.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
       this.group.add(m.root);
       const v = new Vehicle(m, { kind: r.kind, mass: 1400, name: r.name, color: r.color });
-      const ai = new AIDriver(v, track, { skill: r.skill, name: r.name, power: r.power, bias: (i % 2 ? 1 : -1) * 0.6, lineFactor: 0.8 + (i % 3) * 0.08 });
+      const ai = new AIDriver(v, track, { skill: r.skill, name: r.name, power: r.power, bias: (i % 2 ? 1 : -1) * 0.6, lineFactor: 0.8 + (i % 3) * 0.08, rng: rngs?.ai });
       ai.color = r.color;
       return ai;
     });
@@ -118,7 +120,7 @@ export class Race {
     this.tunnels = track.tags.filter((g) => g.tag === 'tunnel');
     this.inTunnel = false;
     this.lastDrift = 0;
-    this.pv = this.pursuitOn ? new PursuitView(this, pursuit) : null;
+    this.pv = this.pursuitOn ? new PursuitView(this, rngs ? { ...pursuit, rng: rngs.pursuit, policeRng: rngs.police } : pursuit) : null;
   }
 
   dispose() {

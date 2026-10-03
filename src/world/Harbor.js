@@ -1071,7 +1071,7 @@ export default class Harbor {
     const half = (x) => {
       // Beam along the hull: full amidships, fine bow, slightly narrower stern.
       const t = (x + Lship / 2) / Lship;
-      if (t > 0.82) return Bm / 2 * Math.sqrt(Math.max(0.0004, 1 - ((t - 0.82) / 0.18) ** 2));
+      if (t > 0.82) return Bm / 2 * Math.sqrt(Math.max(0.0004, 1 - Math.pow((t - 0.82) / 0.18, 2)));
       if (t < 0.06) return Bm / 2 * (0.86 + 0.14 * t / 0.06);
       return Bm / 2;
     };

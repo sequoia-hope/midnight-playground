@@ -414,7 +414,7 @@ export default class Coast {
 
   // ── Placement helpers ───────────────────────────────────────────────
   excluded(x, z, pad = 0) {
-    for (const e of this.exclusions) if ((x - e.x) ** 2 + (z - e.z) ** 2 < (e.r + pad) ** 2) return true;
+    for (const e of this.exclusions) if (Math.pow(x - e.x, 2) + Math.pow(z - e.z, 2) < Math.pow(e.r + pad, 2)) return true;
     return false;
   }
 
@@ -529,12 +529,12 @@ export default class Coast {
         const p = r[i];
         // Big stacks, spaced out along the coast.
         if (p.s - lastStack > 55 && rng() < 0.22) {
-          const off = lerp(28, 170, rng() ** 1.4);
+          const off = lerp(28, 170, Math.pow(rng(), 1.4));
           const x = p.x + p.nx * off + p.tx * (rng() - 0.5) * 30, z = p.z + p.nz * off + p.tz * (rng() - 0.5) * 30;
           const bed = T.heightAt(x, z);
           if (bed < sea - 3) {
             const w = lerp(7, 16, rng());
-            const hgt = lerp(10, 36, rng() ** 1.3);
+            const hgt = lerp(10, 36, Math.pow(rng(), 1.3));
             stacks.push({ x, y: bed, z, sx: w, sy: hgt - bed + 1, sz: w * lerp(0.7, 1.2, rng()), ry: rng() * 6.3, col: palette[Math.floor(rng() * palette.length)], b: lerp(0.8, 1.05, rng()) });
             rings.push({ x, y: sea + 0.12, z, sx: w * 0.92, sy: 1, sz: w * 0.92, ry: rng() * 6.3 });
             lastStack = p.s;
@@ -543,10 +543,10 @@ export default class Coast {
         // Surf rocks strewn along the waterline.
         const n = rng() < 0.6 ? 1 + Math.floor(rng() * 3) : 0;
         for (let k = 0; k < n; k++) {
-          const off = lerp(-1, 26, rng() ** 1.6);
+          const off = lerp(-1, 26, Math.pow(rng(), 1.6));
           const x = p.x + p.nx * off + p.tx * (rng() - 0.5) * 8, z = p.z + p.nz * off + p.tz * (rng() - 0.5) * 8;
           const bed = this.surf.sample(x, z, H).h;
-          const size = lerp(1.2, 4.5, rng() ** 1.7);
+          const size = lerp(1.2, 4.5, Math.pow(rng(), 1.7));
           if (bed > sea + 1.5) continue;
           small.push({ x, y: Math.min(bed, sea - 0.4), z, sx: size * lerp(0.8, 1.4, rng()), sy: size * lerp(0.7, 1.3, rng()), sz: size, ry: rng() * 6.3, col: palette[Math.floor(rng() * palette.length)], b: lerp(0.7, 1.0, rng()) });
           if (size > 2.3 && rng() < 0.6) rings.push({ x, y: sea + 0.12, z, sx: size * 0.95, sy: 1, sz: size * 0.95, ry: rng() * 6.3 });
@@ -668,7 +668,7 @@ export default class Coast {
           // Pines stand in the sheltered groves inland; cypress take the wind.
           const v = !seaSide && F.d > 25 && rng() < 0.45 ? 1 : 0;
           const yaw = v ? rng() * 6.3 : Math.atan2(-t.rz[i], t.rx[i]) + (rng() - 0.5) * 0.6;
-          const sc = v ? lerp(0.85, 1.35, rng()) : lerp(0.8, 1.6, rng() ** 1.2);
+          const sc = v ? lerp(0.85, 1.35, rng()) : lerp(0.8, 1.6, Math.pow(rng(), 1.2));
           cypress[v][this.chunkOf(F.s)].push({ x: px, y: S.h - 0.3, z: pz, sx: sc, sy: sc * lerp(0.85, 1.15, rng()), sz: sc, ry: yaw, col: 0xffffff, b: lerp(0.75, 1.1, rng()) });
           continue;
         }
@@ -678,7 +678,7 @@ export default class Coast {
           if (!this.clearOfRoad(px, pz, 1.5)) continue;
           const ice = seaSide && rng() < 0.55;
           const col = ice ? iceCols[Math.floor(rng() * iceCols.length)] : bushCols[Math.floor(rng() * bushCols.length)];
-          const sc = ice ? lerp(1.2, 2.6, rng()) : lerp(0.6, 1.8, rng() ** 1.3);
+          const sc = ice ? lerp(1.2, 2.6, rng()) : lerp(0.6, 1.8, Math.pow(rng(), 1.3));
           const steep = smoothstep(0.35, 0.8, S.slope);
           bushes[this.chunkOf(F.s)].push({ x: px, y: S.h - (ice ? 0.3 : 0.12) - steep * sc * 0.45, z: pz, sx: sc * lerp(0.8, 1.3, rng()), sy: ice ? sc * 0.4 : sc * lerp(lerp(0.6, 1.0, rng()), 1.25, steep), sz: sc, ry: rng() * 6.3, col, b: lerp(0.8, 1.05, rng()) });
         }
@@ -697,11 +697,11 @@ export default class Coast {
       const i = t.idx(s);
       if (rng() > 0.8) continue;
       const f = t.frame(s + (rng() - 0.5) * 2);
-      const lat = f.wallR + 1.2 + rng() ** 1.6 * 34;
+      const lat = f.wallR + 1.2 + Math.pow(rng(), 1.6) * 34;
       const x = f.x + f.rx * lat, z = f.z + f.rz * lat;
       this.surf.sample(x, z, S);
       if (S.slope > 1.6 || S.h > f.y + 22 || this.excluded(x, z, 1) || !this.clearOfRoad(x, z, 1.2)) continue;
-      const sc = lerp(0.5, 1.4, rng() ** 1.4);
+      const sc = lerp(0.5, 1.4, Math.pow(rng(), 1.4));
       // On a slope a flat bush juts out like a shelf: keep it round and sunk in.
       const steep = smoothstep(0.35, 0.8, S.slope);
       bushes[this.chunkOf(s)].push({ x, y: S.h - 0.15 - steep * sc * 0.45, z, sx: sc * lerp(0.8, 1.2, rng()), sy: sc * lerp(lerp(0.55, 0.95, rng()), 1.25, steep), sz: sc, ry: rng() * 6.3, col: bushCols[Math.floor(rng() * bushCols.length)], b: lerp(0.8, 1.05, rng()) });
@@ -734,7 +734,7 @@ export default class Coast {
       const side = rng() < 0.55 ? 1 : -1;
       const wall = side > 0 ? f.wallR : f.wallL;
       // Thick on the verge, thinning out up the slopes.
-      const lat = side * (wall + 1.2 + rng() ** 2.2 * 38);
+      const lat = side * (wall + 1.2 + Math.pow(rng(), 2.2) * 38);
       const x = f.x + f.rx * lat, z = f.z + f.rz * lat;
       this.surf.sample(x, z, S);
       if (S.slope > 1.05 || S.h < this.seaY + 2 || Math.abs(S.h - f.y) > 14) continue;
@@ -779,7 +779,7 @@ export default class Coast {
           // Seaward faces already show their strata: there the slabs sit
           // deeper, as ledges rather than boulders.
           const sea = side < 0;
-          const w = lerp(5, 14, rng() ** 1.3), hgt = lerp(2.5, sea ? 5 : 7, rng()), dep = lerp(2.2, 4, rng());
+          const w = lerp(5, 14, Math.pow(rng(), 1.3)), hgt = lerp(2.5, sea ? 5 : 7, rng()), dep = lerp(2.2, 4, rng());
           const back = dep * (sea ? 0.8 : 0.55);
           chunks[this.chunkOf(s)].push({
             x: x - dx * back, y: S.h - hgt * 0.25, z: z - dz * back,
@@ -877,7 +877,7 @@ export default class Coast {
         this.surf.sample(px, pz, S);
         if (S.slope < 0.8 || r0 > 0.25 * smoothstep(0.8, 1.5, S.slope)) continue;
         if (!this.clearOfRoad(px, pz, 6)) continue;
-        const size = lerp(2.5, 8, rng() ** 1.5) * (F.d < 50 ? 0.6 : 1);
+        const size = lerp(2.5, 8, Math.pow(rng(), 1.5)) * (F.d < 50 ? 0.6 : 1);
         chunks[this.chunkOf(F.s)].push({ x: px, y: S.h - size * 0.35, z: pz, sx: size * lerp(1, 1.7, rng()), sy: size * lerp(0.6, 1, rng()), sz: size, ry: rng() * 6.3, col: palette[Math.floor(rng() * palette.length)], b: lerp(0.75, 1.05, rng()) });
       }
     }
@@ -888,7 +888,7 @@ export default class Coast {
         if ((side < 0 ? t.sideL : t.sideR)[i] !== 1 || rng() > 0.35) continue;
         const f = t.frame(s + (rng() - 0.5) * 3);
         const wall = side < 0 ? f.wallL : f.wallR;
-        const size = lerp(0.6, 2.2, rng() ** 1.4);
+        const size = lerp(0.6, 2.2, Math.pow(rng(), 1.4));
         const lat = side * (wall + 0.7 + size);
         const x = f.x + f.rx * lat, z = f.z + f.rz * lat;
         if (!this.clearOfRoad(x, z, size)) continue;

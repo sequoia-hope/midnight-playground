@@ -300,7 +300,7 @@ export default class Desert {
   zoneAt(s) { return this.t.zone[this.t.idx(s)]; }
   take(x, z, r) { this.occ.push({ x, z, r }); }
   free(x, z, r) {
-    for (const o of this.occ) if ((x - o.x) ** 2 + (z - o.z) ** 2 < (r + o.r) ** 2) return false;
+    for (const o of this.occ) if (Math.pow(x - o.x, 2) + Math.pow(z - o.z, 2) < Math.pow(r + o.r, 2)) return false;
     return true;
   }
   // Clear of every stretch of road, walls included.
@@ -483,7 +483,7 @@ export default class Desert {
         for (let k = 0; k < 3; k++) {
           const lat = S.wallR + rrange(rng, 6, 120);
           const x = S.x + S.rx * lat + (rng() - 0.5) * 4, z = S.z + S.rz * lat + (rng() - 0.5) * 4;
-          const h = lerp(6, 24, rng() ** 1.3) * lerp(0.7, 1.2, smoothstep(10, 100, lat - S.wallR));
+          const h = lerp(6, 24, Math.pow(rng(), 1.3)) * lerp(0.7, 1.2, smoothstep(10, 100, lat - S.wallR));
           const r = h * 0.2;
           if (!this.clearOfRoad(x, z, r + 1) || !this.free(x, z, r * 0.8)) continue;
           if (this.T.slopeAt(x, z, 3) > 0.35) continue;
@@ -578,7 +578,7 @@ export default class Desert {
           const d = foot + u;
           const x = S.x + S.rx * side * d + S.fx * (rng() - 0.5) * 3, z = S.z + S.rz * side * d + S.fz * (rng() - 0.5) * 3;
           if (!this.clearOfRoad(x, z, 1) || this.T.slopeAt(x, z, 1.5) > 0.7) continue;
-          const sz = lerp(0.3, 1.2, rng() ** 2) * (u > -2 ? 1.3 : 1);
+          const sz = lerp(0.3, 1.2, Math.pow(rng(), 2)) * (u > -2 ? 1.3 : 1);
           scree[this.chunkOf(s)].push({ x, y: this.gy(x, z) - sz * 0.15, z, sx: sz * lerp(0.8, 1.5, rng()), sy: sz * lerp(0.5, 0.9, rng()), sz, ry: rng() * 6.3, rx: (rng() - 0.5) * 0.5, col: rpick(rng, PAL), b: lerp(0.75, 1.05, rng()) });
         }
         if (rng() < 0.35) {
@@ -646,7 +646,7 @@ export default class Desert {
         const wall = side > 0 ? S.wallR : S.wallL;
         // Distance out: dense near, thinning with distance.
         const reach = inCanyon ? 70 : onLake ? 60 : 420;
-        const lat = side * (wall + 1.5 + reach * rng() ** 1.6);
+        const lat = side * (wall + 1.5 + reach * Math.pow(rng(), 1.6));
         const x = S.x + S.rx * lat + (rng() - 0.5) * 2, z = S.z + S.rz * lat + (rng() - 0.5) * 2;
         if (onLake && Math.abs(lat) < 900) {
           // Out on the lake bed: nothing grows until the shore.
@@ -687,7 +687,7 @@ export default class Desert {
       t.frame(s, S);
       for (const side of [-1, 1]) {
         const wall = side > 0 ? S.wallR : S.wallL;
-        const lat = side * (wall + 2.5 + 42 * rng() ** 1.3);
+        const lat = side * (wall + 2.5 + 42 * Math.pow(rng(), 1.3));
         if (Math.abs(lat - RAIL_LAT) < 9) continue;
         const x = S.x + S.rx * lat + (rng() - 0.5) * 3, z = S.z + S.rz * lat + (rng() - 0.5) * 3;
         if (!this.clearOfRoad(x, z, 1.2) || !this.free(x, z, 1)) continue;
@@ -814,7 +814,7 @@ export default class Desert {
     for (let s = sA; s <= sB; s += 5) {
       t.frame(s, S);
       // Beyond the highway the line drifts off along the lake shore.
-      const lat = RAIL_LAT - 120 * smoothstep(this.Z[2].s0 + 200, sB, s) ** 1.5;
+      const lat = RAIL_LAT - 120 * Math.pow(smoothstep(this.Z[2].s0 + 200, sB, s), 1.5);
       pts.push({ x: S.x + S.rx * lat, z: S.z + S.rz * lat });
     }
     // Extend: bend away to the left behind, carry straight on ahead.
@@ -975,7 +975,7 @@ export default class Desert {
     const x = f.x + f.rx * RAIL_LAT, z = f.z + f.rz * RAIL_LAT;
     const P = this.rail.pts;
     let best = 0, bd = Infinity;
-    for (let i = 0; i < P.length; i += 4) { const d = (P[i].x - x) ** 2 + (P[i].z - z) ** 2; if (d < bd) { bd = d; best = i; } }
+    for (let i = 0; i < P.length; i += 4) { const d = Math.pow(P[i].x - x, 2) + Math.pow(P[i].z - z, 2); if (d < bd) { bd = d; best = i; } }
     return P[best].u;
   }
 

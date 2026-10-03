@@ -362,8 +362,8 @@ export default class City {
           continue;
         }
         const r = Math.hypot(cw[0] - DC.x, cw[1] - DC.z);
-        const core = Math.exp(-((r / 640) ** 2));
-        const ring = Math.exp(-((r / 1500) ** 2));
+        const core = Math.exp(-Math.pow(r / 640, 2));
+        const ring = Math.exp(-Math.pow(r / 1500, 2));
         const roll = rng();
         this.stats.blocks++;
         if (blockClear && roll < 0.05 + core * 0.05) {
@@ -443,7 +443,7 @@ export default class City {
     const WALK = [0.38, 0.37, 0.35], GRASS = [0.12, 0.24, 0.07], PLAZA = [0.46, 0.43, 0.38], YARD = [0.1, 0.1, 0.11];
     const BU = bu1 - bu0, BV = bv1 - bv0;
     let core = 0;
-    for (const c of this.cores) core = Math.max(core, Math.exp(-(((cw[0] - c.x) ** 2 + (cw[1] - c.z) ** 2) / (c.R * c.R))));
+    for (const c of this.cores) core = Math.max(core, Math.exp(-((Math.pow(cw[0] - c.x, 2) + Math.pow(cw[1] - c.z, 2)) / (c.R * c.R))));
     const dc = Math.hypot(cw[0] - this.centre.x, cw[1] - this.centre.z);
     const roll = rng();
     const tree = (u, v, sc = 1) => { const p = W(u, v); this.parkTrees.push({ x: p[0], y: g0 + 0.2, z: p[1], s: sc * (0.8 + rng() * 0.6) }); };

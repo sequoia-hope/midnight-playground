@@ -43,7 +43,8 @@ and carry on with the option that best preserves parity.
 | Web build into `dist/next/` | `cargo xtask web` (add `--release` for the optimised build) |
 | Wasm size report | `cargo xtask size` (after a release web build) |
 | Native client | `cargo run -p mr_game` |
-| JS unit tests | `npm run test:unit` |
+| JS unit tests | `npm run test:unit` (and `npm run test:unit:kernel`, with the parity kernel) |
+| Rebuild and check the parity kernel | `cargo xtask kernel` (CI: `cargo xtask kernel --check`) |
 | JS browser tests | `npm run test:e2e` (headless Chrome on the GPU, ~3 min) |
 
 Toolchain: stable Rust with the `wasm32-unknown-unknown` target
@@ -73,6 +74,14 @@ missing; `Array.prototype.sort` is stable (`sort_by`, never
 `Float32Array`; iterate in JS insertion order, never a sorted or hashed map.
 When a trace diverges, it is a port bug until shown otherwise: find the first
 differing field at the first differing tick.
+
+## Parity data
+
+`parity/README.md` explains the layout (`parity/golden/` in git,
+`parity/cache/<js-tree-key>/` regenerated) and the hooks in `src/parity/`
+that the JS game gains for its reference runs (`?kernel=1`, `?fixeddt=1`,
+`?quant=1`, `?seed=N`, or `?parity=1` for all). Every capture is taken with
+the kernel on.
 
 ## Viewing output
 

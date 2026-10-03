@@ -3,3 +3,4 @@ node_modules/
 tools/seaside/cache/
 target/
 parity/report/
+parity/cache/

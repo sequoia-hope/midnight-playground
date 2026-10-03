@@ -7,3 +7,5 @@
 //! library on native and would break bit-identical results.
 
 #![forbid(unsafe_code)]
+
+pub mod kernel;

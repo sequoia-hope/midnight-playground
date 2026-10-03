@@ -1311,7 +1311,7 @@ export default class Beach {
       g.clearRect(0, 0, w, h);
       const rng = mulberry32(77);
       for (let i = 0; i < 260; i++) {
-        const x = rng() * w, y = (0.25 + 0.5 * rng() ** 2) * h;
+        const x = rng() * w, y = (0.25 + 0.5 * Math.pow(rng(), 2)) * h;
         g.fillStyle = `rgba(255,255,255,${0.25 + rng() * 0.5})`;
         g.beginPath(); g.ellipse(x, y, 4 + rng() * 14, 1.5 + rng() * 3, 0, 0, 7); g.fill();
       }

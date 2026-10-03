@@ -1,0 +1,15 @@
+[package]
+name = "mr_kernel"
+description = "mr_math's kernel compiled to wasm for the JS reference run (roadmap WP 0.3)"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# cdylib: the wasm the JS oracle loads (tools/parity/kernel/mr_kernel.wasm,
+# written by `cargo xtask kernel`). rlib: xtask uses the input generator
+# natively to check the wasm against native bits.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+mr_math.workspace = true

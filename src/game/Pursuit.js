@@ -74,7 +74,7 @@ class Sawhorse extends KinematicCar {
 export class Pursuit {
   // makeUnit(type, role) → a Vehicle for a police car; type is 'patrol',
   // 'interceptor' or 'suv', role 'unit' | 'block' | 'sawhorse'.
-  constructor({ track, level, makeUnit, heat = 1, maxUnits = 6, playerTop = 75, rng = Math.random, flash = true }) {
+  constructor({ track, level, makeUnit, heat = 1, maxUnits = 6, playerTop = 75, rng = Math.random, policeRng = Math.random, flash = true }) {
     this.track = track;
     this.level = level;
     this.rng = rng;
@@ -109,14 +109,14 @@ export class Pursuit {
     this.units = [];
     for (const [type, k] of Object.entries(POOL)) {
       for (let i = 0; i < k; i++) {
-        const u = new PoliceDriver(makeUnit(type, 'unit'), track, type);
+        const u = new PoliceDriver(makeUnit(type, 'unit'), track, type, policeRng);
         u.v.model.root.visible = false;
         u.callsign = callsign(this.units.length, rng);
         this.units.push(u);
       }
     }
     this.blockCars = BLOCK_POOL.map((type) => {
-      const u = new PoliceDriver(makeUnit(type, 'block'), track, type);
+      const u = new PoliceDriver(makeUnit(type, 'block'), track, type, policeRng);
       u.v.model.root.visible = false;
       return u;
     });
