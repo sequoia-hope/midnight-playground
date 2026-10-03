@@ -45,6 +45,9 @@ Every capture is taken with the kernel on.
 | `node tools/parity/sim-race.mjs [--check] [--only id,...]` | Whole-race recordings from the real game; `--check` records each twice and compares | `cache/<key>/sim-races/*.trace`, summaries in `golden/sim/races.json` |
 | `node tools/parity/sim-fuzz.mjs` | The fuzz baseline: how far bodies get past the walls under random controls | `golden/sim/fuzz.json` |
 | `node tools/parity/sim-bench.mjs` | The JS simulation's ticks per second, full Sierra field | `golden/sim/bench.json` |
+| `node tools/parity/shots.mjs [--run a]` | Screenshots: every 250 m of every route, chase and high views, and the attract view; frozen, seeded | `cache/<key>/shots/<run>/` |
+| `node tools/parity/materials.mjs [--run a]` | Material test scenes: every MaterialKind on a sphere and a plane, bloom chart, fog ramp, shadow edge, standard and physical grids | `cache/<key>/materials/<run>/`, definitions in `golden/materials/scenes.json` |
+| `cargo xtask parity shots --a <dir> --b <dir> --label <name>` | Compares two sets of pictures (CIEDE2000, SPEC 12's limits), with a report | `report/shots-<name>/` |
 | `node tools/parity/perf-baseline.mjs` | Desktop frame-rate baseline, fly camera along each route | printed, for `docs/rust-port/BASELINE.md` |
 | `node tools/parity/trace-inspect.mjs <trace> [--tick N \| --diff <other>]` | Read a trace: summary, every field of a record by name, or the first differing tick and fields | |
 

@@ -380,3 +380,48 @@ a buffer of that length, so a radio line's clips always beat its 700 ms
 burble fallback (the game prefetches them at race start, so they do in
 practice too). The clip samples are not part of the reference: both ports
 decode the same files.
+
+## WP 0.6 decisions
+
+## D17. Screenshot stations
+
+2026-10-03, WP 0.6. `tools/parity/shots.mjs`: the fly camera at every 250 m
+of each route, a chase-height view (`h 2.2, back 7, pitch -0.04`) and a high
+view (`h 40, back 70, pitch -0.3`), plus the attract camera's first pose
+(`s 120, h 7, back 22, lat 3, pitch -0.05`), 1280 × 800, high quality, the
+kernel on, the scenery frozen, `Math.random` seeded and a fresh Chrome per
+level (D20, D27). Stations are visited in increasing s on one page per level;
+at 250 m spacing each one on a sprint level is more than 2.5 % of the route
+from the last, so the environment map is refreshed at every station, as it
+would be if the page had been loaded there. 398 stations in all.
+
+## D18. The picture metric, read precisely
+
+2026-10-03, WP 0.6. "Quarter resolution" is half the width and half the
+height (2 × 2 box filter, averaged in linear light). ΔE is CIEDE2000 on
+CIELAB with the D65 white. "95 % of 16-pixel blocks under 6" is read as: the
+mean ΔE of each 16 × 16 block of the quarter-resolution image, and the 95th
+percentile of those under 6. The JS against itself: 0 on all 398 stations
+and all 45 material scenes (the JS renders bit-identically run to run on the
+dev machine), so SPEC 12's limits (mean 3, block 6) stand, unraised. The
+noise floor of a different GPU or driver was not measured.
+
+## D19. Material test scenes
+
+2026-10-03, WP 0.6. `tools/parity/materials.mjs`. The roadmap says "built
+from the exposed JS patch functions"; instead of exporting each patch, a
+kind scene takes the live material object the game built (the first mesh
+with that kind, levels in order, captured as the scene export captures them,
+or the models group the export builds), so the JS game needed no further
+hooks. The test geometry is a sphere and a plane carrying the source mesh's
+extra attributes set to its first vertex. Everything is data in
+`parity/golden/materials/scenes.json`: the common setup (512 × 512, the
+game's post chain, a fixed sun with shadows and a hemisphere light, the
+level's sky dome as the environment), and per scene the source path, the
+patch uniforms as captured, and any overrides. Overrides exist where a
+kind's look comes from per-frame state rather than the material: the night
+level, a clock, live particles or skid marks, the siren colours, and for the
+glows that fade near the camera, a camera further back or the source's own
+geometry (`OVERRIDES` in the tool says which and why). Six fixed scenes use
+only plain materials: the bloom chart, the fog ramp, the shadow edge, and
+standard and physical sphere grids. 37 kinds and 45 scenes.

@@ -11,6 +11,10 @@
 // stations.json beside them. Two runs (a, b) of the same tree give the
 // JS-against-JS noise floor: cargo xtask parity shots --a <dir> --b <dir>.
 //
+// Math.random is seeded as for the scene export (lib/seed-random.mjs), and
+// each level gets a fresh Chrome: canvas textures drawn on the GPU depend on
+// what earlier pages drew (DECISIONS D20, D27).
+//
 // Stations are visited in increasing s, one page per level. The environment
 // map refreshes whenever the time of day has moved 2.5 % of the route
 // (main.js refreshEnv); at 250 m spacing every station on a sprint level is
@@ -21,6 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { launch, openGame } from '../../test/e2e/harness.js';
 import { cacheDir } from './lib/jstree.mjs';
+import { seedRandom, RANDOM_SEED } from './lib/seed-random.mjs';
 
 const args = process.argv.slice(2);
 const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
@@ -41,12 +46,15 @@ export const ATTRACT = { s: 120, h: 7, back: 22, lat: 3, yaw: 0, pitch: -0.05 };
 
 const frames = (n) => new Promise((resolve) => { let k = 0; const f = () => (++k >= n ? resolve() : requestAnimationFrame(f)); requestAnimationFrame(f); });
 
-const browser = await launch();
-try {
-  for (const level of LEVELS) {
+for (const level of LEVELS) {
+  const browser = await launch();
+  try {
     const dir = path.join(cacheDir(`shots/${RUN}`), level);
     fs.mkdirSync(dir, { recursive: true });
-    const g = await openGame(browser, { query: `kernel=1&freeze=1&level=${level}&s=${ATTRACT.s}&h=${ATTRACT.h}&back=${ATTRACT.back}&lat=${ATTRACT.lat}&pitch=${ATTRACT.pitch}` });
+    const g = await openGame(browser, {
+      query: `kernel=1&freeze=1&level=${level}&s=${ATTRACT.s}&h=${ATTRACT.h}&back=${ATTRACT.back}&lat=${ATTRACT.lat}&pitch=${ATTRACT.pitch}`,
+      init: seedRandom, initArgs: [RANDOM_SEED],
+    });
     const len = await g.eval(() => (window.__world.track.loop ? window.__world.track.length : window.__world.track.roadEnd));
     const stations = [{ name: 'attract', ...ATTRACT }];
     for (let s = STEP; s < len - 30; s += STEP) for (const [view, p] of Object.entries(VIEWS)) stations.push({ name: `${String(s).padStart(5, '0')}-${view}`, s, ...p });
@@ -59,7 +67,7 @@ try {
     fs.writeFileSync(path.join(dir, 'stations.json'), JSON.stringify({ level, step: STEP, viewport: [1280, 800], stations }, null, 1));
     console.log(`${level}: ${stations.length} shots`);
     await g.close();
+  } finally {
+    await browser.close();
   }
-} finally {
-  await browser.close();
 }
