@@ -133,3 +133,80 @@ s = 80 in headless Chrome (WebGPU, 1280 × 800), shadows off and on: a steady
 60 fps (the display rate) with no frame over 16.8 ms after the first second
 of flight; Coast with shadows had one 217 ms frame just after "ready" (a
 pipeline compiled late). Phones not measured yet.
+
+## The Rust client at WP 2.3 (three's shading, sky, environment, shadow, post)
+
+2026-10-03, desktop (RTX 3060, Linux, load average 15 to 30 from other
+work), JS tree key `2a65261c9506d9cd`. The metric is SPEC 12's (CIEDE2000 on
+quarter resolution; a picture passes with mean under 3 and the 95th
+percentile of 16-pixel blocks under 6; D18).
+
+**Material test scenes** (`cargo xtask parity materials`, the gate of
+roadmap WP 2.3; JS run `a` against the native client, 512 × 512): all
+thirteen within the limits, by a wide margin.
+
+| Scene | Mean ΔE00 | Block 95 % |
+|---|---:|---:|
+| fixed/bloom-chart | 0.016 | 0.025 |
+| fixed/fog-ramp | 0.023 | 0.115 |
+| fixed/shadow-edge | 0.150 | 0.337 |
+| fixed/standard-metal-0 | 0.087 | 0.456 |
+| fixed/standard-metal-0.33 | 0.102 | 0.460 |
+| fixed/standard-metal-0.66 | 0.109 | 0.460 |
+| fixed/standard-metal-1 | 0.112 | 0.459 |
+| fixed/physical-clearcoat-sheen | 0.137 | 0.609 |
+| kinds/kind-Standard | 0.107 | 0.348 |
+| kinds/kind-Physical | 0.150 | 0.391 |
+| kinds/kind-Lambert | 0.019 | 0.091 |
+| kinds/kind-Basic | 0.001 | 0.006 |
+| kinds/kind-SkyDome | 0.032 | 0.235 |
+
+The largest single-pixel differences (9 to 19 ΔE00) sit on sphere
+silhouettes and specular highlights (MSAA resolve and the GPU's
+derivatives), not in areas. For the record, the other kinds drawn as their
+plain stand-ins (`--only every`, not a gate): within the limits already
+Reflector 0.14, Siding 0.11, Shoulder 0.42, Stucco 0.55, Sea 0.62,
+AmbientProp 0.90, Asphalt 1.20, Neon 2.78 (block 5.8); over them Markings
+4.1, FloodBeam 9.2, Terrain 9.5, Sandstone 11.3, CityFacade 12.7,
+TriplanarRock 13.5, CarLight 17.9, StreetFacade 18.2, ContainerAtlas 21.9,
+GroundPool 21.9, StreetAtlas 25.9 (their patches are WP 2.4 and M3). Lines,
+points, sprites and the effect shaders are not rendered by the Rust side
+yet.
+
+**Screenshot stations** (`cargo xtask parity stations`, D17's 398 stations
+against JS run `a`, the native client at 1280 × 800, frozen scenery). Most
+kinds are still stand-ins, so this is a progress measure, not a gate:
+
+| Level | Stations | Within the limits | Median mean | Worst mean | Median block 95 % |
+|---|---:|---:|---:|---:|---:|
+| sierra | 81 | 13 | 4.27 | 14.80 | 11.41 |
+| coast | 67 | 21 | 2.23 | 8.36 | 8.52 |
+| streets | 43 | 0 | 11.01 | 13.12 | 34.20 |
+| desert | 63 | 9 | 4.26 | 12.17 | 9.50 |
+| seaside | 29 | 2 | 3.38 | 13.07 | 18.39 |
+| cruise | 115 | 3 | 4.13 | 7.52 | 18.88 |
+
+The WP 2.2 client (Bevy's `StandardMaterial` stand-ins, Bevy's bloom and
+tone mapping, the export's sky) on Sierra's 81 stations: none within the
+limits, median mean 21.1, median block 33.9. What is left is the patched
+kinds (terrain strata, road wear and night sheen, city façades and lit
+windows, ground pools, glow points, sea foam): with the sky, clouds, sun
+disc, shadows, fog and exposure the same, daytime stations with little
+patched surface already pass (Sierra 1250 to 5750 chase, much of Coast).
+Rust and JS side by side for a few stations:
+`parity/report/wp23-side-by-side/` on the registered server (made from
+`parity/cache/<key>/shots/rust/` and `…/a/`).
+
+**Timings.** `cargo xtask parity materials`: 7 s with both sides cached (the
+native client renders the 13 scenes in about 4 s). `cargo xtask parity
+stations`: 2 min 52 s for all six levels (Rust side only; the JS shots were
+cached). Native start to ready with the new pipelines, Sierra: 3.0 s, peak
+RSS 905 MB (WP 2.2: 4.1 s, 839 MB; the environment atlas, post targets and
+pipelines add about 70 MB). The environment map (28 passes) is rebuilt
+every 2.5 % of a sprint route.
+
+**Web.** Release build (`cargo xtask web --release`): `mr_game_bg.wasm`
+20.2 MB, 6.26 MB after gzip (WP 2.2: 5.87 MB). In headless Chrome on WebGPU
+(`tools/parity/rust-web.mjs`), Seaside ready 4.2 to 9.7 s after navigation (models 3.4 s) with
+the dev machine loaded; the WGSL compiles in Chrome's compiler and the
+screenshot matches the native one. Frame times on the phones: WP 2.6.

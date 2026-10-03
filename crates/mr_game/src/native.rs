@@ -36,6 +36,9 @@ pub fn scene_path(o: &Options, root: &Path) -> Result<PathBuf, String> {
 /// Reads and parses the scene (and Seaside's survey) on a thread.
 fn start_loading(opts: Res<Opts>) {
     let o = opts.o.clone();
+    if o.materials.is_some() {
+        return; // the material test scenes load their own sources
+    }
     std::thread::spawn(move || {
         let root = repo_root();
         if o.level == "seaside" {

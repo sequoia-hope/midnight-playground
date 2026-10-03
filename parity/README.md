@@ -56,6 +56,9 @@ Every capture is taken with the kernel on.
 | `node tools/parity/shots.mjs [--run a]` | Screenshots: every 250 m of every route, chase and high views, and the attract view; frozen, seeded | `cache/<key>/shots/<run>/` |
 | `node tools/parity/materials.mjs [--run a]` | Material test scenes: every MaterialKind on a sphere and a plane, bloom chart, fog ramp, shadow edge, standard and physical grids | `cache/<key>/materials/<run>/`, definitions in `golden/materials/scenes.json` |
 | `cargo xtask parity shots --a <dir> --b <dir> --label <name>` | Compares two sets of pictures (CIEDE2000, SPEC 12's limits), with a report | `report/shots-<name>/` |
+| `cargo xtask parity materials [--only all\|every\|<names>]` | The material test scenes rendered by the JS (if not cached) and by the native Rust client (`--materials`), compared; fails over the limits (WP 2.3, D175, D176) | `cache/<key>/materials/rust/`, `report/shots-materials/` |
+| `cargo xtask parity stations [--levels a,b]` | The screenshot stations flown by the native Rust client (`--stations`), compared with the JS shots (WP 2.5, D176) | `cache/<key>/shots/rust/`, `report/shots-stations/` |
+| `node tools/parity/rust-web.mjs --level <id> [--query ...]` | The Rust web build (`cargo xtask web --release`) in headless Chrome on WebGPU: waits for `__mr.ready`, saves `__mr.screenshot`, fails on page errors (D176) | `report/rust-web/` |
 | `node tools/parity/perf-baseline.mjs` | Desktop frame-rate baseline, fly camera along each route | printed, for `docs/rust-port/BASELINE.md` |
 | `node tools/parity/trace-inspect.mjs <trace> [--tick N \| --diff <other>]` | Read a trace: summary, every field of a record by name, or the first differing tick and fields | |
 
