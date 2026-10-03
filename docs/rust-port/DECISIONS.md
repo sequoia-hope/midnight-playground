@@ -431,3 +431,32 @@ glows that fade near the camera, a camera further back or the source's own
 geometry (`OVERRIDES` in the tool says which and why). Six fixed scenes use
 only plain materials: the bloom chart, the fog ramp, the shadow edge, and
 standard and physical sphere grids. 37 kinds and 45 scenes.
+
+## M1 decisions
+
+## D50. The shape of `mr_math`'s port of `util/math.js`
+
+2026-10-03, WP 1.1. JS closures that carry state become structs that can
+live in a cloned, hashed `SimState`: `mulberry32(seed)` is `Mulberry32`
+(its state `a` public, `next_f64()` the closure), `makeNoise2D(seed)` is
+`Noise2D` (`noise(x, y)` the closure). Anything that takes an `rng`
+function takes `&mut impl Rng`. Default arguments become a second function:
+`fbm`/`ridged` take `octaves` with the JS defaults `lac = 2`, `gain = 0.5`,
+and `fbm_with`/`ridged_with` take all three; the default `hash2` seed (0) and
+noise seed (1) are written out at the call. `hash2` takes its arguments as
+`f64` and applies ToInt32 itself, as `Math.imul` does, so a caller cannot
+saturate with `as i32` where the JS wraps. Seeds are `u32`: a caller with a
+double passes it through `js::to_uint32`, the JS `seed >>> 0`.
+
+## D51. The math golden
+
+2026-10-03, WP 1.1. The roadmap gate "bit-exact against the JS run with the
+kernel" is `parity/golden/math/math.json` (`tools/parity/math-golden.mjs`,
+checked in CI): every function of `util/math.js` and every helper in
+`mr_math::js` over the same inputs on both sides (edge values, then
+mulberry32 spreads; noise also at coordinates past 2^31, where `i & 255`
+wraps through ToInt32), stored as FNV-1a 64 of the f64 bits plus the first
+16 values in hex. NaN is written canonically on both sides, because V8 keeps
+whatever NaN bits an operation left (`Math.max(NaN, 1)` stores
+0xfff8000000000000). The golden is compiled into the test, so it runs in
+wasm too.
