@@ -1,0 +1,40 @@
+# Midnight Racer in Rust. The plan is docs/rust-port/SPEC.md and ROADMAP.md;
+# the dependency rules between these crates (SPEC 3.2) are enforced by
+# `cargo xtask check-deps`. The JS game at the repo root is untouched by this.
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+default-members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+repository = "https://github.com/sequoia-hope/midnight-racer"
+
+[workspace.dependencies]
+mr_math = { path = "crates/mr_math" }
+mr_track = { path = "crates/mr_track" }
+mr_levels = { path = "crates/mr_levels" }
+mr_sim = { path = "crates/mr_sim" }
+mr_scene = { path = "crates/mr_scene" }
+mr_canvas = { path = "crates/mr_canvas" }
+mr_worldgen = { path = "crates/mr_worldgen" }
+mr_audio = { path = "crates/mr_audio" }
+mr_net = { path = "crates/mr_net" }
+# The CLI that post-processes the wasm must be this exact version;
+# `cargo xtask web` checks it.
+wasm-bindgen = "=0.2.129"
+js-sys = "0.3"
+web-sys = "0.3"
+
+# Dev builds: our code fast to compile, dependencies optimised (SPEC 11).
+[profile.dev.package."*"]
+opt-level = 3
+
+# Release web builds (SPEC 11): `cargo xtask web --release`, then wasm-opt.
+[profile.web-release]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+panic = "abort"

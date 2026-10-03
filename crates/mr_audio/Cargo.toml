@@ -1,0 +1,16 @@
+[package]
+name = "mr_audio"
+description = "Web Audio shaped facade and backends; engine, SFX, music, radio"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+mr_math.workspace = true
+
+[features]
+# Backends (SPEC 7.1): the browser's Web Audio, the web-audio-api crate, or a
+# recorder for headless runs and strict tests.
+web = []
+native = []
+null = []

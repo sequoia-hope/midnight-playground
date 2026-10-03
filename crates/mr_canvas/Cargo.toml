@@ -1,0 +1,9 @@
+[package]
+name = "mr_canvas"
+description = "The Canvas 2D subset the texture generators use"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+mr_math.workspace = true

@@ -1,0 +1,10 @@
+[package]
+name = "mr_levels"
+description = "The six Midnight Racer levels as data, and Seaside's survey data loader"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+mr_math.workspace = true
+mr_track.workspace = true

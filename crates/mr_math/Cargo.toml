@@ -1,0 +1,8 @@
+[package]
+name = "mr_math"
+description = "Scalar math for Midnight Racer: the libm kernel, JS semantics, mulberry32, hash2, noise"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]

@@ -1,0 +1,11 @@
+[package]
+name = "mr_sim"
+description = "The Midnight Racer simulation: vehicles, physics, AI, traffic, collisions, race rules, pursuit"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+mr_math.workspace = true
+mr_track.workspace = true
+mr_levels.workspace = true

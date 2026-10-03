@@ -1,0 +1,18 @@
+[package]
+name = "mr_worldgen"
+description = "World generation: terrain, road, sky, sea, scenery, car models, textures"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+mr_scene.workspace = true
+mr_canvas.workspace = true
+mr_math.workspace = true
+mr_track.workspace = true
+mr_levels.workspace = true
+
+[features]
+# Native only: run independent build jobs on a thread pool (SPEC 5.5). rayon
+# joins here as an optional dependency when the first jobs exist.
+parallel = []

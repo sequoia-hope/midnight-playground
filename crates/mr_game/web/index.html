@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Midnight Racer (Rust build)</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 16px; background: #0b0d14; color: #e8ecf4;
+         font: 16px/1.5 system-ui, sans-serif; }
+  #out { padding: 12px 14px; border: 1px solid #2a3042; border-radius: 8px;
+         background: #141826; overflow-wrap: anywhere; }
+  #out[data-ready] { border-color: #3d8f5a; }
+</style>
+</head>
+<body>
+<!-- Roadmap WP 0.1: the bare pipeline check. Every URL here is relative,
+     because the build is always served under a sub-path (SPEC 9.5). -->
+<p id="out">Loading wasm…</p>
+<script type="module">
+  import init from './mr_game.js';
+  init().catch((e) => {
+    const out = document.getElementById('out');
+    out.textContent = 'Failed to start the wasm module: ' + e;
+    out.setAttribute('data-error', '1');
+  });
+</script>
+</body>
+</html>

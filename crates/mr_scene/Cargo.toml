@@ -1,0 +1,8 @@
+[package]
+name = "mr_scene"
+description = "Engine-neutral scene data and the .mrscene file format"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]

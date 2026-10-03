@@ -1,0 +1,10 @@
+[package]
+name = "xtask"
+description = "Build, parity and size tooling: cargo xtask <command>"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+flate2 = "1"
+serde_json = "1"

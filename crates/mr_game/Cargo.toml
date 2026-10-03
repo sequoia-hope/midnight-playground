@@ -1,0 +1,27 @@
+[package]
+name = "mr_game"
+description = "The Midnight Racer client: states, rendering, camera, effects, HUD, menus, input, platform glue"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# The web build is the cdylib, post-processed by wasm-bindgen into dist/next/
+# (`cargo xtask web`). The native build is the binary.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "midnight-racer"
+path = "src/main.rs"
+
+[dependencies]
+mr_sim.workspace = true
+mr_net.workspace = true
+mr_scene.workspace = true
+mr_worldgen.workspace = true
+mr_audio.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen.workspace = true
+js-sys.workspace = true
+web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Navigator"] }
