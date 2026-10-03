@@ -3,5 +3,13 @@
 
 #![forbid(unsafe_code)]
 
+pub mod builder;
+pub mod color;
+pub mod color_builder;
+pub mod geom;
+pub mod material;
+pub mod object;
+pub mod road;
 pub mod textures;
 pub mod three_geom;
+pub mod world;
