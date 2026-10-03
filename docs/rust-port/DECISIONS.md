@@ -599,3 +599,25 @@ the effects of its events: release onto the road, the barrier's slowdown,
 a bust's crash) is `race::PursuitView`, applied at SPEC 4.3's step 17. The
 pursuit's events reach the client as `SimEvent::Pursuit`. Pursuit.js's
 `hud()` and `propMark()` are presentation and stay with the client (M8).
+
+## D62. The `mr-sim` runner lives outside `src/`
+
+2026-10-03, WP 1.8. `mr-sim` (`crates/mr_sim/bin/mr-sim.rs`) reads the
+Seaside survey from a file, writes traces and times its benchmark, which
+the simulation library may not (no clock, no I/O; `check-deps` scans
+`src/`). A binary in the crate whose source sits in `bin/` keeps the
+library's rule intact without a second crate. Its seed is 1 and its car is
+the sports car unless told otherwise; `race` stops at the results, as the
+recordings do (or after three minutes on the cruise loop).
+
+## D63. Fuzz and determinism are checked against the JS, not only bounds
+
+2026-10-03, WP 1.7. The fuzz test replays `tools/parity/sim-fuzz.mjs`'s ten
+runs with the same `fuzzer(1)` and requires what SPEC 4.6 asks (no NaN, no
+growth, no body further outside the walls than the JS goes), and, since the
+simulation is bit-identical, also the same maximum excursion at the same
+tick for every class of body. Native/wasm agreement is shown by the whole
+races, the module traces and the fuzz runs passing in wasm against the same
+JS-derived numbers. The determinism test steps a clone of a mid-race Hot
+Pursuit state beside the original and compares hashes every tick and the
+whole state at the end.
