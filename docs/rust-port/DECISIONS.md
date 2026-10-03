@@ -112,3 +112,95 @@ divides the same way, so both sides integrate identical values. It applies
 to the input from the player's devices or the autopilot, after the
 autopilot, not to the controls the race itself produces (the cool-down
 driver after the finish, the penalty hold).
+
+## WP 0.7 decisions
+
+## D40. Math.random in the audio is one seeded stream
+
+2026-10-03, WP 0.7. The audio code draws from `Math.random` for the noise
+beds, the tunnel's impulse response, loop start offsets, pops, misfires,
+one-shot variations, radio takes and the burble. Every audio capture
+replaces it with `mulberry32(1)` (the algorithm of `src/util/math.js`)
+before `GameAudio` is built; nothing else draws from it there. So the
+Rust `mr_audio` takes one random stream and draws from it exactly where
+and in the order the JS calls `Math.random`; in the parity tests it is
+`mulberry32(1)`. With that, the Node fake and Chrome build bit-identical
+buffers (the renders stage checks it).
+
+## D41. The call log is a facade log played back on a virtual clock
+
+2026-10-03, WP 0.7. A Web Audio call log taken in the browser is not
+reproducible: `currentTime` runs on the audio clock, and the music
+scheduler, the gate tails and the radio's decode-or-burble race run on
+`setTimeout`. So the capture has two halves. In Chrome, the real game
+(`?parity=1`, autopilot) logs only the calls it makes on its audio facade,
+tagged with the race tick; that log is identical run to run. In Node, the
+log is played back into `GameAudio` on a recording Web Audio fake whose
+clock is game time (tick k is at k/120 s), with `setTimeout` on that clock
+and decoding standing in for Chrome's (`parity/golden/audio/README.md`
+has the rules). The Web Audio call log is a pure function of the facade
+log. M5 plays the same facade log into `mr_audio` with the null backend
+under the same rules and compares the two call logs; this tests what the
+web backend will send to the browser, which is what SPEC 7.5 asks of it.
+
+## D42. AudioParam.value reads evaluate the automation timeline
+
+2026-10-03, WP 0.7. The game reads `param.value` twice (`shift` and
+`setPursuitMood`) and schedules from it. The fake, and so the null backend,
+returns the param's automation timeline evaluated at `currentTime` (Web
+Audio 1.0 rules: the value setter is `setValueAtTime(v, now)`, ramps run
+from the previous event, a target curve from the value at its start),
+rounded to float32 as Chrome stores params. A ramp straight after a target
+curve starts from the target's start value (the spec's literal reading);
+the game never reads a param in that state.
+
+## D43. Audio arrays at 48 kHz, the big ones by hash
+
+2026-10-03, WP 0.7. The arrays are generated at 48 kHz, the rate desktops
+and iPhones run. All of them come to 12 MB and noise does not compress, so
+`parity/golden/audio/arrays.json` commits each array's hash and stats and
+`arrays-small.bin` the ones up to 16384 floats (every engine wave and
+curve, the short kit voices); the whole set is in the cache, which the
+`arrays` stage rebuilds in about a second. SPEC 7.3's 1e-5 tolerance for
+`samples.js` is applied against the cached arrays.
+
+## D44. Offline renders are compared by band level; Chrome's floor measured
+
+2026-10-03, WP 0.7. Chrome's offline renders are not bit-reproducible:
+connections summing into one input are mixed in an order that changes
+between runs (differences near 1e-7), and where that reaches an
+oscillator's frequency through audio-rate modulation it accumulates in the
+phase (up to about 1e-3 on the engine). The reference therefore records
+third-octave band levels (`tools/parity/lib/bands.mjs`, one analyser for
+both sides), renders each scenario twice and records the larger band
+difference as `jitter` (at most 0.21 dB; 0.38 dB between two separate
+runs, all on the engines). `--check` accepts 1.0 dB per band and ignores
+bands quieter than -90 dB; SPEC 7.5's 1.5 dB for the Rust comparison stays,
+since it is about four times Chrome's own floor.
+
+## D45. Render control frames are 8 ms, not a tick
+
+2026-10-03, WP 0.7. An OfflineAudioContext can only suspend on a
+128-sample render quantum, and 1/120 s is 400 samples at 48 kHz. The
+renders steer the audio every 384 samples (8 ms, three quanta) with
+`update(0.008, state)`, and pump the music every 64 frames a second ahead,
+as `tools/audio-test.html` does.
+
+## D46. The one `**` in the audio is `x * x`
+
+2026-10-03, WP 0.7. `pulseWave` squares with `Math.cos(...) ** 2`. The
+operator does not go through the kernel. V8's `x ** 2` equals `x * x` on a
+million random inputs and on every input `pulseWave` gives it, so the port
+writes `x * x`. No audio path calls a function the kernel leaves out
+(`sinh`, `cbrt`, `expm1`, ...): every capture ran with the kernel on and
+nothing threw.
+
+## D47. Radio clips are decoded by Chrome once, then stood in for
+
+2026-10-03, WP 0.7. The Node playback cannot decode MP3. Chrome decodes
+every clip in `audio/radio/` at 48 kHz once (`radio-clips.json`: hash,
+channels, length); in the playback `decodeAudioData` resolves at once with
+a buffer of that length, so a radio line's clips always beat its 700 ms
+burble fallback (the game prefetches them at race start, so they do in
+practice too). The clip samples are not part of the reference: both ports
+decode the same files.

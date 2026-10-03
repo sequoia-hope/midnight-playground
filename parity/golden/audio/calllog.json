@@ -1,0 +1,599 @@
+{
+ "sampleRate": 48000,
+ "seed": 1,
+ "tick": 0.008333333333333333,
+ "drives": [
+  {
+   "name": "race",
+   "end": 44.99166666666667,
+   "throws": [],
+   "arrays": 50,
+   "lines": 277997,
+   "bytes": 23189041,
+   "sha256": "c21d16a84c7f0c099c82b7764acd5419edc6158a113b98b3053b85fe981efd2e",
+   "ops": {
+    "api": 10962,
+    "context": 1,
+    "new": 5594,
+    "value": 5339,
+    "connect": 5665,
+    "set": 2845,
+    "buffer": 38,
+    "data": 18,
+    "start": 2045,
+    "disconnect": 47,
+    "wave": 9,
+    "setPeriodicWave": 352,
+    "setTarget": 240057,
+    "resume": 1,
+    "cancel": 28,
+    "setValue": 1910,
+    "linRamp": 892,
+    "expRamp": 730,
+    "stop": 1443,
+    "get": 21
+   },
+   "seconds": [
+    {
+     "second": 0,
+     "lines": 5738,
+     "sha256": "c65f6f0b72712e45"
+    },
+    {
+     "second": 1,
+     "lines": 4325,
+     "sha256": "68681e493b479933"
+    },
+    {
+     "second": 2,
+     "lines": 4415,
+     "sha256": "87fc9d23c37cf23c"
+    },
+    {
+     "second": 3,
+     "lines": 4398,
+     "sha256": "a44ef7fb5fd07391"
+    },
+    {
+     "second": 4,
+     "lines": 6082,
+     "sha256": "34dc80b17a63c4aa"
+    },
+    {
+     "second": 5,
+     "lines": 6890,
+     "sha256": "a1e9c6d6e63d9f69"
+    },
+    {
+     "second": 6,
+     "lines": 7235,
+     "sha256": "730423e43ed3435f"
+    },
+    {
+     "second": 7,
+     "lines": 7142,
+     "sha256": "7d75bd1160f996c1"
+    },
+    {
+     "second": 8,
+     "lines": 6472,
+     "sha256": "d3a3e387b854d950"
+    },
+    {
+     "second": 9,
+     "lines": 5687,
+     "sha256": "93c8c491ce9fbe9b"
+    },
+    {
+     "second": 10,
+     "lines": 5936,
+     "sha256": "870e6ff967f60060"
+    },
+    {
+     "second": 11,
+     "lines": 6213,
+     "sha256": "4ac1315731cd3fb6"
+    },
+    {
+     "second": 12,
+     "lines": 6693,
+     "sha256": "3a4e469c3605c8a2"
+    },
+    {
+     "second": 13,
+     "lines": 7305,
+     "sha256": "60c0fbe166ecad9f"
+    },
+    {
+     "second": 14,
+     "lines": 7250,
+     "sha256": "28e40295c45c7cd6"
+    },
+    {
+     "second": 15,
+     "lines": 5967,
+     "sha256": "71fad60505619e68"
+    },
+    {
+     "second": 16,
+     "lines": 5664,
+     "sha256": "4f73740ca0e1fa84"
+    },
+    {
+     "second": 17,
+     "lines": 5482,
+     "sha256": "3e8236de237fc859"
+    },
+    {
+     "second": 18,
+     "lines": 5534,
+     "sha256": "98f58d67073a9345"
+    },
+    {
+     "second": 19,
+     "lines": 4737,
+     "sha256": "ce66985d3f15a0cb"
+    },
+    {
+     "second": 20,
+     "lines": 4514,
+     "sha256": "fc39455628ea8493"
+    },
+    {
+     "second": 21,
+     "lines": 5729,
+     "sha256": "4e930f730208e396"
+    },
+    {
+     "second": 22,
+     "lines": 6430,
+     "sha256": "dbe7c48bf65e0eaa"
+    },
+    {
+     "second": 23,
+     "lines": 6441,
+     "sha256": "c2f36b37365ae7ff"
+    },
+    {
+     "second": 24,
+     "lines": 6676,
+     "sha256": "fba3994aa92ed9b9"
+    },
+    {
+     "second": 25,
+     "lines": 5383,
+     "sha256": "8a5dae69b3d113d8"
+    },
+    {
+     "second": 26,
+     "lines": 5503,
+     "sha256": "fcbe8e197eda1a98"
+    },
+    {
+     "second": 27,
+     "lines": 5889,
+     "sha256": "e594ff74c1acd3a4"
+    },
+    {
+     "second": 28,
+     "lines": 6790,
+     "sha256": "5e858925db88fc57"
+    },
+    {
+     "second": 29,
+     "lines": 6823,
+     "sha256": "23dac80be9660a5b"
+    },
+    {
+     "second": 30,
+     "lines": 7048,
+     "sha256": "8a63785d316ccaf7"
+    },
+    {
+     "second": 31,
+     "lines": 7991,
+     "sha256": "df55f28cd529a6ce"
+    },
+    {
+     "second": 32,
+     "lines": 6295,
+     "sha256": "ac30526d4b13ece2"
+    },
+    {
+     "second": 33,
+     "lines": 5954,
+     "sha256": "968734cb1e1f008d"
+    },
+    {
+     "second": 34,
+     "lines": 5567,
+     "sha256": "5e96c4d486368e0f"
+    },
+    {
+     "second": 35,
+     "lines": 5507,
+     "sha256": "df6b0164d13596f5"
+    },
+    {
+     "second": 36,
+     "lines": 6619,
+     "sha256": "eaf70a9219d3e336"
+    },
+    {
+     "second": 37,
+     "lines": 6764,
+     "sha256": "18ebeac7d13fb162"
+    },
+    {
+     "second": 38,
+     "lines": 6763,
+     "sha256": "b18a3ee4de069497"
+    },
+    {
+     "second": 39,
+     "lines": 7565,
+     "sha256": "07382ef176d13948"
+    },
+    {
+     "second": 40,
+     "lines": 7414,
+     "sha256": "19a367f01249e1a3"
+    },
+    {
+     "second": 41,
+     "lines": 7388,
+     "sha256": "215701e6141a7b11"
+    },
+    {
+     "second": 42,
+     "lines": 6628,
+     "sha256": "a4ef03cd6e747430"
+    },
+    {
+     "second": 43,
+     "lines": 5600,
+     "sha256": "c8dedb1a9b0f09db"
+    },
+    {
+     "second": 44,
+     "lines": 5551,
+     "sha256": "5a7a70804f1ca9af"
+    }
+   ]
+  },
+  {
+   "name": "pursuit",
+   "end": 59.99166666666667,
+   "throws": [],
+   "arrays": 54,
+   "lines": 473880,
+   "bytes": 39046547,
+   "sha256": "8c58db981f971528ac2fbc884d4149d1dea0f0c5ffd31ec22a14f3b222cf10c2",
+   "ops": {
+    "api": 43421,
+    "context": 1,
+    "new": 9355,
+    "value": 8289,
+    "connect": 9471,
+    "set": 4982,
+    "buffer": 38,
+    "data": 20,
+    "start": 3401,
+    "disconnect": 65,
+    "wave": 9,
+    "setPeriodicWave": 462,
+    "setTarget": 385383,
+    "resume": 1,
+    "cancel": 50,
+    "setValue": 3385,
+    "linRamp": 1508,
+    "expRamp": 1735,
+    "stop": 2257,
+    "get": 37,
+    "decode": 10
+   },
+   "seconds": [
+    {
+     "second": 0,
+     "lines": 6339,
+     "sha256": "ee3d56f30a534791"
+    },
+    {
+     "second": 1,
+     "lines": 4925,
+     "sha256": "943ac365b268068c"
+    },
+    {
+     "second": 2,
+     "lines": 5015,
+     "sha256": "b564e990a3417817"
+    },
+    {
+     "second": 3,
+     "lines": 4998,
+     "sha256": "baa3fb75a395d509"
+    },
+    {
+     "second": 4,
+     "lines": 6682,
+     "sha256": "73d82c2d9cf787e5"
+    },
+    {
+     "second": 5,
+     "lines": 7490,
+     "sha256": "935ab393511e452d"
+    },
+    {
+     "second": 6,
+     "lines": 7835,
+     "sha256": "3b836714cecbd5a5"
+    },
+    {
+     "second": 7,
+     "lines": 7742,
+     "sha256": "35ead803e15b99cc"
+    },
+    {
+     "second": 8,
+     "lines": 7072,
+     "sha256": "76d847ab967eb140"
+    },
+    {
+     "second": 9,
+     "lines": 6287,
+     "sha256": "bcde292e23f5b8f3"
+    },
+    {
+     "second": 10,
+     "lines": 6536,
+     "sha256": "d4b7af2e85645702"
+    },
+    {
+     "second": 11,
+     "lines": 6813,
+     "sha256": "80087bcc17d4187f"
+    },
+    {
+     "second": 12,
+     "lines": 7293,
+     "sha256": "08a9cbc375ef77ad"
+    },
+    {
+     "second": 13,
+     "lines": 7905,
+     "sha256": "f9c2780d095e00ef"
+    },
+    {
+     "second": 14,
+     "lines": 7850,
+     "sha256": "6c2acb70fe9ed930"
+    },
+    {
+     "second": 15,
+     "lines": 6567,
+     "sha256": "9d9f5d7bb9dc062c"
+    },
+    {
+     "second": 16,
+     "lines": 6264,
+     "sha256": "6b4d1796925a539a"
+    },
+    {
+     "second": 17,
+     "lines": 6082,
+     "sha256": "55cd79d39da0f0ba"
+    },
+    {
+     "second": 18,
+     "lines": 6134,
+     "sha256": "62b80af578703370"
+    },
+    {
+     "second": 19,
+     "lines": 5337,
+     "sha256": "859967808aa61565"
+    },
+    {
+     "second": 20,
+     "lines": 5114,
+     "sha256": "997ccc951747ed67"
+    },
+    {
+     "second": 21,
+     "lines": 6329,
+     "sha256": "a3104733cd66b1c0"
+    },
+    {
+     "second": 22,
+     "lines": 7030,
+     "sha256": "7e6f614ed565f57d"
+    },
+    {
+     "second": 23,
+     "lines": 7777,
+     "sha256": "fe5bb271c7c7565c"
+    },
+    {
+     "second": 24,
+     "lines": 7963,
+     "sha256": "a36128d1e9984e38"
+    },
+    {
+     "second": 25,
+     "lines": 6583,
+     "sha256": "f392fd0ab486c9b2"
+    },
+    {
+     "second": 26,
+     "lines": 6706,
+     "sha256": "9a46932dac005402"
+    },
+    {
+     "second": 27,
+     "lines": 7060,
+     "sha256": "e3148eb4063ebc8a"
+    },
+    {
+     "second": 28,
+     "lines": 8493,
+     "sha256": "d434804b99ee5761"
+    },
+    {
+     "second": 29,
+     "lines": 8621,
+     "sha256": "5fd97c5da66c8cc6"
+    },
+    {
+     "second": 30,
+     "lines": 9150,
+     "sha256": "e400b4b3fb5bfc68"
+    },
+    {
+     "second": 31,
+     "lines": 11192,
+     "sha256": "737ed71a643db3cc"
+    },
+    {
+     "second": 32,
+     "lines": 9686,
+     "sha256": "cee021ae6cf39557"
+    },
+    {
+     "second": 33,
+     "lines": 8029,
+     "sha256": "01f794da29d17ea8"
+    },
+    {
+     "second": 34,
+     "lines": 7115,
+     "sha256": "d332d68a61dad614"
+    },
+    {
+     "second": 35,
+     "lines": 7142,
+     "sha256": "61383638c7a8f11e"
+    },
+    {
+     "second": 36,
+     "lines": 7667,
+     "sha256": "f7794de2c9249c13"
+    },
+    {
+     "second": 37,
+     "lines": 8282,
+     "sha256": "7aca559320f2da1f"
+    },
+    {
+     "second": 38,
+     "lines": 8565,
+     "sha256": "a09845b5f927a1b6"
+    },
+    {
+     "second": 39,
+     "lines": 9286,
+     "sha256": "71a2934b1b2c67fc"
+    },
+    {
+     "second": 40,
+     "lines": 10372,
+     "sha256": "fe02153b92c87ccb"
+    },
+    {
+     "second": 41,
+     "lines": 9302,
+     "sha256": "9b3be6e91368dec8"
+    },
+    {
+     "second": 42,
+     "lines": 9242,
+     "sha256": "e60f98d20077e559"
+    },
+    {
+     "second": 43,
+     "lines": 8113,
+     "sha256": "90274cc6c6ebdf98"
+    },
+    {
+     "second": 44,
+     "lines": 7802,
+     "sha256": "8744f7fb6df96256"
+    },
+    {
+     "second": 45,
+     "lines": 8543,
+     "sha256": "b1523413cbac3e04"
+    },
+    {
+     "second": 46,
+     "lines": 9204,
+     "sha256": "be07f913f6b9421d"
+    },
+    {
+     "second": 47,
+     "lines": 9325,
+     "sha256": "211cbbbc96c6e403"
+    },
+    {
+     "second": 48,
+     "lines": 9436,
+     "sha256": "f7a1c4373b623d0f"
+    },
+    {
+     "second": 49,
+     "lines": 9895,
+     "sha256": "7171e8050dd26b5d"
+    },
+    {
+     "second": 50,
+     "lines": 8756,
+     "sha256": "c734b0181a6984c2"
+    },
+    {
+     "second": 51,
+     "lines": 10840,
+     "sha256": "09512aaef559a1dd"
+    },
+    {
+     "second": 52,
+     "lines": 10772,
+     "sha256": "6f3d5ca1b2028215"
+    },
+    {
+     "second": 53,
+     "lines": 8999,
+     "sha256": "fffdee08e39cd08e"
+    },
+    {
+     "second": 54,
+     "lines": 8605,
+     "sha256": "ce20fad9f16fe3bc"
+    },
+    {
+     "second": 55,
+     "lines": 8505,
+     "sha256": "275fa57fa0d97e1c"
+    },
+    {
+     "second": 56,
+     "lines": 9271,
+     "sha256": "b38ce02cfdb66697"
+    },
+    {
+     "second": 57,
+     "lines": 9228,
+     "sha256": "6dd8fcc285ab7081"
+    },
+    {
+     "second": 58,
+     "lines": 10027,
+     "sha256": "c601b3ba4691e05d"
+    },
+    {
+     "second": 59,
+     "lines": 8687,
+     "sha256": "8f5905b8af6da2b9"
+    }
+   ]
+  }
+ ]
+}

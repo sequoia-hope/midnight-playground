@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Audio reference</title>
+<link rel="icon" href="data:,">
+</head>
+<body>
+<p>Driven by <code>tools/parity/audio-ref.mjs</code> (open with <code>?kernel=1</code>).</p>
+<script type="module">
+// The browser half of the audio reference (roadmap WP 0.7): offline renders
+// of the game's GameAudio on an OfflineAudioContext, and the decoded length
+// of each radio clip. hooks.js installs the parity kernel (?kernel=1)
+// before Audio.js evaluates.
+import '../../src/parity/hooks.js';
+import { GameAudio } from '../../src/game/Audio.js';
+
+const SR = 48000;
+const FRAME = 384; // control frame: 8 ms, three render quanta
+const PUMP = 64;   // music pump every 64 frames (0.512 s), a second ahead
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// One scenario (tools/parity/lib/audio-scenarios.mjs explains the fields).
+// The result stays in the page; renderChunk hands it over.
+let last = null;
+window.renderScenario = async (sc) => {
+  const frames = Math.round((sc.secs * SR) / FRAME) * FRAME;
+  const oc = new OfflineAudioContext(2, frames, SR);
+  Math.random = mulberry32(sc.seed ?? 1);
+  const a = new GameAudio();
+  await a.init({ context: oc });
+  a.setVolume(sc.volume ?? { master: 1, sfx: 0.85, music: 0 });
+  a.setCar(sc.car ?? 'sports');
+  if (sc.env) a.setEnvironment(sc.env, true);
+  if (sc.track) { a.music.play(sc.track); a.setMusic(true); }
+  const dt = FRAME / SR;
+  const state = sc.state ? { ...sc.state } : null;
+  const events = (sc.events ?? []).map((e) => ({ t: e[0], call: e.slice(1), done: false }));
+  const changes = (sc.changes ?? []).map((c) => ({ t: c[0], set: c[1], done: false }));
+  const control = (k) => {
+    const t = k * dt;
+    for (const c of changes) if (!c.done && c.t <= t) { Object.assign(state, c.set); c.done = true; }
+    for (const e of events) if (!e.done && e.t <= t) { const [m, ...args] = e.call; a[m](...args); e.done = true; }
+    if (state) a.update(dt, state);
+    if (sc.rivals) a.setRivalEngines(sc.rivals);
+    if (sc.sirens) a.setSirens(sc.sirens);
+    if (sc.damage !== undefined) a.setDamage(sc.damage);
+    if (sc.spiked !== undefined) a.setSpikedTyres(true, sc.spiked);
+    if (sc.mood) a.setPursuitMood(sc.mood);
+    if (sc.track && k % PUMP === 0) a.music.pumpUntil(t + 1);
+  };
+  control(0);
+  for (let k = 1; k < frames / FRAME; k++) oc.suspend((k * FRAME) / SR).then(() => { control(k); oc.resume(); });
+  const buf = await oc.startRendering();
+  last = [buf.getChannelData(0), buf.getChannelData(1)];
+  return { frames: buf.length, sampleRate: buf.sampleRate, channels: buf.numberOfChannels };
+};
+
+// Samples [from, from + n) of channel c of the last render, as base64 of
+// little-endian float32.
+window.renderChunk = (c, from, n) => {
+  const d = last[c].subarray(from, from + n);
+  const bytes = new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+
+// The buffers a GameAudio builds in Chrome, by name as arrays.json names
+// them, with their hashes (the Node fake must have built the same).
+window.bufferHashes = async () => {
+  Math.random = mulberry32(1);
+  const a = new GameAudio();
+  await a.init({ context: new OfflineAudioContext(2, 128, SR) });
+  const named = [['audio.noise', a.noise], ['audio.sfxBuf', a.sfxBuf], ['audio.music.kit', a.music.kit]];
+  const list = [['audio.tunnel.buffer', a.tunnel.buffer], ['audio.music.reverb.buffer', a.music.reverb.buffer]];
+  for (const [p, o] of named) for (const [k, b] of Object.entries(o)) list.push([`${p}.${k}`, b]);
+  const out = {};
+  for (const [name, b] of list) {
+    out[name] = [];
+    for (let c = 0; c < b.numberOfChannels; c++) {
+      const d = b.getChannelData(c);
+      const h = new Uint8Array(await crypto.subtle.digest('SHA-256', d.slice().buffer));
+      out[name].push('#' + Array.from(h.subarray(0, 8), (x) => x.toString(16).padStart(2, '0')).join(''));
+    }
+  }
+  return out;
+};
+
+// What Chrome decodes each radio clip to at the game's rate.
+window.decodeClips = async (files) => {
+  const oc = new OfflineAudioContext(1, 1, SR);
+  const out = [];
+  for (const f of files) {
+    const bytes = await (await fetch('../../audio/radio/' + f)).arrayBuffer();
+    const b = await oc.decodeAudioData(bytes);
+    out.push({ file: f, channels: b.numberOfChannels, length: b.length, sampleRate: b.sampleRate });
+  }
+  return out;
+};
+
+window.__ready = Math.__kernel === true;
+if (!window.__ready) document.body.textContent = 'Open with ?kernel=1: every capture is taken with the parity kernel.';
+</script>
+</body>
+</html>
