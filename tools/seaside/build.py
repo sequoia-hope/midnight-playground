@@ -12,6 +12,8 @@ two generated modules:
                                  and which ground is paved and which loose
   src/levels/seaside/photo.jpg   the aerial photo round the circuit, graded
                                  for the game, draped over the ground
+  assets/seaside/survey.bin      circuit.js and ground.js as one binary file
+                                 for the Rust port (mr_levels::seaside)
 
 Sources (all free to use):
   OpenStreetMap (ODbL, (c) OpenStreetMap contributors): the circuit's route
@@ -51,6 +53,7 @@ Image.MAX_IMAGE_PIXELS = None
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CACHE = os.path.join(ROOT, 'tools', 'seaside', 'cache')
 OUT = os.path.join(ROOT, 'src', 'levels', 'seaside')
+SURVEY = os.path.join(ROOT, 'assets', 'seaside', 'survey.bin')
 
 ROUTE_RELATION = '21195763'
 PIT_LANE_WAY = '109859349'
@@ -181,13 +184,62 @@ class Grid:
 
 
 def pack(arr, dtype):
-    """numpy array → base64 of zlib-deflated little-endian bytes."""
+    """numpy array → zlib-deflated little-endian bytes."""
     raw = np.ascontiguousarray(arr.astype(dtype)).tobytes()
-    return base64.b64encode(zlib.compress(raw, 9)).decode('ascii')
+    return zlib.compress(raw, 9)
+
+
+def ints(a):
+    return [int(v) for v in a]
 
 
 def js_ints(a):
-    return '[' + ','.join(str(int(v)) for v in a) + ']'
+    return '[' + ','.join(str(v) for v in ints(a)) + ']'
+
+
+class Survey:
+    """assets/seaside/survey.bin: every value circuit.js and ground.js hold,
+    for the Rust port (mr_levels::seaside), so both games read the same
+    numbers. Little-endian:
+
+      magic "MRSURVEY", version u32 (1), section count u32, then per
+      section: name (u8 length, UTF-8), type u8, count u32, data:
+        1 f64 × count     2 i32 × count     3 bytes × count (a zlib stream)
+        4 strings: count × (u32 length, UTF-8)
+        5 i32 lists: count × (u32 length, i32 × length)
+
+    A float is the value the JS module's decimal text parses to: the same
+    Python float that text was printed from.
+    """
+
+    def __init__(self):
+        self.parts = []
+
+    def _add(self, name, kind, count, data):
+        nb = name.encode()
+        self.parts.append(bytes([len(nb)]) + nb + bytes([kind]) + int(count).to_bytes(4, 'little') + data)
+
+    def f64(self, name, vals):
+        self._add(name, 1, len(vals), np.array(vals, '<f8').tobytes())
+
+    def i32(self, name, vals):
+        self._add(name, 2, len(vals), np.array(vals, '<i4').tobytes())
+
+    def zlib(self, name, data):
+        self._add(name, 3, len(data), data)
+
+    def strs(self, name, vals):
+        self._add(name, 4, len(vals), b''.join(len(v.encode()).to_bytes(4, 'little') + v.encode() for v in vals))
+
+    def lists(self, name, vals):
+        self._add(name, 5, len(vals), b''.join(len(v).to_bytes(4, 'little') + np.array(v, '<i4').tobytes() for v in vals))
+
+    def write(self, path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(b'MRSURVEY' + (1).to_bytes(4, 'little') + len(self.parts).to_bytes(4, 'little'))
+            for p in self.parts:
+                f.write(p)
 
 
 def median_wrap(a, r):
@@ -476,6 +528,40 @@ def main():
 
     step = 2
     idx = np.arange(0, n, step)
+    line = {
+        'x': ints(np.round(X[idx] * 100)),
+        'z': ints(np.round(Z[idx] * 100)),
+        'y': ints(np.round((y[idx] - Y0) * 100)),
+        'bank': ints(np.round(bank[idx] * 10000)),
+        'hw': ints(np.round(wid[idx] * 50)),
+        'wallL': ints(np.round(walls[idx, 0] * 10)),
+        'wallR': ints(np.round(walls[idx, 1] * 10)),
+        'runL': ints(np.round(runoff[idx, 0] * 1000)),
+        'runR': ints(np.round(runoff[idx, 1] * 1000)),
+    }
+    flat_ints = lambda pts: [v for p in local(pts) for v in p]
+    photo = (pb[0] - E0, -(pb[3] - N0), pb[2] - E0, -(pb[1] - N0), pw, phh)
+    sv = Survey()
+    sv.f64('origin', [E0, N0, 10])
+    sv.f64('lap', [float(f'{total:.2f}')])
+    sv.f64('startS', [START_S])
+    sv.f64('line.step', [step])
+    sv.f64('line.y0', [float(f'{Y0:.0f}')])
+    for k, v in line.items():
+        sv.i32('line.' + k, v)
+    sv.i32('pitLane', flat_ints(feats['pit']))
+    sv.lists('walls', [flat_ints(p) for p in feats['walls']])
+    sv.lists('grandstands', [flat_ints(p) for p in feats['stands']])
+    sv.strs('buildings.name', [nm for nm, p in feats['buildings']])
+    sv.lists('buildings.pts', [flat_ints(p) for nm, p in feats['buildings']])
+    sv.strs('bridges.kind', [k for k, p in feats['bridges']])
+    sv.lists('bridges.pts', [flat_ints(p) for k, p in feats['bridges']])
+    sv.lists('water', [flat_ints(p) for p in feats['water']])
+    sv.lists('parking', [flat_ints(p) for p in feats['parking']])
+    sv.strs('paths.kind', [k for k, p in feats['roads']])
+    sv.lists('paths.pts', [flat_ints(p) for k, p in feats['roads']])
+    sv.strs('photo.file', ['photo.jpg'])
+    sv.f64('photo', photo)
     lines = [
         '// Generated by tools/seaside/build.py. Do not edit: run the script.',
         '//',
@@ -495,15 +581,15 @@ def main():
         '// half the tarmac\'s width, how far the barriers are on each side, and the',
         '// run-off grade out to them.',
         f'export const LINE = {{ step: {step}, y0: {Y0:.0f},',
-        f'  x: {js_ints(np.round(X[idx] * 100))},',
-        f'  z: {js_ints(np.round(Z[idx] * 100))},',
-        f'  y: {js_ints(np.round((y[idx] - Y0) * 100))},',
-        f'  bank: {js_ints(np.round(bank[idx] * 10000))},',
-        f'  hw: {js_ints(np.round(wid[idx] * 50))}, // half the tarmac\'s width, measured off the photo',
-        f'  wallL: {js_ints(np.round(walls[idx, 0] * 10))}, // decimetres, left of the centreline',
-        f'  wallR: {js_ints(np.round(walls[idx, 1] * 10))},',
-        f'  runL: {js_ints(np.round(runoff[idx, 0] * 1000))}, // run-off grade outward, 1/1000',
-        f'  runR: {js_ints(np.round(runoff[idx, 1] * 1000))},',
+        f'  x: {js_ints(line["x"])},',
+        f'  z: {js_ints(line["z"])},',
+        f'  y: {js_ints(line["y"])},',
+        f'  bank: {js_ints(line["bank"])},',
+        f'  hw: {js_ints(line["hw"])}, // half the tarmac\'s width, measured off the photo',
+        f'  wallL: {js_ints(line["wallL"])}, // decimetres, left of the centreline',
+        f'  wallR: {js_ints(line["wallR"])},',
+        f'  runL: {js_ints(line["runL"])}, // run-off grade outward, 1/1000',
+        f'  runR: {js_ints(line["runR"])},',
         '};',
         '',
         '// Everything below is polylines/polygons as flat [x, z, x, z, ...] lists in',
@@ -533,7 +619,7 @@ def main():
         '',
         '// The aerial photo draped over the ground (photo.jpg, USGS NAIP), graded',
         '// for the game: its edges in the local frame (x0, z0 the north-west corner).',
-        f"export const PHOTO = {{ file: 'photo.jpg', x0: {pb[0] - E0}, z0: {-(pb[3] - N0)}, x1: {pb[2] - E0}, z1: {-(pb[1] - N0)}, w: {pw}, h: {phh} }};",
+        f"export const PHOTO = {{ file: 'photo.jpg', x0: {photo[0]}, z0: {photo[1]}, x1: {photo[2]}, z1: {photo[3]}, w: {photo[4]}, h: {photo[5]} }};",
         '',
     ]
     os.makedirs(OUT, exist_ok=True)
@@ -575,7 +661,8 @@ def main():
     def grid(name, bbox, step, a, kind, **kw):
         """One grid: x0/z0 are the local coords of the north-west sample."""
         h, w = a.shape[:2]
-        meta = f'x0: {bbox[0] + step / 2 - E0}, z0: {-(bbox[3] - step / 2 - N0)}, step: {step}, w: {w}, h: {h}'
+        x0, z0 = bbox[0] + step / 2 - E0, -(bbox[3] - step / 2 - N0)
+        meta = f'x0: {x0}, z0: {z0}, step: {step}, w: {w}, h: {h}'
         if kind == 'height':
             # Quantised heights, then 2D deltas (row-wise, then down the
             # columns) as int16: smooth ground deflates far better.
@@ -584,13 +671,20 @@ def main():
             dd = np.diff(dx, axis=0, prepend=0)
             data = pack(dd, '<i2')
             meta += f", kind: 'height', q: {kw['q']}"
+            gkind = 'height'
         elif kind == 'rgb':
             # 5 bits a channel, one plane per channel.
             data = pack(np.clip(np.round(a / 8.226), 0, 31).transpose(2, 0, 1), 'u1')
             meta += ", kind: 'rgb5'"
+            gkind = 'rgb5'
         else:
             data = pack(np.clip(np.round(a * 255), 0, 255), 'u1')
             meta += ", kind: 'cover'"
+            gkind = 'cover'
+        sv.strs(name + '.kind', [gkind])
+        sv.f64(name, [x0, z0, step, w, h, kw.get('q', 0)])
+        sv.zlib(name + '.data', data)
+        data = base64.b64encode(data).decode('ascii')
         return f"export const {name} = {{ {meta},\n  data: '{data}' }};"
 
     # The draped photo, graded as the terrain's vertex colours are (see
@@ -623,6 +717,7 @@ def main():
     loose[~near_lap] = 1
     print(f'  run-off: {(1 - loose[near_lap]).mean() * 100:.0f} % of the ground within 50 m of the lap is paved', file=sys.stderr)
 
+    sv.f64('base', [base])
     g = [
         '// Generated by tools/seaside/build.py. Do not edit: run the script.',
         '//',
@@ -649,6 +744,8 @@ def main():
         f.write('\n'.join(g))
     for fn in ('circuit.js', 'ground.js', 'photo.jpg'):
         print(f'  wrote src/levels/seaside/{fn} ({os.path.getsize(os.path.join(OUT, fn)) / 1024:.0f} KB)', file=sys.stderr)
+    sv.write(SURVEY)
+    print(f'  wrote {os.path.relpath(SURVEY, ROOT)} ({os.path.getsize(SURVEY) / 1024:.0f} KB)', file=sys.stderr)
 
 
 if __name__ == '__main__':

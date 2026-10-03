@@ -460,3 +460,57 @@ wraps through ToInt32), stored as FNV-1a 64 of the f64 bits plus the first
 whatever NaN bits an operation left (`Math.max(NaN, 1)` stores
 0xfff8000000000000). The golden is compiled into the test, so it runs in
 wasm too.
+
+## D52. Index loops stay index loops
+
+2026-10-03, WP 1.2. Clippy's `needless_range_loop` is allowed in
+`mr_track`, `mr_levels` and `mr_sim`. A JS `for (let k = 0; k < n; k++)`
+that reads several arrays at `k` is ported as the same loop, so the port can
+be read beside the JS line for line; rewriting it as iterator chains hides
+the correspondence and invites reordering.
+
+## D53. Seaside's survey file
+
+2026-10-03, WP 1.2. `tools/seaside/build.py` now also writes
+`assets/seaside/survey.bin` (format in its `Survey` docstring): every value
+`circuit.js` and `ground.js` hold, from the same Python values, with each
+grid's zlib stream as it is (the JS file holds it in base64). Rerunning the
+script from its cache reproduces both JS modules byte for byte, so the binary
+was written by a real run, not converted from the JS. `mr_levels::survey`
+decodes it the way `load.js` does, including where `load.js` stores into a
+`Float32Array` (grid values, the blend's scratch buffers) and where into a
+plain array (the samplers' results). `tools/parity/seaside-golden.mjs`
+writes `parity/golden/seaside/survey.json` (the decoded line, grids and
+features, and the four samplers at 33,000 points); the Rust matches it bit
+for bit. The photo stays in `src/levels/seaside/` until world generation
+needs it (M7).
+
+## D54. Level functions are shared closures; Seaside is prepared
+
+2026-10-03, WP 1.2. A JS level carries functions (`elevation`, `ground`,
+`looseGround`, `loop.path`). `mr_track::Level` holds them as
+`Arc<dyn Fn ... + Send + Sync>`, so a level is plain to clone and share. As
+in the JS, `seaside::level()` is the menu's level without survey data, and
+building its Track fails until `seaside::prepare(level, data)` has filled in
+the path and the ground. `mr_levels` does not embed the survey: the caller
+parses `survey.bin` (`SeasideData::parse`) and passes it in, so the web
+client can fetch it as an asset.
+
+## D55. JSON goldens are parsed with `float_roundtrip`
+
+2026-10-03, WP 1.2. serde_json's default float parser is not correctly
+rounded: `oppY` at Sierra's first sample came out one unit in the last place
+away from the JS value it was parsed from. Every test that reads decimal
+numbers from a JSON golden enables serde_json's `float_roundtrip` feature.
+Goldens written for M1 store bits in hex instead, which avoids the question.
+
+## D56. Unit tests that need code from later packages move with it
+
+2026-10-03, WP 1.2. From `track.test.js`, "the terrain never covers the
+road" needs `Terrain.js` (M3). From `seaside.test.js`, "inside the barriers
+the terrain is the run-off" needs Terrain (M3), "loose run-off slows the car"
+needs `CarPhysics` (WP 1.3) and "rivals rubber-band on race progress" needs
+`AIDriver` (WP 1.4). From `levels.test.js`, the landform and scenery checks
+use the JS names until world generation exists, and a rival's kind is
+checked against `CAR_SPECS` in `mr_sim`'s tests (WP 1.3). Each is ported in
+the package that brings what it needs.

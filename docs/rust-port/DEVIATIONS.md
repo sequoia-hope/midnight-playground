@@ -29,3 +29,7 @@ Unless the owner says otherwise (SPEC 15, question 2):
 
 Ported unit tests that assert on README text are dropped (SPEC 4.6). List
 each here when M1 ports the tests.
+
+| Test | JS file | Why |
+|---|---|---|
+| README: level lengths and rival counts match the data | `levels.test.js` | Asserts on README text (WP 1.2) |
