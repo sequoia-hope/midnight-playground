@@ -2,3 +2,5 @@
 //! plus animators and the data the simulation needs (SPEC 5).
 
 #![forbid(unsafe_code)]
+
+pub mod three_geom;
