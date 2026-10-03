@@ -26,13 +26,13 @@
 // the two world-generation spots that draw from it come out the same every
 // run (docs/rust-port/DECISIONS.md, D20).
 import fs from 'node:fs';
+import { seedRandom, RANDOM_SEED } from './lib/seed-random.mjs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { launch, openGame } from '../../test/e2e/harness.js';
 import { cacheDir, ROOT } from './lib/jstree.mjs';
 
 const LEVELS = ['sierra', 'coast', 'streets', 'desert', 'seaside', 'cruise'];
-const RANDOM_SEED = 0x5eed;
 const QUERY = 'kernel=1&freeze=1&s=0';
 const CHUNK = 24 << 20;
 
@@ -54,17 +54,6 @@ const pageScript = fs.readFileSync(path.join(ROOT, 'tools/parity/lib/scene-page.
 const sha = (buf) => createHash('sha256').update(buf).digest('hex');
 const problems = [];
 
-// Installed before the game's own scripts (evaluateOnNewDocument).
-function seedRandom(seed) {
-  let a = seed >>> 0;
-  Math.random = function random() {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 async function pull(game, length) {
   const parts = [];
