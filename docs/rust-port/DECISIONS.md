@@ -1150,3 +1150,117 @@ material and geometry; geometries as in D134.
 `crates/mr_worldgen/tests/builders.rs` makes the same calls and is
 bit-identical in every case, native and in wasm. CI checks that the golden
 regenerates.
+
+## WP 5.1–5.2 decisions
+
+## D210. The facade: handles like the JS objects, one `Op` per call
+
+2026-10-03, WP 5.1. `mr_audio::wa` ports call for call: `ctx.create_gain()`,
+`g.gain.set_target_at_time(v, t, tc)`, `osc.connect(&lp)`. Handles are
+reference-counted like the JS objects (a node handle holds its context, a
+param handle its node); typed nodes carry their params as fields and deref
+to `Node` for `connect`/`disconnect`. Every call becomes one
+`wa::backend::Op`, handed to the backend twice: `record` before validation
+(the null backend's call log, which logs rejected calls too, as the fake
+does) and `apply` once valid. Dropping the last handle on a node, buffer or
+wave releases the backend's reference at the next call, so the web backend
+does not keep finished one-shots alive (the browser then keeps a node only
+while it plays, as for an unreferenced JS node). Enum attributes have typed
+setters and `*_js(&str)` twins for strings from data (an invalid one is
+ignored, as browsers do). Calls the game wraps in `try` (`stop`) and the
+ones that can throw in practice (`start`, `connect`, `disconnect_from`,
+`set_buffer`, `create_periodic_wave`) return `Result`; the rest record.
+
+## D211. Validation lives in the facade, for every backend
+
+2026-10-03, WP 5.1. Each call is checked before any backend sees it, as a
+browser checks it: what browsers throw on (the fake's checks: non-finite
+values, negative times, an exponential ramp to zero, a negative time
+constant, a second `start()`, `stop()` before `start()`, a missing link on
+`disconnect(dest)`, a second buffer, `type = 'custom'`, mismatched or short
+wave arrays, a bad `createBuffer`; and beyond the fake: connecting across
+contexts, an output or input index out of range, a merger's input count, a
+delay's maximum, a curve shorter than 2, a convolver buffer of the wrong
+channel count or rate, `fftSize`) is not carried out and records a
+`Problem` of kind `Throw` (with the fake's exception name and message);
+what browsers ignore (an invalid enum string) is `Ignored`; what they carry
+out with a console warning (a value outside a param's nominal range, which
+Chrome clamps and warns about) or silently get wrong (a cycle with no
+DelayNode, which browsers mute) is `Warning`. Strict mode
+(`AudioContext::set_strict`) panics at the first problem: the null
+backend's validation mode, the strict fake of `music.test.js`. The native
+crate panics on much of the first group, so it must never see them; the
+web backend logs to the console if the browser still throws (a facade bug).
+Replaying the JS game's two drive logs (697,000 calls) flags nothing.
+
+## D212. The null backend writes the fake's call log; its conformance golden
+
+2026-10-03, WP 5.1. The null backend's log is byte for byte the format of
+`tools/parity/lib/webaudio-fake.mjs` (D41): ids `n<k>`/`b<k>`/`w<k>` in
+creation order, arrays by hash, `param.value` read from a port of the
+fake's timeline (D42), numbers as `Number.prototype.toString` writes them.
+That last needs care: where two shortest strings round-trip (a float32
+value exactly between two 17-digit decimals) ECMAScript takes the closer,
+ties to even, and Rust's shortest printer may take the other, so the
+digits are the value correctly rounded at the shortest length. Two checks:
+`tools/parity/audio-facade-ref.mjs` runs a fixed script on the fake (every
+operation, value reads through each automation event, each exception) into
+the new small golden `parity/golden/audio/facade-conformance.json`, and
+`tests/null_backend.rs` runs its Rust twin (`tests/common`) and requires the
+same log, problems and exceptions; `tests/calllog_replay.rs` replays the
+cached call logs of both drives into the facade and requires the identical
+log back (skipped when `parity/cache/` lacks them).
+
+## D213. Buffer contents reach the backend at first use, then stay
+
+2026-10-03, WP 5.1. A buffer's samples live in the facade until it is
+first given to a node (`set_buffer` on a source or convolver), when they go
+to the backend once (the fake's `data` line). The line is recorded after
+the call that uses it, as the fake orders them, but applied before it, so a
+convolver never takes an empty buffer (it computes its response when given
+one) and the native crate's copy-on-write buffers are filled before a node
+holds them. Writing to a buffer after that is a `Warning` (the reference
+forbids it, and whether a browser hears the change depends on the node).
+
+## D214. Promises are `Pending<T>`; virtual-clock backends settle them
+
+2026-10-03, WP 5.1. `resume`, `suspend`, `close` and `decode_audio_data`
+return a `Pending<T>`: polled (`result()`) by frame-loop code, or followed
+with `then`. The web backend settles it from the browser's promise
+(`wasm-bindgen-futures`); the null and native backends queue the
+settlement for `AudioContext::settle()`, which a driver (the call-log
+playback, the native client's frame) calls, as the fake settles in a
+microtask. The state change of `resume`/`suspend` happens at settlement,
+as in a browser.
+
+## D215. Backends as features; the native one on web-audio-api 1.7.0
+
+2026-10-03, WP 5.1. `null` is the default feature (no dependencies); `web`
+pulls `web-sys`, `js-sys`, `wasm-bindgen` and `wasm-bindgen-futures` on
+wasm32 only; `native` pulls `web-audio-api` pinned at 1.7.0 with default
+features off and `mp3` on (the radio clips), so it renders offline and runs
+live contexts on the crate's `"none"` sink without an audio device or ALSA
+headers; `native-device` adds cpal for real output (the native client
+turns it on). Cargo.lock grows by the crate's optional device backends
+(cpal, cubeb) whether or not they are built. CI lints `native` and `web`
+and runs `native`'s tests (offline renders: automation, oscillator RMS, an
+engine wave's period, a radio clip's decoded length against Chrome's, the
+conformance script). Steering an offline native render mid-way
+(`suspend(t)`, which the reference renders use every 8 ms, D45) is left to
+WP 5.4.
+
+## D216. The generated arrays are pure functions; the reference list
+
+2026-10-03, WP 5.2. `samples`, `noise`, `engine`, `shapes` and `music`
+return plain channel data (`Vec<f32>`, rounded where the JS stores into a
+`Float32Array`, every inexact function through `mr_math::kernel`);
+`samples::render_sfx`/`render_kit` make the AudioBuffers through the
+facade as `toBuffer` does. The audio's `Math.random` is a parameter
+(`&mut impl Rng`): the noise beds draw first, then the tunnel's impulse
+response, as `_build` orders them (D40); nothing else drawn during the
+build feeds an array. `reference::arrays` lists all 64 arrays of
+`arrays.json` in its order, with its names and aliases, and the gate
+(`tests/arrays.rs`, the golden compiled in, native and wasm) finds all 64
+bit-identical, so SPEC 7.3's 1e-5 tolerance for `samples.js` is not used.
+The test reads the cache's `arrays.bin` only to locate a difference if a
+hash ever fails.

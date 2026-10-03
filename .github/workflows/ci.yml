@@ -34,6 +34,12 @@ jobs:
       - run: cargo clippy -p mr_game --target wasm32-unknown-unknown -- -D warnings
       - run: cargo test --workspace
       - run: cargo xtask check-deps
+      # mr_audio's backends are features (SPEC 3.2, 7.1): the native one
+      # (web-audio-api, offline renders, no device) is linted and tested
+      # here, the web one is linted in its target.
+      - run: cargo clippy -p mr_audio --features native --all-targets -- -D warnings
+      - run: cargo test -p mr_audio --features native
+      - run: cargo clippy -p mr_audio --target wasm32-unknown-unknown --features web -- -D warnings
 
   wasm:
     name: Wasm (tests under Node, kernel bits, web build, size)
@@ -60,6 +66,8 @@ jobs:
         run: cargo test --target wasm32-unknown-unknown -p mr_math -p mr_track -p mr_levels -p mr_sim
       - name: World generation's tests in wasm (Node)
         run: cargo test --target wasm32-unknown-unknown -p mr_worldgen
+      - name: Audio's tests in wasm (Node)
+        run: cargo test --target wasm32-unknown-unknown -p mr_audio
       - name: Kernel in wasm is bit-identical to native
         run: cargo xtask kernel --check
       - run: cargo xtask web --release
@@ -90,3 +98,7 @@ jobs:
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/three-geom.mjs --check
       - name: The builders golden reproduces
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/builders.mjs --check
+      - name: The audio arrays and the facade conformance golden reproduce
+        run: |
+          node tools/parity/audio-ref.mjs arrays --check
+          node tools/parity/audio-facade-ref.mjs --check
