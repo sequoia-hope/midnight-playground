@@ -279,3 +279,12 @@ errors, ready 2.2 to 3.1 s after navigation.
 
 **Timings.** `cargo xtask parity stations --base` on Sierra: 74 s with the
 JS shots cached (81 Rust stations).
+
+## Owner's phone check (G1, first look)
+
+2026-10-03: the owner opened the Bevy web build (WP 2.1–2.3, WebGPU) on
+their iPhone over the tailnet and reported that it "looked great". No
+numbers were taken; the phone model and iOS version are not recorded yet.
+The rest of G1 (frame time against the JS fly-camera baseline, ten minutes
+and ten reloads without a tab kill, no frame over 50 ms after warm-up) waits
+for WP 2.6's warm-up and the measurement pages.
