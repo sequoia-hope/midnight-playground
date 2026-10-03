@@ -61,6 +61,34 @@ impl Timeline {
         self.events.retain(|e| e.t < t);
     }
 
+    /// Forget the past: the events before the last one at or before `now`
+    /// become one `Set` at that event's time with the value they reach
+    /// there. Every value from then on is unchanged (that event still starts
+    /// from the same time and value), and the list stays short however long
+    /// a param is steered.
+    pub fn prune(&mut self, now: f64) {
+        let Some(k) = self.events.iter().rposition(|e| e.t <= now) else {
+            return;
+        };
+        if k == 0 {
+            return;
+        }
+        let tk = self.events[k].t;
+        let before = Timeline {
+            intrinsic: self.intrinsic,
+            events: self.events[..k].to_vec(),
+        }
+        .at(tk);
+        self.events.splice(
+            ..k,
+            [Event {
+                kind: EventKind::Set,
+                v: before,
+                t: tk,
+            }],
+        );
+    }
+
     /// The automation value at time `tt` (before the float32 rounding
     /// Chrome's params store).
     pub fn at(&self, tt: f64) -> f64 {
@@ -149,5 +177,25 @@ mod tests {
             t: 4.0,
         });
         assert_eq!(p.at(3.0), 1.0 * pow(4.0, 0.5));
+    }
+
+    #[test]
+    fn pruning_keeps_every_value_from_now_on() {
+        let mut p = Timeline::new(440.0);
+        let ev = |kind, v, t| Event { kind, v, t };
+        p.insert(ev(EventKind::Set, 12.0, 0.0));
+        for k in 0..20 {
+            let t = k as f64 * 0.008;
+            p.insert(ev(EventKind::Target { tc: 0.03 }, 50.0 + k as f64, t));
+        }
+        p.insert(ev(EventKind::Lin, 80.0, 0.3));
+        p.insert(ev(EventKind::Target { tc: 0.05 }, 20.0, 0.4));
+        let before: Vec<f64> = (0..60).map(|i| p.at(0.1 + i as f64 * 0.01)).collect();
+        p.prune(0.1);
+        assert_eq!(p.events.len(), 11, "the 11 events from 0.096 on");
+        let after: Vec<f64> = (0..60).map(|i| p.at(0.1 + i as f64 * 0.01)).collect();
+        for (a, b) in before.iter().zip(&after) {
+            assert!((a - b).abs() <= 1e-12 * a.abs().max(1.0), "{a} vs {b}");
+        }
     }
 }

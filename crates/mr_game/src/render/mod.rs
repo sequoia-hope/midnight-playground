@@ -1,5 +1,6 @@
-//! Rendering (SPEC 6, roadmap WP 2.3): the `three_std` shading library and
-//! the plain material kinds, the sky dome, the environment map from the
+//! Rendering (SPEC 6, roadmap WP 2.3 and 2.4): the `three_std` shading
+//! library, the plain material kinds and the patched terrain, road and sea
+//! kinds, points as quads, the sky dome, the environment map from the
 //! sky, the shadow map over three's box, fog, and the post chain, so a
 //! scene is lit and shaded as three.js r180 shades the JS game.
 //!
@@ -7,7 +8,8 @@
 //!   ([`Lighting`]), packed into one small texture every material reads,
 //!   and the sun's shadow camera given to Bevy's shadow pass.
 //! - [`material`]: [`ThreeMaterial`], the Standard, Physical, Lambert and
-//!   Basic kinds (`three_material.wgsl` on `three_std.wgsl`).
+//!   Basic kinds, the Terrain, Asphalt, Shoulder, Markings and Sea patches
+//!   and the points (`three_material.wgsl` on `three_std.wgsl`).
 //! - [`sky`]: `Sky.js`'s time of day ([`SkyState`]) and the SkyDome kind.
 //! - [`pmrem`]: the environment map, three's PMREM of the sky.
 //! - [`post`]: UnrealBloomPass and OutputPass.
