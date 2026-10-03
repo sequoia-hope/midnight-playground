@@ -89,8 +89,9 @@
 //! - Shadows: the shape's alpha blurred with σ = `shadowBlur`/2, in
 //!   `shadowColor`, composited before the shape. `filter: blur(r)` blurs the
 //!   shape's layer with σ = r.
-//! - Text (D152): per-character fallback through the family list, shaping
-//!   word by word with harfrust (HarfBuzz), baselines from Blink's
+//! - Text (D152): per-character fallback through the family list (then
+//!   the book's fallback families, D372), shaping word by word with
+//!   harfrust (HarfBuzz), baselines from Blink's
 //!   normalised typo metrics, glyph origins on Skia's grid (quarter pixel
 //!   along the baseline, whole pixel across), outlines from skrifa hinted by
 //!   the light automatic hinter, and Skia's A8 mask gamma for the fill

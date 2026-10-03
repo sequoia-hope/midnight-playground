@@ -4,7 +4,8 @@
 //
 //   node tools/parity/fonts-gallery.mjs
 //
-// The bundled defaults are in assets/fonts/ (fonts.json). The alternatives
+// The bundled defaults are in assets/fonts/ (fonts.json; the owner chose
+// the Roboto family for the Arials, DECISIONS D370). The alternatives
 // are fetched from the google/fonts repository into target/font-candidates/
 // (once; build output, not committed). The page and its PNGs go to
 // parity/report/fonts/, viewed through the registered server at
@@ -29,8 +30,8 @@ export const ROLES = [
   {
     family: 'Arial Narrow', why: 'Road and harbour signs, Mountain and Coast lettering (bold, italic 900)',
     candidates: [
-      { name: 'Archivo Narrow', faces: [B('archivonarrow/ArchivoNarrow[wght].ttf', [400, 700]), B('archivonarrow/ArchivoNarrow-Italic[wght].ttf', [400, 700], 'italic')] },
-      { name: 'Roboto Condensed', faces: [G('ofl/robotocondensed/RobotoCondensed[wght].ttf', [100, 900]), G('ofl/robotocondensed/RobotoCondensed-Italic[wght].ttf', [100, 900], 'italic')] },
+      { name: 'Roboto Condensed', faces: [B('robotocondensed/RobotoCondensed[wght].ttf', [100, 900]), B('robotocondensed/RobotoCondensed-Italic[wght].ttf', [100, 900], 'italic')] },
+      { name: 'Archivo Narrow', faces: [G('ofl/archivonarrow/ArchivoNarrow[wght].ttf', [400, 700]), G('ofl/archivonarrow/ArchivoNarrow-Italic[wght].ttf', [400, 700], 'italic')] },
       { name: 'Barlow Condensed', faces: [G('ofl/barlowcondensed/BarlowCondensed-Bold.ttf', [700, 700]), G('ofl/barlowcondensed/BarlowCondensed-BoldItalic.ttf', [700, 700], 'italic'), G('ofl/barlowcondensed/BarlowCondensed-Black.ttf', [900, 900]), G('ofl/barlowcondensed/BarlowCondensed-BlackItalic.ttf', [900, 900], 'italic')] },
     ],
     samples: [
@@ -43,8 +44,8 @@ export const ROLES = [
   {
     family: 'Arial', why: 'Sub-lines, price boards, banners, harbour signs (bold)',
     candidates: [
-      { name: 'Arimo', faces: [B('arimo/Arimo[wght].ttf', [400, 700]), B('arimo/Arimo-Italic[wght].ttf', [400, 700], 'italic')] },
-      { name: 'Roboto', faces: [G('ofl/roboto/Roboto[wdth,wght].ttf', [100, 900]), G('ofl/roboto/Roboto-Italic[wdth,wght].ttf', [100, 900], 'italic')] },
+      { name: 'Roboto', faces: [B('roboto/Roboto[wdth,wght].ttf', [100, 900])] },
+      { name: 'Arimo', faces: [G('ofl/arimo/Arimo[wght].ttf', [400, 700]), G('ofl/arimo/Arimo-Italic[wght].ttf', [400, 700], 'italic')] },
     ],
     samples: [
       { lines: [['MERIDIAN STAR', 'bold 64px Arial, sans-serif']], bg: '#1f3550', fg: '#fff', w: 512, h: 96 },
@@ -55,9 +56,9 @@ export const ROLES = [
   {
     family: 'Arial Black', why: 'Shop fronts, billboards, neon (bold)',
     candidates: [
-      { name: 'Archivo Black', faces: [B('archivoblack/ArchivoBlack-Regular.ttf', [100, 900])] },
+      { name: 'Roboto Black', faces: [B('roboto/Roboto[wdth,wght].ttf', [900, 900])] },
+      { name: 'Archivo Black', faces: [G('ofl/archivoblack/ArchivoBlack-Regular.ttf', [100, 900])] },
       { name: 'Rubik Black', faces: [G('ofl/rubik/Rubik[wght].ttf', [900, 900])] },
-      { name: 'Roboto Black', faces: [G('ofl/roboto/Roboto[wdth,wght].ttf', [900, 900])] },
     ],
     samples: [
       { lines: [['TACOS', 'bold 96px "Arial Black", Arial']], bg: '#f2c233', fg: '#c83a34', w: 384, h: 128 },

@@ -69,9 +69,11 @@ fn alphabet(book: &Arc<FontBook>, family: &str) -> Canvas {
             format!("bold 34px {f}"),
             "ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789",
         ),
+        // The symbols the game's signs draw (· — → ●), so a missing one
+        // shows here as a box; none of them is missing (DECISIONS D372).
         (
             format!("bold 34px {f}"),
-            "abcdefghijklmnopqrstuvwxyz · & / − ★",
+            "abcdefghijklmnopqrstuvwxyz · & / → ●",
         ),
         (
             format!("italic bold 34px {f}"),
