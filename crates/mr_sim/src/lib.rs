@@ -2,3 +2,7 @@
 //! No engine, no renderer, no clock and no global state (SPEC 1.1, 4).
 
 #![forbid(unsafe_code)]
+// Index loops stay index loops: they mirror the JS line for line (DECISIONS D52).
+#![allow(clippy::needless_range_loop)]
+
+pub mod dims;
