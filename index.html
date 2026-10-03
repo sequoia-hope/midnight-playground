@@ -151,6 +151,7 @@
     <label class="vol touch-only hidden" id="tilt-sens-row">Tilt <input type="range" id="opt-tilt-sens" min="0" max="100"></label>
     <label class="touch-only"><input type="checkbox" id="opt-fullscreen" checked> Fullscreen</label>
     <a class="menu-link" id="link-music" href="music.html">♪ Music player</a>
+    <button class="btn-mini pad-only" id="btn-pad">Controller setup</button>
     <div class="tilt-note touch-only" id="tilt-note"></div>
   </div>
   <div class="touch-help touch-only">
@@ -166,6 +167,7 @@
     <div><kbd>Shift</kbd>/<kbd>N</kbd> nitro</div>
     <div><kbd>C</kbd> camera · <kbd>B</kbd> look back · <kbd>R</kbd> reset · <kbd>Esc</kbd> pause</div>
     <div><kbd>M</kbd> music on/off · <kbd>T</kbd> next track</div>
+    <div class="pad-only"><b>Controller</b>: D-pad or stick to move · <kbd>A</kbd> select · <kbd>B</kbd> back · <kbd>Start</kbd> race</div>
   </div>
 </div>
 
@@ -175,11 +177,22 @@
   <button class="btn hidden" id="btn-end">End run</button>
   <button class="btn" id="btn-restart">Restart</button>
   <button class="btn" id="btn-quit">Main menu</button>
+  <button class="btn pad-only" id="btn-pad-pause">Controller</button>
   <div class="menu-opts">
     <label class="vol">Music <input type="range" class="vol-music" min="0" max="100"></label>
     <label class="vol">SFX <input type="range" class="vol-sfx" min="0" max="100"></label>
   </div>
   <div class="np-line"><span id="np-pause"></span><button class="btn-mini" id="btn-next-track" title="Next track (T)">Next track ⏭</button></div>
+</div>
+
+<!-- Gamepad buttons (src/game/PadSetup.js), from the menu or the pause screen. -->
+<div id="padsetup" class="screen hidden">
+  <div class="title">Controller</div>
+  <div class="pad-name" id="pad-name"></div>
+  <div class="pad-binds" id="pad-binds"></div>
+  <div class="pad-hint" id="pad-hint"></div>
+  <div class="menu-opts"><label><input type="checkbox" id="opt-rumble" checked> Rumble</label></div>
+  <div class="pad-row"><button class="btn" id="pad-defaults">Defaults</button><button class="btn primary" id="pad-done">Done</button></div>
 </div>
 
 <div id="results" class="screen hidden">

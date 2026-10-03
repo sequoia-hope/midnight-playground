@@ -1,7 +1,9 @@
 import { clamp } from '../util/math.js';
+import { Pads } from './Gamepad.js';
 
-// Keyboard, gamepad and on-screen touch controls (TouchControls, attached
-// as input.touch: a thumb stick, ◂ ▸ pads or tilt). Keyboard and ◂ ▸
+// Keyboard, gamepad (Pads, as input.pads: remappable) and on-screen touch
+// controls (TouchControls, attached as input.touch: a thumb stick, ◂ ▸ pads
+// or tilt). Keyboard and ◂ ▸
 // steering are ramped so tapping gives small corrections and holding gives
 // full lock, like an analogue stick.
 
@@ -32,7 +34,7 @@ export class Input {
     });
     window.addEventListener('keyup', (e) => this.down.delete(e.code));
     window.addEventListener('blur', () => this.down.clear());
-    this.padPrev = {};
+    this.pads = new Pads();
   }
 
   isGameKey(code) {
@@ -51,9 +53,12 @@ export class Input {
   update(dt) {
     const s = this.state;
     const t = this.touch;
+    const g = this.pads.poll();
+    for (const name of g.edges) this.pressed.add(name);
     let throttle = this.any(KEYMAP.throttle) ? 1 : t ? t.throttle : 0;
     let brake = this.any(KEYMAP.brake) ? 1 : t ? t.brake : 0;
-    const l = this.any(KEYMAP.left), r = this.any(KEYMAP.right);
+    // A pad's steering bound to buttons (the D-pad, say) ramps like keys.
+    const l = this.any(KEYMAP.left) || g.digital.left, r = this.any(KEYMAP.right) || g.digital.right;
     // The thumb stick and tilt are analogue already, so they aren't
     // ramped; a held key still wins over them.
     const analog = t?.analogSteer?.(dt) ?? null;
@@ -72,21 +77,15 @@ export class Input {
     let nitro = this.any(KEYMAP.nitro) || !!t?.held.nitro;
     let lookBack = this.any(KEYMAP.lookBack);
 
-    // Gamepad (standard mapping).
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    for (const p of pads) {
-      if (!p || !p.connected) continue;
-      const ax = p.axes[0] || 0;
-      if (Math.abs(ax) > 0.12) { steer = Math.sign(ax) * Math.pow((Math.abs(ax) - 0.12) / 0.88, 1.4); analogSteer = true; }
-      const rt = p.buttons[7]?.value || 0, lt = p.buttons[6]?.value || 0;
-      if (rt > 0.05) throttle = Math.max(throttle, rt);
-      if (lt > 0.05) brake = Math.max(brake, lt);
-      if (p.buttons[0]?.pressed) nitro = true;
-      if (p.buttons[2]?.pressed || p.buttons[5]?.pressed) handbrake = true;
-      if (p.buttons[1]?.pressed) lookBack = true;
-      const edge = (i, name) => { if (p.buttons[i]?.pressed && !this.padPrev[i]) this.pressed.add(name); this.padPrev[i] = p.buttons[i]?.pressed; };
-      edge(3, 'camera'); edge(9, 'pause'); edge(8, 'reset');
-    }
+    // Gamepad sticks and triggers (the standard layout unless remapped).
+    const ax = g.steerAxis;
+    if (Math.abs(ax) > 0.12) { steer = Math.sign(ax) * Math.pow((Math.abs(ax) - 0.12) / 0.88, 1.4); analogSteer = true; }
+    const v = g.value;
+    if (v.throttle > 0.05) throttle = Math.max(throttle, v.throttle);
+    if (v.brake > 0.05) brake = Math.max(brake, v.brake);
+    if (g.held.nitro) nitro = true;
+    if (g.held.handbrake) handbrake = true;
+    if (g.held.lookBack) lookBack = true;
     if (!this.enabled) { throttle = brake = steer = 0; handbrake = nitro = false; }
     s.throttle = throttle; s.brake = brake; s.steer = clamp(steer, -1, 1); s.analog = analogSteer;
     s.handbrake = handbrake; s.nitro = nitro; s.lookBack = lookBack;

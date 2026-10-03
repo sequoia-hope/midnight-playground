@@ -10,6 +10,8 @@ import { GameAudio } from './game/Audio.js';
 import { Input } from './game/Input.js';
 import { TouchControls, isTouchDevice } from './game/TouchControls.js';
 import { TiltSteer } from './game/TiltSteer.js';
+import { MenuNav } from './game/MenuNav.js';
+import { PadSetup } from './game/PadSetup.js';
 import { Race } from './game/Race.js';
 import { fmtTime } from './game/HUD.js';
 import { LEVELS, levelById } from './levels/index.js';
@@ -40,6 +42,7 @@ const settings = {
   level: store.get('level', 'sierra'),
   track: store.get('track', 'auto'), // music: 'auto' = the level's own track
   flash: store.get('flash', true), // police lights strobe (off: they glow steadily)
+  rumble: store.get('rumble', true), // gamepad
 };
 // Race or Hot Pursuit, per level (only levels with police offer the choice).
 const modeFor = (l) => (l.police && store.get('mode.' + l.id, 'race') === 'pursuit' ? 'pursuit' : 'race');
@@ -83,8 +86,10 @@ window.addEventListener('resize', resize);
 applyQuality();
 
 const $ = (id) => document.getElementById(id);
-const screens = ['loading', 'menu', 'pause', 'results'];
+const screens = ['loading', 'menu', 'pause', 'results', 'padsetup'];
+let screenNow = 'loading';
 function showScreen(name) {
+  screenNow = name;
   for (const s of screens) $(s).classList.toggle('hidden', s !== name);
   // On-screen controls only while driving; the turn-sideways hint on the menu.
   touch?.show(!name && !!race);
@@ -146,7 +151,10 @@ const touch = touchUI ? new TouchControls(input) : null;
 input.touch = touch;
 const tilt = touch ? new TiltSteer() : null;
 if (touch) Object.assign(touch, { autoGas: settings.autogas, tilt });
+// Gamepads: remapped controllers keep their own maps (Controller screen).
+Object.assign(input.pads, { maps: store.get('padMaps', {}), onSave: (m) => store.set('padMaps', m), rumbleOn: settings.rumble });
 window.__audio = audio;
+window.__pads = input.pads;
 // Test hooks: headless checks raycast and inspect with these.
 window.__camera = camera;
 window.__THREE = THREE;
@@ -281,7 +289,7 @@ function bindSlider(cls, key, storeKey) {
 }
 bindSlider('.vol-music', 'music', 'musicVol');
 bindSlider('.vol-sfx', 'sfx', 'sfxVol');
-for (const [id, key] of [['opt-mph', 'mph'], ['opt-hq', 'hq'], ['opt-autogas', 'autogas'], ['opt-fullscreen', 'fullscreen'], ['opt-flash', 'flash']]) {
+for (const [id, key] of [['opt-mph', 'mph'], ['opt-hq', 'hq'], ['opt-autogas', 'autogas'], ['opt-fullscreen', 'fullscreen'], ['opt-flash', 'flash'], ['opt-rumble', 'rumble']]) {
   const el = $(id);
   el.checked = settings[key];
   el.onchange = () => {
@@ -290,6 +298,7 @@ for (const [id, key] of [['opt-mph', 'mph'], ['opt-hq', 'hq'], ['opt-autogas', '
     if (key === 'mph' && race) race.hud.mph = el.checked;
     if (key === 'autogas' && touch) touch.autoGas = el.checked;
     if (key === 'flash' && race?.pv) race.pv.flash = race.pv.pursuit.flash = el.checked;
+    if (key === 'rumble') { input.pads.rumbleOn = el.checked; input.pads.kick(0.5, 0.7, 300); } // a buzz to show it's on
   };
 }
 
@@ -381,6 +390,7 @@ async function startRace() {
     await Promise.race([compiled, new Promise((r) => setTimeout(r, 3000))]);
     race.effects.resize(window.innerHeight * renderer.getPixelRatio(), camera.fov);
     input.pressed.clear(); // keys pressed on the menu don't carry into the race
+    input.pads.hush(); // nor does the A that started it
     input.enabled = true;
     mode = 'race';
     showScreen(null);
@@ -393,7 +403,7 @@ async function startRace() {
 function pause(on) {
   if (!race || (on && mode !== 'race')) return;
   mode = on ? 'paused' : 'race';
-  if (!on) input.pressed.clear(); // nor do keys pressed while paused
+  if (!on) { input.pressed.clear(); input.pads.hush(); } // nor do keys pressed while paused
   if (on) showNowPlaying(audio.trackInfo, false);
   showScreen(on ? 'pause' : null);
   audio.setPaused(on);
@@ -467,6 +477,30 @@ $('btn-quit').onclick = toMenu;
 $('btn-end').onclick = () => { if (race?.cruise) { audio.setPaused(false); showResults(race.cruiseResults()); } };
 $('btn-again').onclick = startRace;
 $('btn-menu').onclick = toMenu;
+
+// ── Gamepad: menus and the Controller screen ─────────────────────
+let padReturn = 'menu';
+const padSetup = new PadSetup(input.pads, $('padsetup'), { onClose: () => showScreen(padReturn) });
+function openPadSetup() {
+  if (screenNow !== 'menu' && screenNow !== 'pause') return;
+  padReturn = screenNow;
+  input.consume('pause'); // an Esc left over from the menu would close it at once
+  showScreen('padsetup');
+  padSetup.show();
+}
+$('btn-pad').onclick = openPadSetup;
+$('btn-pad-pause').onclick = openPadSetup;
+// B goes back a screen; Start races from the menu and the results.
+const menuNav = new MenuNav({
+  root: () => (screenNow && screenNow !== 'loading' ? $(screenNow) : null),
+  back: () => {
+    if (screenNow === 'pause') pause(false);
+    else if (screenNow === 'results') toMenu();
+    else if (screenNow === 'padsetup') padSetup.close();
+  },
+  start: () => { if (screenNow === 'menu' || screenNow === 'results') startRace(); },
+});
+let padShown = false;
 
 // ── Debug fly camera (?s=…) and attract mode ─────────────────────
 const fly = params.has('s') ? {
@@ -548,6 +582,12 @@ function frame(now) {
 function tick(frameDt) {
   const dt = Math.min(frameDt, 1 / 20) * timescale;
   let inp = input.update(dt);
+  const pads = input.pads.state;
+  if (pads.connected !== padShown) { padShown = pads.connected; document.body.classList.toggle('pad', padShown); }
+  // Esc, P or Start: on the Controller screen they leave it, not the pause.
+  if (screenNow === 'padsetup' && input.consume('pause')) padSetup.escape();
+  menuNav.update(pads.nav);
+  if (padSetup.open) padSetup.update();
   if (!world || mode === 'loading') return;
   const track = world.track;
   if (input.consume('pause') && (mode === 'race' || mode === 'paused')) pause(mode === 'race');

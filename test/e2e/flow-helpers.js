@@ -37,7 +37,7 @@ export async function waitRacing(game, timeout = 20000) {
 
 export async function expectScreen(game, name, timeout = 8000) {
   await game.waitFor(`(${(n) => {
-    const shown = ['loading', 'menu', 'pause', 'results'].filter((id) => !document.getElementById(id).classList.contains('hidden'));
+    const shown = ['loading', 'menu', 'pause', 'results', 'padsetup'].filter((id) => !document.getElementById(id).classList.contains('hidden'));
     return (shown.join(',') || 'none') === n;
   }})(${JSON.stringify(name)})`, { timeout, what: `the "${name}" screen` });
   assert.equal(await game.screen(), name);

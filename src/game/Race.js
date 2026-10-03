@@ -31,6 +31,7 @@ const PARK_ROW = 13;     // spacing of the rows behind it
 export class Race {
   constructor({ world, scene, camera, renderer, input, audio, buildVehicle, carKind = 'sports', onFinish, pursuit = null }) {
     Object.assign(this, { world, scene, camera, renderer, input, audio, buildVehicle, onFinish });
+    this.pads = input.pads ?? null;
     const track = (this.track = world.track);
     this.level = world.level;
     this.cruise = this.level.mode === 'cruise';
@@ -189,12 +190,13 @@ export class Race {
       if (inp.throttle > 0.5) { if (this.throttleAt == null) this.throttleAt = this.countdown; }
       else this.throttleAt = null;
       const n = Math.ceil(this.countdown);
-      if (n < this.lastBeep && n >= 1) { this.hud.center(String(n)); this.audio?.beep(false); this.lastBeep = n; }
+      if (n < this.lastBeep && n >= 1) { this.hud.center(String(n)); this.audio?.beep(false); this.pads?.kick(0, 0.25, 90); this.lastBeep = n; }
       if (this.countdown <= 0) {
         this.state = 'racing';
         this.phys.locked = false;
         this.hud.center('GO!', 'pop go');
         this.audio?.beep(true);
+        this.pads?.kick(0.3, 0.6, 200);
         if (this.throttleAt != null && this.throttleAt < 0.75) {
           const fx = Math.cos(this.player.yaw), fz = Math.sin(this.player.yaw);
           this.player.vx += fx * 6; this.player.vz += fz * 6;
@@ -246,6 +248,7 @@ export class Race {
       if (involvesPlayer) {
         const cr = this.camera.matrixWorld.elements; // camera right = column 0
         this.audio?.impact(h.strength, clamp(((h.x - this.player.x) * cr[0] + (h.z - this.player.z) * cr[2]) / 2, -1, 1));
+        this.jolt(h.strength);
         this.cam.bump(h.strength * 1.2);
         this.effects.sparksAt(h.x, h.y, h.z, Math.round(8 + h.strength * 30), this.player.vx, this.player.vz);
         if (other.crashed !== undefined) this.nearMiss.set(other, 'hit');
@@ -257,11 +260,13 @@ export class Race {
         if (e.strength > 0.35) this.crash();
         this.pv?.onWallImpact(e.strength);
         this.audio?.impact(e.strength, (e.side || 0) * 0.6);
+        this.jolt(e.strength);
         this.cam.bump(e.strength);
         this.effects.sparksAt(e.x, e.y, e.z, Math.round(6 + e.strength * 40), this.player.vx, this.player.vz);
-      } else if (e.type === 'shift') this.audio?.shift(e.up);
+      } else if (e.type === 'shift') { this.audio?.shift(e.up); this.pads?.kick(0, 0.2, 70); }
       else if (e.type === 'land') {
         this.audio?.landing(e.strength);
+        this.pads?.kick(0.7 * e.strength, 0.5 * e.strength, 180);
         this.cam.bump(e.strength * 0.8);
         if (e.air > 0.55) { this.bonus(`AIR ${e.air.toFixed(1)}s`, 0.12); }
       }
@@ -304,7 +309,7 @@ export class Race {
     if (this.wrongWay > 1.5 && this.hud.centerTimer <= 0) this.hud.center('WRONG WAY', 'warn pop', 1);
     // Stuck? Offer the reset key.
     this.stuck = started && !this.playerFinished && spd < 1.5 ? (this.stuck || 0) + dt : 0;
-    if (this.stuck > 3 && this.hud.toastTimer <= 0 && !this.pv?.held && !(this.pv?.pursuit.bust > 0)) this.hud.toast(this.input.touch?.visible ? 'STUCK? TAP ↺ TO RESET' : 'STUCK? PRESS R TO RESET', 2);
+    if (this.stuck > 3 && this.hud.toastTimer <= 0 && !this.pv?.held && !(this.pv?.pursuit.bust > 0)) this.hud.toast(this.input.touch?.visible ? 'STUCK? TAP ↺ TO RESET' : `STUCK? PRESS ${this.pads?.state.connected ? this.pads.label('reset').toUpperCase() : 'R'} TO RESET`, 2);
     this.hud.centerTimer = Math.max(0, this.hud.centerTimer - dt);
 
     if (this.cruise && started) this.cruiseScore(dt, psp);
@@ -355,15 +360,18 @@ export class Race {
     this.cam.update(dt, this.player, { lookBack: inp.lookBack, nitro: this.phys.nitroActive, speed: psp });
     if (this.state === 'countdown') this.introCamera(dt);
 
+    // Tyres past the edge of the tarmac: gravel instead of squeal (and a
+    // rumble in the pad). Freeway shoulders, boulevards and kerbed streets
+    // are paved to the wall.
+    const edge = ROAD_TYPES[ROAD_KEYS[t.roadType[t.idx(this.player.s)]]]?.edge;
+    const paved = edge === 'jersey' || edge === 'rail' || edge === 'curb';
+    let offroad = paved ? 0 : clamp((Math.abs(this.player.lat) + this.player.halfW * 0.6 - F.hw) / 1.2, 0, 1);
+    if (offroad > 0 && t.looseAt) offroad *= t.looseAt(this.player.x, this.player.z); // paved run-off
+    this.rumble(psp, offroad);
+
     // Audio.
     if (this.audio?.ready) {
       const ph = this.phys;
-      // Tyres past the edge of the tarmac: gravel instead of squeal.
-      // Freeway shoulders, boulevards and kerbed streets are paved to the wall.
-      const edge = ROAD_TYPES[ROAD_KEYS[t.roadType[t.idx(this.player.s)]]]?.edge;
-      const paved = edge === 'jersey' || edge === 'rail' || edge === 'curb';
-      let offroad = paved ? 0 : clamp((Math.abs(this.player.lat) + this.player.halfW * 0.6 - F.hw) / 1.2, 0, 1);
-      if (offroad > 0 && t.looseAt) offroad *= t.looseAt(this.player.x, this.player.z); // paved run-off
       this.audio.update(dt, {
         rpm: ph.rpm, rpmMax: 7800, throttle: ph.locked ? inp.throttle : ctrl.throttle, gear: ph.gear,
         speed: psp, skid: ph.skid, nitro: ph.nitroActive, onGround: this.player.onGround, scrape: ph.scrape,
@@ -380,6 +388,7 @@ export class Race {
       this.audio.setRivalEngines(near);
       this.pv?.audio(camRight);
     }
+    if (this.phys.nitroActive && !this.wasNitro) this.pads?.kick(0.45, 0.6, 260);
     this.wasNitro = this.phys.nitroActive;
     // Tunnels get a concrete echo.
     const inTunnel = this.tunnels.some((g) => this.player.s > g.s0 - 10 && this.player.s < g.s1 + 10);
@@ -426,6 +435,21 @@ export class Race {
     if (kmh > 120) this.score += (kmh - 120) * 0.9 * this.mult * dt;
     this.multTimer -= dt;
     if (this.multTimer <= 0 && this.mult > 1) { this.mult -= 1; this.multTimer = 2.5; }
+  }
+
+  // Gamepad rumble (Pads: kick is a jolt, feel the steady buzz this frame).
+  jolt(strength) {
+    if (strength > 0.03) this.pads?.kick(0.25 + 0.75 * strength, 0.5 + 0.5 * strength, 120 + 280 * strength);
+  }
+  rumble(speed, offroad) {
+    const pads = this.pads, ph = this.phys;
+    if (!pads?.state.connected) return;
+    const sp = clamp(speed / 30, 0, 1);
+    const spiked = ph.spiked > 0 ? 0.3 * sp : 0;
+    pads.feel(
+      Math.max(ph.scrape * 0.55, offroad * 0.35 * sp, spiked),
+      Math.max(ph.scrape * 0.45, offroad * 0.45 * sp, ph.skid * 0.15, ph.nitroActive ? 0.15 : 0, spiked),
+    );
   }
 
   crash() {

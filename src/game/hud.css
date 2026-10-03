@@ -185,6 +185,25 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #05060a; col
 .menu-opts input { accent-color: var(--accent); }
 .menu-link { color: var(--accent2); font-weight: 700; text-decoration: none; letter-spacing: .04em; }
 .menu-link:hover { text-decoration: underline; }
+/* ── Gamepads ─────────────────────────────────────── */
+/* body.pad: a controller is connected. body.pad-nav: it's moving the
+   highlight around a menu (src/game/MenuNav.js). */
+.pad-only { display: none; }
+body.pad .pad-only { display: revert; }
+body.pad-nav .pad-focus { outline: 3px solid var(--accent2); outline-offset: 3px; scroll-margin: 16px; }
+body.pad-nav label.pad-focus { border-radius: 6px; }
+body.pad-nav .pad-focus.pad-edit { outline-color: #ffcf4d; }
+.pad-name { color: var(--hud-dim); letter-spacing: .1em; text-align: center; }
+.pad-binds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; width: min(560px, 92vw); }
+.pad-bind { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; cursor: pointer; padding: 8px 14px; border-radius: 10px;
+  font-family: var(--font); font-size: 16px; color: var(--hud-fg); text-align: left; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); }
+.pad-bind b { color: var(--accent2); font-weight: 700; text-align: right; }
+.pad-bind.on { background: rgba(58,215,255,.16); border-color: var(--accent2); }
+.pad-bind.listening { border-color: #ffcf4d; box-shadow: 0 0 0 1px #ffcf4d; }
+.pad-bind.listening b { color: #ffcf4d; }
+.pad-hint { color: var(--hud-dim); font-size: 15px; text-align: center; min-height: 1.4em; max-width: min(560px, 92vw); }
+.pad-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+@media (max-width: 520px) { .pad-binds { grid-template-columns: 1fr; } }
 .tilt-note { flex-basis: 100%; text-align: center; color: #ffb454; font-size: 14px; }
 #tilt-note:empty { display: none; }
 body.touch .menu-opts .vol.touch-only { display: inline-flex; }

@@ -169,6 +169,7 @@ export class PursuitView {
             hud.center('TAKEDOWN', 'pop go', 1.2);
             audio?.takedown?.(1);
             race.cam.bump(1);
+            race.pads?.kick(0.8, 0.7, 400);
             this.say(RADIO.unitDown(e.unit.callsign), true);
           }
           break;
@@ -181,19 +182,20 @@ export class PursuitView {
           this.say(RADIO.spikes(), true);
           break;
         case 'spiked':
-          if (e.player) { hud.center('SPIKED!', 'warn pop', 1.2); audio?.spikePop?.(); this.say(RADIO.spiked(), true); }
+          if (e.player) { hud.center('SPIKED!', 'warn pop', 1.2); audio?.spikePop?.(); race.pads?.kick(0.6, 0.8, 350); this.say(RADIO.spiked(), true); }
           else hud.toast(`${e.name.toUpperCase()} HIT THE SPIKES`);
           break;
         case 'dodge':
           hud.toast(e.what === 'spikes' ? 'SPIKES DODGED' : 'ROADBLOCK DODGED');
           break;
         case 'barrier':
-          if (e.player) { race.effects.sparksAt(e.x, race.player.y + 0.8, e.z, 14, race.player.vx, race.player.vz); race.player.vx *= 0.97; race.player.vz *= 0.97; audio?.impact?.(0.35, 0); }
+          if (e.player) { race.effects.sparksAt(e.x, race.player.y + 0.8, e.z, 14, race.player.vx, race.player.vz); race.player.vx *= 0.97; race.player.vz *= 0.97; audio?.impact?.(0.35, 0); race.pads?.kick(0.5, 0.6, 250); }
           break;
         case 'busted':
           if (e.player) {
             hud.center('BUSTED', 'warn pop', 2);
             audio?.busted?.();
+            race.pads?.kick(0.9, 0.9, 700);
             race.crash();
             this.say(RADIO.busted(), true);
           } else {

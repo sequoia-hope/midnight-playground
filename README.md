@@ -224,8 +224,51 @@ proj url midnight-racer     # prints the URL to open
 | T | Next music track. There are seven; each level starts on its own, and the playlist moves on when a song ends. The pause screen has a Next track button, and the menu a Track picker |
 | Esc / P | Pause |
 
-A gamepad also works: RT and LT for throttle and brake, A for nitro, X or RB for the
-handbrake, Y for the camera, and Start to pause.
+### Gamepads
+
+A controller works for the whole game, menus included. Out of the box it uses
+the standard layout:
+
+| Button | Action |
+| --- | --- |
+| Left stick | Steer (analogue, with a dead zone) |
+| RT / LT | Throttle / brake, both analogue |
+| A | Nitro |
+| X or RB | Handbrake |
+| B | Look back |
+| Y | Change camera |
+| Back | Put the car back on the road |
+| Start | Pause |
+
+**Menus.** Push the D-pad or the left stick and a highlight appears. Move it
+to any button, car, level or option, and press A to choose it. On a slider or
+a drop-down, A starts adjusting it, ◂ ▸ change it, and A or B finishes. B goes
+back: from the pause screen to the race, from the results to the menu.
+Start races from the menu and the results, and pauses and resumes a race.
+Touching the mouse or the screen hides the highlight. A button still held as
+a screen changes doesn't count: holding A on **Race** won't fire the nitro
+when the race starts.
+
+**Remapping.** While a controller is connected, the menu shows
+**Controller setup** and the pause screen shows **Controller**. Both open a
+screen listing every action and what it's bound to. A row lights up while
+you hold its button, so you can check the layout. Choose a row, then press
+the button or move the stick you want for it (Esc cancels, or wait 8
+seconds). Any button, D-pad direction, stick direction or trigger can be
+used, and digital steering (the D-pad, say) ramps in like the keys. Each
+button does one thing, so giving a button to one action takes it off any
+other. **Defaults** goes back to the standard layout. The map is saved per
+controller, so two kinds of pad each keep their own. A controller the
+browser doesn't recognise as standard shows numbered buttons and axes;
+remap it once and it works like any other. The menus always use the
+standard D-pad, stick, A and B, so a bad map can be fixed from the pad.
+
+**Rumble.** The pad jolts on crashes, landings and nitro, gives a small
+kick on each gear change and the countdown, buzzes over gravel, along a
+wall and on spiked tyres, and shakes for takedowns and busts in Hot Pursuit.
+The **Rumble** switch on the Controller screen turns it off. Rumble needs a
+browser that can drive the pad's motors (Chrome, Edge and the desktop app
+can); elsewhere it does nothing.
 
 ### Phones and tablets
 
@@ -313,7 +356,8 @@ src/
   vehicles/            car models, player physics, rival AI, traffic, collisions,
                        the police driver
   game/                race flow, camera, HUD, effects, audio, input, touch controls,
-                       tilt steering
+                       tilt steering, gamepads (Gamepad.js: maps, remapping and
+                       rumble; MenuNav.js: menus; PadSetup.js: the Controller screen)
   game/Pursuit.js      Hot Pursuit: heat, line of sight, busts, units, roadblocks
                        (no three.js, so it's tested in Node); PursuitView.js wires
                        it into a race
@@ -376,7 +420,7 @@ The unit tests in `test/unit/` run the code that doesn't need a browser:
 every level's route, the car physics (including the car claims above), the
 rivals driving each route, passing slower cars and keeping off a car
 alongside, traffic and collisions (including getting off a wall with a rival
-jammed against you), input, tilt steering and the touch stick and pedal slider, the timer, the soundtrack's songs and synth
+jammed against you), input, gamepads (bindings, remapping, rumble), tilt steering and the touch stick and pedal slider, the timer, the soundtrack's songs and synth
 patches, Hot Pursuit (line of sight, heat, busts and escapes, and each
 sprint level raced with the police on), and Seaside Raceway's survey data
 (the lap, the climb and the Corkscrew, the walls, the run-off and the ground
@@ -384,7 +428,8 @@ under it).
 
 The browser tests in `test/e2e/` play the real game in headless Chrome on the
 GPU, both as a desktop and as a phone (touch and tilt, in landscape and
-portrait; the tilt comes through Chrome's own sensor emulation). They
+portrait; the tilt comes through Chrome's own sensor emulation), and with a
+fake gamepad in place of `navigator.getGamepads` (menus, remapping, rumble). They
 tap and click the way a player does, with the browser's real rules for when
 audio and fullscreen may start. The working tree is served through request
 interception, so the tests need no server and no port. Set `MR_BASE_URL` to test a running copy
