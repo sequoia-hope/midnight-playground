@@ -3091,11 +3091,13 @@ dependencies = [
  "js-sys",
  "mr_audio",
  "mr_levels",
+ "mr_math",
  "mr_net",
  "mr_scene",
  "mr_sim",
  "mr_track",
  "mr_worldgen",
+ "serde_json",
  "wasm-bindgen",
  "web-sys",
 ]

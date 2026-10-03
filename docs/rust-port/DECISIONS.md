@@ -986,3 +986,168 @@ Stores keep their array types: `Uint8ClampedArray` (ImageData) rounds half
 to even and clamps (`ImageData::set`), `Uint8Array` (the DataTexture)
 truncates, `Float32Array` lattices and noise go through `fround`. The
 noise textures are bit-identical to the JS.
+
+## WP 2.3 decisions
+
+## D170. three_std: our own shading on Bevy's material system, lit in view space
+
+2026-10-03, WP 2.3. The plain kinds (Standard, Physical, Lambert, Basic, and
+Line and Points drawn as basic) are one Bevy `Material`, `ThreeMaterial`
+(`crates/mr_game/src/render/material.rs`), whose WGSL
+(`three_material.wgsl` on the `three_std.wgsl` library) is three.js r180's
+meshphysical, meshlambert and meshbasic programs for the features the game
+uses: map and vertex colour, instance colour, emissive and emissive map,
+roughness and metalness with the geometry-roughness term, IOR and specular,
+clearcoat, sheen, the directional light with its shadow, one spot and one
+point light, the hemisphere light, the environment's irradiance and radiance
+with three's multiscattering, alpha test, the `opaque` alpha rule and
+`FogExp2` with `Sky.js`'s sun tint in lit shaders. Lighting runs in view
+space, as three's does, because the geometry-roughness term takes the
+largest component of the view-space normal's derivatives, which is not
+rotation invariant. A key (`ThreeKey`) picks the shader variant and three's
+fixed-function state: culling from `side`, three's blend functions
+(`SRC_ALPHA, ONE_MINUS_SRC_ALPHA` and `SRC_ALPHA, ONE`, with
+`premultipliedAlpha` false; normal blending only when `transparent`),
+`depthWrite`, `depthTest`, and `polygonOffset` as before (D103). Bevy's
+`StandardMaterial`, its lights, ambient light, `DistanceFog`, exposure and
+tone mapping are no longer used, nor `tint.wgsl`: instance colours ride in
+the `MeshTag` (D103's packing) and the same material reads them.
+
+The scene-wide inputs (sun, hemisphere light, fog, shadow matrix and
+parameters, exposure, environment intensity, the dome's uniforms, the spot
+and point light) are one row of 32 RGBA32F texels (`three_globals.wgsl`,
+`render::lighting`), written by the render world every frame into one
+texture every material binds. That keeps per-frame state out of the
+materials (nothing is re-prepared when the light moves), avoids storage
+buffers (WebGL2 has none) and leaves Bevy's view bindings untouched.
+
+Patched kinds draw as the plain version of their built-in type through the
+same material, as stand-ins, until their patches are ported (WP 2.4, M3).
+
+## D171. The shadow map: Bevy's pass over three's box, sampled as three does
+
+2026-10-03, WP 2.3. Bevy renders the map: one `DirectionalLight` (the
+"three sun", `render::lighting`) with one cascade, whose `Cascade` is
+replaced every frame, between Bevy's cascade build and its light frusta,
+with three's shadow camera: the light at its position looking at its target
+with y up, the orthographic box (±70 m, near 1, far 600 in the levels;
+`scenes.json`'s box in the test scenes), 2048². Bevy's depth is reversed
+and linear for this projection, so the map holds 1 − three's depth; the
+shaders compute three's `shadowCoord` (the vertex pushed along its world
+normal by `normalBias`, three's `shadowMatrix`, `bias` added to z) and run
+`getShadow`'s PCF-soft taps with `textureLoad` on Bevy's depth array,
+flipping the row (Bevy's rows run top first). The shadow pass culls three's
+shadow side (the back faces of a front-sided material), and an alpha-tested
+material keeps its alpha test there (`three_prepass.wgsl`), as three's depth
+material does. Bevy's own biases, filtering and cascade fitting are unused.
+Shadows follow the high-quality setting (`hq`). Note for the WebGL2 build
+(WP 2.7): `textureLoad` on a depth texture may need a non-comparison
+binding there.
+
+## D172. The environment map: three's PMREM, pass for pass
+
+2026-10-03, WP 2.3. `render::pmrem` ports `PMREMGenerator.fromScene(dome,
+0.04, 0.1, 200)` at the default size: the six 256² faces into the 768 × 1024
+half-float cube-UV atlas in three's layout, the 0.04 rad blur of the base
+level, then `_applyPMREM`'s ten blurs (latitudinal then longitudinal halves
+through a ping-pong target, with three's sample counts, weights, `dTheta`,
+`mipInt` and pole axes), in the render world ahead of the main pass. Each
+pass draws a full-screen triangle into three's viewport and works out from
+its pixel what three's lod plane or cube camera would have interpolated
+there (exact for these linear varyings; for the faces, the dome's
+normalised position is the view ray). Rows keep three's order, so three's
+viewport origins and `textureCubeUV` read the atlas unchanged. The sky in
+the faces is the dome's own shader (`sky.wgsl`), as main.js renders the
+dome into the map. Kept on purpose: `_blur` for the base level passes no
+pole axis, so a reused generator (the game's) blurs every map after the
+first about `_axisDirections[0]`, a fresh one (the material tool's) about
+y; `EnvRequest.fresh` says which. A level rebuilds the map when the time of
+day has moved 2.5 % of the route (`refreshEnv`).
+
+## D173. The sky in the client, until world generation owns it
+
+2026-10-03, WP 2.3. `Sky.sample` and `Sky.update` are ported into
+`render::sky::SkyState` from `mr_levels`' keys (colours through three's
+sRGB-to-linear with the kernel's `pow`, trigonometry through
+`mr_math::kernel`), driving the dome's uniforms, the sun or moon, the
+hemisphere light, the fog and the exposure from the fly or attract
+camera's s, with `?t=` and `?freeze=1` as in the JS. A test checks the
+result at s = 0 against every export's dome uniforms, fog and exposure, to
+1e-12. WP 3.5 ports `Sky.js` into world generation; this moves there then.
+`world.nightMaterials` follow the sky's night factor from the export's
+`night_params` (all `emissiveIntensity`). The client's Track takes the
+scenery's runout from `mr_levels::world` (as the simulation does), so the
+fly camera reaches the end of the road as the JS one does (stations past
+`length` on Sierra and Coast were wrong without it). The models scene, which
+has no dome, takes Sierra's sky at the start and the dome's noise texture
+from `mr_worldgen`'s `terrainDetailTexture`; it draws on black.
+
+## D174. The post chain
+
+2026-10-03, WP 2.3. `render::post` ports UnrealBloomPass and OutputPass on
+the camera's HDR target, in place of Bevy's tone mapping
+(`Tonemapping::None`, `DebandDither::Disabled`): the half-size high pass
+(threshold 0.92, smooth width 0.01, luminance weights 0.2126, 0.7152,
+0.0722), five sizes each `Math.round(x / 2)` of the last, the separable
+Gaussians (radii 3 to 11, three's coefficients and its sampling of the
+larger texture at the smaller one's texel offsets), the composite (factors
+1 to 0.2, radius 0.35, strength 0.38) into the first horizontal target, then
+one output pass that adds the composite as three's additive blend does
+(`SRC_ALPHA × src + dst`, the composite's alpha being strength × Σ factors =
+1.14) and applies three's ACES filmic with the exposure (`/ 0.6`). The sRGB
+transfer is the surface's (Bevy's upscaling writes to an sRGB view), as
+three's OutputPass encodes before an 8-bit canvas. The intermediate targets
+are half float, as three's.
+
+## D175. The material test scenes in the Rust client
+
+2026-10-03, WP 2.3. `--materials all|every|<names> --out <dir>` (natively;
+the module is `matscene`) renders the scenes of
+`parity/golden/materials/scenes.json` (compiled in) one after another in a
+512 × 512 window (scale factor 1) and saves `<dir>/<group>/<name>.png`, the
+layout `tools/parity/materials.mjs` writes. The geometry is three's, by
+`mr_worldgen::three_geom`; a kind scene takes its material from the level's
+export by the definition's path (from the world root, or the dome), with the
+source mesh's extra attributes set to its first vertex and the first
+instance's colour, as the JS tool does; the fixed scenes' materials are
+built as three's constructors would. Lights, shadow box, hemisphere light,
+background, fog, camera and exposure come from the definitions; the
+environment is the level's dome at s = 0 with the clock at 0, built once per
+level with a fresh generator (D172). A scene is captured when every pipeline
+has compiled, the environment for its level is built and four quiet frames
+have passed. `all` is the fixed scenes and the kinds WP 2.3 ports
+(Standard, Physical, Lambert, Basic, SkyDome); `every` adds the other kinds
+on a built-in type, drawn as stand-ins, for the record. The web build does
+not run them (the levels' exports do not pass the test harness's
+interception, D106).
+
+## D176. One command each for the material scenes and the stations
+
+2026-10-03, WP 2.3 with WP 2.5's gate wording. `cargo xtask parity
+materials [--only …]` renders the JS side if its cache directory is missing
+(and the exports, if those are), renders the Rust side into
+`parity/cache/<key>/materials/rust/`, compares with `parity shots` (label
+`materials`) and fails if a scene is over SPEC 12's limits. `cargo xtask
+parity stations [--levels …]` does the same for D17's stations: the native
+client's `--stations <stations.json> --out <dir>` flies to each station of
+the JS run with the scenery frozen, waits for the sky, the environment map
+and the pipelines, and saves the PNGs into `parity/cache/<key>/shots/rust/`;
+it reports but does not fail (most kinds are still stand-ins). For the web
+build, `tools/parity/rust-web.mjs` loads `dist/next/` in headless Chrome with
+D106's WebGPU flags through request interception (`.wasm` as
+`application/wasm`), waits for `__mr.ready` and saves `__mr.screenshot`; it
+needs the release wasm (the dev wasm, 85 MB, overflows the DevTools
+connection's 100 MB buffer) and a scene under about 100 MB.
+
+## D177. Shader identifiers in imported modules
+
+2026-10-03, WP 2.3. naga_oil refuses identifiers ending in a digit in a
+module others import (they would need renaming on write-back), so three's
+`pow2`, `pow4`, `max3` and float `F_Schlick` are `pow2f`, `pow4f`, `max3v`
+and `F_Schlick_f` in `three_std.wgsl`; the material fields `specularF90`,
+`clearcoatF0` and `clearcoatF90` are `f90_specular`, `f0_clearcoat` and
+`f90_clearcoat`; `roughnessToMip`'s constants are locals. The sky's noise
+lookups inside branches are taken before the branches (WGSL wants
+implicit-derivative samples in uniform control flow), and GLSL's
+`smoothstep` with reversed edges is written out (`smooth_step`), since WGSL
+leaves it undefined.

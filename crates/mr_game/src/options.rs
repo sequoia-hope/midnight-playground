@@ -55,6 +55,20 @@ pub struct Options {
     pub smoke_test: bool,
     /// Window size natively (`--size 1280x800`).
     pub size: Option<(u32, u32)>,
+    /// `?freeze=1` (the JS hook): scenery and the sky's clock hold still.
+    pub freeze: bool,
+    /// `?t=`: the time of day pinned at this fraction of the route.
+    pub t: Option<f64>,
+    /// `?mat=<names>` / `--materials <names>`: render the material test
+    /// scenes (`parity/golden/materials/scenes.json`) instead of a level:
+    /// `all`, or names separated by commas.
+    pub materials: Option<String>,
+    /// Natively: fly to each station of a `stations.json` (as
+    /// `tools/parity/shots.mjs` writes it), save a PNG of each in `out`.
+    pub stations: Option<String>,
+    /// Natively, with `materials` or `stations`: the directory the PNGs go to (one
+    /// directory per group, as `tools/parity/materials.mjs` writes them).
+    pub out: Option<String>,
 }
 
 impl Default for Options {
@@ -68,6 +82,11 @@ impl Default for Options {
             after: 10,
             smoke_test: false,
             size: None,
+            freeze: false,
+            t: None,
+            materials: None,
+            stations: None,
+            out: None,
         }
     }
 }
@@ -143,6 +162,9 @@ impl Options {
             });
         }
         o.hq = get("hq").map(|v| v == "1" || v == "true");
+        o.freeze = get("freeze").is_some_and(|v| v == "1");
+        o.t = get("t").map(number).filter(|t| t.is_finite());
+        o.materials = get("mat").map(str::to_owned);
         o
     }
 
@@ -155,6 +177,9 @@ impl Options {
         let mut after = None;
         let mut smoke = false;
         let mut size = None;
+        let mut materials = None;
+        let mut out = None;
+        let mut stations = None;
         let mut it = args.iter();
         while let Some(a) = it.next() {
             let mut val = |name: &str| {
@@ -180,6 +205,9 @@ impl Options {
                     size = Some((w, h));
                 }
                 "--smoke-test" => smoke = true,
+                "--materials" => materials = Some(val("--materials")?),
+                "--out" => out = Some(val("--out")?),
+                "--stations" => stations = Some(val("--stations")?),
                 s if s.contains('=') && !s.starts_with('-') => query.push(s.to_owned()),
                 other => return Err(format!("unknown argument `{other}`\n\n{}", usage())),
             }
@@ -191,6 +219,11 @@ impl Options {
         }
         o.smoke_test = smoke;
         o.size = size;
+        if materials.is_some() {
+            o.materials = materials;
+        }
+        o.out = out;
+        o.stations = stations;
         Ok(o)
     }
 }
@@ -198,9 +231,12 @@ impl Options {
 pub fn usage() -> &'static str {
     "usage: midnight-racer [--level <id>] [--scene <file.mrscene>] [--query \"s=300&h=5&v=30\"]\n\
      \x20                     [--screenshot <out.png> [--after <frames>]] [--smoke-test] [--size WxH]\n\
+     \x20      midnight-racer --materials all|<name,...> --out <dir>\n\
+     \x20      midnight-racer --level <id> --stations <stations.json> --out <dir> [--query freeze=1]\n\
      \n\
      levels: sierra coast streets desert seaside cruise, or models\n\
-     query:  the JS game's names: level, s, h, back, lat, v, yaw, pitch; hq=0|1; scene=<file>"
+     query:  the JS game's names: level, s, h, back, lat, v, yaw, pitch, t, freeze=1; hq=0|1;\n\
+     \x20       scene=<file>; mat=<names> (the material test scenes)"
 }
 
 #[cfg(test)]
