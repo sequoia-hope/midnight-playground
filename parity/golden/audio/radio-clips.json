@@ -1,0 +1,1211 @@
+{
+ "sampleRate": 48000,
+ "clips": [
+  {
+   "file": "all-units-suspect-heading-east-on-financial-district-pursuit-is-on.mp3",
+   "sha256": "9cb93ea626a1cfe08e7f3f3713ffbd530e7255a9e9b7d8e85a327faf73bad6c8",
+   "channels": 1,
+   "length": 210690
+  },
+  {
+   "file": "all-units-suspect-heading-east-on-hollow-point-pursuit-is-on.mp3",
+   "sha256": "5fde3daff11e0cb5403e283a9dbb2583df1f6b30702dc0aa38e40ea50a0c7e3c",
+   "channels": 1,
+   "length": 214500
+  },
+  {
+   "file": "all-units-suspect-heading-east-on-interstate-9-pursuit-is-on.mp3",
+   "sha256": "48ea55c22d00d831079dfe6b3c19c8413beaaf05ec4eb83b9747c0065e8be31c",
+   "channels": 1,
+   "length": 207105
+  },
+  {
+   "file": "all-units-suspect-heading-east-on-neon-district-pursuit-is-on.mp3",
+   "sha256": "82648538fe53771b8e5b26c7baf20dd459b12e97580f8bf77a79bd741f293663",
+   "channels": 1,
+   "length": 208641
+  },
+  {
+   "file": "all-units-suspect-heading-east-on-nob-hill-pursuit-is-on.mp3",
+   "sha256": "15ffea279937a7ba145e9c501ffbfe36e550dcc98ba4be5378ac9f82ed9d446f",
+   "channels": 1,
+   "length": 203010
+  },
+  {
+   "file": "all-units-suspect-heading-east-on-old-mill-valley-pursuit-is-on.mp3",
+   "sha256": "28bfd28441e7bb1a7160b62d612053331c991a8f45f78ca8a7af7bc37dbde200",
+   "channels": 1,
+   "length": 212736
+  },
+  {
+   "file": "all-units-suspect-heading-east-on-port-meridian-pursuit-is-on.mp3",
+   "sha256": "735e65a21b6143176264f0875532e9d1ac6b5993bf8615b357551091049113f0",
+   "channels": 1,
+   "length": 199170
+  },
+  {
+   "file": "all-units-suspect-heading-east-on-red-rock-canyon-pursuit-is-on.mp3",
+   "sha256": "7f41c1e940070c7e79cd12681dcd372516605b59df0f5cc525269b63df4a62c9",
+   "channels": 1,
+   "length": 214785
+  },
+  {
+   "file": "all-units-suspect-heading-east-on-route-66-pursuit-is-on.mp3",
+   "sha256": "99ce208ecdcf6abf32803ce64bbc85ee5aa3eaada8431c968e98524351724831",
+   "channels": 1,
+   "length": 205314
+  },
+  {
+   "file": "all-units-suspect-heading-east-on-seabright-pursuit-is-on.mp3",
+   "sha256": "073c43847aeb9b8fcc49723124d9ea1bcc6e90bbc1f6103f962fec64e7920586",
+   "channels": 1,
+   "length": 196608
+  },
+  {
+   "file": "all-units-suspect-heading-east-on-sierra-pass-pursuit-is-on.mp3",
+   "sha256": "b4b02e5c8f3ae14da1277c2ac9acdeb2766844597efa6226d3169f33677d6906",
+   "channels": 1,
+   "length": 224514
+  },
+  {
+   "file": "all-units-suspect-heading-east-on-silver-lake-pursuit-is-on.mp3",
+   "sha256": "f57a1a8f26cfba945d1759c8b6c44a263e39dbf0d26ba71f8b02495bc45524d7",
+   "channels": 1,
+   "length": 206082
+  },
+  {
+   "file": "all-units-suspect-heading-north-on-financial-district-pursuit-is-on.mp3",
+   "sha256": "96e58c2c93258b20dd64c02373bdec1f177efa417fd9220efa734c1c025cb75d",
+   "channels": 1,
+   "length": 233217
+  },
+  {
+   "file": "all-units-suspect-heading-north-on-hollow-point-pursuit-is-on.mp3",
+   "sha256": "fea3f241c373b0614936120f4beb093dfcb5942fdd72e09c73a4832c1f19f7cd",
+   "channels": 1,
+   "length": 206082
+  },
+  {
+   "file": "all-units-suspect-heading-north-on-interstate-9-pursuit-is-on.mp3",
+   "sha256": "a3b2bcddfd04c159474b72c8009d79e05fe58ce5115166a741da3d16fe3eefad",
+   "channels": 1,
+   "length": 234972
+  },
+  {
+   "file": "all-units-suspect-heading-north-on-neon-district-pursuit-is-on.mp3",
+   "sha256": "2f2e02ae6fde9088694bb51673aacb32e0f4b63b3d7c4e53a1691ce7e430e3a3",
+   "channels": 1,
+   "length": 217602
+  },
+  {
+   "file": "all-units-suspect-heading-north-on-nob-hill-pursuit-is-on.mp3",
+   "sha256": "b2ccddfd9d2fd240819993cd640343125e7550aaef317b50b0f79e9d4869f0ce",
+   "channels": 1,
+   "length": 196353
+  },
+  {
+   "file": "all-units-suspect-heading-north-on-old-mill-valley-pursuit-is-on.mp3",
+   "sha256": "88a288546185ba690a727ccbca2d39d3e421d0034b95d372147cee062866b091",
+   "channels": 1,
+   "length": 234753
+  },
+  {
+   "file": "all-units-suspect-heading-north-on-port-meridian-pursuit-is-on.mp3",
+   "sha256": "25b3cec8a79548a5a6de17c91e5de05fbf1a3cf6a02571b650db44d749155ff0",
+   "channels": 1,
+   "length": 198402
+  },
+  {
+   "file": "all-units-suspect-heading-north-on-red-rock-canyon-pursuit-is-on.mp3",
+   "sha256": "d136b4d3be294edeac4416cdf2c8b7e765118fe83d9a4fac88178a2c0d066fb3",
+   "channels": 1,
+   "length": 213762
+  },
+  {
+   "file": "all-units-suspect-heading-north-on-route-66-pursuit-is-on.mp3",
+   "sha256": "dcf588f89a3f73080b192a8f7530d952907c88002a7a1416df39ee6bf7ca8838",
+   "channels": 1,
+   "length": 187137
+  },
+  {
+   "file": "all-units-suspect-heading-north-on-seabright-pursuit-is-on.mp3",
+   "sha256": "9b38e968e8a4abc5addc8a0f68cb59d66f2645d799ff346cdd095afc2aa3a753",
+   "channels": 1,
+   "length": 196866
+  },
+  {
+   "file": "all-units-suspect-heading-north-on-sierra-pass-pursuit-is-on.mp3",
+   "sha256": "10a9a3622106a46415f33ffac9abd2c59a27a608debf466752b2b8587b5255b9",
+   "channels": 1,
+   "length": 215298
+  },
+  {
+   "file": "all-units-suspect-heading-north-on-silver-lake-pursuit-is-on.mp3",
+   "sha256": "5d1c76bb20d099312b9fda76411b974916058c258d1f4189ad0778e59bc20508",
+   "channels": 1,
+   "length": 182529
+  },
+  {
+   "file": "all-units-suspect-heading-northeast-on-financial-district-pursuit-is-on.mp3",
+   "sha256": "f2e91c04fd788f9eca2406e846e65d2aaa5918804b65b77043e877f17137c505",
+   "channels": 1,
+   "length": 220416
+  },
+  {
+   "file": "all-units-suspect-heading-northeast-on-hollow-point-pursuit-is-on.mp3",
+   "sha256": "d4fef1af7c081d6a71b78ed9a3790d428ef7ccb0f9ca7404142f0baa9d9642ec",
+   "channels": 1,
+   "length": 211194
+  },
+  {
+   "file": "all-units-suspect-heading-northeast-on-interstate-9-pursuit-is-on.mp3",
+   "sha256": "939088f94838a9a2fd4fadb07a59942a6850d56974406baeec54c2cbd4bad04f",
+   "channels": 1,
+   "length": 206337
+  },
+  {
+   "file": "all-units-suspect-heading-northeast-on-neon-district-pursuit-is-on.mp3",
+   "sha256": "9792ddbced218a31e4f75d0c94072826fc11cc43985b2ddf29d7e7365480e41d",
+   "channels": 1,
+   "length": 232410
+  },
+  {
+   "file": "all-units-suspect-heading-northeast-on-nob-hill-pursuit-is-on.mp3",
+   "sha256": "150797455ad7537800c6975ce21389b5012a186bbf259dd6152c787bfe5f3958",
+   "channels": 1,
+   "length": 216576
+  },
+  {
+   "file": "all-units-suspect-heading-northeast-on-old-mill-valley-pursuit-is-on.mp3",
+   "sha256": "1e99c0e01af503618af8b96d2336de0da865d66eeea0672bb7672d320700c139",
+   "channels": 1,
+   "length": 214530
+  },
+  {
+   "file": "all-units-suspect-heading-northeast-on-port-meridian-pursuit-is-on.mp3",
+   "sha256": "4fe9e287e449198bcee11a92af04bedbc9f61c6ff21eced5e71f481a3c36a496",
+   "channels": 1,
+   "length": 214017
+  },
+  {
+   "file": "all-units-suspect-heading-northeast-on-red-rock-canyon-pursuit-is-on.mp3",
+   "sha256": "acbeb851de7bfd8fa3cb869b4d9567c5aa053934536d656bf887d714c0f3097b",
+   "channels": 1,
+   "length": 206070
+  },
+  {
+   "file": "all-units-suspect-heading-northeast-on-route-66-pursuit-is-on.mp3",
+   "sha256": "064d29de5d382d5df626be7176171a4bdee5851e1d8b3dc955431bc3da09b948",
+   "channels": 1,
+   "length": 220674
+  },
+  {
+   "file": "all-units-suspect-heading-northeast-on-seabright-pursuit-is-on.mp3",
+   "sha256": "4f6953ae8c365fed4ac4459f64e930ebe9ac7e0b2c02d39cb639c3305ce5c08f",
+   "channels": 1,
+   "length": 193281
+  },
+  {
+   "file": "all-units-suspect-heading-northeast-on-sierra-pass-pursuit-is-on.mp3",
+   "sha256": "123d0cec98acbd5f2bdc3672d69aa6082394a875b6b3912bd2846df5b7c53b08",
+   "channels": 1,
+   "length": 227328
+  },
+  {
+   "file": "all-units-suspect-heading-northeast-on-silver-lake-pursuit-is-on.mp3",
+   "sha256": "abb013cd0f6d118f5d6ca920ec34ca48d317067e3fb926eb773a9f3d401a6c1c",
+   "channels": 1,
+   "length": 230658
+  },
+  {
+   "file": "all-units-suspect-heading-northwest-on-financial-district-pursuit-is-on.mp3",
+   "sha256": "159b03d205b6f0bae702c2fc82ac8cd5701f4a0179baf7e03f14ee88c2f9389d",
+   "channels": 1,
+   "length": 223983
+  },
+  {
+   "file": "all-units-suspect-heading-northwest-on-hollow-point-pursuit-is-on.mp3",
+   "sha256": "fb0781004f0c9f3ace3951a39cecfe16b020e7b30f3cec3b1f86094299965ad7",
+   "channels": 1,
+   "length": 238605
+  },
+  {
+   "file": "all-units-suspect-heading-northwest-on-interstate-9-pursuit-is-on.mp3",
+   "sha256": "bc124a802d88cf9c9527bf361697a5adcc438ae976c7dd61190c8ed47634f694",
+   "channels": 1,
+   "length": 229965
+  },
+  {
+   "file": "all-units-suspect-heading-northwest-on-neon-district-pursuit-is-on.mp3",
+   "sha256": "d218c5d48638663eaf2656c0ac26e3b7cb446c485a0fbab1ac5ae76bdd48af45",
+   "channels": 1,
+   "length": 235776
+  },
+  {
+   "file": "all-units-suspect-heading-northwest-on-nob-hill-pursuit-is-on.mp3",
+   "sha256": "d2ebfcd5836016d162db748834cff9c181d8fd8d83f22bb27efc0066d5731409",
+   "channels": 1,
+   "length": 252429
+  },
+  {
+   "file": "all-units-suspect-heading-northwest-on-old-mill-valley-pursuit-is-on.mp3",
+   "sha256": "327f397d725997e74b61fa77d449213e1904b343d1732595702d1a59b184e817",
+   "channels": 1,
+   "length": 209229
+  },
+  {
+   "file": "all-units-suspect-heading-northwest-on-port-meridian-pursuit-is-on.mp3",
+   "sha256": "f132a7683591031a8ce1f4d0cf7167c0dc699f1f46f8fa4260701f57ca6d6767",
+   "channels": 1,
+   "length": 204801
+  },
+  {
+   "file": "all-units-suspect-heading-northwest-on-red-rock-canyon-pursuit-is-on.mp3",
+   "sha256": "6cac2f78ae8fd0383c92d8e03b43b1e9632d3d4ab1d29de1bfe40b7804eecfe2",
+   "channels": 1,
+   "length": 235776
+  },
+  {
+   "file": "all-units-suspect-heading-northwest-on-route-66-pursuit-is-on.mp3",
+   "sha256": "4bb4c297edfd5b60f544236d2a715f916f4540fe58719d969cef91302f5955f5",
+   "channels": 1,
+   "length": 225282
+  },
+  {
+   "file": "all-units-suspect-heading-northwest-on-seabright-pursuit-is-on.mp3",
+   "sha256": "591bc7b5471c69ee86e3b24eac63507bfeb96c369f883cc432ebaf50c843fc11",
+   "channels": 1,
+   "length": 204045
+  },
+  {
+   "file": "all-units-suspect-heading-northwest-on-sierra-pass-pursuit-is-on.mp3",
+   "sha256": "bc8b7850c2c74ade8e6ed8807b818fc80b7d04b9dc502eb9c18e46ed22973be7",
+   "channels": 1,
+   "length": 225792
+  },
+  {
+   "file": "all-units-suspect-heading-northwest-on-silver-lake-pursuit-is-on.mp3",
+   "sha256": "1d19ee878e7d9073677accd13a1245366e1ee60d748e1772edf470f7c33a15a3",
+   "channels": 1,
+   "length": 222465
+  },
+  {
+   "file": "all-units-suspect-heading-south-on-financial-district-pursuit-is-on.mp3",
+   "sha256": "16bcb896c7722b43add331668f5379dcfd367838e248a569e4f693b5ec945571",
+   "channels": 1,
+   "length": 213762
+  },
+  {
+   "file": "all-units-suspect-heading-south-on-hollow-point-pursuit-is-on.mp3",
+   "sha256": "2e0c31fa1bf28b5156d633cf6c54d22b07acc1ea73c17cf05e10ad5514a5fceb",
+   "channels": 1,
+   "length": 179202
+  },
+  {
+   "file": "all-units-suspect-heading-south-on-interstate-9-pursuit-is-on.mp3",
+   "sha256": "0e4661f86a5dbb5bbcb876fda59677b9684a51cf565e378d2649f3d861d50857",
+   "channels": 1,
+   "length": 217869
+  },
+  {
+   "file": "all-units-suspect-heading-south-on-neon-district-pursuit-is-on.mp3",
+   "sha256": "a0b462736fb9b564c7ad768713ef455e5068ea0bc75d2d851bfbf93b53f154b8",
+   "channels": 1,
+   "length": 186624
+  },
+  {
+   "file": "all-units-suspect-heading-south-on-nob-hill-pursuit-is-on.mp3",
+   "sha256": "4849e576ce78a2f734d629639631a5f683ec0eae6b83df26b32b05fe4b8218a5",
+   "channels": 1,
+   "length": 194562
+  },
+  {
+   "file": "all-units-suspect-heading-south-on-old-mill-valley-pursuit-is-on.mp3",
+   "sha256": "1db989f033ab4e9925a79859a6879c5cf553a90fba5bc2e49304a791fdd4ed15",
+   "channels": 1,
+   "length": 215040
+  },
+  {
+   "file": "all-units-suspect-heading-south-on-port-meridian-pursuit-is-on.mp3",
+   "sha256": "5a82a18c529cce20aca488bc7c6410251e8739f03790872f3ce5fc048da64911",
+   "channels": 1,
+   "length": 207618
+  },
+  {
+   "file": "all-units-suspect-heading-south-on-red-rock-canyon-pursuit-is-on.mp3",
+   "sha256": "0e856d27074457ed54d4f8ab5d0dd8512f9942cb5cbece21d470fabafcd1df3e",
+   "channels": 1,
+   "length": 194304
+  },
+  {
+   "file": "all-units-suspect-heading-south-on-route-66-pursuit-is-on.mp3",
+   "sha256": "1a8f84b4012991e4589ac6c23123456ce8b6774ec20058f30219fde86525be83",
+   "channels": 1,
+   "length": 213249
+  },
+  {
+   "file": "all-units-suspect-heading-south-on-seabright-pursuit-is-on.mp3",
+   "sha256": "9498e767ee024e2ab312abaadbbd530308185e5b288854a76d1c0a00b20d4001",
+   "channels": 1,
+   "length": 215298
+  },
+  {
+   "file": "all-units-suspect-heading-south-on-sierra-pass-pursuit-is-on.mp3",
+   "sha256": "5c2d9a8c568ef3ff7b8118e5dd6d53a249fbca41a78bd3114643931cf1863b4b",
+   "channels": 1,
+   "length": 234240
+  },
+  {
+   "file": "all-units-suspect-heading-south-on-silver-lake-pursuit-is-on.mp3",
+   "sha256": "fb6368b89b021cd9708f717925b54122425bd9b46c6efa27ec1eb663b090bd30",
+   "channels": 1,
+   "length": 189954
+  },
+  {
+   "file": "all-units-suspect-heading-southeast-on-financial-district-pursuit-is-on.mp3",
+   "sha256": "124cb62f7786c9727d8458f884709146d63237acaace4faf0c33ac4f46e6e3a0",
+   "channels": 1,
+   "length": 238080
+  },
+  {
+   "file": "all-units-suspect-heading-southeast-on-hollow-point-pursuit-is-on.mp3",
+   "sha256": "f28196f0aa206f613ac4d9760f9750d7569e0509bf67a4018292c01514d738fc",
+   "channels": 1,
+   "length": 205569
+  },
+  {
+   "file": "all-units-suspect-heading-southeast-on-interstate-9-pursuit-is-on.mp3",
+   "sha256": "c9809c067e6efa97bb6179f63280ac0f08181af19000a1af83a5927f89185821",
+   "channels": 1,
+   "length": 228609
+  },
+  {
+   "file": "all-units-suspect-heading-southeast-on-neon-district-pursuit-is-on.mp3",
+   "sha256": "82f23d397324165e21d8ad720e005443292dc6ed8b86f1afef382e6f08cac619",
+   "channels": 1,
+   "length": 219138
+  },
+  {
+   "file": "all-units-suspect-heading-southeast-on-nob-hill-pursuit-is-on.mp3",
+   "sha256": "a7c4154e6f31795256c14b7cbf198b4b00f62d259985fc6e93dad87bd5652056",
+   "channels": 1,
+   "length": 226050
+  },
+  {
+   "file": "all-units-suspect-heading-southeast-on-old-mill-valley-pursuit-is-on.mp3",
+   "sha256": "06dc80a88acb52298f53b36deaa170199f0c51fd841aba40b53f901c8f0c05f2",
+   "channels": 1,
+   "length": 221442
+  },
+  {
+   "file": "all-units-suspect-heading-southeast-on-port-meridian-pursuit-is-on.mp3",
+   "sha256": "340523673062b1256c3051af76d8e5ec9f84759be2744b75ed9b79c595f3ca73",
+   "channels": 1,
+   "length": 216321
+  },
+  {
+   "file": "all-units-suspect-heading-southeast-on-red-rock-canyon-pursuit-is-on.mp3",
+   "sha256": "ba4b3af51716fa0dbcc69fcc1c49ea09bad0539a89226ddbde626b68e032403d",
+   "channels": 1,
+   "length": 201474
+  },
+  {
+   "file": "all-units-suspect-heading-southeast-on-route-66-pursuit-is-on.mp3",
+   "sha256": "9059a0dc654ba39063fcb99f64d4ed62d5b27b655c27fdb19afd387d76d4bb45",
+   "channels": 1,
+   "length": 250368
+  },
+  {
+   "file": "all-units-suspect-heading-southeast-on-seabright-pursuit-is-on.mp3",
+   "sha256": "9fac156564c8618f25f64e6bb89e200123eab8071f10d37309259b4c999abd9d",
+   "channels": 1,
+   "length": 218370
+  },
+  {
+   "file": "all-units-suspect-heading-southeast-on-sierra-pass-pursuit-is-on.mp3",
+   "sha256": "698fe0a5bc57f6705b411f37daaaf15aa88d30d54b3547cee44e646b8f02774d",
+   "channels": 1,
+   "length": 195840
+  },
+  {
+   "file": "all-units-suspect-heading-southeast-on-silver-lake-pursuit-is-on.mp3",
+   "sha256": "ea12c6380cecfc72a1a5b5f6658eef8967390644f7285a35c1eb5696da33fbaf",
+   "channels": 1,
+   "length": 224001
+  },
+  {
+   "file": "all-units-suspect-heading-southwest-on-financial-district-pursuit-is-on.mp3",
+   "sha256": "7c8770030329c325db4f40f29cd51bbfe5fe422773a87340f7f19045369ce387",
+   "channels": 1,
+   "length": 226533
+  },
+  {
+   "file": "all-units-suspect-heading-southwest-on-hollow-point-pursuit-is-on.mp3",
+   "sha256": "2942ca61ff0dd0100f6108e12591eca21c23c0a270482462ead0513d77e8f4ad",
+   "channels": 1,
+   "length": 233730
+  },
+  {
+   "file": "all-units-suspect-heading-southwest-on-interstate-9-pursuit-is-on.mp3",
+   "sha256": "a2c53a4d553090e4745b669911e28689c6728186db9edf9dca83d5c0a91224c4",
+   "channels": 1,
+   "length": 208128
+  },
+  {
+   "file": "all-units-suspect-heading-southwest-on-neon-district-pursuit-is-on.mp3",
+   "sha256": "a8ddfa98e7554a3e0b247ea71a3670dc80e60bae66f75e05106cfed3cb696791",
+   "channels": 1,
+   "length": 237270
+  },
+  {
+   "file": "all-units-suspect-heading-southwest-on-nob-hill-pursuit-is-on.mp3",
+   "sha256": "dac4ee69e058db6c09bc659ad8fc1b08c7823a6964f617717203ba3d62d6469c",
+   "channels": 1,
+   "length": 196353
+  },
+  {
+   "file": "all-units-suspect-heading-southwest-on-old-mill-valley-pursuit-is-on.mp3",
+   "sha256": "52c5bfd9f047ea0ba1114bb9df028683315150afe745e44cd424764a0f01c322",
+   "channels": 1,
+   "length": 217089
+  },
+  {
+   "file": "all-units-suspect-heading-southwest-on-port-meridian-pursuit-is-on.mp3",
+   "sha256": "b011a1746769a5f938131d9e67f394749107a2b54b877326768b15240717fa69",
+   "channels": 1,
+   "length": 225246
+  },
+  {
+   "file": "all-units-suspect-heading-southwest-on-red-rock-canyon-pursuit-is-on.mp3",
+   "sha256": "17fffe003963ab5db38a5dc4e039a0c614955213b1f8a6d63aed08dab511a7a2",
+   "channels": 1,
+   "length": 237570
+  },
+  {
+   "file": "all-units-suspect-heading-southwest-on-route-66-pursuit-is-on.mp3",
+   "sha256": "f1f5c6f9861c3f82c03ea2e593aa05d0278fd3790bac337d2dcf722a28d1cdfa",
+   "channels": 1,
+   "length": 225510
+  },
+  {
+   "file": "all-units-suspect-heading-southwest-on-seabright-pursuit-is-on.mp3",
+   "sha256": "6a10e57b2126c1977f4339e329d2a6325c0395dbe8aeb939569aa2379791ae72",
+   "channels": 1,
+   "length": 204801
+  },
+  {
+   "file": "all-units-suspect-heading-southwest-on-sierra-pass-pursuit-is-on.mp3",
+   "sha256": "fad90e419e77dd824af4bb04207fc02ebb10d45758aaddc6fa6f7740170230e8",
+   "channels": 1,
+   "length": 227841
+  },
+  {
+   "file": "all-units-suspect-heading-southwest-on-silver-lake-pursuit-is-on.mp3",
+   "sha256": "0302cd8efc42fcac48e6052f31830541b0523a1f6b36ab5a815086b32c5640a9",
+   "channels": 1,
+   "length": 218625
+  },
+  {
+   "file": "all-units-suspect-heading-west-on-financial-district-pursuit-is-on.mp3",
+   "sha256": "159f06f5a78763ede5a687e043899b3bfe051e02b169f92f8d8a39a40256c8ae",
+   "channels": 1,
+   "length": 198657
+  },
+  {
+   "file": "all-units-suspect-heading-west-on-hollow-point-pursuit-is-on.mp3",
+   "sha256": "541d3ae466df0c5a8d53891fb17b3e4fa907514c573b48bf5e40e66d2eadf517",
+   "channels": 1,
+   "length": 197889
+  },
+  {
+   "file": "all-units-suspect-heading-west-on-interstate-9-pursuit-is-on.mp3",
+   "sha256": "151a856f4b70527cfd2b0e938e1a1db19fbb9db16cba3ba7de77c77ddbdadb57",
+   "channels": 1,
+   "length": 218625
+  },
+  {
+   "file": "all-units-suspect-heading-west-on-neon-district-pursuit-is-on.mp3",
+   "sha256": "1028825bfe33b78b6cb08e1703afcdc70ce08dbf636ad7d6811a9d7e7086a75c",
+   "channels": 1,
+   "length": 231123
+  },
+  {
+   "file": "all-units-suspect-heading-west-on-nob-hill-pursuit-is-on.mp3",
+   "sha256": "a901b68b72517c9022670c01d1e35980bd5d0a2ac63c52cd7a7373cc42293811",
+   "channels": 1,
+   "length": 205056
+  },
+  {
+   "file": "all-units-suspect-heading-west-on-old-mill-valley-pursuit-is-on.mp3",
+   "sha256": "40517d6a47a48a14734a8a4359be6e4d16b6ca04221c7c79d71a4a024b980968",
+   "channels": 1,
+   "length": 217089
+  },
+  {
+   "file": "all-units-suspect-heading-west-on-port-meridian-pursuit-is-on.mp3",
+   "sha256": "0dee9d627abb529000be4b19ad0554f0fa3abafb489401e8debc70c30bf03708",
+   "channels": 1,
+   "length": 197376
+  },
+  {
+   "file": "all-units-suspect-heading-west-on-red-rock-canyon-pursuit-is-on.mp3",
+   "sha256": "948b038cd8d77cec100b79e0eef28142c6bfe84fcfd46caf51b5405c1a947fc2",
+   "channels": 1,
+   "length": 203265
+  },
+  {
+   "file": "all-units-suspect-heading-west-on-route-66-pursuit-is-on.mp3",
+   "sha256": "aaccbde00494f87da194adb1dfd429796dcceda216ca4e82ba19ab516bf57363",
+   "channels": 1,
+   "length": 234753
+  },
+  {
+   "file": "all-units-suspect-heading-west-on-seabright-pursuit-is-on.mp3",
+   "sha256": "b162f198b055960f66184d1626fe53a69ae278738f38aa4c49b837a395e7a2d9",
+   "channels": 1,
+   "length": 187137
+  },
+  {
+   "file": "all-units-suspect-heading-west-on-sierra-pass-pursuit-is-on.mp3",
+   "sha256": "4dd624d3bc3608efd570fe5e3c776797a5bb98bcfbea8497c31c9381f3a6befa",
+   "channels": 1,
+   "length": 206337
+  },
+  {
+   "file": "all-units-suspect-heading-west-on-silver-lake-pursuit-is-on.mp3",
+   "sha256": "79fa8e256bc07378e541028de26101a81ce17319b24453065860c43c4973fa30",
+   "channels": 1,
+   "length": 221154
+  },
+  {
+   "file": "duke-is-in-custody.mp3",
+   "sha256": "978abab18918ab79a0fb4d0de695e4a1807e569a7b70023f7dda739990f261d2",
+   "channels": 1,
+   "length": 50946
+  },
+  {
+   "file": "heat-level-2-requesting-more-units.mp3",
+   "sha256": "12d2da0d0823e96415d052b5ccddf3818aecf68ec033999d3abb88a03bd2f065",
+   "channels": 1,
+   "length": 115968
+  },
+  {
+   "file": "heat-level-3-requesting-more-units.mp3",
+   "sha256": "04124953144050f8bbfeaddc8015478b803c15cf18887c10b11eb402dc60dc7e",
+   "channels": 1,
+   "length": 123906
+  },
+  {
+   "file": "heat-level-4-bring-in-everything-we-ve-got.mp3",
+   "sha256": "cd09f93721114005fd41adbcef6b3452488c0479b8dcc7ba91dd28472a7c3edb",
+   "channels": 1,
+   "length": 119553
+  },
+  {
+   "file": "heat-level-5-bring-in-everything-we-ve-got.mp3",
+   "sha256": "45aff44056fda0d74539a0ab0109e05a7d4c4c4a1d7da011295dfaa2ceadeb19",
+   "channels": 1,
+   "length": 114945
+  },
+  {
+   "file": "heavy-roadblock-in-position-nobody-gets-through.2.mp3",
+   "sha256": "2d81200a176b49fe6e1efbb78e8f9db2df5baeb24950c63b5b75db385cb0de6f",
+   "channels": 1,
+   "length": 144642
+  },
+  {
+   "file": "heavy-roadblock-in-position-nobody-gets-through.mp3",
+   "sha256": "4df629f287ea1e76c1766dffb18ce5a5781d3060cfea428ab05a2978c2818345",
+   "channels": 1,
+   "length": 133632
+  },
+  {
+   "file": "juno-is-in-custody.mp3",
+   "sha256": "31ed6191c78fc3c060f1cd25e78983a5120df0dffb8aa8935a7bc058897563eb",
+   "channels": 1,
+   "length": 67842
+  },
+  {
+   "file": "kaito-is-in-custody.mp3",
+   "sha256": "dfa53456e235defa438b64e7192e16b7bd88081ddb8c67b36149eb8e05cf7649",
+   "channels": 1,
+   "length": 59136
+  },
+  {
+   "file": "lost-visual-all-units-search-the-area.2.mp3",
+   "sha256": "33c20f808850975fbe5a01b02b8555977104dc3ecee8f90d1d76d7beece811be",
+   "channels": 1,
+   "length": 142593
+  },
+  {
+   "file": "lost-visual-all-units-search-the-area.mp3",
+   "sha256": "ae32fad61c72ed9082f7b66bda71a5b6904ca2554216a01e8487f91d798d02d9",
+   "channels": 1,
+   "length": 157698
+  },
+  {
+   "file": "marlowe-is-in-custody.mp3",
+   "sha256": "f2bc3d9e1971419c2861be136649d5ee5c3cff18cdc67bd85838fab1e2e3e8f6",
+   "channels": 1,
+   "length": 69888
+  },
+  {
+   "file": "nina-is-in-custody.mp3",
+   "sha256": "53ca3f3c76d1f214f92c812edf14f8d792288e08104243fc41d40f7e1e918c9d",
+   "channels": 1,
+   "length": 64077
+  },
+  {
+   "file": "razor-is-in-custody.mp3",
+   "sha256": "7ea240e68fdedfa57f86f63c8832102996f8e061051af338c531257c1502ea0b",
+   "channels": 1,
+   "length": 65805
+  },
+  {
+   "file": "roadblock-set-up-ahead-suspect-is-heading-right-for-it.2.mp3",
+   "sha256": "85d1f95555bf4216572fe7373f999d785d42b8a0bbf65d324e9ca958834aa6ee",
+   "channels": 1,
+   "length": 153345
+  },
+  {
+   "file": "roadblock-set-up-ahead-suspect-is-heading-right-for-it.mp3",
+   "sha256": "f3a9205abfbec3e6d76e4cbcd2059c983f2d087cd470252b88fbfb19e6bcb59d",
+   "channels": 1,
+   "length": 154368
+  },
+  {
+   "file": "rook-is-in-custody.mp3",
+   "sha256": "ad8ef90000f2f80d4e72d0a39c46e83b5f518fd1142c5f7478da9925b0945bcd",
+   "channels": 1,
+   "length": 55809
+  },
+  {
+   "file": "speeder-on-financial-district-moving-to-intercept.mp3",
+   "sha256": "0f693cdd3faa8b987be49049f6587311d7582b7a7c23a25eba3da155b6abc85d",
+   "channels": 1,
+   "length": 118530
+  },
+  {
+   "file": "speeder-on-hollow-point-moving-to-intercept.mp3",
+   "sha256": "543c924af554584f00924e9c6f261879b052b389384f3efe3d24c59c863c5a0f",
+   "channels": 1,
+   "length": 114432
+  },
+  {
+   "file": "speeder-on-interstate-9-moving-to-intercept.mp3",
+   "sha256": "1ff62c1eafd5ee71607b0a199f2555be20cd54145a32215348af1ab0cb6898f5",
+   "channels": 1,
+   "length": 127746
+  },
+  {
+   "file": "speeder-on-neon-district-moving-to-intercept.mp3",
+   "sha256": "795d8821d869eea374b8af9eb53ada5a65f7a82b437f32de43fecd6a5789fd3d",
+   "channels": 1,
+   "length": 119808
+  },
+  {
+   "file": "speeder-on-nob-hill-moving-to-intercept.mp3",
+   "sha256": "495dc20cb2bfbbfe8c2f1c525cdc2ef22d8e63da698c82b9a58b6037aaac3cac",
+   "channels": 1,
+   "length": 130305
+  },
+  {
+   "file": "speeder-on-old-mill-valley-moving-to-intercept.mp3",
+   "sha256": "b2163ee0031e6886e745b3e2fcf9568a47994cc45dae274255a14ce1f1267c32",
+   "channels": 1,
+   "length": 121344
+  },
+  {
+   "file": "speeder-on-port-meridian-moving-to-intercept.mp3",
+   "sha256": "2e3e44bb7be0226446dfe665cf0a367070245fc5cc7f175b5723caf7f3b4ee66",
+   "channels": 1,
+   "length": 122370
+  },
+  {
+   "file": "speeder-on-red-rock-canyon-moving-to-intercept.mp3",
+   "sha256": "77e51621e960b29f1da05b99286e39862b95aeb575670954386133819d404176",
+   "channels": 1,
+   "length": 136194
+  },
+  {
+   "file": "speeder-on-route-66-moving-to-intercept.mp3",
+   "sha256": "d9f174c75af8aa10ed1bb2fd2207dd8126a7f398dc7154e2dc3d078bb9a8808f",
+   "channels": 1,
+   "length": 134145
+  },
+  {
+   "file": "speeder-on-seabright-moving-to-intercept.mp3",
+   "sha256": "10fab74530e09b2c6598bf27f56cf77b94fdb2b2e298ee9f12f6cf254155007f",
+   "channels": 1,
+   "length": 114690
+  },
+  {
+   "file": "speeder-on-sierra-pass-moving-to-intercept.mp3",
+   "sha256": "da917e3bfad4ff77687637976db9015cc97c0138d7fc041f875478e8b229c535",
+   "channels": 1,
+   "length": 127488
+  },
+  {
+   "file": "speeder-on-silver-lake-moving-to-intercept.mp3",
+   "sha256": "2186261b4e45366987eb3a33517b7803da092a35061ccf5be1f01f9392cd5dec",
+   "channels": 1,
+   "length": 126465
+  },
+  {
+   "file": "spike-strip-deployed.2.mp3",
+   "sha256": "4eb38b1e10c1e7ae79faccd8c7d8671591728391adbe4acc9671441ec2fbf911",
+   "channels": 1,
+   "length": 61953
+  },
+  {
+   "file": "spike-strip-deployed.mp3",
+   "sha256": "424aa2cb5f3d832c176b961d4efc89e12c8f42ffa51d65de7e19ca04881c5cf0",
+   "channels": 1,
+   "length": 60162
+  },
+  {
+   "file": "suspect-hit-the-spikes.2.mp3",
+   "sha256": "f900eef958a0d61e906895ba7a8def522a3fa615bd0776a82cf21c71e5b82310",
+   "channels": 1,
+   "length": 66561
+  },
+  {
+   "file": "suspect-hit-the-spikes.mp3",
+   "sha256": "7eee6d760c5c3a3ebfa3281d68c5d7c18213a5cea0f64385ad5043be95592c8e",
+   "channels": 1,
+   "length": 73473
+  },
+  {
+   "file": "suspect-in-custody.2.mp3",
+   "sha256": "281279071f74dbca9861bf9ce1c604d9b6e56d718556208062f8e679fadb38d0",
+   "channels": 1,
+   "length": 60417
+  },
+  {
+   "file": "suspect-in-custody.mp3",
+   "sha256": "742c7c8dcf1dc8871f565e93fd6a64c4cd8e7c0b4c464eedc9e5c3ac80e48c07",
+   "channels": 1,
+   "length": 66816
+  },
+  {
+   "file": "suspect-vehicle-is-totalled-tow-it-back-onto-the-road.2.mp3",
+   "sha256": "6fb833d1c6c0839d5d00c955143ad09b01f9e6867c3632f496e1deb1634cbbb1",
+   "channels": 1,
+   "length": 150786
+  },
+  {
+   "file": "suspect-vehicle-is-totalled-tow-it-back-onto-the-road.mp3",
+   "sha256": "cfd8f3fe47edab3f15a35bb32b407055a46448ab1389a2625b63832eff80062b",
+   "channels": 1,
+   "length": 165888
+  },
+  {
+   "file": "unit-10-is-down-unit-down.mp3",
+   "sha256": "ea1756d310667492d9c6a827bac5773f7f207886f35fb0240f23be971b9481e7",
+   "channels": 1,
+   "length": 111444
+  },
+  {
+   "file": "unit-10-joining-the-pursuit.mp3",
+   "sha256": "6bf503c04fad76f5683c2fc0be41a248e098fad2c06f1a379e012608cd4ab668",
+   "channels": 1,
+   "length": 75777
+  },
+  {
+   "file": "unit-10.mp3",
+   "sha256": "b4fe75787ddbf1361ed270281da1b00ea7e6e54ace5aa41db45b5f13ab4e3835",
+   "channels": 1,
+   "length": 43521
+  },
+  {
+   "file": "unit-11-is-down-unit-down.mp3",
+   "sha256": "16d6ccdc327278e611769ed1b0292d52c74b5acd473ea4834a58ec9ad5044cb1",
+   "channels": 1,
+   "length": 126285
+  },
+  {
+   "file": "unit-11-joining-the-pursuit.mp3",
+   "sha256": "655282a37faa85ab64eb0db7eb5053b50031844c29928366c0495c79c2468f7c",
+   "channels": 1,
+   "length": 84993
+  },
+  {
+   "file": "unit-11.mp3",
+   "sha256": "62fb229390e908a21b84ba3ac64427384fa6db9e28457d93085b074e4320121e",
+   "channels": 1,
+   "length": 40449
+  },
+  {
+   "file": "unit-12-is-down-unit-down.mp3",
+   "sha256": "89825c3e57d57c179245b9b2462595597e8aa78fd035a02716e3760a41dc1677",
+   "channels": 1,
+   "length": 124161
+  },
+  {
+   "file": "unit-12-joining-the-pursuit.mp3",
+   "sha256": "10908f03cdc12e787cf774b90380fa35a6983f2e9f7164a9913652d05df603f4",
+   "channels": 1,
+   "length": 85248
+  },
+  {
+   "file": "unit-12.mp3",
+   "sha256": "880fc4fa3409f5232dc3e420c27839f00e044261c54e4a212decfa0c8f07e9c5",
+   "channels": 1,
+   "length": 48129
+  },
+  {
+   "file": "unit-13-is-down-unit-down.mp3",
+   "sha256": "477a51cadf8f93797ec9929f2bc3941c22d14a59e72620164723b631f27c9177",
+   "channels": 1,
+   "length": 137730
+  },
+  {
+   "file": "unit-13-joining-the-pursuit.mp3",
+   "sha256": "22e734204f4e586777931ff8385407a58eae6f92f2532d581ded01066def7377",
+   "channels": 1,
+   "length": 97536
+  },
+  {
+   "file": "unit-13.mp3",
+   "sha256": "7a711800318b1ea754ac7adaf47a496536c0a391b0e9cf74947957dc62ecba65",
+   "channels": 1,
+   "length": 46848
+  },
+  {
+   "file": "unit-14-is-down-unit-down.mp3",
+   "sha256": "12c35f1155268fce665fefb0795b4f6550407e3c44d2d61b1a6f8e6e294a71f6",
+   "channels": 1,
+   "length": 107376
+  },
+  {
+   "file": "unit-14-joining-the-pursuit.mp3",
+   "sha256": "3bdf1f9ccebc886792ea5bdc41517e1defb75df697215fb681e76c6e94bd2e58",
+   "channels": 1,
+   "length": 90624
+  },
+  {
+   "file": "unit-14.mp3",
+   "sha256": "58a38a3988730215e37e05fc2010e6ffe7fc76b5a68f968f4560a88776e58b3e",
+   "channels": 1,
+   "length": 52224
+  },
+  {
+   "file": "unit-15-is-down-unit-down.mp3",
+   "sha256": "c7c189d1e6b982da2375b4b7ecd9cbb1ae81e7faa9c4f7d76522d6d96257df09",
+   "channels": 1,
+   "length": 130560
+  },
+  {
+   "file": "unit-15-joining-the-pursuit.mp3",
+   "sha256": "5f072ed42684b08f688e94890940f7b1de06b886ee98c075bc58a2c654eba4e4",
+   "channels": 1,
+   "length": 84993
+  },
+  {
+   "file": "unit-15.mp3",
+   "sha256": "c74b665691fcb4bc7edf1f44a78416240a887f154ac38e30803a8c5b7f536fdf",
+   "channels": 1,
+   "length": 45825
+  },
+  {
+   "file": "unit-16-is-down-unit-down.mp3",
+   "sha256": "a7e506ff57454c4104bf8b14304a76bc7e0dd405544b047579720a57f1f3a31a",
+   "channels": 1,
+   "length": 129792
+  },
+  {
+   "file": "unit-16-joining-the-pursuit.mp3",
+   "sha256": "dbc47015d31aa56ff6c302967b78e20fadba46f818e8d2ed4e4c7fe384d4dac4",
+   "channels": 1,
+   "length": 83970
+  },
+  {
+   "file": "unit-16.mp3",
+   "sha256": "e4018e1922ccc767e90ff247c615d86fdbc2ca1d51dbc7554f1aebf975749675",
+   "channels": 1,
+   "length": 49665
+  },
+  {
+   "file": "unit-17-is-down-unit-down.mp3",
+   "sha256": "d8a330413c136dbaafe16365417ab0657bb356f4bafedfa1139b1cef514146fd",
+   "channels": 1,
+   "length": 115713
+  },
+  {
+   "file": "unit-17-joining-the-pursuit.mp3",
+   "sha256": "4181e2f69d0a61c69e5815ab9148d435423332c30109bfc8cc1eed5c977e2590",
+   "channels": 1,
+   "length": 92160
+  },
+  {
+   "file": "unit-17.mp3",
+   "sha256": "f519a0bfdaf662fd779f02cf3f8d5571e9e131c3b7cbe471424fedc1e55cecef",
+   "channels": 1,
+   "length": 56064
+  },
+  {
+   "file": "unit-18-is-down-unit-down.mp3",
+   "sha256": "0a1940e143388021d7b975315be751762ee28ed72b3b192242aaa64e9c75bba5",
+   "channels": 1,
+   "length": 129024
+  },
+  {
+   "file": "unit-18-joining-the-pursuit.mp3",
+   "sha256": "317ca30bba6d49eee62174ade2cbbe53f4e15919aa84dc7704150fb3666bd82a",
+   "channels": 1,
+   "length": 91392
+  },
+  {
+   "file": "unit-18.mp3",
+   "sha256": "4bceb953009d4b63f20b04d31fc2b7a7785481ef7b6692a38da5ce21e8e03836",
+   "channels": 1,
+   "length": 45570
+  },
+  {
+   "file": "unit-19-is-down-unit-down.mp3",
+   "sha256": "702beeede41215e07cb9d001f01e525eb6133118ac2d0e4a728e5d0bfd11e485",
+   "channels": 1,
+   "length": 135936
+  },
+  {
+   "file": "unit-19-joining-the-pursuit.mp3",
+   "sha256": "5527b54cb91326ca88acf4b06ba08d36443af914082613c09a8b479eb3b698ed",
+   "channels": 1,
+   "length": 84480
+  },
+  {
+   "file": "unit-19.mp3",
+   "sha256": "7002eb49105d160ec594ffce794d8f0798b8ec0a5a65db069e6d6fe5668e9d7d",
+   "channels": 1,
+   "length": 48897
+  },
+  {
+   "file": "unit-20-is-down-unit-down.mp3",
+   "sha256": "0d051920abe51d32ffe88056486751b9e632dac56b8cf89b1230aad489433355",
+   "channels": 1,
+   "length": 116226
+  },
+  {
+   "file": "unit-20-joining-the-pursuit.mp3",
+   "sha256": "ffbfabf53b27aedbfc527e281828f36ed32ce5780da5fab3fc081b4289af7267",
+   "channels": 1,
+   "length": 80130
+  },
+  {
+   "file": "unit-20.mp3",
+   "sha256": "81eadfb392cfbda907e9ffb6c23aeff1d26a50b00e487d1efe6d5101709021a1",
+   "channels": 1,
+   "length": 36429
+  },
+  {
+   "file": "unit-21-is-down-unit-down.mp3",
+   "sha256": "a22ac0cbc48d8bd83762d3a513a0973812846c41415e17a71d467d7a4adee84d",
+   "channels": 1,
+   "length": 123393
+  },
+  {
+   "file": "unit-21-joining-the-pursuit.mp3",
+   "sha256": "40ca1e1f86b5ecc4b61f2d6cd85d8d722c0b70379874dc94e9c584f29cb639af",
+   "channels": 1,
+   "length": 118785
+  },
+  {
+   "file": "unit-21.mp3",
+   "sha256": "fe741349a40750a5377712d9459c3aabfb58c34050bebfbb699a857ac93c5f19",
+   "channels": 1,
+   "length": 50253
+  },
+  {
+   "file": "unit-22-is-down-unit-down.mp3",
+   "sha256": "a903827c5cd6861eb1ffd771be1c1634f88b30974ca135b7928a0e7dfe7e4b58",
+   "channels": 1,
+   "length": 150528
+  },
+  {
+   "file": "unit-22-joining-the-pursuit.mp3",
+   "sha256": "56998ac973e201e4c41ea4e16fe1be4f105c6744128a611d91c91a9d54b0472b",
+   "channels": 1,
+   "length": 94977
+  },
+  {
+   "file": "unit-22.mp3",
+   "sha256": "882fe321d60348cdfa273b6e53b377c0f713bff1ec9a72684b8a5af5c136a609",
+   "channels": 1,
+   "length": 47106
+  },
+  {
+   "file": "unit-23-is-down-unit-down.mp3",
+   "sha256": "af590022bd67507cf1e3341bb75da3d95baf6c3808d7e8565b2d33fa3d74c1b3",
+   "channels": 1,
+   "length": 147021
+  },
+  {
+   "file": "unit-23-joining-the-pursuit.mp3",
+   "sha256": "ddb8389f2226ace04e4d0318a17d9bff4a425fae6fe0287d8946d157f9eb2622",
+   "channels": 1,
+   "length": 95490
+  },
+  {
+   "file": "unit-23.mp3",
+   "sha256": "7b45c9eafb0c1368b275d1f2deedc08f53c03f155fd9a3fc54ed2a1169bf03c0",
+   "channels": 1,
+   "length": 47361
+  },
+  {
+   "file": "unit-24-is-down-unit-down.mp3",
+   "sha256": "0bb19d5c0823d37b20b4a1382bffd6e9e1cd0a4c9caa55958be9dd812fca0ff4",
+   "channels": 1,
+   "length": 115917
+  },
+  {
+   "file": "unit-24-joining-the-pursuit.mp3",
+   "sha256": "5600fc42241d9f3e1533d9097c15c0f35e3842ac8920f9af25f7ffc024e4b293",
+   "channels": 1,
+   "length": 95232
+  },
+  {
+   "file": "unit-24.mp3",
+   "sha256": "de8317eab106eb54834397e6b02062fec0565e779a3b41edc00742820c4f7d53",
+   "channels": 1,
+   "length": 46080
+  },
+  {
+   "file": "unit-25-is-down-unit-down.mp3",
+   "sha256": "abbebb36be08e09686094f0717eb35fff7444ed83d01e48b8db4c366609f0c5a",
+   "channels": 1,
+   "length": 117762
+  },
+  {
+   "file": "unit-25-joining-the-pursuit.mp3",
+   "sha256": "8d3baff9b47d393151013553af12d5cdfa894b5ffa600c46bd65d4ab86ffe440",
+   "channels": 1,
+   "length": 91725
+  },
+  {
+   "file": "unit-25.mp3",
+   "sha256": "9cab6a09b1db50579e86a43d48d9a4f3d6554961a06a40d163bc893b0250d5fc",
+   "channels": 1,
+   "length": 48897
+  },
+  {
+   "file": "unit-26-is-down-unit-down.mp3",
+   "sha256": "c62f653632469b767281732d27a6a6b16236410910a6eba032de31995412557e",
+   "channels": 1,
+   "length": 114690
+  },
+  {
+   "file": "unit-26-joining-the-pursuit.mp3",
+   "sha256": "ead3d601ab310ae0c81b5201c088db412788866adf7288c0e7ace99f788875ba",
+   "channels": 1,
+   "length": 97536
+  },
+  {
+   "file": "unit-26.mp3",
+   "sha256": "2ca525b11f2a831a869295c7d4e3fa5ffdd1ca713d8b292f83ebc731d45be0c0",
+   "channels": 1,
+   "length": 52992
+  },
+  {
+   "file": "unit-27-is-down-unit-down.mp3",
+   "sha256": "792844302f3813043028267f83dc6ebafb145d9013190013cf6de7d2a871fddd",
+   "channels": 1,
+   "length": 136962
+  },
+  {
+   "file": "unit-27-joining-the-pursuit.mp3",
+   "sha256": "ead172f70f54fe1cbfc077f1aa50661a5f9b5c559d0eb717326548e4238f65ca",
+   "channels": 1,
+   "length": 128013
+  },
+  {
+   "file": "unit-27.mp3",
+   "sha256": "725521c31839d5833577a36dadcd564a25246540a1a5c0a219b157b8776f2f39",
+   "channels": 1,
+   "length": 57345
+  },
+  {
+   "file": "unit-28-is-down-unit-down.mp3",
+   "sha256": "1661c537116c1dfee08bd41026080b53942c7d967afad6743edb23dbc63a0822",
+   "channels": 1,
+   "length": 131073
+  },
+  {
+   "file": "unit-28-joining-the-pursuit.mp3",
+   "sha256": "1745139d5d688a5f9ced9e86c7f44346bd5a94c8dee678251eb23a3b9b22bff2",
+   "channels": 1,
+   "length": 79872
+  },
+  {
+   "file": "unit-28.mp3",
+   "sha256": "86608a038aeff070f20d55cb79a22b540ea631b9f726b678cc7981bf6dc4197f",
+   "channels": 1,
+   "length": 49665
+  },
+  {
+   "file": "unit-29-is-down-unit-down.mp3",
+   "sha256": "fd925ab9b8086b072a84c12d64fd9840f189834f36ff3253d91f28101fbe59eb",
+   "channels": 1,
+   "length": 127746
+  },
+  {
+   "file": "unit-29-joining-the-pursuit.mp3",
+   "sha256": "02816112e491fdfcf4b558699f0827f0ca945de7fd89f021023e65e770d28a38",
+   "channels": 1,
+   "length": 91725
+  },
+  {
+   "file": "unit-29.mp3",
+   "sha256": "62624b57133520b155765bd52ee9ec9d7ce1ace32b1485d4822ceea0eb4ad7e4",
+   "channels": 1,
+   "length": 54528
+  },
+  {
+   "file": "unit-30-is-down-unit-down.mp3",
+   "sha256": "c91aed2c3f1de85c2f3a6f87282f0361aaed258b174bc3292fed23d707331297",
+   "channels": 1,
+   "length": 131841
+  },
+  {
+   "file": "unit-30-joining-the-pursuit.mp3",
+   "sha256": "be782e6ae6e3891708d2258727ccd13f7217e9d2e6b8913b70ba349da8e5be59",
+   "channels": 1,
+   "length": 87810
+  },
+  {
+   "file": "unit-30.mp3",
+   "sha256": "e24e1b8dffa833e915ed85e719209bf3ae94029348c2f44cfd3787c56c1c5ddf",
+   "channels": 1,
+   "length": 41472
+  },
+  {
+   "file": "vex-is-in-custody.mp3",
+   "sha256": "55e8ee9cffe51e2f8e5713e5d66c172a69a2e14791d315ece04274eb27dbe66e",
+   "channels": 1,
+   "length": 63489
+  },
+  {
+   "file": "visual-on-the-suspect-again-closing-in.2.mp3",
+   "sha256": "26716215f7e046a2ec74d77c7aaf74798b3fbfb16caa2247419556752039244d",
+   "channels": 1,
+   "length": 110337
+  },
+  {
+   "file": "visual-on-the-suspect-again-closing-in.mp3",
+   "sha256": "df57f71dd0fe426bca04f56b216a317945a91b101e7244854eaaabbc7f7dc910",
+   "channels": 1,
+   "length": 120066
+  },
+  {
+   "file": "we-lost-the-suspect-all-units-resume-patrol.2.mp3",
+   "sha256": "318a6aac96d409a10270d4927fff97ab22fc38c3e1c8fd0e8758af20ea28c03c",
+   "channels": 1,
+   "length": 161280
+  },
+  {
+   "file": "we-lost-the-suspect-all-units-resume-patrol.mp3",
+   "sha256": "8405d9024a44b1de1614f3f7f2fb3ba3dbc3d11ff48c7f2936f7eec90293d271",
+   "channels": 1,
+   "length": 151554
+  }
+ ]
+}

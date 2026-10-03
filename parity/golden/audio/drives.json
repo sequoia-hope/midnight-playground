@@ -1,0 +1,59 @@
+{
+ "tick": 0.008333333333333333,
+ "drives": [
+  {
+   "name": "race",
+   "query": "parity=1&level=sierra&autostart=sports&autodrive=1",
+   "ticks": 5400,
+   "sha256": "70fbde1fbeef93a8cb219038efcd359d69b3f4f1590394955456b16f37fbaec1",
+   "calls": {
+    "setPaused": 1,
+    "init": 1,
+    "unlock": 1,
+    "playTrack": 1,
+    "setVolume": 1,
+    "setMusic": 1,
+    "setCar": 1,
+    "update": 5400,
+    "setRivalEngines": 5400,
+    "beep": 4,
+    "nitroBurst": 1,
+    "shift": 21,
+    "impact": 126,
+    "landing": 1,
+    "whoosh": 2
+   }
+  },
+  {
+   "name": "pursuit",
+   "query": "parity=1&level=sierra&autostart=sports&autodrive=1&pursuit=1&heat=2",
+   "ticks": 7200,
+   "sha256": "e0bb80e14534ed7c6fb22fe26ec29e47d5fa6f4322b94a2bc76960edd2e2b164",
+   "calls": {
+    "setPaused": 1,
+    "init": 1,
+    "unlock": 1,
+    "playTrack": 1,
+    "setVolume": 1,
+    "setMusic": 1,
+    "setCar": 1,
+    "radioVoice.prefetch": 1,
+    "update": 7200,
+    "setRivalEngines": 7200,
+    "setSirens": 7200,
+    "setPursuitMood": 7200,
+    "setDamage": 7200,
+    "setSpikedTyres": 7200,
+    "beep": 4,
+    "nitroBurst": 3,
+    "shift": 27,
+    "impact": 165,
+    "landing": 1,
+    "whoosh": 2,
+    "radioLine": 9,
+    "sirenHorn": 1,
+    "takedown": 1
+   }
+  }
+ ]
+}
