@@ -24,7 +24,7 @@ fn idle() -> Input {
 
 fn auto(sim: &Sim) -> Input {
     let mut inp = idle();
-    let p = sim.p.as_ref().unwrap();
+    let p = &sim.players[0];
     autopilot(&mut inp, &p.v, &sim.track);
     inp
 }
@@ -39,6 +39,7 @@ struct Scenario {
     car: &'static str,
     with_rivals: bool,
     traffic_count: usize,
+    police_heat: Option<f64>,
     input: InputFn,
     setup: Option<SetupFn>,
     frame_dt: bool,
@@ -52,6 +53,7 @@ fn sc(id: &str, ticks: u32, level: &'static str, car: &'static str, input: Input
         car,
         with_rivals: false,
         traffic_count: 0,
+        police_heat: None,
         input,
         setup: None,
         frame_dt: false,
@@ -173,7 +175,7 @@ fn phys_scenarios() -> Vec<Scenario> {
         Box::new(|sim, _| auto(sim)),
     );
     s.setup = Some(Box::new(|sim| {
-        let p = sim.p.as_mut().unwrap();
+        let p = &mut sim.players[0];
         p.phys.spiked = 10.0;
         p.phys.damage = 0.8;
     }));
@@ -207,6 +209,7 @@ fn replay(s: &Scenario) -> Option<u32> {
             car: s.car,
             with_rivals: s.with_rivals,
             traffic_count: s.traffic_count,
+            police_heat: s.police_heat,
         },
     );
     if let Some(f) = &s.setup {
@@ -282,7 +285,7 @@ fn ai_traffic_scenarios() -> Vec<Scenario> {
     s.setup = Some(Box::new(|sim| {
         let t = sim.track.clone();
         let f = t.frame(1500.0);
-        let p = sim.p.as_mut().unwrap();
+        let p = &mut sim.players[0];
         let lat = f.wall_r - p.v.half_w - 0.5;
         p.phys.reset(&mut p.v, &t, 1500.0, lat);
         let plat = p.v.lat;
@@ -319,6 +322,46 @@ fn ai_traffic_scenarios() -> Vec<Scenario> {
     out
 }
 
+fn pursuit_scenarios() -> Vec<Scenario> {
+    let mut out = Vec::new();
+    for (lvl, car) in [
+        ("sierra", "sports"),
+        ("coast", "rally"),
+        ("streets", "muscle"),
+        ("desert", "electric"),
+    ] {
+        let mut s = sc(
+            &format!("pursuit-{lvl}"),
+            sec(90.0),
+            lvl,
+            car,
+            Box::new(|sim, _| auto(sim)),
+        );
+        s.with_rivals = true;
+        s.traffic_count = 18;
+        s.police_heat = Some(3.0);
+        out.push(s);
+    }
+    let mut s = sc(
+        "pursuit-heat5-props",
+        sec(60.0),
+        "sierra",
+        "sports",
+        Box::new(|sim, _| auto(sim)),
+    );
+    s.with_rivals = true;
+    s.traffic_count = 18;
+    s.police_heat = Some(5.0);
+    s.setup = Some(Box::new(|sim| {
+        let pu = sim.pu.as_mut().unwrap();
+        pu.state = mr_sim::pursuit::State::Pursuit;
+        pu.prop_t = 0.0;
+        pu.spawn_t = 0.0;
+    }));
+    out.push(s);
+    out
+}
+
 fn check_all(scenarios: Vec<Scenario>) {
     let mut bad = Vec::new();
     for s in scenarios {
@@ -335,6 +378,11 @@ fn check_all(scenarios: Vec<Scenario>) {
 #[test]
 fn physics_module_traces_are_identical() {
     check_all(phys_scenarios());
+}
+
+#[test]
+fn pursuit_module_traces_are_identical() {
+    check_all(pursuit_scenarios());
 }
 
 #[test]

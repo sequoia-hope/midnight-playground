@@ -580,3 +580,22 @@ FNV-1a 64 of the trace record without inputs. The whole-race test checks
 every tick against the cached recordings when they are present and, from
 the committed `races.json`, always the tick the results came, that tick's
 hash and the results, so it also runs in wasm and in CI without the cache.
+
+## D61. Hot Pursuit: racers by index, bodies by id, PursuitView's rules in the race
+
+2026-10-03, WP 1.6. `mr_sim::pursuit` ports Pursuit.js, `mr_sim::police`
+PoliceDriver.js. Every body has a `BodyId` (pool and index; police are units
+then roadblock cars, as the trace counts them), carried in its `AgentView`
+with the `police` and `kinematicOnly` flags the drivers test. A unit's
+target is a racer's index in `racers` (player first, then the rivals); the
+pursuit reaches the racers' bodies through a small `Racers` trait (their
+pose, a rival's finish, holding a rival, spiking a tyre), so the race, the
+module staging and the tests each supply their own. `mr_sim::field` holds
+what the race and the staging share: the agent list in collision order,
+live views, and the collision pass over all five pools. The simulation
+half of PursuitView (damage from hits and walls with the half-second
+`lastHit` per body, wrecks, holds and `holdControls`, the PIT yaw kick, and
+the effects of its events: release onto the road, the barrier's slowdown,
+a bust's crash) is `race::PursuitView`, applied at SPEC 4.3's step 17. The
+pursuit's events reach the client as `SimEvent::Pursuit`. Pursuit.js's
+`hud()` and `propMark()` are presentation and stay with the client (M8).

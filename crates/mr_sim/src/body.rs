@@ -12,9 +12,44 @@ use mr_track::Track;
 
 use crate::vehicle::Vehicle;
 
+/// Which body a view is of: its pool and index there (SPEC 4.3, "a car's
+/// identity is its index in its pool"). `Police` counts units, then
+/// roadblock cars, as one list (as the trace does).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BodyId {
+    Player(usize),
+    Rival(usize),
+    Traffic(usize),
+    Police(usize),
+    Sawhorse(usize),
+    /// A body outside the pools (tests' stand-ins).
+    #[default]
+    Anon,
+}
+
+impl BodyId {
+    /// The trace's body reference: player i, rival 100 + i, traffic
+    /// 200 + i, police 300 + i, sawhorse 500 + i; none -1.
+    pub fn trace_ref(self) -> i32 {
+        match self {
+            BodyId::Player(i) => i as i32,
+            BodyId::Rival(i) => 100 + i as i32,
+            BodyId::Traffic(i) => 200 + i as i32,
+            BodyId::Police(i) => 300 + i as i32,
+            BodyId::Sawhorse(i) => 500 + i as i32,
+            BodyId::Anon => -1,
+        }
+    }
+}
+
 /// The fields of a car that other cars' drivers read.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct AgentView {
+    pub id: BodyId,
+    /// A police car (`o.police`).
+    pub police: bool,
+    /// A traffic car (`o.kinematicOnly`).
+    pub kinematic_only: bool,
     pub s: f64,
     pub lat: f64,
     /// +1 with the race, -1 oncoming.
@@ -81,6 +116,9 @@ impl Body for PhysicsBody<'_> {
 /// The player as other cars see it (`PhysicsBody`'s getters, `dir` 1).
 pub fn player_view(v: &Vehicle) -> AgentView {
     AgentView {
+        id: BodyId::Anon,
+        police: false,
+        kinematic_only: false,
         s: v.s,
         lat: v.lat,
         dir: 1,

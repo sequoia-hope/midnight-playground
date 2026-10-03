@@ -2,11 +2,8 @@
 //! the catalogue in `tools/parity/sim-module.mjs`): the simulation's modules
 //! on the real levels, with the world data and vehicle dimensions the game
 //! uses, stepped in `Race.update`'s order at a fixed 1/120 s, without Race's
-//! own rules. The module traces (`parity/golden/sim/module/`) are replayed
-//! through this.
-//!
-//! Grows with the work packages: physics (WP 1.3); rivals, traffic and
-//! collisions (1.4); the pursuit (1.6).
+//! own rules and without PursuitView. The module traces
+//! (`parity/golden/sim/module/`) are replayed through this.
 
 use std::sync::Arc;
 
@@ -14,14 +11,15 @@ use mr_levels::world::{WorldData, world_data};
 use mr_track::{Level, Track};
 
 use crate::ai::{AiCtx, AiDriver, AiOpts};
-use crate::body::{AgentView, Body, PhysicsBody, player_view};
-use crate::collisions::{Hit, resolve_collisions};
+use crate::body::BodyId;
 use crate::dims::dims;
+use crate::field::{Field, RacerAccess};
 use crate::input::Input;
-use crate::physics::{CarPhysics, CarSpec, car_spec};
+use crate::pursuit::{Pursuit, PursuitOpts, top_speed};
+use crate::race::PlayerCar;
 use crate::rng::RngStreams;
 use crate::trace::{PlayerView, View, trace_record};
-use crate::traffic::{Agent, Traffic};
+use crate::traffic::Traffic;
 use crate::vehicle::Vehicle;
 
 pub const DT: f64 = 1.0 / 120.0;
@@ -44,20 +42,6 @@ pub fn stage_level(level: Level) -> Stage {
         track: Arc::new(t),
         world,
     }
-}
-
-/// The player as Race builds it: the car's spec and dimensions.
-pub struct Player {
-    pub v: Vehicle,
-    pub phys: CarPhysics,
-    pub spec: CarSpec,
-}
-
-pub fn player(car: &'static str) -> Player {
-    let spec = car_spec(car).expect("a car in CAR_SPECS");
-    let v = Vehicle::new(dims(car).expect("dims"), car, spec.mass, "You", spec.color);
-    let phys = CarPhysics::new(&v, spec);
-    Player { v, phys, spec }
 }
 
 /// The level's rivals as Race builds them (Race.js:80-88), drawing from the
@@ -83,28 +67,23 @@ pub fn rivals(level: &Level, streams: &mut RngStreams) -> Vec<AiDriver> {
         .collect()
 }
 
-/// Who an entry of the agent list is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AgentRef {
-    Player,
-    Rival(usize),
-    Traffic(usize),
-}
-
 /// What to stage (`stage()` in sim-module.mjs).
 #[derive(Clone, Copy, Debug)]
 pub struct StageOpts {
     pub car: &'static str,
     pub with_rivals: bool,
     pub traffic_count: usize,
+    /// The police from this heat, if any.
+    pub police_heat: Option<f64>,
 }
 
 /// A staged world.
 pub struct Sim {
     pub track: Arc<Track>,
-    pub p: Option<Player>,
+    pub players: Vec<PlayerCar>,
     pub ais: Vec<AiDriver>,
     pub traf: Option<Traffic>,
+    pub pu: Option<Pursuit>,
     pub streams: RngStreams,
     pub time: f64,
     pub tick: u32,
@@ -115,11 +94,11 @@ pub struct Sim {
 
 impl Sim {
     /// The level, the player (and optionally the rival field) on Race's
-    /// grid, traffic, the streams.
+    /// grid, traffic, the police, the streams.
     pub fn new(stage: &Stage, o: StageOpts) -> Sim {
         let t = stage.track.clone();
         let mut streams = RngStreams::new(SEED);
-        let mut p = player(o.car);
+        let mut p = PlayerCar::new(o.car);
         let mut ais = if o.with_rivals {
             rivals(&stage.level, &mut streams)
         } else {
@@ -162,11 +141,32 @@ impl Sim {
                 &mut streams.traffic,
             )
         });
+        let pu = o.police_heat.map(|heat| {
+            let opts = PursuitOpts {
+                heat,
+                max_units: 6.0,
+                player_top: top_speed(&p.spec),
+                flash: true,
+            };
+            let RngStreams {
+                pursuit, police, ..
+            } = &mut streams;
+            let mut pu = Pursuit::new(&t, &stage.level, opts, pursuit, police);
+            let mut list = vec![(BodyId::Player(0), true, false, "You")];
+            list.extend(
+                ais.iter()
+                    .enumerate()
+                    .map(|(i, a)| (BodyId::Rival(i), false, true, a.name)),
+            );
+            pu.set_racers(list);
+            pu
+        });
         Sim {
             track: t,
-            p: Some(p),
+            players: vec![p],
             ais,
             traf,
+            pu,
             streams,
             time: 0.0,
             tick: 0,
@@ -176,30 +176,12 @@ impl Sim {
         }
     }
 
-    /// The agent list (`agents()`): player, rivals, active traffic.
-    pub fn agents(&self) -> Vec<AgentRef> {
-        let mut out = Vec::new();
-        if self.p.is_some() {
-            out.push(AgentRef::Player);
-        }
-        out.extend((0..self.ais.len()).map(AgentRef::Rival));
-        if let Some(tr) = &self.traf {
-            out.extend(
-                tr.cars
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, c)| c.active)
-                    .map(|(i, _)| AgentRef::Traffic(i)),
-            );
-        }
-        out
-    }
-
-    pub fn view(&self, r: AgentRef) -> AgentView {
-        match r {
-            AgentRef::Player => player_view(&self.p.as_ref().unwrap().v),
-            AgentRef::Rival(i) => self.ais[i].view(),
-            AgentRef::Traffic(i) => self.traf.as_ref().unwrap().cars[i].view(),
+    pub fn field(&mut self) -> Field<'_> {
+        Field {
+            players: &mut self.players,
+            rivals: &mut self.ais,
+            traffic: self.traf.as_mut(),
+            pursuit: self.pu.as_mut(),
         }
     }
 
@@ -208,19 +190,17 @@ impl Sim {
         let t = self.track.clone();
         self.tick += 1;
         self.time += DT;
-        let agents = self.agents();
-        if let Some(p) = &mut self.p {
+        let mut agents = self.field().agents();
+        {
+            let p = &mut self.players[0];
             p.phys.update(&mut p.v, &t, DT, inp);
         }
-        let ps = match &self.p {
-            Some(p) => p.v.s,
-            None => self.ais.first().map_or(0.0, |a| a.k.s),
-        };
+        let ps = self.players[0].v.s;
         for i in 0..self.ais.len() {
-            let views: Vec<AgentView> = agents.iter().map(|&r| self.view(r)).collect();
+            let views = self.field().views(&agents);
             let ctx = AiCtx {
                 cars: &views,
-                me: agents.iter().position(|&r| r == AgentRef::Rival(i)),
+                me: agents.iter().position(|&r| r == BodyId::Rival(i)),
                 player_s: ps,
                 player_prog: None,
                 started: self.started,
@@ -233,19 +213,37 @@ impl Sim {
             self.last_s = Some(ps);
             let odo = self.odo.unwrap_or(ps) + d_s;
             self.odo = Some(odo);
-            let list: Vec<Agent> = agents
-                .iter()
-                .map(|&r| match r {
-                    AgentRef::Traffic(i) => Agent::Traffic(i),
-                    r => Agent::Other(self.view(r)),
-                })
-                .collect();
+            let list = self.field().traffic_agents(&agents);
             let dist = if t.is_loop { odo } else { ps };
             if let Some(tr) = &mut self.traf {
                 tr.update(&t, DT, ps, &list, 0.0, dist, &mut self.streams.traffic);
             }
         }
-        let hits = self.collide(&agents);
+        if self.pu.is_some() {
+            let list = self.field().pursuit_agents(&agents);
+            let (time, started) = (self.time, self.started);
+            let pu = self.pu.as_mut().unwrap();
+            let mut racers = RacerAccess {
+                players: &mut self.players,
+                rivals: &mut self.ais,
+            };
+            pu.update(
+                &t,
+                DT,
+                &list,
+                &mut racers,
+                time,
+                started,
+                &mut self.streams.pursuit,
+            );
+            // Units that joined this tick collide from now on.
+            for b in self.field().agents() {
+                if !agents.contains(&b) {
+                    agents.push(b);
+                }
+            }
+        }
+        let hits = self.field().collide(&t, &agents);
         for a in &mut self.ais {
             a.write_pos(&t);
         }
@@ -254,66 +252,71 @@ impl Sim {
                 c.k.write_pos(&t);
             }
         }
+        if let Some(pu) = &mut self.pu {
+            pu.write_pos(&t);
+        }
         for h in hits {
+            let (a, b) = (agents[h.a], agents[h.b]);
+            if self.pu.is_some() {
+                let (va, vb) = (self.field().velocity(a), self.field().velocity(b));
+                let plat = self.players[0].v.lat;
+                let pu = self.pu.as_mut().unwrap();
+                let mut racers = RacerAccess {
+                    players: &mut self.players,
+                    rivals: &mut self.ais,
+                };
+                let pit = pu.on_hit(
+                    &t,
+                    &mut racers,
+                    a,
+                    b,
+                    h.strength,
+                    va,
+                    vb,
+                    plat,
+                    &mut self.streams.pursuit,
+                );
+                if pit != 0.0 {
+                    self.players[0].v.yaw_rate += pit * 2.2;
+                }
+            }
             // The crash flag: the body that is not the player, or h.a when the
             // player is not in the hit; only traffic cars carry one.
-            let pb = agents.iter().position(|&r| r == AgentRef::Player);
-            let other = if Some(h.a) == pb { h.b } else { h.a };
-            if let AgentRef::Traffic(i) = agents[other]
+            let other = if a == BodyId::Player(0) { b } else { a };
+            if let BodyId::Traffic(i) = other
                 && h.strength > 0.15
             {
                 let c = &mut self.traf.as_mut().unwrap().cars[i];
                 c.crashed = mr_math::js::max(c.crashed, 0.01);
             }
         }
-        if let Some(p) = &mut self.p {
-            p.phys.events.clear();
+        self.players[0].phys.events.clear();
+        if let Some(pu) = &mut self.pu {
+            pu.events.clear();
         }
-    }
-
-    /// `resolveCollisions(agents, hits)`.
-    fn collide(&mut self, agents: &[AgentRef]) -> Vec<Hit> {
-        let t = self.track.clone();
-        let mut hits = Vec::new();
-        let mut pb = self.p.as_mut().map(|p| PhysicsBody { v: &mut p.v });
-        let mut rivals: Vec<Option<&mut AiDriver>> = self.ais.iter_mut().map(Some).collect();
-        let mut cars: Vec<Option<&mut crate::traffic::TrafficCar>> = match &mut self.traf {
-            Some(tr) => tr.cars.iter_mut().map(Some).collect(),
-            None => Vec::new(),
-        };
-        let mut bodies: Vec<&mut dyn Body> = Vec::with_capacity(agents.len());
-        let mut player = pb.as_mut();
-        for &r in agents {
-            match r {
-                AgentRef::Player => bodies.push(player.take().unwrap()),
-                AgentRef::Rival(i) => bodies.push(rivals[i].take().unwrap()),
-                AgentRef::Traffic(i) => bodies.push(cars[i].take().unwrap()),
-            }
-        }
-        resolve_collisions(&mut bodies[..], &t, &mut hits);
-        hits
     }
 
     /// Only the player's physics, at a frame time instead of the tick (the
     /// `phys-frame-dt` scenario).
     pub fn step_frame(&mut self, frame_dt: f64, inp: &Input) {
         self.tick += 1;
-        if let Some(p) = &mut self.p {
-            p.phys.update(&mut p.v, &self.track, frame_dt, inp);
-            p.phys.events.clear();
-        }
+        let t = self.track.clone();
+        let p = &mut self.players[0];
+        p.phys.update(&mut p.v, &t, frame_dt, inp);
+        p.phys.events.clear();
     }
 
     /// The tick's trace record.
     pub fn record(&self, inp: &Input) -> Vec<u8> {
         let players = self
-            .p
+            .players
             .iter()
             .map(|p| PlayerView {
                 v: &p.v,
                 phys: &p.phys,
                 input: Some(inp),
                 rules: None,
+                pursuit_view: None,
             })
             .collect();
         trace_record(&View {
@@ -322,6 +325,8 @@ impl Sim {
             players,
             rivals: &self.ais,
             traffic: self.traf.as_ref(),
+            pursuit: self.pu.as_ref(),
+            last_hit: None,
             streams: self.streams.draws(),
         })
     }

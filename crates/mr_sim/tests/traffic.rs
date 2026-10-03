@@ -30,6 +30,7 @@ fn player(s: f64, speed: f64) -> AgentView {
         half_l: 2.3,
         speed_along: speed,
         gap_lat: None,
+        ..AgentView::default()
     }
 }
 
@@ -205,6 +206,7 @@ fn a_traffic_car_slows_for_a_slower_car_ahead_in_its_lane() {
         half_w: 0.95,
         half_l: 2.3,
         gap_lat: None,
+        ..AgentView::default()
     };
     traffic.max_active = 1;
     for _ in 0..150 {

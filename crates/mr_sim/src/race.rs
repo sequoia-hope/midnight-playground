@@ -18,14 +18,18 @@ use mr_math::{clamp, js, kernel, wrap_angle};
 use mr_track::{Level, Mode, Track};
 
 use crate::ai::{AiCtx, AiDriver, AiOpts};
-use crate::body::{AgentView, Body, PhysicsBody, player_view};
-use crate::collisions::{Hit, resolve_collisions};
+use crate::body::{AgentView, BodyId};
+use crate::collisions::Hit;
 use crate::dims::dims;
+use crate::field::{Field, RacerAccess};
 use crate::input::{Input, InputFrame, RESET};
 use crate::park::{PARK_GAP, PARK_ROW, Park};
 use crate::physics::{CarPhysics, CarSpec, PhysEvent, car_spec};
+use crate::police::Mode as PoliceMode;
+use crate::pursuit::{HoldReason, Pursuit, PursuitEvent, PursuitOpts, WRECK_PENALTY, top_speed};
 use crate::rng::RngStreams;
-use crate::traffic::{Agent, Traffic, TrafficCar};
+use crate::trace::LastHit;
+use crate::traffic::{Traffic, TrafficCar};
 use crate::vehicle::Vehicle;
 
 /// The fixed tick (SPEC 4.1).
@@ -126,6 +130,54 @@ pub struct PlayerCar {
     pub rules: PlayerRules,
 }
 
+impl PlayerRules {
+    /// A player's rules at the start (`n_cars`: the traffic pool's size).
+    pub fn new(n_cars: usize) -> PlayerRules {
+        PlayerRules {
+            lap: 1,
+            lap_start: 0.0,
+            lap_times: Vec::new(),
+            score: 0.0,
+            mult: 1.0,
+            mult_timer: 0.0,
+            top_speed: 0.0,
+            dist: 0.0,
+            near_misses: 0,
+            bonus_cooldown: 0.0,
+            reset_cooldown: 0.0,
+            wrong_way: 0.0,
+            finish_delay: 0.0,
+            stuck: None,
+            last_drift: 0.0,
+            finished: false,
+            finish_time: None,
+            reported: false,
+            pass_timer: None,
+            pass_lat: None,
+            park: None,
+            last_s: None,
+            odo: None,
+            passed: vec![None; n_cars],
+            near_miss_hit: vec![false; n_cars],
+        }
+    }
+}
+
+impl PlayerCar {
+    /// The player's car as Race builds it.
+    pub fn new(car: &'static str) -> PlayerCar {
+        let spec = car_spec(car).expect("a car in CAR_SPECS");
+        let v = Vehicle::new(dims(car).expect("dims"), car, spec.mass, "You", spec.color);
+        let phys = CarPhysics::new(&v, spec);
+        PlayerCar {
+            v,
+            phys,
+            spec,
+            rules: PlayerRules::new(0),
+        }
+    }
+}
+
 /// Everything that changes. Plain data.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimState {
@@ -134,6 +186,8 @@ pub struct SimState {
     pub players: Vec<PlayerCar>,
     pub rivals: Vec<AiDriver>,
     pub traffic: Traffic,
+    /// Hot Pursuit, when it is on.
+    pub pv: Option<PursuitView>,
     pub rng: RngStreams,
 }
 
@@ -198,6 +252,8 @@ pub enum SimEvent {
     Reset {
         player: usize,
     },
+    /// Something the pursuit did (heat, units, props, busts, ...).
+    Pursuit(PursuitEvent),
 }
 
 /// How a race is set up (Race's constructor arguments).
@@ -206,6 +262,8 @@ pub struct RaceOpts {
     pub car: &'static str,
     pub seed: u32,
     pub pursuit: bool,
+    /// Hot Pursuit's starting heat (`?heat=`, 1 by default).
+    pub heat: f64,
 }
 
 impl SimState {
@@ -298,6 +356,40 @@ impl SimState {
         );
         phys.locked = true;
         let n_cars = traffic.cars.len();
+        let pv = pursuit_on.then(|| {
+            let opts = PursuitOpts {
+                heat: o.heat,
+                max_units: 6.0,
+                player_top: top_speed(&spec),
+                flash: true,
+            };
+            let RngStreams {
+                pursuit, police, ..
+            } = &mut rng;
+            let mut pu = Pursuit::new(t, level, opts, pursuit, police);
+            let mut list = vec![(BodyId::Player(0), true, false, "You")];
+            list.extend(
+                rivals
+                    .iter()
+                    .enumerate()
+                    .map(|(i, a)| (BodyId::Rival(i), false, true, a.name)),
+            );
+            pu.set_racers(list);
+            let last_hit = LastHit {
+                rivals: vec![None; rivals.len()],
+                traffic: vec![None; n_cars],
+                police: vec![None; pu.units.len() + pu.block_cars.len()],
+                sawhorses: vec![None; pu.sawhorses.len()],
+            };
+            PursuitView {
+                pursuit: pu,
+                damage: 0.0,
+                wrecks: 0,
+                penalty: 0.0,
+                t: 0.0,
+                last_hit,
+            }
+        });
         SimState {
             tick: 0,
             race: RaceState {
@@ -347,24 +439,9 @@ impl SimState {
             }],
             rivals,
             traffic,
+            pv,
             rng,
         }
-    }
-}
-
-/// Who an entry of the agent list is (the JS list holds the objects).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AgentRef {
-    Player(usize),
-    Rival(usize),
-    Traffic(usize),
-}
-
-fn view(st: &SimState, r: AgentRef) -> AgentView {
-    match r {
-        AgentRef::Player(i) => player_view(&st.players[i].v),
-        AgentRef::Rival(i) => st.rivals[i].view(),
-        AgentRef::Traffic(i) => st.traffic.cars[i].view(),
     }
 }
 
@@ -711,26 +788,23 @@ pub fn step(
 
     // ── Player ─────────────────────────────────────────────────
     {
+        let blocks_reset = st
+            .pv
+            .as_ref()
+            .is_some_and(|pv| pv.held() || pv.pursuit.bust > 0.0);
         let p = &mut st.players[0];
         p.rules.reset_cooldown = js::max(0.0, p.rules.reset_cooldown - dt);
-        if frame.flags & RESET != 0 && started && p.rules.reset_cooldown == 0.0 {
+        if frame.flags & RESET != 0 && started && p.rules.reset_cooldown == 0.0 && !blocks_reset {
             reset_player(t, &st.race, p, events);
         }
     }
     // ── Agents list for AI/traffic awareness ───────────────────
-    let mut agents: Vec<AgentRef> = vec![AgentRef::Player(0)];
-    agents.extend((0..st.rivals.len()).map(AgentRef::Rival));
-    agents.extend(
-        st.traffic
-            .cars
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| c.active)
-            .map(|(i, _)| AgentRef::Traffic(i)),
-    );
+    let mut agents = field(st).agents();
     let ctrl = if st.players[0].rules.finished {
-        let views: Vec<AgentView> = agents.iter().map(|&r| view(st, r)).collect();
+        let views = field(st).views(&agents);
         cool_down(t, &mut st.players[0], 0, &views, dt)
+    } else if st.pv.as_ref().is_some_and(|pv| pv.held()) {
+        hold_controls(&mut st.players[0])
     } else {
         inp
     };
@@ -746,10 +820,10 @@ pub fn step(
         None
     };
     for i in 0..st.rivals.len() {
-        let views: Vec<AgentView> = agents.iter().map(|&r| view(st, r)).collect();
+        let views = field(st).views(&agents);
         let ctx = AiCtx {
             cars: &views,
-            me: Some(1 + i),
+            me: agents.iter().position(|&r| r == BodyId::Rival(i)),
             player_s,
             player_prog,
             started,
@@ -777,36 +851,58 @@ pub fn step(
         odo
     };
     {
-        let list: Vec<Agent> = agents
-            .iter()
-            .map(|&r| match r {
-                AgentRef::Traffic(i) => Agent::Traffic(i),
-                r => Agent::Other(view(st, r)),
-            })
-            .collect();
+        let list = field(st).traffic_agents(&agents);
         let dist = if t.is_loop { odo } else { player_s };
         st.traffic
             .update(t, dt, player_s, &list, 0.0, dist, &mut st.rng.traffic);
     }
+    if st.pv.is_some() {
+        let list = field(st).pursuit_agents(&agents);
+        let time = st.race.time;
+        let pv = st.pv.as_mut().unwrap();
+        pv.t += dt;
+        let mut racers = RacerAccess {
+            players: &mut st.players,
+            rivals: &mut st.rivals,
+        };
+        pv.pursuit.update(
+            t,
+            dt,
+            &list,
+            &mut racers,
+            time,
+            started,
+            &mut st.rng.pursuit,
+        );
+        // Units that joined this tick collide from now on.
+        for b in field(st).agents() {
+            if !agents.contains(&b) {
+                agents.push(b);
+            }
+        }
+    }
 
     // ── Collisions ─────────────────────────────────────────────
-    let hits = collide(st, t, &agents);
+    let hits = field(st).collide(t, &agents);
     for a in &mut st.rivals {
         a.write_pos(t);
     }
     for c in st.traffic.cars.iter_mut().filter(|c| c.active) {
         c.k.write_pos(t);
     }
+    if let Some(pv) = &mut st.pv {
+        pv.pursuit.write_pos(t);
+    }
+    let pb = BodyId::Player(0);
     for h in hits {
-        let involves_player =
-            agents[h.a] == AgentRef::Player(0) || agents[h.b] == AgentRef::Player(0);
-        let other = if agents[h.a] == AgentRef::Player(0) {
-            h.b
-        } else {
-            h.a
-        };
-        let other_traffic = match agents[other] {
-            AgentRef::Traffic(i) => Some(i),
+        let (a, b) = (agents[h.a], agents[h.b]);
+        if st.pv.is_some() {
+            pursuit_on_hit(t, st, a, b, h.strength, events);
+        }
+        let involves_player = a == pb || b == pb;
+        let other = if a == pb { b } else { a };
+        let other_traffic = match other {
+            BodyId::Traffic(i) => Some(i),
             _ => None,
         };
         if let Some(i) = other_traffic
@@ -831,8 +927,14 @@ pub fn step(
     let phys_events = std::mem::take(&mut st.players[0].phys.events);
     for e in phys_events {
         match e {
-            PhysEvent::Impact { strength, .. } if strength > 0.35 => {
-                crash(&st.race, &mut st.players[0].rules, events)
+            PhysEvent::Impact { strength, .. } => {
+                if strength > 0.35 {
+                    crash(&st.race, &mut st.players[0].rules, events);
+                }
+                // PursuitView.onWallImpact
+                if st.pv.is_some() && strength > 0.2 {
+                    hurt(st, strength * DAMAGE_WALL, t);
+                }
             }
             PhysEvent::Land { air, .. } if air > 0.55 => {
                 events.push(SimEvent::Phys { player: 0, e });
@@ -993,6 +1095,237 @@ pub fn step(
             events.push(SimEvent::Results);
         }
     }
+
+    // PursuitView.sync → events: the rule effects of the pursuit's events.
+    if st.pv.is_some() {
+        pursuit_events(t, st, events);
+    }
+}
+
+/// The pools of a state, borrowed apart.
+fn field(st: &mut SimState) -> Field<'_> {
+    Field {
+        players: &mut st.players,
+        rivals: &mut st.rivals,
+        traffic: Some(&mut st.traffic),
+        pursuit: st.pv.as_mut().map(|pv| &mut pv.pursuit),
+    }
+}
+
+/// While held: brake to a stop, then sit there (`holdControls`).
+fn hold_controls(p: &mut PlayerCar) -> Input {
+    let sp = kernel::hypot(p.v.vx, p.v.vz);
+    p.phys.locked = sp < 0.8;
+    Input {
+        brake: if sp > 0.8 { 1.0 } else { 0.0 },
+        ..Input::default()
+    }
+}
+
+/// Player damage (0..1; a wreck at 1): per unit of hit strength, scaled by
+/// the other car's mass, and per wall impact.
+const DAMAGE_CAR: f64 = 0.11;
+const DAMAGE_WALL: f64 = 0.1;
+
+/// PursuitView.hurt.
+fn hurt(st: &mut SimState, d: f64, t: &Track) {
+    let pv = st.pv.as_mut().unwrap();
+    if pv.held() || st.players[0].rules.finished || st.race.state == RaceStateKind::Countdown {
+        return;
+    }
+    pv.damage = js::min(1.0, pv.damage + d);
+    st.players[0].phys.damage = pv.damage;
+    if pv.damage >= 1.0 {
+        pv.wrecks += 1;
+        let p = pv.pursuit.player.expect("the player races");
+        let mut racers = RacerAccess {
+            players: &mut st.players,
+            rivals: &mut st.rivals,
+        };
+        pv.pursuit
+            .arrest(t, &mut racers, p, HoldReason::Wrecked, WRECK_PENALTY);
+    }
+}
+
+/// PursuitView.onHit: the pursuit's hit rules (unit health, PIT push), then
+/// damage to the player's car.
+fn pursuit_on_hit(
+    t: &Track,
+    st: &mut SimState,
+    a: BodyId,
+    b: BodyId,
+    strength: f64,
+    _events: &mut Vec<SimEvent>,
+) {
+    let pb = BodyId::Player(0);
+    let (va, vb) = {
+        let f = field(st);
+        (f.velocity(a), f.velocity(b))
+    };
+    let plat = st.players[0].v.lat;
+    let pit = {
+        let pv = st.pv.as_mut().unwrap();
+        let mut racers = RacerAccess {
+            players: &mut st.players,
+            rivals: &mut st.rivals,
+        };
+        pv.pursuit.on_hit(
+            t,
+            &mut racers,
+            a,
+            b,
+            strength,
+            va,
+            vb,
+            plat,
+            &mut st.rng.pursuit,
+        )
+    };
+    if pit != 0.0 {
+        st.players[0].v.yaw_rate += pit * 2.2;
+    }
+    if a != pb && b != pb {
+        return;
+    }
+    let other = if a == pb { b } else { a };
+    if matches!(other, BodyId::Sawhorse(_)) {
+        return; // barriers: no damage
+    }
+    // Police rams are braced, glancing shoves, and rubbing with rivals is
+    // racing: both wear the car down more slowly than a crash into traffic.
+    // One shunt is one hit: a car can hurt you at most twice a second, not
+    // every frame the two stay in contact.
+    let pv = st.pv.as_mut().unwrap();
+    let slot = pv.last_hit.slot(other);
+    let last = slot.unwrap_or(-1.0);
+    if strength > 0.1 && pv.t - last > 0.5 {
+        pv.last_hit.set(other, pv.t);
+    } else {
+        return;
+    }
+    let mass = field(st).mass(other);
+    let pv = st.pv.as_ref().unwrap();
+    let k = match other {
+        BodyId::Police(i) => {
+            if pv.pursuit.police(i).mode != PoliceMode::Block {
+                0.7
+            } else {
+                1.0
+            }
+        }
+        BodyId::Traffic(_) => 1.0,
+        _ => 0.5,
+    };
+    hurt(
+        st,
+        strength * DAMAGE_CAR * clamp(mass / 1500.0, 0.5, 2.0) * k,
+        t,
+    );
+}
+
+/// PursuitView.events: what the pursuit's events do to the race (a release
+/// back onto the road, the barrier's slowdown, a bust's crash), and the
+/// events the client shows.
+fn pursuit_events(t: &Track, st: &mut SimState, events: &mut Vec<SimEvent>) {
+    let pv_events = std::mem::take(&mut st.pv.as_mut().unwrap().pursuit.events);
+    for e in pv_events {
+        match &e {
+            PursuitEvent::Barrier { player: true, .. } => {
+                let v = &mut st.players[0].v;
+                v.vx *= 0.97;
+                v.vz *= 0.97;
+            }
+            PursuitEvent::Busted { player: true, .. } => {
+                crash(&st.race, &mut st.players[0].rules, events)
+            }
+            PursuitEvent::Release {
+                racer,
+                player: true,
+                spot: Some((s, lat)),
+            } => {
+                // The penalty is served: back on the road ahead of the police,
+                // repaired if it was wrecked.
+                let pv = st.pv.as_mut().unwrap();
+                let r = &pv.pursuit.racers[*racer];
+                pv.penalty += r.hold_total;
+                let wrecked = r.hold_reason == Some(HoldReason::Wrecked);
+                let p = &mut st.players[0];
+                p.phys.locked = false;
+                p.phys.reset(&mut p.v, t, *s, *lat);
+                if wrecked {
+                    pv.damage = 0.0;
+                    p.phys.damage = 0.0;
+                }
+                p.phys.spiked = 0.0;
+            }
+            _ => {}
+        }
+        events.push(SimEvent::Pursuit(e));
+    }
+}
+
+/// Hot Pursuit inside a race (the simulation half of `PursuitView`): the
+/// pursuit, and the player's damage, wrecks and penalties.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PursuitView {
+    pub pursuit: Pursuit,
+    pub damage: f64,
+    pub wrecks: i32,
+    /// Seconds served.
+    pub penalty: f64,
+    pub t: f64,
+    pub last_hit: LastHit,
+}
+
+impl PursuitView {
+    pub fn held(&self) -> bool {
+        self.pursuit
+            .player
+            .is_some_and(|p| self.pursuit.racers[p].hold > 0.0)
+    }
+}
+
+impl LastHit {
+    fn slot(&self, id: BodyId) -> Option<f64> {
+        match id {
+            BodyId::Rival(i) => self.rivals[i],
+            BodyId::Traffic(i) => self.traffic[i],
+            BodyId::Police(i) => self.police[i],
+            BodyId::Sawhorse(i) => self.sawhorses[i],
+            _ => None,
+        }
+    }
+
+    fn set(&mut self, id: BodyId, v: f64) {
+        let slot = match id {
+            BodyId::Rival(i) => &mut self.rivals[i],
+            BodyId::Traffic(i) => &mut self.traffic[i],
+            BodyId::Police(i) => &mut self.police[i],
+            BodyId::Sawhorse(i) => &mut self.sawhorses[i],
+            _ => return,
+        };
+        *slot = Some(v);
+    }
+}
+
+/// The pursuit's summary for the results (`pv.stats()`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct PursuitStats {
+    pub busts: i32,
+    pub wrecks: i32,
+    pub takedowns: i32,
+    pub penalty: f64,
+    pub heat: i32,
+}
+
+pub fn pursuit_stats(st: &SimState) -> Option<PursuitStats> {
+    st.pv.as_ref().map(|pv| PursuitStats {
+        busts: pv.pursuit.busts,
+        wrecks: pv.wrecks,
+        takedowns: pv.pursuit.takedowns,
+        penalty: pv.penalty,
+        heat: pv.pursuit.max_heat,
+    })
 }
 
 /// `x.toFixed(1)` for the bonus texts.
@@ -1056,41 +1389,6 @@ fn cruise_score(r: &mut PlayerRules, dt: f64, speed: f64) {
         r.mult -= 1.0;
         r.mult_timer = 2.5;
     }
-}
-
-/// `resolveCollisions(agents, hits)` over the state's pools, in agent order.
-fn collide(st: &mut SimState, t: &Track, agents: &[AgentRef]) -> Vec<Hit> {
-    let mut hits = Vec::new();
-    let mut players: Vec<Option<PhysicsBody>> = st
-        .players
-        .iter_mut()
-        .map(|p| Some(PhysicsBody { v: &mut p.v }))
-        .collect();
-    let mut rivals: Vec<Option<&mut AiDriver>> = st.rivals.iter_mut().map(Some).collect();
-    let mut cars: Vec<Option<&mut TrafficCar>> = st.traffic.cars.iter_mut().map(Some).collect();
-    let mut taken_players: Vec<PhysicsBody> = Vec::new();
-    let mut order: Vec<(u8, usize)> = Vec::with_capacity(agents.len());
-    for &r in agents {
-        match r {
-            AgentRef::Player(i) => {
-                taken_players.push(players[i].take().unwrap());
-                order.push((0, taken_players.len() - 1));
-            }
-            AgentRef::Rival(i) => order.push((1, i)),
-            AgentRef::Traffic(i) => order.push((2, i)),
-        }
-    }
-    let mut tp: Vec<Option<&mut PhysicsBody>> = taken_players.iter_mut().map(Some).collect();
-    let mut bodies: Vec<&mut dyn Body> = Vec::with_capacity(agents.len());
-    for (kind, i) in order {
-        match kind {
-            0 => bodies.push(tp[i].take().unwrap()),
-            1 => bodies.push(rivals[i].take().unwrap()),
-            _ => bodies.push(cars[i].take().unwrap()),
-        }
-    }
-    resolve_collisions(&mut bodies[..], t, &mut hits);
-    hits
 }
 
 /// A 64-bit hash of the state, for determinism and desync checks (SPEC 4.3).
