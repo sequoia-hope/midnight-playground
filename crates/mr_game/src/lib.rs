@@ -33,6 +33,7 @@ pub mod animate;
 pub mod cars;
 pub mod convert;
 pub mod fly;
+pub mod levels;
 pub mod loader;
 pub mod matscene;
 pub mod options;
