@@ -3835,6 +3835,69 @@ counted as before (`Counts::invisible`); the animators' visibility edits
 combine each node's own flag with its ancestors' as three does. Sierra has
 none; Cruise's export has 52 (486 entities instead of 432).
 
+## D499. Coast Highway's kinds, drawn from its export
+
+2026-10-04, after WP 7.1 (the coordinator's plan: the drawing side of the
+other levels, linking no scenery; Coast's to-do from WP 7.1). Blocks of
+`three_material.wgsl` as before: **Surf** (`foamMaterial`, a
+ShaderMaterial: value noise, swell bands, contact foam and ragged rings;
+the rings' phase from the instance's translation, the InstancedMesh being
+at the origin; three's FogExp2 on it), **LighthouseBeam** (additive, its
+`vV` carried interpolated as three does, its own fog fade), **Stucco**
+(`tGrain` in the detail slot, a triplanar grain and a broad mottle after
+`color_fragment`) and **ContainerAtlas** (the mask atlas's row by the
+instance's `aVar`, the body colour from the instance colour). `aVar` is an
+instance-rate attribute; the instance stream grows from 20 to 24 floats
+(96 bytes) to carry a geometry's instance-rate attributes, one float each
+in the geometry's order (`loader::instance_extras`, at shader location 15;
+zeros without; the shadow pass reads only the matrix): the containers'
+`aVar`, Desert's pools' `ph` and `fl` (D500). Sierra's 63,263 instances
+take 1 MB more for it. TriplanarRock
+(coast/kit.js) and the lighthouse's glow Sprite were drawn already (D494).
+Without the level's animators (D498), the animated uniforms follow the
+scene-wide state as the updaters set them (D293's rule: Surf's `uTime` the
+clock and `uBright` lerp(1, 0.32, night), the beam's `uStrength` 0.03 +
+0.32 × smoothstep(0.2, 0.8, night)); colours an updater moves on plain
+materials (the bulbs, the glow's opacity and scale) and the beam's turn
+stay as exported.
+
+Gate, the web build at 1280 × 800 through the registered server
+(`rust-web-stations.mjs --server`; Coast's export is over D106's
+interception limit): 67 stations, 3 over the limits (13 before), median
+0.26 / 0.62. The three are the beach at sunrise from the chase camera
+(04000, 04250, 04500: worst 5.1 / 30.2): the asphalt in the low sun
+reflects brighter than in the JS. They were the same before these kinds
+(5.2 / 30.2) and involve none of them; not resolved here. The material
+scenes for Surf, LighthouseBeam and Stucco pass (0.06 / 0.13 at worst)
+and join `all`; ContainerAtlas's scene is over (3.5 / 18.1) because the
+material tool draws it without the instance stream (no `aVar`), so it
+stays out of `all`; its stations (the harbour) pass.
+
+## D500. Desert Run's kinds, drawn from its export
+
+2026-10-04 (D556's list). **Sandstone** (strata from `tRock` in the aux
+slot, the varnish from `tDetail` in the detail slot, the instance's matrix
+included, as TriplanarRock), **GroundPool** (the flicker `vFl` from the
+instance's `ph` and `fl` in the stream's instance-rate floats, D499, and
+the clock) and **FloodBeam** (`vFace²`, the normal through the instance's
+matrix as three's `mat3(instanceMatrix)`, not its inverse transpose). The
+pools' and beams' opacity is a material value the updater moves with the
+night (`smoothstep(0.15, 0.7, n)` and `0.13 × smoothstep(0.3, 0.8, n)`;
+both 0 in the daytime export): it is one of the kind's animated values
+(the block's texel 4 with the animators, D490; the night factor without),
+as are the pools' `uTime` and the flicker points' clock (D293). The
+material colours Desert's updater moves (flares, fires, lanterns, lamps,
+bulbs, strings; `colour × k`) and the train (its sprites, its spot light)
+stay as exported without the level's animators (D498). The material test
+tool's overrides of a material value (`overrides.material`, the pools' and
+beams' night opacity) go through `animate::fix_uniforms` as its uniform
+overrides do; drawn without the instance stream, a pool has no flicker.
+
+Gate, the web build at 1280 × 800 through the registered server: **all 63
+Desert stations within the limits**, median 0.16 / 0.39, worst 0.681 mean
+(02250-high) and 1.564 block 95 % (07250-chase). The material scenes for
+the three pass (0.083 / 0.170 at worst) and join `all`.
+
 ## WP 7.4 Seaside decisions
 
 ## D590. The shape of `mr_worldgen::raceway`; `world.level.data` and `world.onCountdown`

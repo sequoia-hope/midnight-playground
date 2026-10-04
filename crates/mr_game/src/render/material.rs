@@ -63,6 +63,23 @@ pub enum Patch {
     /// three's `SpriteMaterial`: a camera-facing quad (the waterfall's
     /// spray).
     Sprite { attenuate: bool },
+    /// `harbor/textures.js` `containerMaterial`: the atlas row by the
+    /// instance's `aVar`, the body colour from the instance colour.
+    Container,
+    /// `Beach.js` `stuccoMaterial`: a world-space triplanar grain.
+    Stucco,
+    /// `Coast.js` `foamMaterial`: a `ShaderMaterial`, the surf against the
+    /// rocks and the rings round them.
+    Surf,
+    /// `Coast.js`'s lighthouse beam: a `ShaderMaterial`, additive.
+    Beam,
+    /// `desert/parts.js` `sandstoneMaterial`: triplanar strata and varnish.
+    Sandstone,
+    /// `desert/glow.js` `flickerPools`: additive pools flickering by the
+    /// instance's `ph` and `fl`.
+    Pool,
+    /// `Desert.js`'s flood-light cones: fading where edge-on.
+    FloodBeam,
 }
 
 /// `surfaceDetail`'s `mode` (`kind_opts.mode`).
@@ -133,6 +150,13 @@ impl Patch {
             MaterialKind::Sprite => Patch::Sprite {
                 attenuate: m.boolean("sizeAttenuation").unwrap_or(true),
             },
+            MaterialKind::ContainerAtlas => Patch::Container,
+            MaterialKind::Stucco => Patch::Stucco,
+            MaterialKind::Surf => Patch::Surf,
+            MaterialKind::LighthouseBeam => Patch::Beam,
+            MaterialKind::Sandstone => Patch::Sandstone,
+            MaterialKind::GroundPool => Patch::Pool,
+            MaterialKind::FloodBeam => Patch::FloodBeam,
             _ if m.ty == "PointsMaterial" => points(PointsMode::Plain),
             _ => Patch::None,
         }
@@ -433,6 +457,13 @@ impl Material for ThreeMaterial {
                     defs.push("USE_SIZEATTENUATION".into());
                 }
             }
+            Patch::Container => defs.push("PATCH_CONTAINER".into()),
+            Patch::Stucco => defs.push("PATCH_STUCCO".into()),
+            Patch::Surf => defs.push("PATCH_SURF".into()),
+            Patch::Beam => defs.push("PATCH_BEAM".into()),
+            Patch::Sandstone => defs.push("PATCH_SANDSTONE".into()),
+            Patch::Pool => defs.push("PATCH_POOL".into()),
+            Patch::FloodBeam => defs.push("PATCH_FLOODBEAM".into()),
         }
         if k.normal_map {
             defs.push("USE_NORMALMAP".into());
@@ -567,7 +598,10 @@ pub fn model_of(ty: &str) -> Option<Model> {
 /// (TrafficStreams, SkyGlow: unlit, their own colour), basic.
 pub fn model_of_material(m: &MaterialDesc) -> Option<Model> {
     model_of(&m.ty).or(match m.kind {
-        MaterialKind::TrafficStreams | MaterialKind::SkyGlow => Some(Model::Basic),
+        MaterialKind::TrafficStreams
+        | MaterialKind::SkyGlow
+        | MaterialKind::Surf
+        | MaterialKind::LighthouseBeam => Some(Model::Basic),
         _ => None,
     })
 }
@@ -734,6 +768,34 @@ pub fn three_material(
         Patch::Sprite { .. } => {
             p.kind0 = Vec4::new(num("rotation", 0.0) as f32, 0.0, 0.0, 0.0);
         }
+        Patch::Stucco => {
+            detail = tex("tGrain").map(|(h, _)| h);
+        }
+        Patch::Sandstone => {
+            aux = tex("tRock").map(|(h, _)| h);
+            detail = tex("tDetail").map(|(h, _)| h);
+        }
+        Patch::Pool => {
+            p.kind0 = Vec4::new(
+                m.number("uTime").unwrap_or(0.0) as f32,
+                num("opacity", 1.0) as f32,
+                0.0,
+                0.0,
+            );
+        }
+        Patch::FloodBeam => {
+            p.kind0 = Vec4::new(num("opacity", 1.0) as f32, 0.0, 0.0, 0.0);
+        }
+        Patch::Surf | Patch::Beam => {
+            let u = |n: &str, d: f64| m.number(n).unwrap_or(d) as f32;
+            p.kind0 = if patch == Patch::Surf {
+                Vec4::new(u("uTime", 0.0), u("uBright", 1.0), u("uSwell", 1.0), 0.0)
+            } else {
+                Vec4::new(u("uStrength", 0.5), 0.0, 0.0, 0.0)
+            };
+            let c = col("uColor", [1.0; 3]);
+            p.kind1 = Vec4::new(c[0] as f32, c[1] as f32, c[2] as f32, 0.0);
+        }
         Patch::None => {
             // A plain material's tangent-space normal map (Valley's creek),
             // as the sea's (three's derivative frame).
@@ -750,7 +812,7 @@ pub fn three_material(
                 );
             }
         }
-        Patch::Shoulder | Patch::Reflector | Patch::Siding(_) => {}
+        Patch::Shoulder | Patch::Reflector | Patch::Siding(_) | Patch::Container => {}
     }
     // alphaMap (alphamap_fragment), in the photo slot (the terrain is the
     // only other user, and has none).
