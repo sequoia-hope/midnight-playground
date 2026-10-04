@@ -503,6 +503,10 @@ fn instance_stream(
     let world = DMat4::from_translation(offset.as_dvec3()) * DMat4::from_cols_array(matrix_world);
     let mats = scene.buffers[inst.matrices as usize].data.as_f32()?;
     let colors = inst.colors.map(|c| &scene.buffers[c as usize].data);
+    // An instance-rate `aVar` (the harbour's containers: the atlas row),
+    // carried with `receiveShadow` in the stream's last float as
+    // receive + 2 × aVar (`three_material.wgsl` splits them; D499).
+    let a_var = instance_var(scene, inst);
     let mut data = Vec::with_capacity(inst.count as usize * instancing::INSTANCE_FLOATS);
     for k in 0..inst.count as usize {
         let Some(cols) = mats.get(k * 16..k * 16 + 16) else {
@@ -517,6 +521,9 @@ fn instance_stream(
             [v(0), v(1), v(2)]
         });
         instancing::push_instance(&mut data, &(world * local), tint, receive);
+        if let (Some(v), Some(last)) = (&a_var, data.last_mut()) {
+            *last += 2.0 * v.get(k).copied().unwrap_or(0.0);
+        }
     }
     if data.is_empty() {
         return None;
@@ -530,6 +537,23 @@ fn instance_stream(
             (c.as_vec3(), r as f32)
         });
     Some((Instances(Arc::new(InstanceStream::new(&data))), sphere))
+}
+
+/// An InstancedMesh's instance-rate `aVar` attribute, if its geometry has
+/// one.
+pub fn instance_var(scene: &Scene, inst: &mr_scene::InstanceDesc) -> Option<Vec<f32>> {
+    let node = scene.nodes.get(inst.node as usize)?;
+    let mesh = scene.meshes.get(node.mesh? as usize)?;
+    let a = mesh
+        .attributes
+        .iter()
+        .find(|a| a.name == "aVar" && a.instanced)?;
+    let b = &scene.buffers[a.accessor as usize];
+    Some(
+        (0..b.count())
+            .map(|i| b.data.get(i * b.item_size as usize) as f32)
+            .collect(),
+    )
 }
 
 /// The scene's local lights: its first spot light (the desert train's) and

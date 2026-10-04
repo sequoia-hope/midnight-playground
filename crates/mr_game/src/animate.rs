@@ -356,6 +356,8 @@ struct InstInfo {
     colors: Option<Vec<[f32; 3]>>,
     count: u32,
     receive: bool,
+    /// The instance-rate `aVar`, if the geometry has one (`loader`).
+    var: Option<Vec<f32>>,
     dirty: bool,
 }
 
@@ -400,6 +402,9 @@ fn uniform_slot(kind: MaterialKind, prop: &str) -> Option<usize> {
         (SkyGlow, "uK") => 0,
         (Asphalt, "uWet") => 0,
         (GlowPoints, "uFogK") => 0,
+        (Surf, "uTime") => 0,
+        (Surf, "uBright") => 1,
+        (LighthouseBeam, "uStrength") => 0,
         _ => return None,
     })
 }
@@ -424,7 +429,16 @@ pub fn fix_uniforms(mat: &mut ThreeMaterial, kind: MaterialKind, overrides: &ser
 }
 
 /// Every animated uniform of [`uniform_slot`].
-const UNIFORMS: [&str; 6] = ["uTime", "uNight", "uFogK", "uHalfH", "uK", "uWet"];
+const UNIFORMS: [&str; 8] = [
+    "uTime",
+    "uNight",
+    "uFogK",
+    "uHalfH",
+    "uK",
+    "uWet",
+    "uBright",
+    "uStrength",
+];
 
 impl SceneIndex {
     pub fn new(
@@ -470,6 +484,7 @@ impl SceneIndex {
                         colors,
                         count: d.count,
                         receive: n.receive_shadow,
+                        var: crate::loader::instance_var(scene, d),
                         dirty: false,
                     })
                 }),
@@ -920,6 +935,9 @@ pub fn run_animators(
                 .and_then(|c| c.get(j).copied())
                 .unwrap_or([1.0; 3]);
             instancing::push_instance(&mut data, &(world * local), tint, inst.receive);
+            if let (Some(v), Some(last)) = (&inst.var, data.last_mut()) {
+                *last += 2.0 * v.get(j).copied().unwrap_or(0.0);
+            }
         }
         // The same count: written into the stream's buffer in place (no GPU
         // allocation per frame, D497); else a new stream.
