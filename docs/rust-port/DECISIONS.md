@@ -3607,3 +3607,173 @@ chase bulbs (instance colours), the port's glow points (the `color`
 attribute, base × k stored as f32), the boats (transforms from a YXZ
 Euler) and the breakwater lamps (instance colours). D537 holds them to the
 game step by step.
+
+## WP 7.4 Seaside decisions
+
+## D590. The shape of `mr_worldgen::raceway`; `world.level.data` and `world.onCountdown`
+
+2026-10-04, WP 7.4. `Raceway.js` is `mr_worldgen::raceway`
+(`raceway/mod.rs`), `raceway/textures.js` is `raceway::textures`.
+`Raceway` keeps what `plan()` decides (`this.corners`, from `findCorners`)
+and, after `build()`, the JS fields other code reads (`kerbs`,
+`tyre_runs`, `bridges`, `tree_count`, and `lamp_mats`, which the e2e
+`circuit` test reads as `lampMats`); `build()` makes a `Bld` that is the
+JS `this` (the track, the survey, the graph, the group `raceway`, the
+rendered-surface sampler `S`, whose height cache all the builders share in
+the JS order, the materials) and runs the JS `build*` methods in the JS
+order; the `await tick()`s are not needed in one job. The extrusion
+profiles' closures hold the track by an `Arc` clone (`road::Lat` closures
+are `'static`). Where the JS `continue`s past a loop update that draws
+(the crowd's seats, the near trees' cells) the port uses a labelled block,
+as D530 does. The textures are `TextureCache` entries under
+`raceway:kerb`, `raceway:tyre`, `raceway:fence`, `raceway:crowd` and
+`raceway:banners` (D352); `bannerAtlas().rect(name)` depends only on the
+panel's place in `BANNERS`, so `banner_rect` computes it without the
+picture. The helpers are Mountain's `SurfaceSampler` (`coast/kit.js` is
+Mountain's kit, D530), City's `GeoBuilder` and `staticMesh`, Road's
+`extrude` and `runs`, Valley's `canopyGeometry`; `blobGeometry` keys its
+vertices by `toFixed(3)` as Rust's `{:.3}` of `x + 0.0` (no coordinate of
+the icosahedron is a rounding tie; -0 prints as 0 in both).
+
+The JS reads two things the world did not have. `world.level.data`, the
+survey, is `World::level_data` (`Option<Arc<SeasideData>>`, set with
+`World::with_level_data`), which the caller sets with the level it
+prepared (D54); Raceway's `build()` without it fails ("prepare() first"),
+which the job logs, as the JS level's `path()` throws. `world.onCountdown`,
+the hook the race calls every frame (`Race.update`:
+`this.world.onCountdown?.(started ? -1 : this.countdown)`), is
+`World::on_countdown` (`CountdownFn`: `FnMut(cd, &mut Vec<Edit>)`), which
+`finish()` carries to `WorldBuild::on_countdown`;
+`WorldBuild::countdown(cd)` runs it and resolves its edits as
+`WorldBuild::update` does. Raceway's sets the five start-light materials'
+`emissiveIntensity` (6 lit, 0 dark; `lit = cd > 0 ? clamp(ceil((4 - cd) ×
+5 / 4), 0, 5) : 0`). Both are new fields with `None` defaults: no other
+level's build changes (the Sierra, Coast and Desert gates pass unchanged).
+Raceway is the last line of `scenery::PORTED`; its `plan()` registers
+nothing, so the terrain and road gates are unchanged, and Seaside Raceway
+now builds with `scenery_factory(None)`, from ported modules alone, with no
+recorded stand-in. The shared test helper `common::world(id)` gives
+Seaside's world its survey, and `tests/world_data.rs` builds through it,
+so Raceway's build there has its data (the runout and carriageway it
+checks are unchanged).
+
+## D591. The L3 gate for Seaside Raceway, and what it found
+
+2026-10-04, WP 7.4. `tools/parity/raceway-golden.mjs` (desert-golden.mjs's
+pattern, in a file of its own) writes `parity/golden/seaside/seaside.json`
+from the cached export: the group `raceway` as Desert's golden holds
+`desert` (a line per node, the material table in canonical form, every
+texture's 8×8 block means), every texture that is not a canvas (index,
+source, size, channels, SHA-256), the night parameters, the night factor,
+camera and lights. `tools/parity/raceway-textures.mjs`
+(coast-textures.mjs's pattern) captures the group's canvases in the game
+with the bundled fonts, every one held to it, lettered or not, to
+`parity/golden/seaside/textures.json` (with premultiplied block means too,
+D592) and the RGBA to `parity/cache/<key>/seaside/`. `tests/seaside.rs`
+builds the level through `level_jobs` with `scenery_factory(None)`,
+updates the sky at the export's focus, applies the night parameters and
+runs the updaters once as the frozen export ran them (the menu: no race,
+so `onCountdown` is never called and the lights stay dark), then holds the
+group to the golden (`raceway_group`) and the scene to the export
+(`seaside_is_the_export`: night parameters, counts and kinds always, the
+non-canvas textures byte for byte, and with the cache the whole digest
+entry by entry). Result: **identical**, native and in wasm, with no fix to
+any shared module: the group `raceway`, 165 nodes (63,253 vertices) and
+all 18 materials; the scene, 227 nodes, 126 meshes, 23 materials, 13
+textures, 90 instance sets, 2 lights, 220 drawables, 261,352 vertices,
+1,306,614 indices (the exporter's byte count, 39,061,944, comes out equal
+too), every digest entry equal but the pixels of the 9 canvas textures;
+the night parameters equal. The terrain's data texture and the
+loose-ground mask made from the survey are byte-identical to the export;
+the photo is the caller's (D593). Canvas textures against the capture:
+the concrete 0.03 levels mean absolute difference at most, the kerb 0.36,
+the tyre wall 0.21, the crowd 0.50, the banner atlas 0.20 (22.0 against
+the export, all in the glyphs: the export draws with the machine's fonts),
+the catch fence as D592 says. Rerun: `node tools/parity/raceway-golden.mjs`
+(with the cache), `node tools/parity/raceway-textures.mjs` when the fonts
+change, then `cargo test -p mr_worldgen --test seaside` (and in wasm).
+
+## D592. The catch fence is held where three draws it
+
+2026-10-04, WP 7.4. `fenceTexture` is D534's case again: diagonal strokes
+1.6 px wide on a transparent canvas, where Chrome's coverage across a
+stroke is 16, 137, 242, 137, 16 and mr_canvas's exact area 2, 151, 242,
+151, 2 (the same total). Unpremultiplied that is 11.8/11.7/9.1/5.1 levels
+mean absolute difference (R/G/B/A), the RGB of the faint edge pixels
+dominating. The fence material is `alphaTest` 0.35 and opaque, so three
+draws only the texels at or above the cut: no pixel falls on the other
+side of it (0 of 16,384), the colour of the drawn pixels is within
+0.88/0.56/1.19 levels, the premultiplied colour within 3.7/3.9/3.8 and the
+total alpha within 0.12 %. `tests/seaside.rs` holds an alpha-tested canvas
+over the threshold that way (no crossing, drawn colour under 3,
+premultiplied under D534's 6, alpha total within 0.5 %), and without the
+capture's RGBA (CI, wasm) by its premultiplied 8×8 block means, which the
+capture records (0.14/0.29/0.20/0.08). Matching Chrome's stroke coverage
+stays mr_canvas's (D534).
+
+## D593. The photo in the gate; the loose-ground mask byte for byte
+
+2026-10-04, WP 7.4. The draped photo and its mask were ported with the
+terrain (D234): the client decodes `photo.jpg` and passes it in
+`TerrainSetup::photo` (`GroundPhoto::seaside`); the mask is made from the
+survey. With the cache, `tests/seaside.rs` takes Chrome's decode from the
+export, as `tests/terrain_mesh.rs` does, so the whole digest (the photo's
+bytes and sampler, the terrain material's `tPhoto`, `tLoose` and
+`uPhotoBox`) is compared; without it a blank picture of the photo's size
+(1843×2160) stands in, and the photo's bytes alone go unchecked. The mask
+(1106×1296, one channel) and the terrain's data texture are compared to
+the golden's SHA-256 in every run, CI and wasm included: byte-identical.
+
+## D594. Seaside Raceway's start lights and animators, step by step
+
+2026-10-04, WP 7.4. Raceway registers no updater; its moving part is
+`world.onCountdown`. `tools/parity/seaside-animators.mjs`
+(desert-animators.mjs's pattern, D555, in a file and golden of its own,
+so that other packages can extend `animators.mjs`) runs the game's own
+`world.update` and then `world.onCountdown(cd)` over 16 uneven frames
+(dt 0 to 3.3 s round the lap and past the line, the camera at the line,
+the hairpin and the Corkscrew, the countdown lighting each column, GO,
+racing at -1, a fresh start) and 360 ticks of 1/120 s at 60 m/s with the
+countdown running from 4 to 0 (`cd = 4 - (k + 1) / 90`), recording every
+value that changes under `world.root`: 5 values on 5 targets, the
+start-light materials' `emissiveIntensity` (the road's dew and the night
+parameters hold still: Seaside's sky is at night 0 all race). The Node
+capture (the photo an empty texture, which nothing reads; three's
+"already non-indexed" warning from `blobGeometry`, which the game gives
+too, let through) and two browser captures agree; CI checks the Node one
+reproduces. `tests/seaside_animators.rs` replays them as the client runs a
+frame (`update_sky`, the night parameters, `update`, then
+`WorldBuild::countdown(cd)`): **identical, every frame and every tick**,
+native and in wasm.
+
+## D595. What the client still stands in for on Seaside Raceway
+
+2026-10-04, WP 7.4. The data side of every material kind Seaside Raceway
+uses is complete (D591): Terrain (with the photo), Asphalt, Markings,
+SkyDome and 19 built-in Standard materials. On `main` today none of them
+is stood in for or hidden by `convert::stand_in` (no Sprite, no effect
+`ShaderMaterial`): the Terrain patch already draws the drape (`MR_PHOTO`:
+`tPhoto`, `tLoose`, `uPhotoBox`), and Raceway's materials are plain
+`MeshStandardMaterial`s whose features the renderer has (maps, vertex
+colours, `instanceColor` on the oaks, `alphaTest` on the fence,
+`polygonOffset` on the kerbs, the grid and the pit lane, `DoubleSide`).
+What the client still has to do for the L4 stations and the race:
+
+- **Build Seaside from mr_worldgen** (it loads the export today):
+  `World::new(level).with_level_data(survey)` with the same
+  `Arc<SeasideData>` that `seaside::prepare` was given; `TerrainSetup {
+  ground_color: Some(seaside_ground_color(survey)), photo:
+  Some(GroundPhoto::seaside(&survey, decoded_photo_jpg, url)), .. }`
+  (D234: the decode is the client's; the JS sets the texture sRGB,
+  `flipY` false, anisotropy 8, clamped); `scenery_factory(None)`.
+- **The start lights** (`Raceway.js` `buildStart`, `world.onCountdown`):
+  five `MeshStandardMaterial`s (colour 0x220806, emissive 0xff2010,
+  `emissiveIntensity` 0), two `CircleGeometry(0.17, 12)` lamps each, the
+  material's `emissiveIntensity` changed per frame. Every frame of a race,
+  after `world.update`, the client calls `WorldBuild::countdown(cd)` (`cd`
+  the countdown's seconds left while it runs, -1 once racing: `Race.js`
+  `this.world.onCountdown?.(started ? -1 : this.countdown)`) and applies
+  its `Change::Number { prop: "emissiveIntensity" }` edits to the
+  material's emissive intensity (6 lit, 0 dark). The e2e `circuit` test
+  counts the lit lamps (`__world.scenery[0].lampMats`).
+- The lap HUD and the rest of the race (not world generation).
