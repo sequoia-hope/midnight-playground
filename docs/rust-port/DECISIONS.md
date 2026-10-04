@@ -3165,3 +3165,24 @@ at race time 3 and 8 s are the same before and after (mean 0.06 and 0.22
 of 255, the differences at the moving cars' edges from frame timing); the
 headlights and tail lights match. Measurements: BASELINE.md, "Races at
 dusk".
+
+## WP 5.6–5.7 and race audio decisions
+
+## D510. The songs' L4 renders: all seven within 0.4 dB, and the songs join the default run
+
+2026-10-04, WP 5.6. The last gate of WP 5.6 is SPEC 7.5's offline renders
+of each song's first thirty seconds (`song-<id>` in `renders.json`, music
+at 0.7 through the music bus, SFX silent). They render on the native
+backend through `examples/render_scenarios.rs` as the other scenarios do
+(D253: `music.play(track)`, `setMusic(true)`, `pumpUntil(t + 1)` every 64
+control frames) and compare with Chrome's band levels in
+`tools/parity/audio-bands.mjs`. Nothing needed fixing: the worst band per
+song is midnight-run 0.36 dB (1259 Hz), neon-rush 0.36 dB (1259 Hz),
+mirage 0.17, seabright 0.13, afterburner 0.07, interstate 0.02 and
+chrome-heart 0.01 dB, against SPEC 7.5's 1.5 dB and Chrome's own run-to-run
+jitter; the RMS levels agree to 0.03 dB. The sequencer's call log was
+already exact (D251), so these renders check the instruments' DSP (the
+hall convolver, the delays, the drum kit's buffers, the pulse waves) on the
+native backend. `audio-bands.mjs` now renders and compares every scenario
+by default, the songs included (111), instead of leaving the songs to an
+explicit prefix.
