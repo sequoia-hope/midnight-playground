@@ -19,7 +19,8 @@
 //! The parked pickup at the diner and the sedan at the lookout come from
 //! `vehicles/CarModel.js` (roadmap WP 4.1); the JS imports it optionally
 //! and so does the port: [`Mountain::parked_cars`] is a hook that builds a
-//! car's object tree, which `bakeStatic` then merges (DECISIONS D311).
+//! car's object tree, which `bakeStatic` then merges (DECISIONS D311);
+//! [`Mountain::new`] sets it to [`crate::car_model::parked_car`] (D412).
 //!
 //! The material patches (`TriplanarRock`, `Reflector`) are tagged kinds;
 //! their GLSL is the renderer's.
@@ -128,7 +129,7 @@ impl Mountain {
             exclusions: Vec::new(),
             diner: None,
             lookout: None,
-            parked_cars: None,
+            parked_cars: Some(crate::car_model::parked_car),
             group: None,
             rock_count: 0,
             tree_count: 0,
