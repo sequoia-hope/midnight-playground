@@ -99,7 +99,9 @@ class SkidMarks {
     const idx = new Uint32Array(max * 6);
     for (let i = 0; i < max; i++) {
       const b = i * 4;
-      idx.set([b, b + 1, b + 2, b + 1, b + 3, b + 2], i * 6);
+      // Wound to face up: the order (b, b+1, b+2) faced down and every mark
+      // was back-face culled, so none ever showed.
+      idx.set([b, b + 2, b + 1, b + 1, b + 2, b + 3], i * 6);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
