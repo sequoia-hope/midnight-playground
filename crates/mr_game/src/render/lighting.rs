@@ -23,11 +23,17 @@ pub const LIGHT_SLOTS: usize = 512;
 pub const G_BLOCKS: usize = G_LIGHTS + LIGHT_SLOTS / 4;
 /// Texels per animation block.
 pub const BLOCK_TEXELS: usize = 5;
-/// Animation blocks (materials an animator touches; Sierra: 34).
+/// Animation blocks (materials an animator touches; Sierra: 15 at the start).
 pub const MAX_BLOCKS: usize = 128;
+/// The first texel of the block map: per scene material (its index in
+/// `ThreeParams::slots.z`, less one), the first texel of its block, 0 for
+/// none, four materials to a texel.
+pub const G_BLOCK_MAP: usize = G_BLOCKS + MAX_BLOCKS * BLOCK_TEXELS;
+/// Scene materials the block map covers.
+pub const MAX_MAPPED: usize = 512;
 /// Texels in the globals row (`three_globals.wgsl`): the scene's state, then
-/// the material lights, then the animation blocks.
-pub const GLOBALS_WIDTH: usize = G_BLOCKS + MAX_BLOCKS * BLOCK_TEXELS;
+/// the material lights, then the animation blocks and their map.
+pub const GLOBALS_WIDTH: usize = G_BLOCK_MAP + MAX_MAPPED / 4;
 pub const G_SUN_DIR: usize = 0;
 pub const G_SUN_COLOR: usize = 1;
 pub const G_HEMI_SKY: usize = 2;

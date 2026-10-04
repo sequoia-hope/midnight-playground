@@ -75,6 +75,15 @@ impl Hud {
     }
 }
 
+/// Every race start in the client gets its own number (`Race::starts`),
+/// so a race built afresh from the menu is told from the one before it as
+/// a restart is (the audio's `startRace` calls key on it).
+fn next_start() -> u32 {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static STARTS: AtomicU32 = AtomicU32::new(0);
+    STARTS.fetch_add(1, Ordering::Relaxed) + 1
+}
+
 /// Where the session is, for the screens.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -152,7 +161,7 @@ impl Race {
             log: Vec::new(),
             audio_ticks: Vec::new(),
             music_pressed: false,
-            starts: 1,
+            starts: next_start(),
         }
     }
 
@@ -171,7 +180,7 @@ impl Race {
         self.results = None;
         self.input.pressed.clear();
         self.input.enabled = true;
-        self.starts += 1;
+        self.starts = next_start();
     }
 
     pub fn state(&self) -> RaceStateKind {

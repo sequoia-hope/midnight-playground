@@ -78,7 +78,12 @@
 //!   even).
 //! - Anti-aliasing is exact area coverage (the closest single rule to
 //!   Chrome's accelerated canvas, which is exact for rectangles; DECISIONS
-//!   D151), the nonzero rule.
+//!   D151), the nonzero rule, except for strokes, which follow Chrome's GPU
+//!   canvas (D650-D653): a lone line segment is a quad with an analytic
+//!   edge ramp `|nx| + |ny|` wide, any other stroke is tessellated as Skia
+//!   does and multisampled with the standard 8× pattern, blending into each
+//!   sample until the canvas is read; after five path draws, lone lines are
+//!   multisampled too.
 //! - Path points are transformed when added; strokes are made in the user
 //!   space of the transform at stroke time.
 //! - `arc`/`ellipse` angles follow Blink's canonicalisation (a sweep of 2π
@@ -111,6 +116,8 @@ pub mod fonts;
 pub mod paint;
 pub mod path;
 pub mod raster;
+mod samples;
+pub mod tess;
 pub mod text;
 
 pub use canvas::{Canvas, ImageData, TextMetrics, to_uint8_clamp};

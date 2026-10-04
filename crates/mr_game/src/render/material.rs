@@ -63,6 +63,35 @@ pub enum Patch {
     /// three's `SpriteMaterial`: a camera-facing quad (the waterfall's
     /// spray).
     Sprite { attenuate: bool },
+    /// `harbor/textures.js` `containerMaterial`: the atlas row by the
+    /// instance's `aVar`, the body colour from the instance colour.
+    Container,
+    /// `Beach.js` `stuccoMaterial`: a world-space triplanar grain.
+    Stucco,
+    /// `Coast.js` `foamMaterial`: a `ShaderMaterial`, the surf against the
+    /// rocks and the rings round them.
+    Surf,
+    /// `Coast.js`'s lighthouse beam: a `ShaderMaterial`, additive.
+    Beam,
+    /// `desert/parts.js` `sandstoneMaterial`: triplanar strata and varnish.
+    Sandstone,
+    /// `desert/glow.js` `flickerPools`: additive pools flickering by the
+    /// instance's `ph` and `fl`.
+    Pool,
+    /// `Desert.js`'s flood-light cones: fading where edge-on.
+    FloodBeam,
+    /// `streets/facades.js` `facadeMaterial`: the façade atlas by cell, lit
+    /// windows, the street's bounce light.
+    StreetFacade,
+    /// `streets/textures.js` `patchStreetAtlas`: shop fronts and rowhouses.
+    StreetAtlas,
+    /// `streets/props.js` `ambientPatch`: emissive in proportion to albedo.
+    Ambient,
+    /// `streets/props.js` `neonFlicker`: the signs' hum, buzz and drop-outs.
+    Neon,
+    /// `streets/props.js` `buildSteam`: a `ShaderMaterial` on points, puffs
+    /// rising from the vents.
+    Steam,
 }
 
 /// `surfaceDetail`'s `mode` (`kind_opts.mode`).
@@ -133,6 +162,18 @@ impl Patch {
             MaterialKind::Sprite => Patch::Sprite {
                 attenuate: m.boolean("sizeAttenuation").unwrap_or(true),
             },
+            MaterialKind::ContainerAtlas => Patch::Container,
+            MaterialKind::Stucco => Patch::Stucco,
+            MaterialKind::Surf => Patch::Surf,
+            MaterialKind::LighthouseBeam => Patch::Beam,
+            MaterialKind::Sandstone => Patch::Sandstone,
+            MaterialKind::GroundPool => Patch::Pool,
+            MaterialKind::FloodBeam => Patch::FloodBeam,
+            MaterialKind::StreetFacade => Patch::StreetFacade,
+            MaterialKind::StreetAtlas => Patch::StreetAtlas,
+            MaterialKind::AmbientProp => Patch::Ambient,
+            MaterialKind::Neon => Patch::Neon,
+            MaterialKind::Steam => Patch::Steam,
             _ if m.ty == "PointsMaterial" => points(PointsMode::Plain),
             _ => Patch::None,
         }
@@ -191,6 +232,8 @@ pub struct ThreeKey {
     /// `alphaMap` (`alphamap_fragment`: its green channel), bound in the
     /// `photo` slot, which only the terrain uses otherwise.
     pub alpha_map: bool,
+    /// `flatShading`: the normal from the position's derivatives.
+    pub flat_shading: bool,
 }
 
 /// The material's uniforms (`three_material.wgsl`'s `ThreeParams`).
@@ -433,12 +476,30 @@ impl Material for ThreeMaterial {
                     defs.push("USE_SIZEATTENUATION".into());
                 }
             }
+            Patch::Container => defs.push("PATCH_CONTAINER".into()),
+            Patch::Stucco => defs.push("PATCH_STUCCO".into()),
+            Patch::Surf => defs.push("PATCH_SURF".into()),
+            Patch::Beam => defs.push("PATCH_BEAM".into()),
+            Patch::Sandstone => defs.push("PATCH_SANDSTONE".into()),
+            Patch::Pool => defs.push("PATCH_POOL".into()),
+            Patch::FloodBeam => defs.push("PATCH_FLOODBEAM".into()),
+            Patch::StreetFacade => defs.push("PATCH_SFACADE".into()),
+            Patch::StreetAtlas => defs.push("PATCH_SATLAS".into()),
+            Patch::Ambient => defs.push("PATCH_AMBIENT".into()),
+            Patch::Neon => defs.push("PATCH_NEON".into()),
+            Patch::Steam => defs.push("PATCH_STEAM".into()),
         }
         if k.normal_map {
             defs.push("USE_NORMALMAP".into());
         }
         if k.alpha_map {
             defs.push("USE_ALPHAMAP".into());
+        }
+        if k.flat_shading {
+            defs.push("FLAT_SHADED".into());
+        }
+        if matches!(k.patch, Patch::StreetFacade | Patch::StreetAtlas) {
+            defs.push("STREET_WINDOWS".into());
         }
         match k.model {
             Model::Physical => {
@@ -482,6 +543,18 @@ impl Material for ThreeMaterial {
                     alpha: BlendComponent {
                         src_factor: BlendFactor::One,
                         dst_factor: BlendFactor::One,
+                        operation: BlendOperation::Add,
+                    },
+                }),
+                three::CUSTOM_BLENDING => Some(BlendState {
+                    color: BlendComponent {
+                        src_factor: BlendFactor::One,
+                        dst_factor: BlendFactor::OneMinusSrcAlpha,
+                        operation: BlendOperation::Add,
+                    },
+                    alpha: BlendComponent {
+                        src_factor: BlendFactor::One,
+                        dst_factor: BlendFactor::OneMinusSrcAlpha,
                         operation: BlendOperation::Add,
                     },
                 }),
@@ -567,7 +640,11 @@ pub fn model_of(ty: &str) -> Option<Model> {
 /// (TrafficStreams, SkyGlow: unlit, their own colour), basic.
 pub fn model_of_material(m: &MaterialDesc) -> Option<Model> {
     model_of(&m.ty).or(match m.kind {
-        MaterialKind::TrafficStreams | MaterialKind::SkyGlow => Some(Model::Basic),
+        MaterialKind::TrafficStreams
+        | MaterialKind::Steam
+        | MaterialKind::SkyGlow
+        | MaterialKind::Surf
+        | MaterialKind::LighthouseBeam => Some(Model::Basic),
         _ => None,
     })
 }
@@ -734,6 +811,57 @@ pub fn three_material(
         Patch::Sprite { .. } => {
             p.kind0 = Vec4::new(num("rotation", 0.0) as f32, 0.0, 0.0, 0.0);
         }
+        Patch::Stucco => {
+            detail = tex("tGrain").map(|(h, _)| h);
+        }
+        Patch::Sandstone => {
+            aux = tex("tRock").map(|(h, _)| h);
+            detail = tex("tDetail").map(|(h, _)| h);
+        }
+        Patch::Pool => {
+            p.kind0 = Vec4::new(
+                m.number("uTime").unwrap_or(0.0) as f32,
+                num("opacity", 1.0) as f32,
+                0.0,
+                0.0,
+            );
+        }
+        Patch::FloodBeam => {
+            p.kind0 = Vec4::new(num("opacity", 1.0) as f32, 0.0, 0.0, 0.0);
+        }
+        Patch::Ambient => {
+            // ambientPatch writes its rgb into the GLSL with toFixed(4).
+            let rgb = m
+                .kind_opts
+                .as_ref()
+                .and_then(|o| o.get("rgb"))
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .map(|x| x.as_f64().unwrap_or(0.0))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let f4 = |i: usize| ((rgb.get(i).copied().unwrap_or(0.0) * 1e4).round() / 1e4) as f32;
+            p.kind0 = Vec4::new(f4(0), f4(1), f4(2), 0.0);
+        }
+        Patch::Neon => {
+            p.kind0 = Vec4::new(m.number("uNTime").unwrap_or(0.0) as f32, 0.0, 0.0, 0.0);
+        }
+        Patch::Steam => {
+            let u = |n: &str, d: f64| m.number(n).unwrap_or(d) as f32;
+            p.kind0 = Vec4::new(u("uTime", 0.0), u("uScale", 600.0), 0.0, 0.0);
+        }
+        Patch::Surf | Patch::Beam => {
+            let u = |n: &str, d: f64| m.number(n).unwrap_or(d) as f32;
+            p.kind0 = if patch == Patch::Surf {
+                Vec4::new(u("uTime", 0.0), u("uBright", 1.0), u("uSwell", 1.0), 0.0)
+            } else {
+                Vec4::new(u("uStrength", 0.5), 0.0, 0.0, 0.0)
+            };
+            let c = col("uColor", [1.0; 3]);
+            p.kind1 = Vec4::new(c[0] as f32, c[1] as f32, c[2] as f32, 0.0);
+        }
         Patch::None => {
             // A plain material's tangent-space normal map (Valley's creek),
             // as the sea's (three's derivative frame).
@@ -750,7 +878,12 @@ pub fn three_material(
                 );
             }
         }
-        Patch::Shoulder | Patch::Reflector | Patch::Siding(_) => {}
+        Patch::Shoulder
+        | Patch::Reflector
+        | Patch::Siding(_)
+        | Patch::Container
+        | Patch::StreetFacade
+        | Patch::StreetAtlas => {}
     }
     // alphaMap (alphamap_fragment), in the photo slot (the terrain is the
     // only other user, and has none).
@@ -780,6 +913,12 @@ pub fn three_material(
     // setMaterial: normal blending applies only to transparent materials.
     let blending = if given_blending == three::NORMAL_BLENDING && !transparent {
         three::NO_BLENDING
+    } else if given_blending == three::CUSTOM_BLENDING
+        && !(num("blendSrc", 204.0) == 201.0 && num("blendDst", 205.0) == 205.0)
+    {
+        // The one custom blending the exports use is One, OneMinusSrcAlpha
+        // (the steam, D501); another would draw as normal blending.
+        three::NORMAL_BLENDING
     } else {
         given_blending
     };
@@ -813,6 +952,7 @@ pub fn three_material(
         patch,
         normal_map,
         alpha_map,
+        flat_shading: flag("flatShading", false),
     };
     Some(ThreeMaterial {
         params: p,

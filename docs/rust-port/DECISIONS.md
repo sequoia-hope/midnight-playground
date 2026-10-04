@@ -1903,6 +1903,12 @@ stroke coverage belongs to mr_canvas (WP 3.2's owner), so the test holds
 the corn strip to 6 levels until then and reports the numbers; every other
 Valley texture is within the gate.
 
+**Resolved 2026-10-04 (D650-D653).** mr_canvas now strokes as Chrome's
+GPU canvas does, and the corn strip is within 0.00/0.00/0.01/0.00 levels
+of the capture (from 4.56/4.95/2.04/4.20); `tests/valley.rs` holds it to
+the gate of 3 like every other Valley texture. The tassels, lone lines
+drawn after the strip's first five curves, are multisampled (D653).
+
 ## D334. Valley's updater
 
 2026-10-03, WP 3.7. The closure `build()` pushes onto `world.updaters` is
@@ -3495,6 +3501,14 @@ owner); until then `tests/coast.rs` holds the leaf to 10 levels
 unpremultiplied and 6 premultiplied and reports the numbers; every other
 Level 2 texture is held to 3.
 
+**Resolved 2026-10-04 (D650-D653).** With strokes tessellated and
+multisampled as Chrome does, the leaf is within 0.011/0.025/0.015/0.002
+levels (R/G/B/A, from 2.73/5.89/1.94/9.39) and no pixel crosses the
+`alphaTest`; `tests/coast.rs` holds it to 3 like every Level 2 texture
+(`LEAF_LIMIT` and `LEAF_PREMULTIPLIED` are gone). Chrome's coverage was
+not quantised for the leaf alone: the midrib, a lone line drawn after
+the leaflets, is multisampled too (D653).
+
 ## D535. Level 2's canvas reference: every canvas, with the bundled fonts
 
 2026-10-04, WP 7.1. `tools/parity/coast-textures.mjs` opens the game on
@@ -3622,19 +3636,24 @@ streams' four, the sky glow's `uK`, the road's `uWet`, the glow points'
 re-prepare each material every frame, the stall D455 removed. So each
 material an animator touches gets an *animation block*: five RGBA32F
 texels of the globals row from texel 160 (`lighting::G_BLOCKS`, after
-D456's light slots; 128 blocks, so the row is 800 texels): 0 the colour (w
-1 when set), 1 the emissive colour, 2 `emissiveIntensity` (x, y set) and
-the rotation (z, w set), 3 the map's (and alpha map's) offset since the
-export (xy) and the normal map's (zw), 4 the kind's uniforms. The shader
-reads a value from the block where the block has one and the material's
-parameter otherwise (`ThreeParams::slots.x` is the block's first texel, 0
-for none). The block is made the first time an animator touches the
-material, which edits the Bevy material once: `slots`, and the emissive
-colour held alone with its intensity in `night` (D455's form, day = night
-when it does not follow nightfall). On Sierra 15 materials get one in the
-first frame, behind the loading screen; an animator that only runs near
-its object (the waterfall's spray, within 800 m) touches its material
-later, once. A number or colour goes to the
+D456's light slots; 128 blocks): 0 the colour (w 1 when set), 1 the
+emissive colour, 2 `emissiveIntensity` (x, y set) and the rotation (z, w
+set), 3 the map's (and alpha map's) offset since the export (xy) and the
+normal map's (zw), 4 the kind's uniforms. The shader reads a value from
+the block where the block has one and the material's parameter otherwise.
+A material finds its block through a block map from texel 800
+(`G_BLOCK_MAP`, 512 materials four to a texel, so the row is 928 texels):
+the loader gives every scene material its index (`ThreeParams::slots.z`,
+index + 1; 0 for the race's cars, which have no block), and the map holds
+the block's first texel, 0 for none. So a block is made the first time an
+animator touches the material without the Bevy material ever being
+edited, even once (a first version edited it once, which an animator that
+runs only near its object, the waterfall's spray within 800 m, did in the
+middle of a flight). A new block starts with the emissive colour and
+intensity as exported (the intensity left to `night` when it follows
+nightfall, D455), so the shader needs no change of the material's emissive
+form. On Sierra 15 materials get one in the first frame (at the start). A
+number or colour goes to the
 kind's uniform of that name if it has one animated, else to the parameter
 (D411's rule); the sky's edits are left out (D493).
 
@@ -3704,8 +3723,8 @@ logged once at debug level. The loader tags every entity with its node
 (`animate::NodeRef`) and hands over what the edits need before it drops
 the scene (`animate::SceneIndex`: per node its parent, children, local and
 world matrices, and an InstancedMesh's instance matrices and colours, 4 MB
-on Sierra). Not covered: a node exported invisible is not spawned by the
-loader, so an animator cannot show it (none on Sierra).
+on Sierra). A node exported invisible is spawned hidden, so an animator
+can show it (D498).
 
 ## D494. Level 1's remaining material kinds
 
@@ -3768,6 +3787,167 @@ light pools and lamp lenses at their daytime colours). The material test
 scenes now include TriplanarRock, Reflector, Siding, CityFacade and
 SkyGlow (with the JS tool's uniform overrides, `animate::fix_uniforms`):
 23 scenes, 0 over, worst 0.150 as before.
+
+## D497. Nothing in the animator path allocates per frame; its cost
+
+2026-10-04, WP 3.9, after the coordinator's perf review. Of what the
+edits touch each frame, only instance streams made GPU objects: a moved
+InstancedMesh got a new `Instances` stream, so a new vertex buffer, each
+frame (Sierra's waterwheels every frame, the freeway's chase bulbs eight
+times a second), which is what drives Firefox's GC (D457). Now a stream
+with the same instance count is rewritten in place:
+`InstanceStream::update` keeps the new bytes and
+`instancing::write_instance_updates` (render world, at extraction) writes
+them into the existing buffer with `write_buffer` (the buffer gains
+`COPY_DST`); a new stream is made only when the count changes (an
+`InstanceCount` edit, or a zero-scale instance appearing or going, none
+on Sierra). Material values never touch a Bevy material (D490); node
+transforms and visibility are component writes; the flag's 18 vertices
+are written into Bevy's mesh slab in place (`write_buffer_with`, no new
+buffer in steady state). Unchanged values are not written, so a frozen
+frame costs only the update call.
+
+Measured in the wasm build over Sierra's whole route: the animator path
+(`run_animators`) takes 0.04 to 0.15 ms a frame on average, 3.2 ms at
+most. The world build runs before `ready` (2.9 s in wasm here), never
+during a flight. A/B flights against the build before (BASELINE.md, "The
+Rust client at WP 3.9"): the same frame-time distribution on WebGPU and
+WebGL2, no pipeline after the warm-up, and isolated slow frames in both
+builds under the machine's load. Ready is later on the dev machine (7 to
+11 s against 3 to 5 s), because the page holds the export back until the
+build is done (D491); `?world=gen` is ready in 7.5 s without the download.
+## D498. Level 1's scenery by name, the wasm budget, and invisible nodes
+
+2026-10-04, WP 3.9. The client's world build named its scenery through
+`scenery_factory(None)`, whose `PORTED` table links every level's scenery
+into the client; with Coast, Desert, Seaside and Streets ported on main
+that made the web build 10.00 MB (WebGPU) and 10.48 MB (WebGL2) after
+gzip, over SPEC 6.6's 10 MB. The client now builds Sierra with its own
+factory naming Mountain, Valley and City (`animate::level1_scenery`):
+9.60 and 10.08 MB. Linking Level 1's world generation costs about 0.7 MB
+after gzip (8.77 and 9.24 MB before WP 3.9; main's race audio and warm-up
+took the rest), so the WebGL2 build is still 0.08 MB over. Not decided
+here: the budget, or how the other levels' animators reach the client
+(each level built in the client links its scenery). Raised with the
+coordinator, who has started a size package; the owner decides.
+
+Ways to feed a level's animators without linking its scenery build, noted
+for that decision and not done: the updaters are small (City's 13 on
+Sierra, a few hundred lines) and need only handles and a few numbers per
+animator (positions, phases, base vertex arrays), which the build knows;
+the export could carry them (an `animators` list of plain data per
+updater: kind, target handles, constants), and the client run ported
+updater functions over that data without the builders; or `mr_worldgen`
+could split each module's updaters from its builders, so that a client
+linking only the updaters builds them from a small description the
+export or a build tool writes.
+
+Nodes exported invisible (or under one) were not spawned at all, so an
+animator could never show them (Cruise's cut-off hides and shows City's
+chunks by distance). The loader now spawns them with `Visibility::Hidden`,
+counted as before (`Counts::invisible`); the animators' visibility edits
+combine each node's own flag with its ancestors' as three does. Sierra has
+none; Cruise's export has 52 (486 entities instead of 432).
+
+## D499. Coast Highway's kinds, drawn from its export
+
+2026-10-04, after WP 7.1 (the coordinator's plan: the drawing side of the
+other levels, linking no scenery; Coast's to-do from WP 7.1). Blocks of
+`three_material.wgsl` as before: **Surf** (`foamMaterial`, a
+ShaderMaterial: value noise, swell bands, contact foam and ragged rings;
+the rings' phase from the instance's translation, the InstancedMesh being
+at the origin; three's FogExp2 on it), **LighthouseBeam** (additive, its
+`vV` carried interpolated as three does, its own fog fade), **Stucco**
+(`tGrain` in the detail slot, a triplanar grain and a broad mottle after
+`color_fragment`) and **ContainerAtlas** (the mask atlas's row by the
+instance's `aVar`, the body colour from the instance colour). `aVar` is an
+instance-rate attribute; the instance stream grows from 20 to 24 floats
+(96 bytes) to carry a geometry's instance-rate attributes, one float each
+in the geometry's order (`loader::instance_extras`, at shader location 15;
+zeros without; the shadow pass reads only the matrix): the containers'
+`aVar`, Desert's pools' `ph` and `fl` (D500). Sierra's 63,263 instances
+take 1 MB more for it. TriplanarRock
+(coast/kit.js) and the lighthouse's glow Sprite were drawn already (D494).
+Without the level's animators (D498), the animated uniforms follow the
+scene-wide state as the updaters set them (D293's rule: Surf's `uTime` the
+clock and `uBright` lerp(1, 0.32, night), the beam's `uStrength` 0.03 +
+0.32 × smoothstep(0.2, 0.8, night)); colours an updater moves on plain
+materials (the bulbs, the glow's opacity and scale) and the beam's turn
+stay as exported.
+
+Gate, the web build at 1280 × 800 through the registered server
+(`rust-web-stations.mjs --server`; Coast's export is over D106's
+interception limit): 67 stations, 3 over the limits (13 before), median
+0.26 / 0.62. The three are the beach at sunrise from the chase camera
+(04000, 04250, 04500: worst 5.1 / 30.2). They predate WP 3.9's client: a
+web build of 1bb2dd6 gives the same three numbers (5.16 / 30.216, 3.975 /
+23.59, 2.717 / 22.243). The difference map shows the cause: the beach
+road's lamp pools (`Beach.js`, additive) are lit in the client and dark in
+the JS. Their `opacity` is `0.42 × smoothstep(0.08, 0.5, night)`, set by
+Beach's updater; the export was taken at the route's start, at night on
+Coast, so it holds 0.42, and at sunrise the JS has turned them off. A
+plain material's colour or opacity moved by an updater needs the level's
+animators (D498), so these three stations wait for the size decision. The material
+scenes for Surf, LighthouseBeam and Stucco pass (0.06 / 0.13 at worst)
+and join `all`; ContainerAtlas's scene is over (3.5 / 18.1) because the
+material tool draws it without the instance stream (no `aVar`), so it
+stays out of `all`; its stations (the harbour) pass.
+
+## D500. Desert Run's kinds, drawn from its export
+
+2026-10-04 (D556's list). **Sandstone** (strata from `tRock` in the aux
+slot, the varnish from `tDetail` in the detail slot, the instance's matrix
+included, as TriplanarRock), **GroundPool** (the flicker `vFl` from the
+instance's `ph` and `fl` in the stream's instance-rate floats, D499, and
+the clock) and **FloodBeam** (`vFace²`, the normal through the instance's
+matrix as three's `mat3(instanceMatrix)`, not its inverse transpose). The
+pools' and beams' opacity is a material value the updater moves with the
+night (`smoothstep(0.15, 0.7, n)` and `0.13 × smoothstep(0.3, 0.8, n)`;
+both 0 in the daytime export): it is one of the kind's animated values
+(the block's texel 4 with the animators, D490; the night factor without),
+as are the pools' `uTime` and the flicker points' clock (D293). The
+material colours Desert's updater moves (flares, fires, lanterns, lamps,
+bulbs, strings; `colour × k`) and the train (its sprites, its spot light)
+stay as exported without the level's animators (D498). The material test
+tool's overrides of a material value (`overrides.material`, the pools' and
+beams' night opacity) go through `animate::fix_uniforms` as its uniform
+overrides do; drawn without the instance stream, a pool has no flicker.
+
+Gate, the web build at 1280 × 800 through the registered server: **all 63
+Desert stations within the limits**, median 0.16 / 0.39, worst 0.681 mean
+(02250-high) and 1.564 block 95 % (07250-chase). The material scenes for
+the three pass (0.083 / 0.170 at worst) and join `all`.
+
+## D501. Downtown Streets' kinds, drawn from its export; flat shading
+
+2026-10-04 (D614's list). **StreetFacade** (the 4 × 4 façade atlas by
+`cell`, its building's seed in the sixteens, with the raw uv's gradients;
+`windowLight` per window and the street bounce from `fdata`: `cell` and
+`fdata` share the patch attribute, `cell` in x and `fdata` in yzw),
+**StreetAtlas** (the 4 × 3 shop-front atlas, `windowLight` × 1.4 or the
+flat glow of a kind-0 cell, the faint bounce), **AmbientProp** (emissive +=
+albedo × `kind_opts.rgb`, rounded to four places as the JS writes it into
+its GLSL), **Neon** (`ndata`'s seed and mode: hum, buzz, switching, a
+dying tube, on `uNTime`) and **Steam** (a ShaderMaterial on points: each
+puff's life, rise and drift in the vertex stage, `aSeed` in the patch
+attribute, a lumpy premultiplied puff in the fragment stage, from
+`gl_PointCoord` with three's y; drawn with three's `CustomBlending` One,
+OneMinusSrcAlpha, the one custom blending the exports use). `uNTime`,
+Steam's `uTime` follow the clock and Steam's `uScale` the viewport and the
+projection without the animators, as their updaters set them (D293). The
+helpers `fHash`, `fHue` and `windowLight` are shared by the two atlases
+(`STREET_WINDOWS`). Colours above 2 were already drawn unclamped (D452).
+
+`flatShading` (one material on Streets, the trees; one on Sierra; three on
+Coast) was ignored: the normal is now three's FLAT_SHADED one, the cross
+product of the view position's derivatives (with WGSL's `dpdy` turned to
+GLSL's `dFdy`). Sierra's, Coast's and Desert's stations are unchanged by it.
+
+Gate, the web build at 1280 × 800 through the registered server: **all 43
+Streets stations within the limits**, median 0.22 / 0.51, worst 0.489 mean
+and 1.812 block 95 % (02500-chase). The material scenes for StreetFacade,
+StreetAtlas, AmbientProp and Neon pass (0.108 / 0.312 at worst) and join
+`all`; Steam's (points) is not in the material tool's set the client draws.
 
 ## WP 7.4 Seaside decisions
 
@@ -3871,6 +4051,16 @@ premultiplied under D534's 6, alpha total within 0.5 %), and without the
 capture's RGBA (CI, wasm) by its premultiplied 8×8 block means, which the
 capture records (0.14/0.29/0.20/0.08). Matching Chrome's stroke coverage
 stays mr_canvas's (D534).
+
+**Resolved 2026-10-04 (D650).** The fence's strokes are lone line
+segments, which Chrome draws as quads with an analytic edge ramp
+`|nx| + |ny|` wide (16, 137, 242, 137, 16 is that ramp at 45°, not
+multisampling). mr_canvas now draws them so, and the fence is within
+0.148/0.117/0.088/0.029 levels of the capture, every alpha equal;
+`tests/seaside.rs` holds it to 3 like the other canvases, and the
+alpha-tested criterion (`alpha_tested`, `STROKE_PREMULTIPLIED`, the
+premultiplied block means without the RGBA) is gone. The golden still
+records the premultiplied block means; nothing reads them.
 
 ## D593. The photo in the gate; the loose-ground mask byte for byte
 
@@ -4495,6 +4685,358 @@ animated, on `main` today:
   throughout. The cruise scoring HUD (score, multiplier and its bar,
   distance, best; the simulation's side is `mr_sim::race`'s cruise
   fields, WP 1.5) is the client's, roadmap WP 7.5's third item.
+
+## Canvas anti-aliasing decisions
+
+## D650. A lone stroked line is an analytic quad
+
+2026-10-04. Measured in Chrome 151 on the reference machine (headless,
+`--use-angle=vulkan`, the RTX 3060; probe pages drawn through the e2e
+harness, read with `getImageData`): a stroke of a path that is one line
+segment (`moveTo`, `lineTo`), with a butt or square cap, under a
+transform that keeps right angles and at least a device pixel wide, is
+Skia's `drawStrokedLine`: a quad (the segment's ends moved half the
+width either side, and half the width along it for a square cap) with
+per-edge anti-aliasing. Its coverage is not the exact area (D151): each
+edge ramps linearly from 0 to 1 over `|nx| + |ny|` (the pixel's width
+across the edge, 1 for an axis-aligned edge, √2 at 45°), centred on the
+edge. Fitted at 3°, 10°, 20°, 30°, 37°, 45°, 60° and 80° on a 6 px line,
+the ramp is within 0.0034 everywhere, the exact area up to 0.125 off.
+Opposite edges combine as `c₁ + c₂ − 1` (a 1 px line at 45° is 90, 180,
+90, as Chrome), and at the ends the pixel takes the smaller of the sides'
+and the ends' coverage (within 0.003 at the corners of butt and square
+caps). Skia draws this as an outer quad (each edge moved out by half its
+ramp) at coverage 0 and an inner one at 1, and the GPU snaps both quads'
+corners to its 1/256 px grid before it interpolates: mr_canvas does the
+same (`raster::line_quad_coverage`), which is what moves the catch
+fence's faint pixels' blue from 12.48 to 13 as Chrome rounds it. A round
+cap, a thinner line, a skewing transform and any other path go to the
+tessellated stroke (D652). This is the catch fence (D592): every stroke
+in it is a lone line.
+
+## D651. Multisampled strokes blend into samples until the canvas is read
+
+2026-10-04. Chrome multisamples every stroke that is not D650's quad,
+with the standard 8× pattern of Direct3D and Vulkan: a near-horizontal
+edge swept over 256 columns steps at sample rows (2k + 1)/16, a
+near-vertical one at the same columns, and a 45° sweep pins the pairing
+to (9,5), (7,11), (13,9), (5,3), (3,13), (1,7), (11,15), (15,1) in 1/16 px
+(`raster::MSAA8_X`, sorted by row). And it blends per sample: two opaque
+curves of different colours crossing at a shallow angle leave only whole
+eighths in alpha and in each colour, where blending their coverages would
+not. So once a canvas strokes a multisampled path, mr_canvas keeps eight
+samples for each pixel whose samples differ (`samples.rs`; the others
+stay in the pixmap), blends every later draw into each sample (analytic
+draws with their coverage, into all eight), and keeps the pixmap at the
+samples' mean, a tie rounded down (Chrome's half-covered opaque pixel is
+127; `(sum + 3) >> 3` matches every level seen). Reading the canvas
+(`getImageData`, the source of `drawImage`) resolves the pass: the next
+draw starts from the pixels, as Skia reloads the multisample buffer from
+the resolved texture; `putImageData` writes after a flush and ends it
+too. A stroke with a shadow takes its shadow from the outline's exact
+coverage as before; a stroke under a `filter` keeps the old exact-area
+layer (the game filters only fills).
+
+## D652. Strokes are tessellated as Skia's GPU stroker does
+
+2026-10-04. Multisampling the exact stroke outline (tiny-skia's stroker,
+flattened finely) left the leaf at 0.23 alpha and single curves one to
+three samples off along their length: Chrome's GPU follows a curve with
+straight pieces a quarter pixel from it. `tess.rs` ports
+`StrokeTessellator` and `GrStrokeTessellationShader` (Skia main,
+2026-10): each segment is a patch (a line as `p0, p0, p1, p1`, a
+quadratic as its cubic, a curve needing more than 32 parametric segments
+chopped evenly first); its edges are the union of Wang's formula's
+parametric segments (precision 4) and radial segments (`0.5 / acos(1 −
+1/(4r))` per radian of turn, r the device radius), each edge placed by
+the shader's own search, at the curve's point plus and minus the radius
+along its normal; consecutive edges make the strip's two triangles. Joins
+are fans of edges around the junction on the outer side (miter: the
+outer corners and the miter point, `miter_extent` falling back to the
+bevel past the limit; bevel; round: radial segments), none where the
+tangents are nearly parallel. Butt caps add nothing, square caps a line
+of half the width at each end, round caps a stroke-width circle of
+radial edges. The triangles are mapped to device space, snapped to the
+1/256 px grid and rasterised exactly in integers with the top-left rule
+(`raster::msaa_triangles`); a sample in any triangle is covered once.
+Single precision as the shader, transcendental functions through the
+kernel, so native and wasm agree. Against Chrome, sample for sample:
+quadratic strokes 1.6, 3 and 10 px wide, a three-point polyline, cracks
+0.8 and 1.2 px wide (the rock's and the asphalt's), a `rect()` path and a closed
+polyline with round joins and caps are identical; a native `roundRect`
+and an arc with lines differ in 80 pixels of 65,536 by a sample or two,
+a full circle in 353 (0.22 levels): Blink makes arcs conics where
+mr_canvas makes cubics (D150's path code), and a lone `arc()` is Skia's
+arc op. Not chased: no texture of the game strokes a lone circle.
+
+## D653. After five path draws, lone lines are multisampled too
+
+2026-10-04. The corn strip's tassels and the leaf's midrib are lone
+lines, yet Chrome's are whole eighths. Probed: a lone line after four
+path draws (fills or strokes of any path but a lone line or a lone arc)
+is D650's quad; after five it is multisampled, the quad's own samples
+with no ramp. Lines drawn before the fifth path stay analytic; reading
+the canvas does not reset the count; rectangles, `strokeRect`, circle
+fills, text and images stay analytic however many paths came before. So
+the canvas counts its path draws (`slow_paths`; the path's kind follows
+Blink's line and arc builders: `moveTo` + one `lineTo` is a line, one
+`arc()` of radius 1 or more on an empty path, perhaps closed, is an arc,
+anything else a path) and from the fifth on strokes a lone line by its
+snapped quad's samples. The mechanism is not pinned down (the count
+recalls Chromium's `kMinNumberOfSlowPathsForMSAA`, but Chromium counts
+only concave paths and Chrome here counts convex ones too); the rule is
+what was measured.
+
+The textures, mean absolute difference against Chrome (R/G/B/A, levels;
+before → after; every change over 0.05): Valley corn 4.56/4.95/2.04/4.20
+→ 0.00/0.00/0.01/0.00; Beach palm leaf 2.73/5.89/1.94/9.39 →
+0.011/0.025/0.015/0.002; Seaside catch fence 11.828/11.709/9.072/5.119 →
+0.148/0.117/0.088/0.029; the rock (all levels' `tRock`) 0.108/0.106/0.103
+→ 0.011/0.010/0.011; the freeway and harbour signs (rounded-rect borders)
+0.29-0.42 → 0.11-0.21 in R (sign-port-meridian 0.422/0.352/0.315 →
+0.128/0.107/0.095); City's 2048×768 and 2048×1536 billboards
+0.327/0.207/0.256 → 0.149/0.094/0.113 and 0.319/0.202/0.250 →
+0.142/0.089/0.106; Mountain's canvas 0 0.11/0.11/0.10 → 0.01/0.01/0.01
+and canvas 6 0.74/0.22/0.33 → 0.66/0.20/0.29; the paths probe
+0.447/0.381/0.289 → 0.292/0.202/0.157. Nothing got worse; every other
+texture and probe moved by less than 0.05.
+
+## WP 6.1–6.2 decisions
+
+## D570. The menu comes first; what the address and the store decide
+
+2026-10-04, WP 6.2, the owner's request for the main menu. Opening
+`dist/next/` with no `level=` shows the main menu over the attract camera,
+as the JS game does; the level built behind it is the saved one
+(`mr.level`, else Sierra), and the page downloads that level's scene
+(`start_level()` tells it). `?level=…` still races at once (D432), and so
+do `autostart`, `race=1` and natively `shots=` (`ui::menu_first`). The
+fly camera, `freeze=1`, the material scenes, the stations and the
+measurement page are untouched (none of them is a race). Changes of
+default: a race started from the address now uses the saved car
+(`mr.car`) unless `car=`/`autostart=` names one, and the saved Race / Hot
+Pursuit choice for its level (`mr.mode.<id>`) unless `pursuit=` says;
+`hq` comes from `mr.hq` (the JS default, off on touch screens) unless
+`?hq=` says, on both platforms (natively it was always on). Natively the
+binary with no `--level` opens the menu too, on the saved level; the
+store is a file (D572), and `--level` races as before.
+
+## D571. The screens' font is Rajdhani, the JS's `--font`
+
+2026-10-04. The brief said "the bundled Roboto fonts"; the JS menus,
+HUD and screens are set in Rajdhani (`hud.css` `--font`, Google Fonts
+500/600/700), which D370 keeps for the HUD and mr_canvas already bundles,
+so the screens use it: the same files as the JS page's (subset, D371),
+registered with Bevy's text from mr_canvas's copies (no second copy in the
+wasm). Chrome only has 500, 600 and 700, so a normal weight draws Medium
+and 800/900 draw Bold, as there. Bevy draws no synthetic styles, and the
+menus' headings are `font-style: italic` (Chrome's fake italic of
+Rajdhani): `assets/fonts/oblique.py` bakes Skia's skew (x + y/4 about the
+baseline, advances unchanged) into a copy of Rajdhani Bold (27 KB), named
+"Rajdhani Oblique" so the text engine picks it by family. The M4 HUD and
+the touch controls (D431) switch from Bevy's FiraMono to Rajdhani Bold by
+putting that face at Bevy's default font handle; nothing else in them
+changes. Characters Rajdhani lacks (the arrows, ●) are drawn from
+Arimo's symbols, the fallback face of D372, as Chrome falls back for
+them (`widgets::text` cuts a string into runs). If the owner wants Roboto
+for the screens after all, it is `widgets::FAMILY`.
+
+## D572. The store: `localStorage`'s keys and strings, a file natively
+
+2026-10-04, WP 6.1 (SPEC 8.3). `ui::store::Store` is `main.js`'s
+`store`: `mr.<key>`, the value as `JSON.stringify` writes it (numbers as
+JS prints them: `1`, `0.7`, `1e+21`), a missing or unparsable value gives
+the default. On the web it is `localStorage` (the page is served from the
+same origin as the JS game, so settings, best times and controller maps
+carry over); natively a JSON object of the same key → string pairs in
+`$XDG_CONFIG_HOME/midnight-racer/storage.json` (`~/.config`,
+`~/Library/Application Support` on macOS, `%APPDATA%` on Windows),
+rewritten on each change, `$MR_STORE` to point elsewhere. `Settings` is
+the JS's `settings` object with its defaults and checks; nothing is
+written until a control changes, as there. The volume, track, steering,
+pedal, tilt, auto gas and rumble settings are stored and shown but not yet
+used: the sound (M5) and the touch modes, tilt and gamepad (WP 6.4–6.6)
+read them when they come.
+
+## D573. The widgets, and what is approximated
+
+2026-10-04, WP 6.1 (SPEC 8.1). Sizes are the CSS's in CSS px, turned
+into Bevy UI px by the page's measured scale; the media queries are
+`widgets::Bp` (720 wide, 780 and 500 tall, portrait, touch), and the
+two-column phone menu is a Bevy UI grid. A screen is a scrolling column
+over the radial gradient, centred while it fits (`safe center`, as auto
+margins). What Bevy UI has no equivalent for:
+- Gradient text (the logo): MIDNIGHT takes the colour its glyphs mostly
+  show (the white top of its gradient), each letter of RACER the colour
+  of the accent-to-orange gradient where it stands, and the pink glow is
+  left out. Drawing the logo with mr_canvas's text, as the CSS paints it,
+  was tried and looked right, but it linked a second copy of the font
+  stack (harfrust, read-fonts, skrifa: 1.1 MB raw, about 0.3 MB gzip), so
+  the results table is laid out by Bevy's grid for the same reason (no
+  text measured outside Bevy).
+- The selected tab or car keeps its accent border and 1 px ring (an
+  outline); its 24 px glow is left out, because Bevy draws a box shadow
+  under the whole node and these nodes are translucent (it tints them).
+  The primary buttons' shadows are kept (they are opaque).
+- Native form controls are drawn as Chrome draws them with
+  `accent-color`: the 13 px checkbox, the range slider's 4 px track and
+  16 px thumb (dragged by finger or mouse), the select with a chevron,
+  which opens a list under it (Chrome on a desktop) rather than Android's
+  picker. No hover states; the keyboard focus ring is the gamepad's
+  (`.pad-focus`), Tab and Shift+Tab move it, Enter or Space activates.
+- Characters no bundled face has are drawn with mr_canvas's paths: ★
+  (results), ⏭ (Next track), ♪ (the music link) and the tick; ◂ ▸ in the
+  Steering choice and the touch help become ← → (Arimo has them); N₂O is
+  N2O (D431).
+- The music player link opens the JS page (`../../music.html`) until
+  M5's player screen; natively there is no link.
+Every control carries its DOM id (`btn-start`, `opt-hq`, …); level tabs,
+car picks and mode buttons, which had none, are `lvl-tab-<id>`,
+`pick-<car>` and `mode-<race|pursuit>`.
+
+## D574. The session flow: level tabs, Race, the warm-up race
+
+2026-10-04, WP 6.2 (`main.js` `loadLevel`, `startRace`, `toMenu`). A
+level tab saves the level and builds it behind the loading screen, as the
+JS does: the scene is torn down and the other level's export downloaded
+(the page's `__mr.reload`, D394; natively a thread reads it). Race loads
+the chosen level first if it is not the one built, then builds the field
+(`play::Play` gains `armed`, `hold` and `stop`) and holds the countdown,
+with the menu still up, until the frame's pipelines are compiled (three
+quiet frames, at most three seconds: the JS's `compileAsync` race); a
+second tap meanwhile does nothing. A menu-first run also builds a field
+behind the loading screen and drops it when the client is ready, so the
+warm-up (D390) covers the cars' pipelines and Race does not hitch. Main
+menu disposes the race and its cars and puts the attract camera back at
+`startS + 60`. The HUD and the touch controls hide while there is no race
+or it is held.
+
+## D575. The canvas draws the menu at up to twice the CSS resolution
+
+2026-10-04, WP 6.2. The screens are drawn into the game's canvas, which
+D437 renders at 1× on a phone without High quality: the menu's text would
+be a third of the iPhone's resolution, where the DOM's was always sharp.
+While there is no race (the menu, the loading screen, the controller
+screen opened from the menu) the canvas is drawn at `max(JS ratio,
+min(devicePixelRatio, 2))`; with a race (driving, pause, results) at the
+JS's ratio as before. Pause and results stay at the race's ratio because
+the race's HUD text, laid out at it, came out at the wrong size when the
+ratio changed under it. The attract camera behind the menu costs up to
+four times the pixels on a phone; the race is unchanged.
+
+## D576. The loading screens
+
+2026-10-04, WP 6.2. On the web the loading screen is the page's own (it
+shows while the wasm and the scene download, which only the page sees),
+now styled as the JS's `#loading` (the gradient, the logo, the bar and the
+spaced-out line, in the bundled Rajdhani by `@font-face` from
+`../../assets/fonts/`); the page shows it again for a level change.
+Natively, and on the web under the page's, the client draws the same
+screen with Bevy UI from its own state (waiting, building with the
+build's progress, preparing the shaders).
+
+## D577. The screens' part of the test bridge, and the suites
+
+2026-10-04, WP 6.2 (SPEC 8.5; WP 6.7 owns the rest). `window.__mr` gains
+`screen` and `mode` (`__game.mode`'s values), `ui(id)` (`{x, y, w, h,
+visible, enabled, value, sel, z}` in CSS px, from the last frame's
+layout; the touch controls' taps as `touch-reset`, `touch-camera`,
+`touch-pause`), `reveal(id)` (`scrollIntoView` to the middle), `focus`,
+`races` (races started, for "exactly one race"), `race.locked`, and
+`stage(cmd)` with `finish` (the suites' `teleportToFinish`), `cruise` (the
+score) and `padsetup`. `test/` is frozen, so the suites are adapted in
+`tools/parity/e2e/` (`harness.mjs` is the JS harness's API over `__mr`:
+`center` reveals a control and fails if another one is on top of it, as
+`elementFromPoint` did). Request interception cannot carry Sierra's full
+export (D106), so the harness answers a request for a full export over
+90 MB with that level's terrain-road-sky export (Seaside's full one
+passes). The page's gesture handlers now pass the
+pointer's position (`gesture_at`): a tap on Race, Race again or Restart
+on a touch screen goes fullscreen and asks for landscape inside the tap,
+as `enterFullscreen` does. The suites' sound checks are in (D580).
+
+## D578. Pause, results and the controller screen
+
+2026-10-04, WP 6.2 (`#pause`, `#results`, `#padsetup`, `showResults`).
+They replace the M4 card (D432): pause has Resume, End run (a cruise
+only), Restart, Main menu, the volume sliders and Next track; results
+have the title, the table (place, swatch, name, time, `~` for an
+estimate), the stat tiles (Hot Pursuit's busts, wrecks, takedowns,
+penalty and top heat; a circuit's laps with ★ on the best and the lap
+record), the best line and Race again / Main menu. `showResults`' saving
+is ported as it is: a winning time under `best.<id>` (`.pursuit` for Hot
+Pursuit) when first and better, a cruise's score under
+`bestScore.<id>`, a circuit's best lap under `bestLap.<id>`. Restart and
+Race again restart the race in place (`flow::Race::restart`, a new seed
+unless `seed=`), as M4 did, rather than building the field again. Esc and
+P still pause and resume, Enter still races again or resumes (D432). The
+M4 card's "tap anywhere" stays only on the pause screen, for a tap on no
+control (the owner's phone flow from M4); on the results a tap does
+nothing but on a button, as in the JS. The phone harness of M4 tapped
+the middle of the screen to resume, which is now Main menu; its copy in
+this package's checks taps Resume. The Controller screen is the JS's,
+reached from the menu or pause when a gamepad is connected (`ui.pads`,
+never until WP 6.4 reads pads; `__mr.stage({cmd: 'padsetup'})` opens it
+for the tests): it lists the actions with the standard layout's labels,
+the Rumble option (saved), Defaults and Done; picking a binding waits for
+6.4. Esc there leaves it and keeps the race paused.
+
+## D579. Size, and an open question on scene sizes
+
+2026-10-04, WP 6.1–6.2. Release build, gzip: WebGPU 8.77 → 8.92 MB,
+WebGL2 9.24 → 9.40 MB (+0.15 and +0.16 MB) of the 10 MB budget. The fonts add
+nothing (the wasm already carried mr_canvas's bundled files; the oblique
+face is 27 KB). Not decided here (D439): a level tab downloads that
+level's whole export behind the loading screen, as the JS rebuilds the
+world, and on a phone Coast is 210 MB; the menu could show each level's
+download size on its tab or card, or a tab could only select and Race
+load. Raised with the owner; until they answer, a tab loads its level, as
+in the JS. Merged with main at a60cb88 (race audio, world build): main measures
+WebGPU 10.00 and WebGL2 10.48 MB gzip, already over the budget, and the
+screens bring them to 10.14 and 10.61 MB (+0.14, +0.13). Raised, not
+decided here.
+
+## D580. The screens with the race's sound and the client's world build
+
+2026-10-04, merging WP 6.2 with the race audio (D513–D517) and WP 3.9's
+world build (`animate`, D490–D497).
+- **Gestures.** The page calls the bridge on all five of the JS's events
+  (pointer-down too, D514), so the first touch on the menu wakes the
+  sound as `wakeAudio` does; only the up-events (pointer-up, touch-end,
+  click) carry the pointer's position for fullscreen, and the request is
+  made once per tap (the three events of one tap within 0.8 s). A menu
+  tap acts once: the Bevy side reads the touch, not the page's events.
+  A menu-first run builds the sound's graph behind the loading screen
+  with its warm-up race (D574), so the first tap starts it, and the
+  sound is running by the time Race's countdown starts.
+- **Settings.** The menus and `play::audio` read the same keys
+  (`mr.musicVol`, `mr.sfxVol`, `mr.track`); `ui::sync_audio` keeps the
+  two copies equal each frame: a slider or the track picker reaches the
+  sound (`applyVolume`, and `pickMusic` for a new track), and the music
+  key M (which the sound stores) reaches the sliders. A level tab plays
+  that level's track when the sound is up (`if (audio.ready)
+  pickMusic()`), Next track on the pause screen calls it, the menus'
+  buttons make the JS's click (`uiClick('click')`; Race, Race again and
+  Restart make the sound's own "start"), and Main menu makes `toMenu`'s
+  calls (unpaused, the engine idle, no rivals, open acoustics). The sound
+  polls and publishes `__mr.audio` on the menus too, so the music plays
+  on there. End run (a cruise from the pause screen) unpauses the sound,
+  as `btn-end` does. Every race start has its own number
+  (`flow::next_start`), so a race built afresh from the menu makes
+  `startRace`'s sound calls as a restart does.
+- **World build.** A level tab tears the scene down through
+  `unload_scene`, which enters `AppState::Waiting`; `animate::reset_world`
+  runs there and `drive_build` builds the new level's world when it is
+  one world generation builds (Sierra) and stands down otherwise. With
+  `?world=gen` the native loader reads no file for such a level (the
+  build is the scene) and the page downloads none (`generates_scene`).
+  Checked both ways, natively (`--query uiscript=…`, a smoke hook that
+  activates menu controls in turn and exits once racing) and on the web
+  (`tools/parity/e2e/level-switch.test.mjs`): Sierra → Seaside → Sierra,
+  then a race, with and without `world=gen`.
+- **Phones.** The M4 phone check is `tools/parity/e2e/phone.cjs` (resume
+  by the Resume button, D578), the menu-to-race one
+  `tools/parity/e2e/phone-menu.mjs`.
 
 ## Wasm size decisions
 

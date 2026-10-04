@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#05060c">
 <title>Midnight Racer (Rust build)</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111'/%3E%3Cpath d='M6 20h20l-3-6H12z' fill='%23ff3860'/%3E%3Ccircle cx='11' cy='21' r='3' fill='%23fff'/%3E%3Ccircle cx='22' cy='21' r='3' fill='%23fff'/%3E%3C/svg%3E">
 <style>
   :root { color-scheme: dark; }
   html, body { margin: 0; height: 100%; background: #05060c; color: #e8ecf4;
@@ -26,6 +27,27 @@
   #msg { margin: 0; color: #9aa3b8; font-size: 14px; min-height: 1.5em; }
   #msg.error { color: #ff8a8a; white-space: pre-wrap; max-width: 46em; }
   #nogpu p { max-width: 34em; margin: 0; color: #c5cbdb; }
+  /* The loading screen as the JS game draws it (src/game/hud.css: .screen,
+     #loading, .logo, .load-bar, #load-fill, #load-label), in the bundled
+     Rajdhani the menus use (roadmap WP 6.2). */
+  @font-face { font-family: Rajdhani; font-weight: 500; src: url(../../assets/fonts/rajdhani/Rajdhani-Medium.ttf); }
+  @font-face { font-family: Rajdhani; font-weight: 600; src: url(../../assets/fonts/rajdhani/Rajdhani-SemiBold.ttf); }
+  @font-face { font-family: Rajdhani; font-weight: 700; src: url(../../assets/fonts/rajdhani/Rajdhani-Bold.ttf); }
+  #loading { background: radial-gradient(ellipse at 50% 40%, #1c1030, #05060a 70%); gap: 16px;
+             font-family: Rajdhani, "Arial Narrow", ui-sans-serif, system-ui, sans-serif; color: #f4f6fb; }
+  #loading .logo { font-size: clamp(48px, 9vw, 110px); font-weight: 900; font-style: italic; letter-spacing: -.02em;
+                   line-height: .9; text-align: center; padding: 0 .18em;
+                   background: linear-gradient(180deg, #fff 30%, #9aa4c0); -webkit-background-clip: text; background-clip: text;
+                   color: transparent; filter: drop-shadow(0 6px 24px rgba(255,56,96,.35)); }
+  #loading .logo span { display: block; font-size: .5em; letter-spacing: .45em; margin-left: .3em;
+                        background: linear-gradient(90deg, #ff3860, #ff9a3c); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #loading .bar { width: min(420px, 80vw); height: 6px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+  #loading .bar i { background: linear-gradient(90deg, #ff3860, #ff9a3c); transition: width .15s; }
+  #loading #msg { color: rgba(244, 246, 251, 0.62); letter-spacing: .2em; text-transform: uppercase; font-size: 13px; line-height: normal; }
+  #loading #msg.error { color: #ff8a8a; letter-spacing: normal; text-transform: none; font: 14px/1.5 system-ui, sans-serif; }
+  @media (max-height: 780px) { #loading { gap: 10px; justify-content: flex-start; padding-top: 18px; }
+                               #loading .logo { font-size: clamp(40px, 7vw, 76px); } }
+  @media (max-height: 500px) { #loading { gap: 8px; padding: 10px 16px; } #loading .logo { font-size: 34px; } }
 </style>
 </head>
 <body>
@@ -37,7 +59,7 @@
      relative: the build is always served under a sub-path. -->
 <canvas id="game" tabindex="0"></canvas>
 <div id="loading" class="screen">
-  <h1>MIDNIGHT <span>RACER</span></h1>
+  <div class="logo">MIDNIGHT<span>RACER</span></div>
   <div class="bar"><i id="bar"></i></div>
   <p id="msg">Starting…</p>
 </div>
@@ -168,8 +190,16 @@
     mr.wasmMemoryBytes = () => wasm.memory.buffer.byteLength;
 
     // 3. The gesture bridge: inside the handler, into the wasm (SPEC 8.4).
+    // Every gesture wakes the sound (pointerdown too: D510–D517); the
+    // up-events also carry where the pointer is, for the controls that go
+    // fullscreen inside the tap (Race, Race again, Restart; D577).
     for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
-      window.addEventListener(type, () => glue.gesture(type), { capture: true, passive: true });
+      window.addEventListener(type, (e) => {
+        glue.gesture(type);
+        if (type === 'pointerdown' || type === 'keydown') return;
+        const t = e.changedTouches ? e.changedTouches[0] : e;
+        if (t && t.clientX !== undefined) glue.gesture_at(type, t.clientX, t.clientY);
+      }, { capture: true, passive: true });
     }
 
     // Touch controls on a touch-first device, or forced with ?touch=1 (and
@@ -193,13 +223,16 @@
     // 4. Start the app: its first frame draws while the scene downloads.
     // __mr.screenshot(name) saves the next frame as a download (test hook).
     mr.screenshot = (n) => glue.screenshot(String(n));
+    mr.ui = (id) => (mr.uiNodes || {})[id] ?? null;
+    mr.reveal = (id) => glue.ui_reveal(String(id));
+    mr.stage = (c) => glue.stage(typeof c === 'string' ? c : JSON.stringify(c));
     // __mr.flyTo(station): the fly camera to a screenshot station; then
     // __mr.flyQuiet counts settled frames (a test hook).
     mr.flyTo = (p) => { mr.flyQuiet = 0; glue.fly_to(p.s, p.h, p.back, p.lat || 0, p.yaw || 0, p.pitch || 0); };
     glue.run();
 
     // 5. The scene (30–80 %), and Seaside's survey for its Track.
-    let level = params.get('level') || 'sierra';
+    let level = params.get('level') || glue.start_level() || 'sierra';
     const sceneUrlOf = (lv) => (lv === level && params.get('scene')) || (build.scenes ? build.scenes + lv + '.mrscene' : null);
     async function loadScene(lv, first) {
       const sceneUrl = sceneUrlOf(lv);

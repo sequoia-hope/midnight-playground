@@ -246,7 +246,18 @@ pub(super) fn update(
         Option<&mut Visibility>,
     )>,
 ) {
-    let Some(race) = &play.race else { return };
+    // No race (the menu), or one waiting behind it: no pads.
+    let Some(race) = play.race.as_ref().filter(|_| !play.hold) else {
+        for (part, _, _, vis) in &mut parts {
+            if *part == Part::Root
+                && let Some(mut v) = vis
+                && *v != Visibility::Hidden
+            {
+                *v = Visibility::Hidden;
+            }
+        }
+        return;
+    };
     let t = &race.touch;
     let lay = &t.layout;
     let k = play.css_scale.max(0.01);
