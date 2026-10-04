@@ -24,7 +24,8 @@
 // USE_ALPHAMAP. VERTEX_EXTRA: the patch's own attribute
 // (`convert::ATTRIBUTE_EXTRA`), VERTEX_EXTRA2 the traffic streams' second
 // one. A material's animated values come from its block in the globals
-// when it has one (`material.slots.x`, D490). MR_INSTANCED: an InstancedMesh drawn as one
+// when it has one (`material.slots.x`, D490); PLAIN_ANIM (three's own
+// materials) reads an animator's opacity there (D701). MR_INSTANCED: an InstancedMesh drawn as one
 // entity (`render::instancing`, D450): the world matrix, instanceColor and
 // receiveShadow come from the instance stream, not Bevy's mesh uniform.
 //
@@ -178,6 +179,9 @@ fn kind_uniforms() -> vec4<f32> {
 #else ifdef PATCH_FLOODBEAM
     // beamMat.opacity = 0.13 × smoothstep(0.3, 0.8, night).
     return vec4<f32>(0.13 * t::smooth_step(0.3, 0.8, n), 0.0, 0.0, 0.0);
+#else ifdef POINTS_FLICKER
+    // Desert.js animate: glowTime = T (the uTime it shares; D553).
+    return vec4<f32>(globals_at(g::G_ANIM2).z, 0.0, 0.0, 0.0);
 #else
     // GlowPoints' uFogK: world.scene's fog, which it has not.
     return vec4<f32>(0.0);
@@ -472,6 +476,12 @@ fn points_vertex(out: ptr<function, VOut>, extra: vec4<f32>) {
     let pixel_ratio = globals_at(g::G_ANIM2).w;
     // refreshUniformsPoints: size × pixelRatio; scale = height × 0.5 (CSS).
     var point_size = material.kind0.x * pixel_ratio;
+#ifdef PLAIN_ANIM
+    // An animator's size (block texel 4.y; Streets' phone flashes, D721).
+    if (has_block()) {
+        point_size = block_at(4).y * pixel_ratio;
+    }
+#endif
     var aux = 1.0;
 #ifdef POINTS_GLOW
     // gl_PointSize = size * gsize;
@@ -493,7 +503,7 @@ fn points_vertex(out: ptr<function, VOut>, extra: vec4<f32>) {
 #endif
 #ifdef POINTS_FLICKER
     // At fog_vertex.
-    let u_time = globals_at(g::G_ANIM2).z;
+    let u_time = kind_uniforms().x;
     let ph = extra.x;
 #ifdef FLICKER_BLINK
     aux = step(0.5, fract(u_time * material.kind1.w + ph * 0.3333));
@@ -980,6 +990,13 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     let geometry_roughness = max(max(dxy.x, dxy.y), dxy.z);
 
     var diffuse_color = material.diffuse;
+#ifdef PLAIN_ANIM
+    // three's own materials: an animator's opacity (block texel 4.x, which
+    // starts at the exported opacity; D701).
+    if (has_block()) {
+        diffuse_color.a = block_at(4).x;
+    }
+#endif
 #ifdef PATCH_POOL
     // The pools' and the flood beams' opacity follows the night (their
     // updater's, or the animators').

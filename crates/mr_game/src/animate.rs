@@ -51,11 +51,16 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// Whether `mr_worldgen` builds this level whole, numbered as its export
-/// (D472 holds Sierra to it; the other levels still replay recorded
-/// scenery).
+/// Whether `mr_worldgen` builds this level whole, numbered as its export,
+/// in the client (D472 holds Sierra to it, D591 Seaside Raceway, D630 the
+/// Night City Cruise, D551 Desert Run, D613 Downtown Streets, D536 the
+/// Coast Highway; the client's builds of them: `crate::levels`, D680,
+/// D700, D720).
 pub fn generated(level: &str) -> bool {
-    level == "sierra"
+    matches!(
+        level,
+        "sierra" | "seaside" | "cruise" | "desert" | "streets" | "coast"
+    )
 }
 
 /// `?world=gen`: draw the level as the client builds it, without the
@@ -138,8 +143,12 @@ impl Default for WorldGen {
     }
 }
 
-/// The level's world jobs, as `tests/level1.rs` builds Sierra.
-fn new_build(level: &str) -> Build {
+/// The level's world jobs, as `tests/level1.rs` builds Sierra (or as
+/// `crate::levels` builds the level, when it has inputs of its own).
+fn new_build(level: &str, draws: bool) -> Build {
+    if let Some(b) = crate::levels::new_build(level, draws) {
+        return b;
+    }
     use mr_worldgen::stages::{LevelSetup, level_stages};
     use mr_worldgen::terrain_mesh::TerrainSetup;
     let setup = LevelSetup {
@@ -151,7 +160,12 @@ fn new_build(level: &str) -> Build {
     };
     Build::new(
         World::new(mr_levels::level_by_id(level)),
-        level_jobs(level_stages(setup), level1_scenery),
+        match level {
+            "desert" => level_jobs(level_stages(setup), crate::levels::desert::scenery),
+            "streets" => level_jobs(level_stages(setup), crate::levels::streets::scenery),
+            "coast" => level_jobs(level_stages(setup), crate::levels::coast::scenery),
+            _ => level_jobs(level_stages(setup), level1_scenery),
+        },
     )
 }
 
@@ -215,16 +229,20 @@ pub fn drive_build(mut wg: ResMut<WorldGen>, opts: Res<Opts>, state: Res<State<A
             PENDING.store(false, Ordering::Relaxed);
             return;
         }
+        if !crate::levels::inputs_ready(&o.level, draws_generated(o)) {
+            return; // Seaside's survey and photo
+        }
         wg.generation += 1;
         wg.started = Some(bevy::platform::time::Instant::now());
         PENDING.store(true, Ordering::Relaxed);
         let level = o.level.clone();
+        let draws = draws_generated(o);
         let t = o.t;
         #[cfg(not(target_arch = "wasm32"))]
         {
             let generation = wg.generation;
             std::thread::spawn(move || {
-                let mut b = new_build(&level);
+                let mut b = new_build(&level, draws);
                 let mut r = Ok(());
                 while !b.is_done() && r.is_ok() {
                     r = step(&mut b, t);
@@ -237,7 +255,7 @@ pub fn drive_build(mut wg: ResMut<WorldGen>, opts: Res<Opts>, state: Res<State<A
         #[cfg(target_arch = "wasm32")]
         {
             let _ = t;
-            wg.state = Gen::Stepping(Box::new(Mutex::new(new_build(&level))));
+            wg.state = Gen::Stepping(Box::new(Mutex::new(new_build(&level, draws))));
         }
         return;
     }
@@ -309,6 +327,7 @@ pub fn reset_world(
     mut commands: Commands,
     mut wg: ResMut<WorldGen>,
     mut blocks: ResMut<AnimBlocks>,
+    mesh_writes: Res<MeshWrites>,
     opts: Res<Opts>,
 ) {
     let generation = wg.generation;
@@ -318,6 +337,9 @@ pub fn reset_world(
     };
     blocks.texels.clear();
     blocks.map.clear();
+    if let Ok(mut w) = mesh_writes.0.lock() {
+        w.clear();
+    }
     commands.remove_resource::<SceneIndex>();
     // Pending from now, so the page holds the downloaded scene back until
     // the build is done (`web::world_pending`).
@@ -383,12 +405,17 @@ pub struct SceneIndex {
     /// Per texture, the materials using it and how.
     textures: Vec<Vec<(u32, TexRole, [f64; 2])>>,
     /// Per scene mesh, the Bevy meshes drawn from it that keep a CPU copy
-    /// (small triangle meshes: [`convert::KEEP_VERTICES`]).
-    meshes: Vec<Vec<Handle<Mesh>>>,
+    /// (small triangle meshes, [`convert::KEEP_VERTICES`]; small `Points`,
+    /// [`convert::KEEP_POINTS`]), and how its vertices map to the
+    /// geometry's.
+    meshes: Vec<Vec<KeptMesh>>,
     /// Entities per node, gathered from [`NodeRef`] at the first frame.
     entities: Option<Vec<Vec<Entity>>>,
     /// Edits of kinds nothing here applies, reported once each.
     unknown: Vec<String>,
+    /// The spot light the loader takes into `Lighting` (the first in the
+    /// scene) and its target, the next sibling (Desert's train, D720).
+    spot: Option<(u32, Option<u32>)>,
 }
 
 /// The uniform slot (block texel 4) of a kind's animated uniform.
@@ -406,11 +433,18 @@ fn uniform_slot(kind: MaterialKind, prop: &str) -> Option<usize> {
         (Surf, "uBright") => 1,
         (LighthouseBeam, "uStrength") => 0,
         (GroundPool, "uTime") => 0,
+        (FlickerPoints, "uTime") => 0,
         (GroundPool, "opacity") => 1,
         (FloodBeam, "opacity") => 0,
         (Neon, "uNTime") => 0,
         (Steam, "uTime") => 0,
         (Steam, "uScale") => 1,
+        // three's own materials: the opacity an updater moves (Level 2's
+        // lamp pools, the lighthouse's glow, the beach surf, the boats'
+        // lights; D701), read by the shader under `PLAIN_ANIM`.
+        (Standard | Physical | Lambert | Basic | Line | Sprite | Points, "opacity") => 0,
+        // A plain Points' size (Streets' phone flashes; D721).
+        (Points, "size") => 1,
         _ => return None,
     })
 }
@@ -435,7 +469,7 @@ pub fn fix_uniforms(mat: &mut ThreeMaterial, kind: MaterialKind, overrides: &ser
 }
 
 /// Every animated uniform of [`uniform_slot`].
-const UNIFORMS: [&str; 11] = [
+const UNIFORMS: [&str; 12] = [
     "uTime",
     "uNight",
     "uFogK",
@@ -447,6 +481,7 @@ const UNIFORMS: [&str; 11] = [
     "opacity",
     "uNTime",
     "uScale",
+    "size",
 ];
 
 impl SceneIndex {
@@ -521,7 +556,12 @@ impl SceneIndex {
                 let mut uniforms = [0f32; 4];
                 for name in UNIFORMS {
                     if let Some(slot) = uniform_slot(m.kind, name) {
-                        uniforms[slot] = m.number(name).unwrap_or(0.0) as f32;
+                        let unset = if matches!(name, "opacity" | "size") {
+                            1.0
+                        } else {
+                            0.0
+                        };
+                        uniforms[slot] = m.number(name).unwrap_or(unset) as f32;
                     }
                 }
                 MatInfo {
@@ -537,15 +577,43 @@ impl SceneIndex {
                 }
             })
             .collect();
-        let mut by_mesh: Vec<Vec<Handle<Mesh>>> = vec![Vec::new(); scene.meshes.len()];
+        let mut by_mesh: Vec<Vec<KeptMesh>> = (0..scene.meshes.len()).map(|_| Vec::new()).collect();
         for (key, h) in meshes {
             if let Some(h) = h
                 && crate::convert::keeps_cpu_copy(scene, *key)
                 && let Some(v) = by_mesh.get_mut(key.mesh as usize)
             {
-                v.push(h.clone());
+                let m = &scene.meshes[key.mesh as usize];
+                let size = |name: &str| {
+                    m.attribute(name)
+                        .map_or(3, |a| scene.buffers[a.accessor as usize].item_size as usize)
+                };
+                let map = VertexMap {
+                    points: (key.draw == crate::convert::Draw::Points)
+                        .then_some((key.start as usize, key.count as usize)),
+                    color_size: size("color"),
+                };
+                v.push(KeptMesh {
+                    handle: h.clone(),
+                    map,
+                    cpu: None,
+                });
             }
         }
+        let spot = scene
+            .lights
+            .iter()
+            .find(|l| l.ty == mr_scene::NodeType::SpotLight)
+            .map(|l| {
+                let sib = scene.nodes[l.node as usize]
+                    .parent
+                    .map_or(&[][..], |p| scene.nodes[p as usize].children.as_slice());
+                let next = sib
+                    .iter()
+                    .position(|&c| c == l.node)
+                    .and_then(|k| sib.get(k + 1).copied());
+                (l.node, next)
+            });
         SceneIndex {
             shape: Shape::of(scene),
             nodes,
@@ -554,6 +622,7 @@ impl SceneIndex {
             meshes: by_mesh,
             entities: None,
             unknown: Vec::new(),
+            spot,
         }
     }
 
@@ -669,13 +738,16 @@ pub fn run_animators(
     index: Option<ResMut<SceneIndex>>,
     mut sky_res: ResMut<SkyRes>,
     mut blocks: ResMut<AnimBlocks>,
-    mut meshes: ResMut<Assets<Mesh>>,
+    meshes: Res<Assets<Mesh>>,
+    mesh_writes: Res<MeshWrites>,
     camera: Query<(&Transform, &Projection), With<Camera3d>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     nodes: Query<(Entity, &NodeRef), With<SceneEntity>>,
     mut placed: Placed,
     streams: Query<&Instances>,
     status: Res<Status>,
+    race: Res<crate::levels::RaceCountdown>,
+    mut lighting: ResMut<crate::render::lighting::Lighting>,
 ) {
     let Some(frame) = sky_res.frame.take() else {
         return;
@@ -723,16 +795,21 @@ pub fn run_animators(
             .single()
             .map_or(800.0, |w| f64::from(w.physical_height())),
     });
-    let edits = wb.update(&UpdateCtx {
+    let mut edits = wb.update(&UpdateCtx {
         dt: frame.dt,
         night: sky_frame.night,
         camera: view,
         s: frame.s,
     });
+    // `Race.update`'s `world.onCountdown` (Seaside's start lights, D682).
+    if let Some(cd) = race.0 {
+        edits.extend(wb.countdown(cd));
+    }
     drop(wb);
     let blocks_before = blocks.texels.len();
     let mut moved: Vec<u32> = Vec::new();
     let mut shown: Vec<u32> = Vec::new();
+    let mut light: Option<crate::levels::desert::LightEdit> = None;
     for SceneEdit { target, change } in edits {
         match (target, change) {
             (
@@ -802,9 +879,17 @@ pub fn run_animators(
                     inst.dirty = true;
                 }
             }
-            (SceneRef::Node(_), Change::Light { .. }) => {
-                // The scene's own lights are the sky's (`Lighting`), the
-                // spot and point lights static.
+            (
+                SceneRef::Node(n),
+                Change::Light {
+                    color, intensity, ..
+                },
+            ) => {
+                // The sun and hemisphere light are the sky's (`Lighting`);
+                // the spot light follows its animator (Desert's train).
+                if index.spot.is_some_and(|(l, _)| l == n) {
+                    light = Some((color, intensity));
+                }
             }
             (
                 SceneRef::Mesh(m),
@@ -814,23 +899,26 @@ pub fn run_animators(
                     values,
                 },
             ) => {
-                let Some(handles) = index.meshes.get(m as usize) else {
-                    continue;
-                };
-                if handles.is_empty() {
+                if index.meshes.get(m as usize).is_none_or(|k| k.is_empty()) {
                     index.report(format!("attribute {name} of mesh {m}"));
                     continue;
                 }
                 let attr = match name {
                     "position" => Mesh::ATTRIBUTE_POSITION,
                     "normal" => Mesh::ATTRIBUTE_NORMAL,
+                    "color" => Mesh::ATTRIBUTE_COLOR,
                     _ => {
                         index.report(format!("attribute {name}"));
                         continue;
                     }
                 };
-                for h in handles.clone() {
-                    write_attribute(&mut meshes, &h, attr, offset, &values);
+                for kept in &mut index.meshes[m as usize] {
+                    let size = if name == "color" {
+                        kept.map.color_size
+                    } else {
+                        3
+                    };
+                    write_attribute(&meshes, kept, attr, size, offset, &values, &mesh_writes);
                 }
             }
             (SceneRef::Material(i), change) => {
@@ -877,6 +965,18 @@ pub fn run_animators(
             if !dirty_world.contains(&k) {
                 dirty_world.push(k);
             }
+        }
+    }
+    if let Some((l, t)) = index.spot {
+        let at = |n: u32| {
+            dirty_world.contains(&n).then(|| {
+                let info = &index.nodes[n as usize];
+                info.world.w_axis.truncate() + info.offset.as_dvec3()
+            })
+        };
+        let (p, t) = (at(l), t.and_then(at));
+        if light.is_some() || p.is_some() || t.is_some() {
+            crate::levels::desert::follow_spot(&mut lighting, light, p, t);
         }
     }
     let entities = index.entities.take().unwrap_or_default();
@@ -999,6 +1099,16 @@ fn apply_material(index: &mut SceneIndex, i: u32, change: Change, blocks: &mut A
     if kind == MaterialKind::SkyDome {
         return; // the dome's uniforms are the client's sky (`Lighting`)
     }
+    if kind == MaterialKind::Sea
+        && matches!(
+            change,
+            Change::Number { prop: "uTime", .. } | Change::Vector { prop: "uOff2", .. }
+        )
+    {
+        // `Sea.js`'s clock and second ripple offset: the client's
+        // `lighting::Anim` computes the same from the same dt (D495, D701).
+        return;
+    }
     match change {
         Change::Number { prop, value } => {
             let slot = uniform_slot(kind, prop);
@@ -1042,39 +1152,144 @@ fn apply_material(index: &mut SceneIndex, i: u32, change: Change, blocks: &mut A
     }
 }
 
-/// Values written into a mesh attribute from float `offset` (the Bevy mesh
-/// holds the geometry's vertices in order: triangles and lines only).
-fn write_attribute(
-    meshes: &mut Assets<Mesh>,
-    h: &Handle<Mesh>,
-    attr: bevy::mesh::MeshVertexAttribute,
-    offset: usize,
-    values: &[f32],
+/// How a kept Bevy mesh's vertices map to its geometry's.
+#[derive(Clone, Copy, Debug)]
+struct VertexMap {
+    /// A `Points` geometry drawn as quads (`convert::build_points`, no
+    /// index): geometry vertex `start + k` is quad vertices `4k..4k + 4`,
+    /// for `k` below the count. `None`: the geometry's vertices in order.
+    points: Option<(usize, usize)>,
+    /// The geometry's `color` item size (3 or 4; the Bevy colour is four).
+    color_size: usize,
+}
+
+/// A drawn Bevy mesh an animator's attribute edits are written into.
+struct KeptMesh {
+    handle: Handle<Mesh>,
+    map: VertexMap,
+    /// Its vertices as the edits leave them: a copy of the asset's (which
+    /// the loader keeps on the CPU), made at the first edit. The asset is
+    /// never modified: that would have Bevy re-extract and re-upload the
+    /// mesh, which on the web left a GPU buffer behind each time (D701).
+    cpu: Option<Mesh>,
+}
+
+/// Vertex data for meshes already on the GPU, written into their place in
+/// Bevy's mesh slab at extraction (`write_mesh_updates`): the mesh's id,
+/// its packed vertices and the vertex size in bytes.
+#[derive(Resource, Clone, Default)]
+pub struct MeshWrites(Arc<Mutex<Vec<MeshWrite>>>);
+
+/// One pending write: the mesh, its packed vertices, the vertex size.
+type MeshWrite = (AssetId<Mesh>, Vec<u8>, u64);
+
+/// Writes the pending vertex data into the meshes' slab slices (render
+/// world, at extraction, as `instancing::write_instance_updates`). A mesh
+/// not allocated yet keeps its data for the next frame.
+pub fn write_mesh_updates(
+    queue: Res<bevy::render::renderer::RenderQueue>,
+    allocator: Res<bevy::render::mesh::allocator::MeshAllocator>,
+    writes: bevy::render::Extract<Res<MeshWrites>>,
 ) {
-    let Some(mesh) = meshes.get(h) else { return };
-    // Unchanged (a frozen frame): leave the asset alone, so it is not sent
-    // to the GPU again.
-    if let Some(VertexAttributeValues::Float32x3(v)) = mesh.attribute(attr) {
-        let flat = v.as_flattened();
-        if flat.get(offset..offset + values.len()) == Some(values) {
-            return;
+    let Ok(mut w) = writes.0.lock() else { return };
+    let pending = std::mem::take(&mut *w);
+    for (id, bytes, stride) in pending {
+        match allocator.mesh_vertex_slice(&id) {
+            Some(s) => {
+                let at = u64::from(s.range.start) * stride;
+                // wgpu's copy alignment (whole floats always are).
+                if at % 4 == 0 && bytes.len() % 4 == 0 {
+                    queue.write_buffer(s.buffer, at, &bytes);
+                }
+            }
+            None => w.push((id, bytes, stride)),
         }
     }
-    let Some(mut mesh) = meshes.get_mut(h) else {
+}
+
+/// Values written into a mesh attribute from float `offset` of the
+/// geometry's array of `size` floats a vertex (an animator's edit): the
+/// geometry's vertices in order (triangles), or each point's four quad
+/// vertices (`Points`). A Bevy colour has four components, alpha kept.
+/// The mesh's whole vertex data then goes to the GPU in place
+/// ([`MeshWrites`]).
+fn write_attribute(
+    meshes: &Assets<Mesh>,
+    kept: &mut KeptMesh,
+    attr: bevy::mesh::MeshVertexAttribute,
+    size: usize,
+    offset: usize,
+    values: &[f32],
+    writes: &MeshWrites,
+) {
+    if size == 0 {
+        return;
+    }
+    let map = kept.map;
+    if kept.cpu.is_none() {
+        kept.cpu = meshes.get(&kept.handle).cloned();
+    }
+    let Some(mesh) = kept.cpu.as_mut() else {
         return;
     };
-    if let Some(VertexAttributeValues::Float32x3(v)) = mesh.attribute_mut(attr) {
-        let flat = v.as_flattened_mut();
-        let end = (offset + values.len()).min(flat.len());
-        if offset < end {
-            flat[offset..end].copy_from_slice(&values[..end - offset]);
+    // (Bevy vertex, component, value) for each value written.
+    let targets = |len: usize| {
+        values.iter().enumerate().flat_map(move |(j, &x)| {
+            let (v, c) = ((offset + j) / size, (offset + j) % size);
+            let quads = match map.points {
+                None => v..v + 1,
+                Some((start, count)) if v >= start && v - start < count => {
+                    (v - start) * 4..(v - start) * 4 + 4
+                }
+                Some(_) => 0..0,
+            };
+            quads.filter(move |&q| q < len).map(move |q| (q, c, x))
+        })
+    };
+    // Unchanged (a frozen frame): nothing is sent to the GPU.
+    let same = match mesh.attribute(attr) {
+        Some(VertexAttributeValues::Float32x3(v)) => {
+            targets(v.len()).all(|(q, c, x)| c >= 3 || v[q][c] == x)
         }
+        Some(VertexAttributeValues::Float32x4(v)) => {
+            targets(v.len()).all(|(q, c, x)| c >= 4 || v[q][c] == x)
+        }
+        _ => return,
+    };
+    if same {
+        return;
+    }
+    match mesh.attribute_mut(attr) {
+        Some(VertexAttributeValues::Float32x3(v)) => {
+            for (q, c, x) in targets(v.len()) {
+                if c < 3 {
+                    v[q][c] = x;
+                }
+            }
+        }
+        Some(VertexAttributeValues::Float32x4(v)) => {
+            for (q, c, x) in targets(v.len()) {
+                if c < 4 {
+                    v[q][c] = x;
+                }
+            }
+        }
+        _ => {}
+    }
+    let id = kept.handle.id();
+    let bytes = mesh.create_packed_vertex_buffer_data();
+    let stride = mesh.get_vertex_size();
+    if let Ok(mut w) = writes.0.lock() {
+        // The latest data for a mesh replaces any still pending.
+        w.retain(|(i, _, _)| *i != id);
+        w.push((id, bytes, stride));
     }
 }
 
 pub fn plugin(app: &mut App) {
     app.init_resource::<WorldGen>()
         .init_resource::<AnimBlocks>()
+        .init_resource::<MeshWrites>()
         .add_systems(OnEnter(AppState::Waiting), reset_world)
         .add_systems(Update, drive_build)
         .add_systems(
@@ -1087,7 +1302,7 @@ pub fn plugin(app: &mut App) {
     if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
         render_app.add_systems(
             bevy::render::ExtractSchedule,
-            instancing::write_instance_updates,
+            (instancing::write_instance_updates, write_mesh_updates),
         );
     }
 }
@@ -1116,6 +1331,11 @@ mod tests {
         assert_eq!(uniform_slot(Asphalt, "uWet"), Some(0));
         assert_eq!(uniform_slot(GlowPoints, "uFogK"), Some(0));
         assert_eq!(uniform_slot(Standard, "uTime"), None);
-        assert!(generated("sierra") && !generated("coast"));
+        assert!(generated("sierra") && generated("seaside") && generated("cruise"));
+        assert!(generated("desert") && generated("streets") && generated("coast"));
+        assert!(!generated("models"));
+        for k in [Standard, Lambert, Basic, Sprite, Points] {
+            assert_eq!(uniform_slot(k, "opacity"), Some(0));
+        }
     }
 }

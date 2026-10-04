@@ -79,6 +79,9 @@ bevy = { version = "=0.19.1", default-features = false, features = [
 # The world build's parallel jobs on threads natively (SPEC 5.5; the client
 # builds Level 1 for its animators, `animate`).
 mr_worldgen = { workspace = true, features = ["parallel"] }
+# Seaside Raceway's ground photo (`photo.jpg`) for the client's own build
+# natively; on the web the browser decodes it (`levels::seaside`, D681).
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 
 # The web backend is chosen at compile time (SPEC 2), one wasm file each,
 # picked by the page (roadmap WP 2.7; DECISIONS D391): WebGPU by default,
