@@ -176,20 +176,33 @@ impl Chunks {
         &mut self.builders[k]
     }
 
+    /// The `k`th builder's contents, leaving it empty (with the same
+    /// attributes) in its place: once a builder is emitted the JS never
+    /// reads it again, so the client's build frees each builder's arrays as
+    /// soon as its geometry exists, which keeps the heap's high-water mark
+    /// down (DECISIONS D722). Writes after `emitAll` (the billboards' posts,
+    /// D610) still land in a builder that nothing emits.
+    pub fn take(&mut self, k: usize) -> GeoBuilder {
+        std::mem::replace(
+            &mut self.builders[k],
+            GeoBuilder::new(self.color, self.cell),
+        )
+    }
+
     /// `emit(group, mat, opts)`.
     pub fn emit(
-        &self,
+        &mut self,
         graph: &mut SceneGraph,
         group: NodeId,
         mat: MaterialId,
         o: &StaticOpts,
     ) -> Vec<NodeId> {
         let mut out = Vec::new();
-        for b in &self.builders {
-            if b.is_empty() {
+        for k in 0..self.builders.len() {
+            if self.builders[k].is_empty() {
                 continue;
             }
-            let geo = graph.add_geometry(b.build());
+            let geo = graph.add_geometry(self.take(k).build());
             let m = static_mesh(graph, geo, mat, o);
             graph.add(group, m);
             out.push(m);
@@ -1339,10 +1352,11 @@ impl Bld<'_> {
             receive: false,
             ..StaticOpts::default()
         };
-        for b in &self.b_fac.builders {
-            if b.is_empty() {
+        for k in 0..self.b_fac.builders.len() {
+            if self.b_fac.builders[k].is_empty() {
                 continue;
             }
+            let b = self.b_fac.take(k);
             let geo = self
                 .graph
                 .add_geometry(props::emit_data(b.build(), "fdata"));
@@ -1357,13 +1371,14 @@ impl Bld<'_> {
         self.b_glow.emit(self.graph, g, self.m.glow, &no_recv);
         self.b_car.emit(self.graph, g, self.m.car, &recv);
         for (chunks, mat) in [
-            (&self.b_neon_h, self.m.neon_h),
-            (&self.b_neon_v, self.m.neon_v),
+            (&mut self.b_neon_h, self.m.neon_h),
+            (&mut self.b_neon_v, self.m.neon_v),
         ] {
-            for b in &chunks.builders {
-                if b.is_empty() {
+            for k in 0..chunks.builders.len() {
+                if chunks.builders[k].is_empty() {
                     continue;
                 }
+                let b = chunks.take(k);
                 let geo = self
                     .graph
                     .add_geometry(props::emit_data(b.build(), "ndata"));
