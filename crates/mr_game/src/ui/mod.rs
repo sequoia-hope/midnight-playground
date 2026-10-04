@@ -19,6 +19,8 @@ pub mod store;
 pub mod widgets;
 
 mod menu;
+pub(crate) mod nav;
+pub(crate) mod pad_setup;
 mod screens;
 #[cfg(target_arch = "wasm32")]
 mod web;
@@ -289,13 +291,24 @@ pub fn plugin(app: &mut App) {
             pads: false,
             inset_top: 0.0,
         })
+        .init_resource::<nav::MenuNav>()
+        .init_resource::<pad_setup::PadSetup>()
         .add_systems(Startup, (widgets::load_fonts, widgets::make_icons))
         .add_systems(
             Update,
-            (pointer, keys, sync_audio, flow, build, after_layout)
+            (
+                pointer,
+                keys,
+                sync_audio,
+                flow,
+                nav::update,
+                build,
+                after_layout,
+            )
                 .chain()
                 .before(PlayFrame),
         );
+    crate::play::gamepad_io::pad_setup_frame(app, pad_setup::frame);
     #[cfg(not(target_arch = "wasm32"))]
     if o.param("uiscript").is_some() {
         app.add_systems(Update, ui_script.before(pointer));
@@ -866,7 +879,9 @@ struct ActCtx<'w, 's> {
     cs: ResMut<'w, CameraState>,
     tr: Res<'w, TrackRes>,
     status: Res<'w, Status>,
-    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    /// The gamepads and the Controller screen (WP 6.4).
+    pads: ResMut<'w, crate::play::gamepad_io::PadsRes>,
+    pad_setup: ResMut<'w, pad_setup::PadSetup>,
     windows: Query<'w, 's, &'static mut Window, With<PrimaryWindow>>,
 }
 
@@ -1009,16 +1024,27 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
             if ui.screen == Screen::Menu || ui.screen == Screen::Pause {
                 ui.pad_return = ui.screen;
                 ui.screen = Screen::PadSetup;
+                // An Esc left over from the menu would close it at once.
+                if let Some(r) = ctx.play.race.as_mut() {
+                    r.input.consume("pause");
+                }
+                ctx.pad_setup.show(&mut ctx.pads.pads);
             }
         }
         Act::PadDone => {
-            ui.screen = ui.pad_return;
+            if ctx.pad_setup.open {
+                ctx.pad_setup.close(&mut ctx.pads.pads, ui);
+            } else {
+                ui.screen = ui.pad_return;
+            }
         }
         Act::NextTrack => ui.next_track = true,
-        Act::PadBind(_) | Act::PadDefaults => {
-            // Gamepads (WP 6.4) and music (M5) are not wired to the menus
-            // yet.
+        Act::PadBind(id) => {
+            if let Some(a) = crate::play::gamepad::Action::from_key(id) {
+                ctx.pad_setup.pick(&mut ctx.pads.pads, a);
+            }
         }
+        Act::PadDefaults => ctx.pad_setup.defaults(&mut ctx.pads.pads),
         Act::Resume => {
             if let Some(r) = ctx.play.race.as_mut() {
                 r.pause(false);
@@ -1167,12 +1193,8 @@ fn keys(
                 ui.focus = Some(order[next].clone());
                 ui.dirty = true;
             }
-            // Esc on the Controller screen leaves it (from pause, the race
-            // takes the Esc and `flow` keeps the pause).
-            KeyCode::Escape if ui.screen == Screen::PadSetup && ui.pad_return == Screen::Menu => {
-                ui.screen = Screen::Menu;
-                ui.dirty = true;
-            }
+            // Esc on the Controller screen is `pad_setup::frame`'s (it
+            // stops listening, or leaves).
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                 let Some(f) = ui.focus.clone() else { continue };
                 let act = controls
@@ -1199,6 +1221,7 @@ fn build(
     status: Res<Status>,
     icons: Option<Res<Icons>>,
     windows: Query<&Window, With<PrimaryWindow>>,
+    pad_setup: Res<pad_setup::PadSetup>,
     roots: Query<Entity, With<UiRoot>>,
     scroller: Query<&ScrollPosition, With<Scroller>>,
     mut loading: Local<(f32, String)>,
@@ -1269,7 +1292,7 @@ fn build(
             Screen::Menu => menu::menu(p, &mut cx, &ui, &store, &play, &opts),
             Screen::Pause => screens::pause(p, &mut cx, &ui, &play),
             Screen::Results => screens::results(p, &mut cx, &ui),
-            Screen::PadSetup => screens::padsetup(p, &mut cx, &ui),
+            Screen::PadSetup => screens::padsetup(p, &mut cx, &ui, &pad_setup.view),
             Screen::None => return,
         });
         if screen == Screen::Menu && bp.touch && bp.portrait {
@@ -1304,6 +1327,11 @@ fn after_layout(
         ui.reveal = None;
         return;
     };
+    // A screen rebuilt this frame has no layout yet: its offset (carried
+    // over by `build`) and a pending reveal wait for it.
+    if n.size.y <= 0.0 {
+        return;
+    }
     // Keep the offset inside the content, as a browser does.
     let max = ((n.content_size.y - n.size.y) * n.inverse_scale_factor).max(0.0);
     let mut y = s.0.y.clamp(0.0, max);

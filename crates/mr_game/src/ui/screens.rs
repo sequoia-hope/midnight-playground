@@ -470,30 +470,22 @@ pub fn results(p: &mut ChildSpawnerCommands, cx: &mut Cx, ui: &UiState) -> Entit
 /// The driving actions the Controller screen lists (`ACTIONS` in
 /// `Gamepad.js`) and the standard layout's labels for their default
 /// bindings (`DEFAULT_MAP`, `bindingLabel`).
-const PAD_ACTIONS: [(&str, &str, &str); 10] = [
-    ("left", "Steer left", "Left stick \u{2190}"),
-    ("right", "Steer right", "Left stick \u{2192}"),
-    ("throttle", "Throttle", "RT"),
-    ("brake", "Brake / reverse", "LT"),
-    ("nitro", "Nitro", "A"),
-    ("handbrake", "Handbrake", "X / RB"),
-    ("lookBack", "Look back", "B"),
-    ("camera", "Camera", "Y"),
-    ("reset", "Reset car", "Back"),
-    ("pause", "Pause", "Start"),
-];
-
-/// `#padsetup`: what each action is bound to on the pad last touched. The
-/// gamepad itself (reading pads, capture, saved maps) is WP 6.4; until
-/// then the screen shows the standard layout and no pad.
-pub fn padsetup(p: &mut ChildSpawnerCommands, cx: &mut Cx, ui: &UiState) -> Entity {
+/// `#padsetup`: what each action is bound to on the pad last touched,
+/// lit while held (`.on`), the row being picked up (`.listening`), the hint
+/// (`super::pad_setup`, WP 6.4).
+pub fn padsetup(
+    p: &mut ChildSpawnerCommands,
+    cx: &mut Cx,
+    ui: &UiState,
+    view: &super::pad_setup::PadView,
+) -> Entity {
     let bp = cx.bp;
     screen(p, cx, Kind::Other, |p, cx| {
         title(p, &bp, "pad-title", "Controller");
         p.spawn((
-            w::text("No controller yet", T::new(16.0).ls(0.1).c(w::dim()), bp.k),
+            w::text(&view.name, T::new(16.0).ls(0.1).c(w::dim()), bp.k),
             TextLayout::justify(Justify::Center),
-            Control::named("pad-name", Value::Text("No controller yet".into())),
+            Control::named("pad-name", Value::Text(view.name.clone())),
         ));
         let col = bp.column();
         p.spawn(Node {
@@ -508,7 +500,10 @@ pub fn padsetup(p: &mut ChildSpawnerCommands, cx: &mut Cx, ui: &UiState) -> Enti
             ..default()
         })
         .with_children(|p| {
-            for (id, label, bind) in PAD_ACTIONS {
+            for a in crate::play::gamepad::Action::ALL {
+                let (id, label, bind) = (a.key(), a.label(), view.bind(a));
+                let on = view.on.contains(&a);
+                let listening = view.listening == Some(a);
                 let cid = format!("pad-bind-{id}");
                 let f = cx.f(&cid);
                 let mut e = p.spawn((
@@ -521,21 +516,39 @@ pub fn padsetup(p: &mut ChildSpawnerCommands, cx: &mut Cx, ui: &UiState) -> Enti
                         border_radius: w::radius(&bp, 10.0),
                         ..default()
                     },
-                    BackgroundColor(w::white(0.05)),
-                    BorderColor::all(w::white(0.12)),
+                    // `.pad-bind.on`, `.pad-bind.listening` (its 1 px ring
+                    // left out: the focus ring is the outline).
+                    BackgroundColor(if on {
+                        Color::srgba(58.0 / 255.0, 215.0 / 255.0, 1.0, 0.16)
+                    } else {
+                        w::white(0.05)
+                    }),
+                    BorderColor::all(if listening {
+                        w::gold()
+                    } else if on {
+                        w::accent2()
+                    } else {
+                        w::white(0.12)
+                    }),
                     Control::act(cid, Act::PadBind(id)).value(Value::Text(bind.into())),
                 ));
                 w::focus_ring(&mut e, &bp, f);
                 e.with_children(|p| {
                     p.spawn(w::text(label, T::new(16.0), bp.k));
                     p.spawn((
-                        w::text(bind, T::new(16.0).bold().c(w::accent2()), bp.k),
+                        w::text(
+                            bind,
+                            T::new(16.0)
+                                .bold()
+                                .c(if listening { w::gold() } else { w::accent2() }),
+                            bp.k,
+                        ),
                         TextLayout::justify(Justify::Right),
                     ));
                 });
             }
         });
-        let hint = "Press a button on your controller";
+        let hint = view.hint.as_str();
         p.spawn((
             w::text(hint, T::new(15.0).c(w::dim()), bp.k),
             TextLayout::justify(Justify::Center),
