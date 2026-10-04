@@ -652,3 +652,50 @@ WebGL2 at load 8.2 and 7.0: Coast 259 frames over 50 ms (73 to 76 ms
 intervals from the start, worst 123.6), Sierra 12 (54 to 57 ms, one of
 106 ms at s 708); both are the GPU-bound uncapped pacing described above
 (p50 6.6 and 6.0 ms), and late pipelines are 0 in all six runs.
+
+## The Rust client at WP 3.9 (Level 1's kinds and animators, DECISIONS D490 to D497)
+
+2026-10-04, the same method (`node tools/parity/rust-perf.mjs --level
+sierra`, headless Chrome, 1280 × 800, high quality, uncapped, the full
+route), A/B against the build before WP 3.9's client (1bb2dd6), alternating
+runs. The machine was shared with other agents' builds the whole time
+(1-minute load average 8 to 21 at the starts, higher during runs), so single
+slow frames come and go in both builds.
+
+| Build, backend | Load | Frame ms p50 / p95 / p99 / max | > 50 ms (30 s / all) | Ready |
+|---|---:|---|---|---:|
+| before, WebGPU | 9.5 | 3.7 / 8.1 / 12.1 / 34.8 | 0 / 0 | 3.9 s |
+| WP 3.9, WebGPU | 8.8 | 3.2 / 8.0 / 12.2 / 59.9 | 0 / 4 | 7.1 s |
+| before, WebGPU | 8.9 | 4.6 / 12.6 / 24.0 / 69.1 | 0 / 4 | 4.6 s |
+| WP 3.9, WebGPU | 21.3 | 3.3 / 8.6 / 12.0 / 243.4 | 0 / 2 | 8.3 s |
+| before, WebGPU | 18.3 | 3.8 / 12.4 / 23.7 / 126.2 | 1 / 14 | 3.2 s |
+| WP 3.9, WebGPU | 21.1 | 3.8 / 12.0 / 19.4 / 123.2 | 0 / 4 | 10.9 s |
+| before, WebGL2 (30 s) | | 1.6 / 19.1 / 20.0 / 36.6 | 0 / 0 | |
+| WP 3.9, WebGL2 (30 s) | 9.3 | 2.6 / 19.2 / 20.7 / 37.2 | 0 / 0 | |
+| WP 3.9, WebGL2 (30 s), `?world=off` | 10.8 | 2.3 / 35.7 / 38.3 / 55.2 | 34 / 34 | |
+
+No pipeline was compiled after the warm-up in any run (61 combinations
+now, 52 before: the new kinds). The frame-time distribution is the same;
+the slow frames are isolated, at different places from run to run, in
+both builds. On WebGL2 the uncapped page's GPU-bound pacing (frames of
+17.7, 36 or 53 ms, described above for Coast) comes and goes between
+identical runs (the `world=off` row, and a full-route WebGL2 run of this
+build with 231 such frames in its first 30 s next to one with none).
+
+The animator path itself, timed in the wasm build over the full flight
+(every 300 frames): 0.04 to 0.15 ms a frame on average, at most 3.2 ms.
+It allocates no GPU object per frame: material values go to the globals
+(D490), moved instances are written into their stream's buffer in place
+(D497), and the flag's 18 vertices are rewritten in Bevy's mesh slab. The
+world build is done before `ready` (2.9 s in wasm on the dev machine).
+
+Memory, ten reloads of Sierra (WebGPU): after load 348 MB, then 357, 488
+(before: 303, then 443). With `?world=gen`: 348, then 357, 375.
+
+Size: `mr_game_bg.wasm` 9.44 MB and `mr_game_webgl2_bg.wasm` 9.93 MB after
+gzip (budget 10 MB; before: 8.77 and 9.24). World generation is now linked
+into the client (the level build, its textures and the bundled fonts).
+After merging main (race audio, the race warm-up, the other levels'
+world generation) and building Level 1's scenery by name (D498): 9.60 and
+10.08 MB, the WebGL2 build 0.08 MB over the budget; the budget question is
+the owner's (D498).

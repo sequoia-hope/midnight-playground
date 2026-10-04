@@ -33,16 +33,19 @@
 use crate::loader::{AppState, SceneEntity};
 use crate::render::ThreeMaterial;
 use crate::render::instancing::{self, InstanceStream, Instances};
-use crate::render::lighting::{BLOCK_TEXELS, G_BLOCKS, Globals, MAX_BLOCKS};
+use crate::render::lighting::{
+    BLOCK_TEXELS, G_BLOCK_MAP, G_BLOCKS, Globals, MAX_BLOCKS, MAX_MAPPED,
+};
 use crate::status::Status;
 use crate::{Opts, SkyRes, inbox};
 use bevy::camera::Projection;
-use bevy::math::{DMat4, DQuat, DVec3, Mat4, Vec3, Vec4};
+use bevy::math::{DMat4, DQuat, DVec3, Mat4, Vec3};
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
 use mr_scene::{MaterialKind, Scene};
 use mr_worldgen::world::{
-    Build, CameraView, Change, SceneEdit, SceneRef, UpdateCtx, World, WorldBuild, level_jobs,
+    Build, CameraView, Change, SceneEdit, SceneRef, Scenery, SceneryInfo, UpdateCtx, World,
+    WorldBuild, level_jobs,
 };
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -137,7 +140,6 @@ impl Default for WorldGen {
 
 /// The level's world jobs, as `tests/level1.rs` builds Sierra.
 fn new_build(level: &str) -> Build {
-    use mr_worldgen::scenery::scenery_factory;
     use mr_worldgen::stages::{LevelSetup, level_stages};
     use mr_worldgen::terrain_mesh::TerrainSetup;
     let setup = LevelSetup {
@@ -149,8 +151,21 @@ fn new_build(level: &str) -> Build {
     };
     Build::new(
         World::new(mr_levels::level_by_id(level)),
-        level_jobs(level_stages(setup), scenery_factory(None)),
+        level_jobs(level_stages(setup), level1_scenery),
     )
+}
+
+/// Level 1's scenery modules, named one by one rather than through
+/// `scenery::PORTED`: the table would link every level's scenery into the
+/// client, over the wasm budget (SPEC 6.6; D498). Every other module is
+/// left out, as `scenery_factory` leaves out an unported one.
+fn level1_scenery(info: &SceneryInfo) -> Option<Box<dyn Scenery>> {
+    match info.name {
+        "Mountain" => Some(Box::new(mr_worldgen::mountain::Mountain::new(info))),
+        "Valley" => Some(Box::new(mr_worldgen::valley::Valley::new(info))),
+        "City" => Some(Box::new(mr_worldgen::city::City::new(info))),
+        _ => None,
+    }
 }
 
 /// One job, then the `?t=` override on the sky as soon as it exists (the
@@ -302,6 +317,7 @@ pub fn reset_world(
         ..WorldGen::default()
     };
     blocks.texels.clear();
+    blocks.map.clear();
     commands.remove_resource::<SceneIndex>();
     // Pending from now, so the page holds the downloaded scene back until
     // the build is done (`web::world_pending`).
@@ -325,11 +341,11 @@ enum TexRole {
 
 struct MatInfo {
     kind: MaterialKind,
-    /// Every Bevy material made from it (instanced, instance colours).
-    handles: Vec<Handle<ThreeMaterial>>,
-    /// The emissive colour and intensity as exported.
+    /// The emissive colour and intensity as exported, and whether the
+    /// intensity follows nightfall (D455).
     emissive: [f64; 3],
     emissive_intensity: f64,
+    night: bool,
     /// The kind's uniforms as exported, in their block slots.
     uniforms: [f32; 4],
     block: Option<usize>,
@@ -413,10 +429,8 @@ const UNIFORMS: [&str; 6] = ["uTime", "uNight", "uFogK", "uHalfH", "uK", "uWet"]
 impl SceneIndex {
     pub fn new(
         scene: &Scene,
-        materials: &HashMap<(u32, bool, bool), Option<Handle<ThreeMaterial>>>,
         meshes: &HashMap<crate::convert::MeshKey, Option<Handle<Mesh>>>,
         offset: &[Vec3],
-        visible: &[bool],
     ) -> SceneIndex {
         let nodes = scene
             .nodes
@@ -428,7 +442,7 @@ impl SceneIndex {
                 local: DMat4::from_cols_array(&n.matrix),
                 world: DMat4::from_cols_array(&n.matrix_world),
                 offset: offset.get(i).copied().unwrap_or(Vec3::ZERO),
-                visible: visible.get(i).copied().unwrap_or(true),
+                visible: n.visible,
                 instances: n.instances.and_then(|k| {
                     let d = scene.instances.get(k as usize)?;
                     let m = scene.buffers[d.matrices as usize].data.as_f32()?;
@@ -461,15 +475,6 @@ impl SceneIndex {
                 }),
             })
             .collect();
-        let mut by_material: Vec<Vec<Handle<ThreeMaterial>>> =
-            vec![Vec::new(); scene.materials.len()];
-        for ((i, _, _), h) in materials {
-            if let Some(h) = h
-                && let Some(v) = by_material.get_mut(*i as usize)
-            {
-                v.push(h.clone());
-            }
-        }
         let mut textures: Vec<Vec<(u32, TexRole, [f64; 2])>> =
             vec![Vec::new(); scene.textures.len()];
         let materials = scene
@@ -497,9 +502,12 @@ impl SceneIndex {
                 }
                 MatInfo {
                     kind: m.kind,
-                    handles: std::mem::take(&mut by_material[i]),
                     emissive: m.color("emissive").unwrap_or([0.0; 3]),
                     emissive_intensity: m.number("emissiveIntensity").unwrap_or(1.0),
+                    night: scene
+                        .night_params
+                        .iter()
+                        .any(|p| p.material == i as u32 && p.prop == "emissiveIntensity"),
                     uniforms,
                     block: None,
                 }
@@ -549,58 +557,58 @@ impl SceneIndex {
 // ── Animation blocks in the globals ─────────────────────────────────────
 
 /// The materials' animation blocks (D490): [`BLOCK_TEXELS`] texels each
-/// from texel [`G_BLOCKS`] of the globals, written there every frame.
+/// from texel [`G_BLOCKS`] of the globals, and the block map from
+/// [`G_BLOCK_MAP`] (per scene material, its block's first texel), written
+/// there every frame.
 #[derive(Resource, Default)]
 pub struct AnimBlocks {
     pub texels: Vec<[f32; 4]>,
+    pub map: Vec<f32>,
 }
 
-/// Copies the blocks into the globals row after `lighting::pack_globals`.
+/// Copies the blocks and their map into the globals row after
+/// `lighting::pack_globals`.
 pub fn pack_blocks(blocks: Res<AnimBlocks>, mut globals: ResMut<Globals>) {
     for (k, t) in blocks.texels.iter().enumerate() {
         if let Some(g) = globals.0.get_mut(G_BLOCKS + k) {
             *g = *t;
         }
     }
+    for (i, b) in blocks.map.iter().enumerate() {
+        if let Some(g) = globals.0.get_mut(G_BLOCK_MAP + i / 4) {
+            g[i % 4] = *b;
+        }
+    }
 }
 
-/// The block of material `i`, made on first use: the block's texels
-/// start unset (the material's own values), its kind's uniforms as
-/// exported; every Bevy material made from it learns the block's place,
-/// and holds its emissive colour alone with the intensity in `night` (the
-/// one edit of the material, D490).
-fn block_of(
-    index: &mut SceneIndex,
-    i: u32,
-    blocks: &mut AnimBlocks,
-    assets: &mut Assets<ThreeMaterial>,
-) -> Option<usize> {
+/// The block of material `i`, made on first use: the colour and the
+/// sprite's rotation unset (the material's own), the emissive colour as
+/// exported and its intensity (unless it follows nightfall, which the
+/// material's `night` does), the kind's uniforms as exported. The material
+/// finds it through the block map by its index (`ThreeParams::slots.z`, set
+/// by the loader), so the Bevy material is never edited.
+fn block_of(index: &mut SceneIndex, i: u32, blocks: &mut AnimBlocks) -> Option<usize> {
     let m = index.materials.get_mut(i as usize)?;
     if let Some(b) = m.block {
         return Some(b);
     }
     let k = blocks.texels.len() / BLOCK_TEXELS;
-    if k >= MAX_BLOCKS {
+    if k >= MAX_BLOCKS || i as usize >= MAX_MAPPED {
         return None;
     }
+    let e = m.emissive;
     let mut t = [[0f32; 4]; BLOCK_TEXELS];
+    t[1] = [e[0] as f32, e[1] as f32, e[2] as f32, 1.0];
+    if !m.night {
+        t[2] = [m.emissive_intensity as f32, 1.0, 0.0, 0.0];
+    }
     t[4] = m.uniforms;
     blocks.texels.extend_from_slice(&t);
     m.block = Some(k);
-    let base = (G_BLOCKS + k * BLOCK_TEXELS) as f32;
-    let e = m.emissive;
-    for h in &m.handles {
-        let Some(mut mat) = assets.get_mut(h) else {
-            continue;
-        };
-        mat.params.slots = Vec4::new(base, 0.0, 0.0, 0.0);
-        if mat.params.night.z < 0.5 && mat.key.model != crate::render::material::Model::Basic {
-            let w = mat.params.emissive.w;
-            mat.params.emissive = Vec4::new(e[0] as f32, e[1] as f32, e[2] as f32, w);
-            let ei = m.emissive_intensity as f32;
-            mat.params.night = Vec4::new(ei, ei, 1.0, 0.0);
-        }
+    if blocks.map.len() <= i as usize {
+        blocks.map.resize(i as usize + 1, 0.0);
     }
+    blocks.map[i as usize] = (G_BLOCKS + k * BLOCK_TEXELS) as f32;
     Some(k)
 }
 
@@ -637,12 +645,12 @@ pub fn run_animators(
     index: Option<ResMut<SceneIndex>>,
     mut sky_res: ResMut<SkyRes>,
     mut blocks: ResMut<AnimBlocks>,
-    mut assets: ResMut<Assets<ThreeMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     camera: Query<(&Transform, &Projection), With<Camera3d>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     nodes: Query<(Entity, &NodeRef), With<SceneEntity>>,
     mut placed: Placed,
+    streams: Query<&Instances>,
     status: Res<Status>,
 ) {
     let Some(frame) = sky_res.frame.take() else {
@@ -802,12 +810,12 @@ pub fn run_animators(
                 }
             }
             (SceneRef::Material(i), change) => {
-                apply_material(index, i, change, &mut blocks, &mut assets);
+                apply_material(index, i, change, &mut blocks);
             }
             (SceneRef::Texture(t), Change::TextureOffset(off)) => {
                 let users = index.textures.get(t as usize).cloned().unwrap_or_default();
                 for (i, role, base) in users {
-                    let Some(k) = block_of(index, i, &mut blocks, &mut assets) else {
+                    let Some(k) = block_of(index, i, &mut blocks) else {
                         continue;
                     };
                     let d = [(off[0] - base[0]) as f32, (off[1] - base[1]) as f32];
@@ -913,6 +921,15 @@ pub fn run_animators(
                 .unwrap_or([1.0; 3]);
             instancing::push_instance(&mut data, &(world * local), tint, inst.receive);
         }
+        // The same count: written into the stream's buffer in place (no GPU
+        // allocation per frame, D497); else a new stream.
+        let first = entities.get(k).and_then(|v| v.first()).copied();
+        if !data.is_empty()
+            && let Some(cur) = first.and_then(|e| streams.get(e).ok())
+            && cur.0.update(&data)
+        {
+            continue;
+        }
         let stream = (!data.is_empty()).then(|| Instances(Arc::new(InstanceStream::new(&data))));
         for &e in entities.get(k).map_or(&[][..], |v| v.as_slice()) {
             match &stream {
@@ -948,13 +965,7 @@ fn change_name(c: &Change) -> &'static str {
 
 /// A material's number or colour, into its block: a uniform of that name
 /// if the kind has one animated (D411's rule), else the parameter.
-fn apply_material(
-    index: &mut SceneIndex,
-    i: u32,
-    change: Change,
-    blocks: &mut AnimBlocks,
-    assets: &mut Assets<ThreeMaterial>,
-) {
+fn apply_material(index: &mut SceneIndex, i: u32, change: Change, blocks: &mut AnimBlocks) {
     let Some(kind) = index.materials.get(i as usize).map(|m| m.kind) else {
         return;
     };
@@ -976,7 +987,7 @@ fn apply_material(
                     return;
                 }
             };
-            if let Some(k) = block_of(index, i, blocks, assets) {
+            if let Some(k) = block_of(index, i, blocks) {
                 set_texel(blocks, k, texel, |t| {
                     t[at] = v;
                     if let Some(f) = flag {
@@ -994,7 +1005,7 @@ fn apply_material(
                     return;
                 }
             };
-            if let Some(k) = block_of(index, i, blocks, assets) {
+            if let Some(k) = block_of(index, i, blocks) {
                 set_texel(blocks, k, texel, |t| {
                     *t = [rgb[0] as f32, rgb[1] as f32, rgb[2] as f32, 1.0];
                 });
@@ -1046,6 +1057,12 @@ pub fn plugin(app: &mut App) {
                 pack_blocks.after(crate::render::lighting::pack_globals),
             ),
         );
+    if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
+        render_app.add_systems(
+            bevy::render::ExtractSchedule,
+            instancing::write_instance_updates,
+        );
+    }
 }
 
 #[cfg(test)]

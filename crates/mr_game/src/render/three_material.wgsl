@@ -79,8 +79,10 @@ struct ThreeParams {
     // alphaMap uv transform rows
     alpha_t0: vec4<f32>,
     alpha_t1: vec4<f32>,
-    // x: the first texel of the material's animation block in the globals
-    // (0: none; `crate::animate`, D490).
+    // y: 1 when `kind0` holds the kind's uniforms (the material test
+    // scenes); z: the scene material's index + 1, which finds its
+    // animation block through the globals' block map (0: not a scene
+    // material; `crate::animate`, D490).
     slots: vec4<f32>,
 };
 
@@ -116,13 +118,22 @@ fn globals_at(i: i32) -> vec4<f32> {
 // w 1 when set); 1: the emissive colour (likewise); 2: emissiveIntensity
 // (x, y 1 when set), the sprite's rotation (z, w 1 when set); 3: the map's
 // offset since the export (xy), the normal map's (zw); 4: the kind's
-// uniforms.
+// uniforms. The material finds its block through the block map, by its
+// scene index, so a block is made without editing the material.
+fn block_base() -> i32 {
+    let id = i32(material.slots.z) - 1;
+    if (id < 0) {
+        return 0;
+    }
+    return i32(globals_at(g::G_BLOCK_MAP + id / 4)[id % 4]);
+}
+
 fn has_block() -> bool {
-    return material.slots.x > 0.5;
+    return block_base() > 0;
 }
 
 fn block_at(k: i32) -> vec4<f32> {
-    return globals_at(i32(material.slots.x) + k);
+    return globals_at(block_base() + k);
 }
 
 // The kind's animated uniforms: from the block when the animators run,
