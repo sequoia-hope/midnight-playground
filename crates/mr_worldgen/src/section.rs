@@ -103,6 +103,29 @@ fn box_dist2(pts: &[[f64; 2]], x0: f64, z0: f64, x1: f64, z1: f64) -> f64 {
         .fold(f64::INFINITY, f64::min)
 }
 
+/// The box (`[x0, z0, x1, z1]`) the section's terrain may reach: its
+/// stretch's bounds widened by the terrain radius. `None` for a level.
+pub fn bounds(w: &World) -> Option<[f64; 4]> {
+    let (Some(sec), Some(track)) = (&w.section, &w.track) else {
+        return None;
+    };
+    let pts = sec.points(track);
+    let r = sec.terrain_radius;
+    let mut b = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
+    for p in &pts {
+        b[0] = b[0].min(p[0] - r);
+        b[1] = b[1].min(p[1] - r);
+        b[2] = b[2].max(p[0] + r);
+        b[3] = b[3].max(p[1] + r);
+    }
+    Some(b)
+}
+
 /// The tiles a build meshes: all of them for a level, those near the
 /// stretch for a section.
 pub fn keep_tiles(w: &World, tiles: Vec<Tile>) -> Vec<Tile> {

@@ -93,6 +93,11 @@ pub fn wanted(o: &crate::options::Options) -> bool {
         && o.param("sections") != Some("0")
 }
 
+/// Seaside's photo at a quarter of its size, for its menu view (web).
+#[cfg(target_arch = "wasm32")]
+static SMALL_PHOTO: Mutex<Option<Result<Arc<mr_worldgen::textures::Texture>, String>>> =
+    Mutex::new(None);
+
 /// Seaside Raceway's survey, for its Track (the page fetches it at boot
 /// in a sections run; natively it is read from the file).
 static SURVEY: Mutex<Option<Result<Arc<SeasideData>, String>>> = Mutex::new(None);
@@ -311,7 +316,18 @@ pub fn section_of(track: &Track) -> Section {
 /// The level, ready to survey (Seaside with its survey); `None` until the
 /// survey is in.
 fn level_ready(id: &str) -> Option<Result<Level, String>> {
-    // The level's own inputs (Seaside's survey and, on the web, its photo).
+    // The level's own inputs (Seaside's survey and, on the web, the view's
+    // small copy of its photo, D748).
+    #[cfg(target_arch = "wasm32")]
+    if id == "seaside"
+        && SMALL_PHOTO
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_none()
+    {
+        return None;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
     if animate::generated(id) && !crate::levels::inputs_ready(id, true) {
         return None;
     }
@@ -331,7 +347,11 @@ fn new_build(level: &Level, section: Section) -> Build {
     use mr_worldgen::stages::{LevelSetup, level_stages};
     use mr_worldgen::terrain_mesh::{TerrainSetup, seaside_ground_color};
     use mr_worldgen::world::{World, level_jobs};
-    if animate::generated(level.id) {
+    // On the web, Seaside's view drapes a quarter-size copy of the photo
+    // (1 MB, not 16; D748), so it is built here rather than by the level's
+    // own setup.
+    let small_photo = cfg!(target_arch = "wasm32") && level.id == "seaside";
+    if animate::generated(level.id) && !small_photo {
         let mut b = animate::section_build(level.id, section);
         b.push_job(hints::job());
         return b;
@@ -345,6 +365,28 @@ fn new_build(level: &Level, section: Section) -> Build {
         && let Some(Ok(d)) = survey()
     {
         terrain.ground_color = Some(seaside_ground_color(d.clone()));
+        #[cfg(target_arch = "wasm32")]
+        if let Some(Ok(t)) = SMALL_PHOTO
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+        {
+            let mut p = mr_worldgen::terrain_mesh::GroundPhoto::seaside(
+                &d,
+                mr_worldgen::textures::Texture {
+                    width: 1,
+                    height: 1,
+                    rgba: vec![0; 4],
+                    source: mr_scene::TextureSource::Image,
+                    repeat: false,
+                    srgb: true,
+                    anisotropy: 8.0,
+                },
+                crate::levels::seaside::PHOTO_URL,
+            );
+            p.tex = t;
+            terrain.photo = Some(p);
+        }
         world = world.with_level_data(d);
     }
     world.section = Some(section);
@@ -1048,6 +1090,33 @@ mod web {
     #[wasm_bindgen]
     pub fn section_survey(bytes: &[u8]) {
         set_survey(bytes);
+    }
+
+    /// Seaside's photo, scaled to a quarter by the page, for its view.
+    #[wasm_bindgen]
+    pub fn section_photo(width: u32, height: u32, rgba: Vec<u8>) {
+        let r = if rgba.len() == (width * height * 4) as usize {
+            Ok(Arc::new(mr_worldgen::textures::Texture {
+                width,
+                height,
+                rgba,
+                source: mr_scene::TextureSource::Image,
+                repeat: false,
+                srgb: true,
+                anisotropy: 8.0,
+            }))
+        } else {
+            Err(format!(
+                "section photo: {} bytes for {width} × {height}",
+                rgba.len()
+            ))
+        };
+        *SMALL_PHOTO.lock().unwrap_or_else(|e| e.into_inner()) = Some(r);
+    }
+
+    #[wasm_bindgen]
+    pub fn section_photo_failed(message: String) {
+        *SMALL_PHOTO.lock().unwrap_or_else(|e| e.into_inner()) = Some(Err(message));
     }
 
     #[wasm_bindgen]
