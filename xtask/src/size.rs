@@ -47,13 +47,16 @@ pub fn run(args: &[String]) -> Result {
     for (name, raw, gz) in &rows {
         table += &format!("| {name} | {} | {} |\n", human(*raw), human(*gz));
     }
+    // A browser downloads one wasm: the WebGPU or the WebGL2 build (roadmap
+    // WP 2.7), so the budget is per file.
     let wasm_gz: u64 = rows
         .iter()
         .filter(|r| r.0.ends_with(".wasm"))
         .map(|r| r.2)
-        .sum();
+        .max()
+        .unwrap_or(0);
     let verdict = format!(
-        "wasm after gzip: {} of the {} budget ({profile} build)",
+        "largest wasm after gzip: {} of the {} budget ({profile} build)",
         human(wasm_gz),
         human(BUDGET_GZIP)
     );

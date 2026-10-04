@@ -28,9 +28,11 @@
 </style>
 </head>
 <body>
-<!-- Roadmap WP 2.1: the Rust client's page. It checks for WebGPU first,
-     shows download progress while the wasm and the scene load, and bridges
-     user gestures into the wasm (SPEC 8.1, 8.4). Every URL here is
+<!-- Roadmap WP 2.1: the Rust client's page. It picks the backend (WebGPU,
+     else the WebGL2 build: WP 2.7), shows download progress while the wasm
+     and the scene load, keeps the loading screen up while the pipelines
+     warm up (WP 2.6), and bridges user gestures into the wasm (SPEC 8.1,
+     8.4). ?perf=1 runs the measurement (perf.js). Every URL here is
      relative: the build is always served under a sub-path. -->
 <canvas id="game" tabindex="0"></canvas>
 <div id="loading" class="screen">
@@ -40,11 +42,11 @@
 </div>
 <div id="nogpu" class="screen" hidden>
   <h1>MIDNIGHT <span>RACER</span></h1>
-  <p><strong>This browser has no WebGPU</strong>, which this build of the game needs.</p>
+  <p><strong>This browser has neither WebGPU nor WebGL2</strong>, one of which this build of the game needs.</p>
   <p>Use a current Chrome or Edge (113 or newer on Windows, macOS or ChromeOS;
      121 or newer on Android 12+), or Safari 26 on iOS, iPadOS or macOS.
-     The page must be opened over https (or on localhost): browsers only
-     offer WebGPU to secure pages.</p>
+     WebGPU is only offered to secure pages: open the game over https (or on
+     localhost) to get it.</p>
   <p id="nogpu-why"></p>
 </div>
 <script type="module">
@@ -64,6 +66,7 @@
     $('msg').textContent = text;
   };
   const MB = (n) => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
+  const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 
   // Fetch with progress: onProgress(received, total or 0).
   async function download(url, onProgress) {
@@ -87,32 +90,81 @@
     return buf.length === n ? buf : buf.slice(0, n);
   }
 
-  async function main() {
-    // 1. WebGPU, before anything else is downloaded.
-    // Chrome can answer null while its GPU process is still starting (seen
-    // headless on Linux), so ask a few times before giving up.
+  // WebGPU, asked a few times: Chrome can answer null while its GPU process
+  // is still starting (seen headless on Linux).
+  async function webgpuAdapter() {
     let adapter = null;
     for (let i = 0; i < 4 && !adapter && 'gpu' in navigator; i++) {
       if (i) await new Promise((r) => setTimeout(r, 400));
       adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null);
     }
+    return adapter;
+  }
+  function hasWebGL2() {
+    try { return !!document.createElement('canvas').getContext('webgl2'); } catch { return false; }
+  }
+
+  // The same page with other parameters (the WebGPU-failed fallback).
+  const withParams = (extra) => {
+    const q = new URLSearchParams(location.search);
+    for (const [k, v] of Object.entries(extra)) q.set(k, v);
+    return location.pathname + '?' + q.toString() + location.hash;
+  };
+
+  async function main() {
+    // 1. The backend, before anything else is downloaded (SPEC 2, roadmap
+    // WP 2.7): the WebGPU build where the browser offers an adapter, else
+    // the WebGL2 build. ?backend=webgpu or ?backend=webgl2 forces one.
+    const want = params.get('backend');
+    let backend = null, adapter = null;
+    if (want !== 'webgl2') {
+      adapter = await webgpuAdapter();
+      if (adapter) backend = 'webgpu';
+    }
+    if (!backend && want !== 'webgpu' && hasWebGL2()) backend = 'webgl2';
     mr.adapter = adapter ? `${adapter.info?.vendor || ''} ${adapter.info?.architecture || ''}`.trim() : null;
     mr.webgpu = !!adapter; mr.secure = window.isSecureContext;
-    if (!adapter) {
+    mr.backend = backend;
+    if (params.get('fallback')) mr.fallback = params.get('fallback');
+    if (!backend) {
       mr.state = 'nogpu';
       $('loading').hidden = true; $('nogpu').hidden = false;
-      $('nogpu-why').textContent = !window.isSecureContext
-        ? 'This page is not a secure context (plain http on a network address).'
-        : ('gpu' in navigator ? 'navigator.gpu exists but gave no adapter.' : 'navigator.gpu is missing.');
+      $('nogpu-why').textContent = (!window.isSecureContext
+        ? 'This page is not a secure context (plain http on a network address), so it gets no WebGPU. '
+        : ('gpu' in navigator ? 'navigator.gpu exists but gave no adapter. ' : 'navigator.gpu is missing. '))
+        + (want === 'webgpu' ? 'WebGL2 was not tried (?backend=webgpu).' : 'WebGL2 is not available either.');
       return;
+    }
+
+    // If the WebGPU build fails before its first frame (a panic while Bevy
+    // asks for the device, a shader the browser rejects at start), load the
+    // page again with the WebGL2 build, unless WebGPU was asked for.
+    if (backend === 'webgpu' && want !== 'webgpu') {
+      const fallBack = (e) => {
+        if (mr.frames || mr.state === 'failed') return;
+        console.error('WebGPU build failed before its first frame; trying WebGL2:', e?.message || e?.reason || e);
+        location.replace(withParams({ backend: 'webgl2', fallback: 'webgpu-failed' }));
+      };
+      window.addEventListener('error', fallBack);
+      window.addEventListener('unhandledrejection', fallBack);
+    }
+
+    // ?perf=1: the measurement (perf.js) flies the fly camera; give it the
+    // JS baseline's parameters unless the address has its own.
+    if (params.has('perf') && !params.has('s')) {
+      history.replaceState(null, '', withParams({ s: '80', v: '60' }));
     }
 
     // 2. The client: wasm with progress (0–30 % of the bar).
     const build = await fetch('build.json', { cache: 'no-cache' }).then((r) => r.json()).catch(() => ({}));
-    const glue = await import('./mr_game.js');
-    show(0, 'Loading the client…');
-    const wasmBytes = await download('mr_game_bg.wasm', (n, t) => show(t ? 0.3 * n / t : null, `Loading the client… ${MB(n)}`));
-    await glue.default({ module_or_path: wasmBytes });
+    const name = backend === 'webgl2' ? 'mr_game_webgl2' : 'mr_game';
+    const glue = await import(`./${name}.js`);
+    show(0, `Loading the client (${backend === 'webgl2' ? 'WebGL2' : 'WebGPU'})…`);
+    const wasmBytes = await download(`${name}_bg.wasm`, (n, t) => show(t ? 0.3 * n / t : null, `Loading the client… ${MB(n)}`));
+    mr.wasmMB = +(wasmBytes.length / 1048576).toFixed(2);
+    const wasm = await glue.default({ module_or_path: wasmBytes });
+    // The wasm memory never shrinks, so its size is its high-water mark.
+    mr.wasmMemoryBytes = () => wasm.memory.buffer.byteLength;
 
     // 3. The gesture bridge: inside the handler, into the wasm (SPEC 8.4).
     for (const type of ['pointerup', 'touchend', 'click', 'keydown']) {
@@ -121,49 +173,69 @@
 
     // 4. Start the app: its first frame draws while the scene downloads.
     // __mr.screenshot(name) saves the next frame as a download (test hook).
-    mr.screenshot = (name) => glue.screenshot(String(name));
+    mr.screenshot = (n) => glue.screenshot(String(n));
     glue.run();
 
     // 5. The scene (30–80 %), and Seaside's survey for its Track.
-    const level = params.get('level') || 'sierra';
-    const sceneUrl = params.get('scene') || (build.scenes ? build.scenes + level + '.mrscene' : null);
-    mr.sceneUrl = sceneUrl;
-    if (level === 'seaside') {
-      download('../../assets/seaside/survey.bin', () => {})
-        .then((b) => glue.load_survey(b))
-        .catch((e) => glue.survey_failed(String(e.message || e)));
-    }
-    if (!sceneUrl) { glue.scene_failed('no scene: build.json has no scene directory and no ?scene= was given'); }
-    else {
+    let level = params.get('level') || 'sierra';
+    const sceneUrlOf = (lv) => (lv === level && params.get('scene')) || (build.scenes ? build.scenes + lv + '.mrscene' : null);
+    async function loadScene(lv, first) {
+      const sceneUrl = sceneUrlOf(lv);
+      mr.sceneUrl = sceneUrl;
+      if (lv === 'seaside' && (first || lv !== level)) {
+        download('../../assets/seaside/survey.bin', () => {})
+          .then((b) => glue.load_survey(b))
+          .catch((e) => glue.survey_failed(String(e.message || e)));
+      }
+      level = lv;
+      if (!sceneUrl) { glue.scene_failed('no scene: build.json has no scene directory and no ?scene= was given'); return; }
       let bytes;
       try {
         const t0 = performance.now();
-        bytes = await download(sceneUrl, (n, t) => show(t ? 0.3 + 0.5 * n / t : null, `Loading ${level}… ${MB(n)}${t ? ' of ' + MB(t) : ''}`));
+        bytes = await download(sceneUrl, (n, t) => show(t ? 0.3 + 0.5 * n / t : null, `Loading ${lv}… ${MB(n)}${t ? ' of ' + MB(t) : ''}`));
         mr.sceneMB = +(bytes.length / 1048576).toFixed(1);
         mr.downloadMs = Math.round(performance.now() - t0);
       } catch (e) {
         glue.scene_failed(`${sceneUrl}: ${e.message || e}\n(make the exports with: node tools/parity/scene-export.mjs)`);
+        return;
       }
-      if (bytes) {
-        show(0.8, 'Reading the scene…');
-        // Let the bar paint before the synchronous parse.
-        await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
-        const t0 = performance.now();
-        glue.load_scene(bytes);
-        mr.parseMs = Math.round(performance.now() - t0);
-        bytes = null;
-      }
+      show(0.8, 'Reading the scene…');
+      // Let the bar paint before the synchronous parse.
+      await nextFrame();
+      const t0 = performance.now();
+      glue.load_scene(bytes);
+      mr.parseMs = Math.round(performance.now() - t0);
+      bytes = null;
     }
 
-    // 6. Building (80–100 %), then hide the loading screen.
+    // 6. Building (80–100 %), the warm-up, then hide the loading screen.
     const poll = () => {
       if (mr.state === 'failed') return fail(mr.error || 'failed');
       if (mr.state === 'building') show(0.8 + 0.2 * (mr.progress || 0), 'Building the scene…');
+      if (mr.state === 'warming') show(1, `Preparing the shaders… (${mr.warmUp || 0})`);
       if (mr.state === 'running') { show(1, ''); $('loading').hidden = true; $('game').focus(); return; }
       requestAnimationFrame(poll);
     };
+
+    // __mr.reload(level): tear the scene down and load it (or another
+    // level) again, behind the loading screen; resolves when it is ready.
+    mr.reload = async (lv = level) => {
+      const t0 = performance.now();
+      $('loading').hidden = false; $('msg').className = '';
+      show(0.3, `Unloading ${level}…`);
+      glue.unload_scene(lv);
+      while (mr.state !== 'waiting' && mr.state !== 'failed') await nextFrame();
+      poll();
+      await loadScene(lv, false);
+      while (mr.state !== 'running' && mr.state !== 'failed') await nextFrame();
+      if (mr.state === 'failed') throw new Error(mr.error || 'failed');
+      return { level: lv, ms: Math.round(performance.now() - t0), downloadMs: mr.downloadMs, parseMs: mr.parseMs };
+    };
+
     poll();
-    if (params.has('stats')) statsPanel();
+    await loadScene(level, true);
+    if (params.has('stats') || params.has('perf')) statsPanel();
+    if (params.has('perf')) (await import('./perf.js')).runPerf(mr, new URLSearchParams(location.search));
   }
 
   // ?stats=1: frame rate and the longest frame of each half second, from
@@ -181,11 +253,12 @@
       const dt = now - t0;
       if (dt < 500) return;
       const c = mr.counts || {};
+      const mem = mr.wasmMemoryBytes ? `  wasm ${(mr.wasmMemoryBytes() / 1048576).toFixed(0)} MB` : '';
       mr.stats = { fps: +(1000 * n / dt).toFixed(1), worstMs: +worst.toFixed(1) };
-      el.textContent = `fps ${mr.stats.fps}  worst ${mr.stats.worstMs}ms  ${mr.adapter || ''}\n`
-        + `${mr.state} ${mr.level || ''} s ${Math.round(mr.s || 0)}  hq ${mr.hq ? 'on' : 'off'}\n`
+      el.textContent = `fps ${mr.stats.fps}  worst ${mr.stats.worstMs}ms  ${mr.backend || ''} ${mr.adapter || ''}\n`
+        + `${mr.state} ${mr.level || ''} s ${Math.round(mr.s || 0)}  hq ${mr.hq ? 'on' : 'off'}${mem}\n`
         + `first frame ${mr.firstFrameMs ? (mr.firstFrameMs / 1000).toFixed(2) + 's' : '…'}  ready ${mr.readyMs ? (mr.readyMs / 1000).toFixed(2) + 's' : '…'}\n`
-        + `entities ${c.entities ?? '…'}  materials ${c.materials ?? '…'}`;
+        + `entities ${c.entities ?? '…'}  materials ${c.materials ?? '…'}  warm-up ${mr.warmUp ?? '…'}`;
       t0 = now; n = 0; worst = 0;
     };
     requestAnimationFrame(frame);

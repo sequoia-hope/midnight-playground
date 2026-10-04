@@ -42,6 +42,25 @@ pub fn load_scene(bytes: &[u8]) {
     inbox().scene = Some(mr_scene::read(bytes));
 }
 
+/// Tears the current scene down and waits for the next one (handed in with
+/// [`load_scene`]), of `level`: the measurement page's reloads (WP 2.6).
+#[wasm_bindgen]
+pub fn unload_scene(level: String) {
+    inbox().unload = Some(level);
+}
+
+/// The backend this wasm was built for (SPEC 2: one file each, the page
+/// picks).
+#[wasm_bindgen]
+pub fn backend() -> String {
+    BACKEND.into()
+}
+
+#[cfg(mr_webgl2)]
+const BACKEND: &str = "webgl2";
+#[cfg(not(mr_webgl2))]
+const BACKEND: &str = "webgpu";
+
 /// The page could not get the scene file.
 #[wasm_bindgen]
 pub fn scene_failed(message: String) {
@@ -126,8 +145,21 @@ fn publish(mut status: ResMut<Status>, opts: Res<Opts>, mut counts_sent: Local<b
     set(mr, "ready", status.ready);
     set(mr, "s", status.s);
     set(mr, "gestures", status.gestures);
+    set(mr, "backend", BACKEND);
+    set(mr, "warmUp", status.warm_up as f64);
+    set(mr, "lateFrames", status.late_frames as f64);
+    set(mr, "scenes", status.scenes);
+    if let Some((length, road_end, is_loop)) = status.route {
+        set(mr, "routeLength", length);
+        set(mr, "roadEnd", road_end);
+        set(mr, "routeLoop", is_loop);
+    }
     if let Some(e) = &status.error {
         set(mr, "error", e.as_str());
+    }
+    if status.counts.is_none() {
+        // A reload: send the next scene's counts too.
+        *counts_sent = false;
     }
     if !*counts_sent && let Some(c) = &status.counts {
         *counts_sent = true;
