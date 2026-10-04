@@ -13,7 +13,7 @@
 use std::cmp::Ordering;
 use std::sync::Arc;
 
-use mr_levels::world::{WorldData, world_data};
+use mr_levels::world::{WorldData, level_world_data};
 use mr_math::{clamp, js, kernel, wrap_angle};
 use mr_track::{Level, Mode, Track};
 
@@ -46,7 +46,7 @@ impl LevelRuntime {
     /// The level's Track with the world data the scenery gives it (runout).
     pub fn new(level: Level) -> Result<LevelRuntime, String> {
         let mut t = Track::new(&level)?;
-        let world = world_data(level.id);
+        let world = level_world_data(&level, &t);
         t.runout = world.runout;
         Ok(LevelRuntime {
             level,
