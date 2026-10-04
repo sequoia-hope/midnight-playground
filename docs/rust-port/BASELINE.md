@@ -431,8 +431,11 @@ a phone, as G1 asks.
 | Device | Build | Level | fps median / 5th | Frame ms p50 / p95 / p99 / max | > 50 ms (30 s / all) | First frame | Ready | wasm MB after load → reload 10 | Notes |
 |---|---|---|---:|---:|---:|---:|---:|---:|---|
 | iPhone | WebGPU | sierra | | | | | | | |
+| iPhone (Safari 26.6.1, which reports itself as a Mac; 1320×2388 @ dpr 3, portrait) | WebGPU (Apple adapter) | seaside, quick look, hq off | 60 / 59.9 | 17 / 17 / 17 / 72 | 2 / 2 | 1.05 s | 10.47 s (37.5 MB scene downloaded in 3.7 s over the tailnet; 14 warm-up pipelines) | 168 → 168 (no reloads) | 2026-10-04, build 9b573da. Slow frames 72 ms at s 648 and 51 ms at s 1458, nothing else over 21 ms; no stall near s 3100 to 3300, unlike both Firefox runs |
 | iPhone | WebGPU | coast | | | | | | | |
 | iPhone | WebGL2 | sierra | | | | | | | |
+| Owner's Linux desktop, Firefox 154 | WebGL2 (picked by itself: no WebGPU) | seaside, quick look, hq on, 3373×1323 @ dpr 1 | 60 / 52 (vsync) | 17.1 / 17.1 / 33.1 / 532.8 | 1 / 2 | 0.34 s | 1.37 s (37.5 MB scene in 0.2 s; 14 warm-up pipelines) | 159 → 159 (no reloads) | 2026-10-04, build 9b573da. The 50.2 ms frame is at 0.2 s, just after ready; the 532.8 ms one at 53.6 s, s 3272, with no pipeline compiled after warm-up |
+| Owner's Linux desktop, Firefox 154 with WebGPU turned on | WebGPU | seaside, quick look, hq on, 3373×1323 @ dpr 1 | 60 / 55.8 (vsync) | 17 / 30 / 32 / 458 | 3 / 6 | 3.49 s | 5.00 s (37.5 MB scene in 0.1 s; 14 warm-up pipelines) | 176 → 176 (no reloads) | 2026-10-04, build 9b573da, three minutes after the WebGL2 row. Slow frames: 96 ms at s 463, then 55 to 57 ms every 9 s or so (s 1329, 1845, 2401, 2920), and 458 ms at 51.4 s, s 3137, close to the WebGL2 run's 533 ms at s 3272: the same stretch of route on both backends |
 
 ## The Rust client after the instancing fix (DECISIONS D450 to D456)
 
@@ -554,3 +557,12 @@ models (D440) are spawned when the race starts and are not part of the
 warm-up's combinations (D390), which is the next thing to fix for SPEC
 6.3's gate in a race (play/ is not changed here beyond D456). WebGL2 on
 Coast is the GPU-bound pacing described above, in both builds alike.
+
+**Seaside in headless Chrome (the owner's Firefox stall at s 3,100 to
+3,300).** The same quick-look flight with this build (60 s from s 80,
+high quality, reloads 0) covers s 80 to 3,680: on WebGL2 uncapped p50 1.0
+ms, worst 36.1; on WebGPU uncapped p50 1.8 ms, worst 29.8; capped at 60 Hz
+on both backends, and from s 1,500 on both, every frame 16.7 to 16.8 ms.
+No frame over 50 ms anywhere, and no periodic slow frames: Chrome does not
+show the stall or the 9-second frames the Firefox runs had (nor did the
+iPhone). The Firefox investigation follows separately.

@@ -2864,6 +2864,112 @@ it on a phone. The lasting fix is fewer entities: one entity per
 is a renderer change for a later package, recorded in BASELINE.md's WP 2.6
 section.
 
+## WP 3.9 world-generation decisions
+
+## D470. Level 1's animators are held to the game's `world.update`, step by step
+
+2026-10-03, WP 3.9. The animators WP 3.9 names (the waterfall, the flag,
+the windpumps, the traffic streams, the aircraft lights) were ported with
+their modules in WP 3.6 to 3.8 (D311, D334, D353) and checked there at one
+frame (dt 0) or, for Valley's, at six. `tools/parity/animators.mjs` holds
+all of Sierra's at once, over time: it builds Sierra with the game's own
+`World.build` and runs the game's own `world.update(dt, s, focus, camera)`
+over 16 uneven frames (dt from 0 to 3.3 s, s along the whole route, so
+the night factor goes from 0 to 1, the camera by the lookout's flag, by
+the waterfall's pool or in the city, so each distance gate opens and
+shuts) and then 360 ticks of 1/120 s. Before the first frame and after
+each it snapshots everything under `world.root` an updater could touch:
+every node's position, quaternion, scale, visibility, light and instance
+count, instance matrices and colours and geometry attributes (by their
+version), every material's own numbers, booleans and colours and its
+uniforms (a ShaderMaterial's own; a patched material's that three's
+ShaderLib lacks), every texture's offset, repeat, rotation and centre.
+What differs from the first snapshot in any frame is recorded, keyed by
+the scene export's numbering (nodes depth first, materials by first use,
+a texture by its first material and key): 52 values on 49 targets, which
+are exactly the five animators, the waterwheel and sails, the creek, the
+chase bulbs, lamps, glow points and sky glow of City, the road's dew and
+the night parameters. The frames are written whole, the ticks as one
+SHA-256 per tick of the `key=value` lines. A frozen frame at a fixed
+place comes first, so that the first snapshot does not depend on where
+the menu's attract camera drifted.
+
+The capture runs under Node by default (a canvas that draws nothing, since
+no updater reads a pixel; a patched material's uniforms taken by running
+its `onBeforeCompile` on an empty shader), so CI checks it. `--browser`
+takes it in the game in headless Chrome (`?kernel=1&freeze=1&s=0`, the
+uniforms from the compiled programs): both write byte-identical files,
+and two browser captures agree. `tests/animators.rs` builds Sierra through
+`level_jobs`, and for each frame does what the client will do:
+`update_sky(dt, s, focus)`, the night parameters at the frame's night
+factor, `update` with the JS camera; it folds every `SceneEdit` into the
+state of its target under the same keys (a number or colour goes to the
+uniform of that name if the material has one, else to the parameter, as
+D411 says) and requires every recorded value at every frame and every
+tick's hash. Values we write that the JS never changes (positions written
+with a transform, `uFogK`, `uHalfH`) must hold still. Result: **identical,
+every frame and every tick, native and in wasm**; no port fix was needed.
+
+## D471. The runout and the opposite carriageway are computed by the scenery's rules, in `mr_levels::world`
+
+2026-10-03, WP 3.9. Until now `mr_levels::world::world_data(id)` held the
+numbers of the WP 0.4 dump (900 and 6419..9379 on Sierra, 700 and
+4865..7665 on Coast, 0..14320 on the loop), the stand-in of an unported
+module replayed the runout its `plan()` was recorded leaving, and nothing
+gave Coast's world build its carriageway. The simulation cannot depend on
+mr_worldgen (SPEC 3.2) and should not need a world build to race, so the
+parts of the scenery that decide this data are ported into
+`mr_levels::world`, one implementation for both: `City` (`s_a`: the
+merge tag's s0, else the zone's s0 + 220, 0 on a loop; `plan_runout`:
+`max(runout, 900)` off a loop; `opposite_carriageway`: sA to the length)
+and `Harbor` (`s_ws`: the `bridge-up` tag's s0, else `zoneStart` + 200,
+less 40; `plan_runout`: `max(runout, 700)`; the carriageway from sWS + 40
+to the length), `Streets`' `runout = 0`, and `level_world_data(level,
+track)`, which runs them as `World.build` runs the modules (every `plan()`
+in the order `loadScenery` makes them, then every `build()`, the last
+carriageway set winning). mr_worldgen's City now takes its sA, runout and
+carriageway from those functions (same values: City's gates pass
+unchanged); a `RecordedScenery` computes its module's runout by the rule
+and sets `sim_data.runout`, and its `build()` sets the carriageway Harbor
+would, so Coast's `WorldBuild::sim_data` is complete. The recording's
+runout is no longer replayed; the road test still holds `track.runout` to
+it. mr_sim's `stage_level` and `LevelRuntime::new` call
+`level_world_data` on the Track they build; `world_data(id)` stays (the
+client calls it) and builds a Track only for a level with a City or a
+Harbor. Gates: `mr_levels` `tests/world_data.rs` (every level against
+`parity/golden/sim/world-data.json`: runout, roadEnd, s0, s1, lanes, dir,
+oppY at the samples), mr_worldgen `tests/world_data.rs` (each level's
+build: the track's and the simulation's runout, and Coast's, Streets',
+Desert's and Seaside's carriageway from the stand-ins' builds; Sierra's
+and the loop's from City's build stay in `tests/city.rs`), and mr_sim's
+35 module traces and 11 races, unchanged.
+
+## D472. Level 1 is held to the export as one scene
+
+2026-10-03, WP 3.9. With Mountain, Valley and City ported, Sierra's build
+needs no recording at all (`scenery_factory(None)`), and
+`tests/level1.rs` compares the whole scene with the export rather than
+group by group: built that way, the sky updated at the export's focus,
+the updaters run once at the export's frame (dt 0) and their attribute
+and instance edits written into the buffers, its `mr_scene` digest must
+have the world golden's counts (526 nodes, 459 meshes, 122 materials, 40
+textures, 101 instance sets, 2 lights, 515 drawables, 1,531,125 vertices,
+4,145,448 indices; even the exporter's byte count comes out equal) and
+material kinds (always, in CI and wasm), and with the cache it must equal
+the export's digest entry by entry: every mesh (counts, bounds, attribute
+hashes, area, centroid), drawable (kinds, textures, instance hashes, world
+bounds), material (kind, textures) and texture, but for the pixels of the
+36 canvas textures, which WP 3.2's threshold gate holds per group (D312,
+D313, D331, D332, D354). Result: identical. So the data side of every
+Level 1 material kind is complete: Terrain, Asphalt, Shoulder, Markings,
+SkyDome, TriplanarRock, Reflector, Siding (siding, roof, boards),
+CityFacade, GlowPoints, TrafficStreams, SkyGlow and the built-in
+Standard, Lambert, Basic, Line, Points and Sprite, with their parameters,
+uniforms, kind options, program keys and GLSL (the per-group gates
+compare those). What is left of WP 3.9 is the client's: drawing the kinds
+the renderer still stands in for or hides, applying the animators each
+frame, and building Level 1 from mr_worldgen.
+
 ## Renderer instancing decisions
 
 ## D450. An `InstancedMesh` is one entity and one instanced draw
