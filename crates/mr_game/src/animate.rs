@@ -63,14 +63,19 @@ pub fn generated(level: &str) -> bool {
     )
 }
 
-/// `?world=gen`: draw the level as the client builds it, without the
-/// `.mrscene` download (D492).
+/// Draw the level as the client builds it, without the `.mrscene`
+/// download: the default for every level the client builds (D678; D492
+/// made it `?world=gen`). `?world=export` draws the exported scene instead
+/// (a parity tool now, D439), as do `?world=off` and an explicit `?scene=`.
 pub fn draws_generated(o: &crate::options::Options) -> bool {
-    generated(&o.level) && o.param("world") == Some("gen") && o.materials.is_none()
+    generated(&o.level)
+        && !matches!(o.param("world"), Some("export" | "off"))
+        && o.scene.is_none()
+        && o.materials.is_none()
 }
 
-/// Whether the client builds the level's world (for its animators, and its
-/// scene with `?world=gen`).
+/// Whether the client builds the level's world (for its animators, and,
+/// unless `?world=export`, its scene).
 fn wants_world(o: &crate::options::Options) -> bool {
     generated(&o.level)
         && o.materials.is_none()
