@@ -629,3 +629,16 @@ owner's 3.5 s was a cold first run (his repeat: 0.61 s).
 `ffprof.sh` (the same under the Gecko profiler), `gcstat.py` and `gap.py`
 (frames, GCs and markers from the profile), `calls.mjs` (WebGPU calls per
 frame in Chrome).
+
+**Race starts (D458, D459).** Races with the autopilot (seed 1,
+`timescale=2`, high quality, 10 s from the start of racing, three rounds,
+uncapped; load 10 to 26, the machine busy with other work): late
+pipelines 0 in every run on Coast and Sierra and both backends (were 1 and
+3). On WebGPU no frame over 50 ms in the start (s 42 to 50) in any of the
+six runs (before D459: 50 to 132 ms frames there in four of six); single
+stalls of 730 to 880 ms elsewhere in three runs at load 18 to 26 (s 108,
+678, 376), not seen at lower load. On WebGL2, Sierra none; Coast is
+GPU-bound from the start (56 to 77 ms intervals uncapped, as in the
+flights above), and with vsync on (`CAPPED=1`) holds 30 to 60 frames a
+second with no frame over 33.5 ms; WebGPU on Coast with vsync on holds 60
+with no frame over 16.8 ms.

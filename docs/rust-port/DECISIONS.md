@@ -3182,3 +3182,39 @@ two sets are in use; a resize makes new ones). The pictures are identical
 Seaside the page now makes 28 bind groups and 5 buffers instead of 41 and
 6; what remains is Bevy's own (view and mesh bind groups, uniform buffers
 it recreates, one buffer mapped for reading every frame).
+
+## D458. The race's car models join the warm-up
+
+2026-10-04. Every race compiled one (Coast) to three (Sierra) pipelines
+after `ready` (`__mr.lateFrames`): the car models (D440) are built when the
+race starts, during the warm-up, but most of their parts are hidden then
+(the traffic not yet on the road, the far models, the near models of cars
+drawn far), and Bevy specialises a pipeline only for what is drawn.
+`play::models::spawn` now notes each part's material key, mesh layout and
+shadow casting in a `warmup::Combos`, as the loader does (D390), and
+spawns its stand-ins: every kind and material variant of the field,
+racers and traffic, near and far models, lights included. The police are
+not drawn in a race yet (the race draws players, rivals and traffic,
+`flow::slots`), so there is nothing of theirs to warm up; when M8 draws
+them, their models go through the same spawn. A restart builds a new field
+after `ready`; its stand-ins are drawn for a frame and removed, and its
+combinations are the first race's. In the race runs since (Coast and
+Sierra, both backends, 30 and 10 s from the start, 20 runs) `lateFrames`
+is 0.
+
+## D459. The HUD's glyphs are laid out during the warm-up
+
+2026-10-04. With the late pipelines gone, WebGPU races still had 50 to
+130 ms frames in the first half second of racing (s 42 to 45). Counting
+the WebGPU calls per frame there: nothing changed but one or two
+`writeTexture`s of 512 × 512 a frame, the Bevy UI text's glyph atlas
+uploaded whole each time the race timer showed a digit not yet in it;
+in Chrome those uploads go through the GPU process's command stream (the
+D455 signature: the page waiting for command space). `warmup::spawn_glyphs`
+lays out all printable ASCII (the HUD shows nothing else) in each of the
+HUD's text styles (`play::hud`: bold, sizes 84, 44, 30, 26, 22, 17 and 15),
+hidden and off screen, beside the cars' stand-ins; they go when the
+warm-up ends, and the atlas keeps the glyphs. The sizes are copied from
+`play::hud`; a new HUD size must be added there too. After it, no atlas
+upload happens at the start, and the first frames of racing take 5 to 17
+ms (load 27).

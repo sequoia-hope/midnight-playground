@@ -6,12 +6,17 @@
 //! root, tip the body, spin the wheels and turn the steer pivots, and the
 //! light setters' edits and the traffic's far-model switch
 //! (`Traffic.farLod`) reach what is drawn.
+//!
+//! Every material × mesh-layout combination the field can draw (the
+//! hidden far models and lights included) joins the pipeline warm-up when
+//! the cars are built (D458), so a race compiles nothing after `ready`.
 
 use crate::convert::{self, Draw, MeshKey, StandIn};
 use crate::loader::SceneEntity;
 use crate::render::SharedImages;
 use crate::render::lighting::MaterialLights;
-use crate::render::material::{ThreeMaterial, three_material};
+use crate::render::material::{ThreeKey, ThreeMaterial, three_material};
+use crate::warmup::{Combos, Layout};
 use bevy::light::{NotShadowCaster, NotShadowReceiver};
 use bevy::math::{DQuat, EulerRot, Vec4};
 use bevy::prelude::*;
@@ -106,6 +111,7 @@ pub fn spawn(
         meshes: HashMap::new(),
         materials: vec![(Vec::new(), [0.0; 3]); scene.materials.len()],
         mat_cache: HashMap::new(),
+        combos: Combos::default(),
         nodes: vec![None; scene.nodes.len()],
     };
     let mut cars = Vec::new();
@@ -159,6 +165,12 @@ pub fn spawn(
             pivots,
         });
     }
+    // D458: the field's combinations join the warm-up (`warmup`): one
+    // off-screen stand-in each, despawned once every pipeline is ready.
+    let n = s.combos.spawn(commands, meshes);
+    // D459: and the HUD's glyphs.
+    crate::warmup::spawn_glyphs(commands);
+    info!("race cars: {n} material × mesh-layout combinations warmed up");
     Cars {
         cars,
         materials: s.materials,
@@ -173,9 +185,12 @@ struct Spawner<'a> {
     scene: &'a Scene,
     images: &'a [Option<Handle<Image>>],
     shared: &'a SharedImages,
-    meshes: HashMap<MeshKey, Option<Handle<Mesh>>>,
+    /// Each mesh and its vertex layout (for the warm-up).
+    meshes: HashMap<MeshKey, Option<(Handle<Mesh>, Layout)>>,
     materials: Vec<(Vec<Handle<ThreeMaterial>>, [f64; 3])>,
-    mat_cache: HashMap<u32, Option<Handle<ThreeMaterial>>>,
+    mat_cache: HashMap<u32, Option<(Handle<ThreeMaterial>, ThreeKey)>>,
+    /// The combinations the field draws (`warmup`).
+    combos: Combos,
     nodes: Vec<Option<Entity>>,
 }
 
@@ -184,14 +199,16 @@ impl Spawner<'_> {
         &mut self,
         i: u32,
         assets: &mut Assets<ThreeMaterial>,
-    ) -> Option<Handle<ThreeMaterial>> {
+    ) -> Option<(Handle<ThreeMaterial>, ThreeKey)> {
         if let Some(h) = self.mat_cache.get(&i) {
             return h.clone();
         }
         let m = &self.scene.materials[i as usize];
-        let h =
-            three_material(self.scene, m, self.images, self.shared, false).map(|t| assets.add(t));
-        if let Some(h) = &h {
+        let h = three_material(self.scene, m, self.images, self.shared, false).map(|t| {
+            let key = t.key;
+            (assets.add(t), key)
+        });
+        if let Some((h, _)) = &h {
             let e = m.color("emissive").unwrap_or([0.0; 3]);
             self.materials[i as usize] = (vec![h.clone()], e);
         }
@@ -259,17 +276,23 @@ impl Spawner<'_> {
                     extra: convert::extra_attribute(mdesc),
                 };
                 let scene = self.scene;
-                let Some(mh) = self
+                let Some((mh, layout)) = self
                     .meshes
                     .entry(key)
-                    .or_insert_with(|| convert::build_mesh(scene, key).map(|m| meshes.add(m)))
+                    .or_insert_with(|| {
+                        convert::build_mesh(scene, key).map(|m| {
+                            let layout = Layout::of(&m);
+                            (meshes.add(m), layout)
+                        })
+                    })
                     .clone()
                 else {
                     continue;
                 };
-                let Some(mat) = self.material(mi, mats) else {
+                let Some((mat, mkey)) = self.material(mi, mats) else {
                     continue;
                 };
+                self.combos.note(mkey, &mat, &layout, cast);
                 let mut d = commands.spawn((
                     Mesh3d(mh),
                     MeshMaterial3d(mat),
