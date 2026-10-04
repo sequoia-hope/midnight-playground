@@ -1056,9 +1056,10 @@ mod web {
     fn publish(pv: Res<Previews>, mut last: Local<String>) {
         let rep = pv.report();
         let key = format!(
-            "{:?}{:?}{:?}{}",
+            "{:?}{:?}{:?}{:?}{}",
             rep.iter().map(|r| r.state).collect::<Vec<_>>(),
             pv.shown_id(),
+            pv.full,
             pv.all_ms,
             active()
         );
