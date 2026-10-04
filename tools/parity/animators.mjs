@@ -20,7 +20,12 @@
 // the camera, its field of view), the player passing under the elevated
 // railway where the train is scripted to meet him, one long frame letting
 // the free-running train wrap round, and the ticks run under the viaduct;
-// the golden is parity/golden/animators/streets.json.
+// the golden is parity/golden/animators/streets.json. On the Night City
+// Cruise (WP 7.5) they run the whole loop at midnight with the camera by the
+// start, downtown and on the far viaduct, so the chunks the loop hides
+// beyond their cut-off distance (City.js `fadeable`) come and go as the
+// camera hops, and one long frame turns the ferris wheel; the ticks run
+// downtown; the golden is parity/golden/animators/cruise.json.
 //
 // By default the world is built under Node: the game's own World.build on
 // Sierra with a canvas that draws nothing (no updater reads a pixel), and a
@@ -63,7 +68,7 @@ import { seedRandom, RANDOM_SEED } from './lib/seed-random.mjs';
 const CHECK = process.argv.includes('--check');
 const BROWSER = process.argv.includes('--browser');
 const LEVEL = process.argv.includes('--level') ? process.argv[process.argv.indexOf('--level') + 1] : 'sierra';
-if (!['sierra', 'coast', 'streets'].includes(LEVEL)) throw new Error('animators: --level sierra, coast or streets');
+if (!['sierra', 'coast', 'streets', 'cruise'].includes(LEVEL)) throw new Error('animators: --level sierra, coast, streets or cruise');
 const OUT = path.join(ROOT, `parity/golden/animators/${LEVEL}.json`);
 
 // Runs in the page (env null) or under Node, synchronously until the
@@ -183,7 +188,24 @@ async function run(env, level = 'sierra') {
   // 800 m), in the city (neither). On the coast: by the cliffs, the pier and
   // the docks.
   let at, FRAMES, PLACES, S0 = 4000;
-  if (level === 'streets') {
+  if (level === 'cruise') {
+    // The loop: no start or finish to speak of; places a third of the way
+    // round from each other, so that what one sees the others cut off.
+    const t = world.track;
+    const by = (s) => { const f = t.frame(s, {}); return [f.x, f.y + 6, f.z]; };
+    const mid = (name, k) => { const g = t.tag(name)[k]; return Math.round((g.s0 + g.s1) / 2); };
+    const L = t.length;
+    const dn = mid('downtown', 0), vd = mid('viaduct', 1);
+    at = { start: by(0), downtown: by(dn), viaduct: by(vd) };
+    PLACES = ['start', 'downtown', 'viaduct'];
+    FRAMES = [
+      [0.0, 0, 'start'], [1 / 120, 0, 'downtown'], [1 / 120, 40, 'viaduct'], [1 / 60, 300, 'start'],
+      [0.25, 1200, 'downtown'], [0.5, 2200, 'viaduct'], [1 / 30, 3100, 'start'], [2, dn, 'downtown'],
+      [0.1, 5000, 'viaduct'], [0.7, 6000, 'start'], [1 / 120, 7000, 'downtown'], [3.3, vd, 'viaduct'],
+      [150, Math.round(L * 0.7), 'start'], [1.25, Math.round(L * 0.8), 'downtown'], [0.016, L - 10, 'viaduct'], [0.333, L, 'start'],
+    ];
+    S0 = dn - 300;
+  } else if (level === 'streets') {
     const t = world.track;
     const by = (s) => { const f = t.frame(s, {}); return [f.x, f.y + 6, f.z]; };
     const el = t.tag('el')[0];
