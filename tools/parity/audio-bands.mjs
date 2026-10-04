@@ -11,8 +11,8 @@
 // The WAVs and a JSON report go to parity/cache/<js-tree-key>/audio/
 // rust-renders/. Prints one line per scenario (worst band difference, the
 // band, how many bands compared) and a summary; exits 1 if a scenario is
-// outside the tolerance. Songs (song-*) belong to WP 5.6 and are rendered
-// only when asked for by prefix.
+// outside the tolerance. Every scenario is rendered, the seven songs'
+// first thirty seconds included (WP 5.6); an id prefix narrows the run.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,7 +27,7 @@ const render = !args.includes('--no-render');
 const prefixes = args.filter((a) => !a.startsWith('--'));
 const golden = JSON.parse(fs.readFileSync(path.join(ROOT, 'parity/golden/audio/renders.json'), 'utf8'));
 const floor = golden.analyser.compareAboveDb;
-const wanted = golden.renders.filter((r) => (prefixes.length ? prefixes.some((p) => r.id.startsWith(p)) : !r.id.startsWith('song-')));
+const wanted = golden.renders.filter((r) => !prefixes.length || prefixes.some((p) => r.id.startsWith(p)));
 const dir = cacheDir('audio/rust-renders');
 
 if (render) {
