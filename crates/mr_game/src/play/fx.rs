@@ -575,14 +575,14 @@ fn write_points(p: &Particles, pm: &mut PointsMesh, writes: &MeshWrites) {
             v[i * 4..i * 4 + 4].fill(q);
         }
     }
-    if let Some(VertexAttributeValues::Float32x4(v)) = pm.cpu.attribute_mut(Mesh::ATTRIBUTE_COLOR)
-    {
+    if let Some(VertexAttributeValues::Float32x4(v)) = pm.cpu.attribute_mut(Mesh::ATTRIBUTE_COLOR) {
         for i in 0..p.max {
             let c = [p.col[i * 3], p.col[i * 3 + 1], p.col[i * 3 + 2], 1.0];
             v[i * 4..i * 4 + 4].fill(c);
         }
     }
-    if let Some(VertexAttributeValues::Float32x4(v)) = pm.cpu.attribute_mut(convert::ATTRIBUTE_EXTRA)
+    if let Some(VertexAttributeValues::Float32x4(v)) =
+        pm.cpu.attribute_mut(convert::ATTRIBUTE_EXTRA)
     {
         for i in 0..p.max {
             for q in &mut v[i * 4..i * 4 + 4] {
@@ -649,8 +649,17 @@ fn frame_sparks(fx: &mut Effects, log: &[SimEvent], st: &SimState, track: &Track
             ),
             SimEvent::Phys {
                 player: 0,
-                e: PhysEvent::Impact { strength, x, y, z, .. },
-            } => fx.sparks_at(*x, *y, *z, mr_math::js::round(6.0 + strength * 40.0), vx, vz),
+                e: PhysEvent::Impact {
+                    strength, x, y, z, ..
+                },
+            } => fx.sparks_at(
+                *x,
+                *y,
+                *z,
+                mr_math::js::round(6.0 + strength * 40.0),
+                vx,
+                vz,
+            ),
             _ => {}
         }
     }
@@ -669,6 +678,7 @@ fn frame_sparks(fx: &mut Effects, log: &[SimEvent], st: &SimState, track: &Track
 /// One frame of the effects (`Race.update`'s "Effects." block), after the
 /// cars are drawn: the extras, `effects.update`, and what it moved onto
 /// the entities.
+#[allow(clippy::too_many_arguments)]
 pub fn frame(
     fx: &mut Fx,
     race: &Race,
@@ -755,39 +765,39 @@ impl Fx {
         {
             *v = fx.fx.pool_opacity as f32;
         }
-    let vis = |on: bool| {
-        if on {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        }
-    };
-    for (c, &e) in fx.fx.cars.iter().zip(&fx.pools) {
-        if let Ok((mut t, mut v)) = parts.get_mut(e) {
-            let p = c.pool;
-            if *v != vis(p.visible) {
-                *v = vis(p.visible);
+        let vis = |on: bool| {
+            if on {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
             }
-            if p.visible {
-                *t = Transform {
-                    translation: Vec3::new(p.x as f32, p.y as f32, p.z as f32),
-                    rotation: Quat::from_rotation_y(p.rot_y as f32),
-                    scale: Vec3::new(p.sx as f32, 1.0, p.sz as f32),
-                };
-            }
-        }
-    }
-    for (c, fl) in fx.fx.cars.iter().zip(&fx.flames) {
-        for (&e, &len) in fl.iter().zip(&c.flames) {
+        };
+        for (c, &e) in fx.fx.cars.iter().zip(&fx.pools) {
             if let Ok((mut t, mut v)) = parts.get_mut(e) {
-                if *v != vis(c.flames_on) {
-                    *v = vis(c.flames_on);
+                let p = c.pool;
+                if *v != vis(p.visible) {
+                    *v = vis(p.visible);
                 }
-                if c.flames_on {
-                    t.scale = Vec3::new(1.0, 1.0, len as f32);
+                if p.visible {
+                    *t = Transform {
+                        translation: Vec3::new(p.x as f32, p.y as f32, p.z as f32),
+                        rotation: Quat::from_rotation_y(p.rot_y as f32),
+                        scale: Vec3::new(p.sx as f32, 1.0, p.sz as f32),
+                    };
+                }
+            }
+        }
+        for (c, fl) in fx.fx.cars.iter().zip(&fx.flames) {
+            for (&e, &len) in fl.iter().zip(&c.flames) {
+                if let Ok((mut t, mut v)) = parts.get_mut(e) {
+                    if *v != vis(c.flames_on) {
+                        *v = vis(c.flames_on);
+                    }
+                    if c.flames_on {
+                        t.scale = Vec3::new(1.0, 1.0, len as f32);
+                    }
                 }
             }
         }
     }
-}
 }

@@ -104,8 +104,8 @@ impl Particles {
             v[0] = f(f64::from(v[0]) * k);
             v[1] = f(f64::from(v[1]) * k - f64::from(self.grav[i]) * dt);
             v[2] = f(f64::from(v[2]) * k);
-            for c in 0..3 {
-                self.pos[i * 3 + c] = f(f64::from(self.pos[i * 3 + c]) + f64::from(v[c]) * dt);
+            for (p, v) in self.pos[i * 3..i * 3 + 3].iter_mut().zip(v.iter()) {
+                *p = f(f64::from(*p) + f64::from(*v) * dt);
             }
             self.size[i] = f(f64::from(self.size[i]) + f64::from(self.grow[i]) * dt);
             let fr = f64::from(self.age[i]) / f64::from(self.life[i]);
@@ -356,7 +356,11 @@ impl Effects {
             let g = self.random();
             self.sparks.emit(
                 [x, y, z],
-                [vx * 0.6 + (a - 0.5) * 9.0, 2.0 + b * 5.0, vz * 0.6 + (c - 0.5) * 9.0],
+                [
+                    vx * 0.6 + (a - 0.5) * 9.0,
+                    2.0 + b * 5.0,
+                    vz * 0.6 + (c - 0.5) * 9.0,
+                ],
                 0.3 + d * 0.5,
                 0.18 + e * 0.12,
                 -0.2,
@@ -379,7 +383,11 @@ impl Effects {
         let d = self.random();
         self.smoke.emit(
             [x, y + 0.3, z],
-            [vx * 0.3 + (a - 0.5) * 1.5, 0.6 + b, vz * 0.3 + (c - 0.5) * 1.5],
+            [
+                vx * 0.3 + (a - 0.5) * 1.5,
+                0.6 + b,
+                vz * 0.3 + (c - 0.5) * 1.5,
+            ],
             1.2 + d * 1.0,
             0.8 + amount * 0.6,
             2.4,
@@ -578,6 +586,11 @@ mod tests {
         assert!(smoked);
         assert_eq!(fx.skids.next, 2 * 59);
         assert!(fx.cars[0].flames_on);
-        assert!(fx.cars[0].flames.iter().all(|&l| (0.91..=1.69).contains(&l)));
+        assert!(
+            fx.cars[0]
+                .flames
+                .iter()
+                .all(|&l| (0.91..=1.69).contains(&l))
+        );
     }
 }

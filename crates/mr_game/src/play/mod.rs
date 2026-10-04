@@ -70,6 +70,8 @@ pub struct Params {
     pub touch: Option<bool>,
     /// Natively: save the three screenshots here and exit.
     pub shots: Option<String>,
+    /// `?fx=0`: the race without its effects (a measurement switch).
+    pub fx: bool,
 }
 
 impl Params {
@@ -99,6 +101,7 @@ impl Params {
                 .unwrap_or(1.0),
             touch: get("touch").map(|v| v == "1"),
             shots: get("shots").map(str::to_owned),
+            fx: get("fx") != Some("0"),
         }
     }
 
@@ -353,19 +356,23 @@ fn start(
         Projection::Perspective(pp) => pp.fov.to_degrees(),
         _ => 62.0,
     });
-    play.fx = fx::Fx::spawn(
-        &mut commands,
-        fx::Assets3 {
-            meshes: &mut meshes,
-            images: &mut images,
-            mats: &mut mats,
-            shared: &shared,
-            lights: &mut lights,
-        },
-        &fx::CarSpec::of(&cars, st.players.len()),
-        setup.opts.seed,
-        (height, fov),
-    );
+    play.fx = if play.params.fx {
+        fx::Fx::spawn(
+            &mut commands,
+            fx::Assets3 {
+                meshes: &mut meshes,
+                images: &mut images,
+                mats: &mut mats,
+                shared: &shared,
+                lights: &mut lights,
+            },
+            &fx::CarSpec::of(&cars, st.players.len()),
+            setup.opts.seed,
+            (height, fov),
+        )
+    } else {
+        None
+    };
     play.models = Some(cars);
     play.race = Some(race);
 }

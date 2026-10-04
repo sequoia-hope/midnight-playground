@@ -5866,3 +5866,196 @@ additive glow quad on the road ahead of each car, 9 × 16 m for the player
 and 7 × 12 m for the others, its opacity rising with night), WP 4.4's
 effects, still to port.
 Those, not the spot, are most of the "too dark" the owner sees.
+
+## D800. `Effects.js` in the client: its state, and what draws it
+
+2026-10-04, WP 4.4 (the rest of it after D760). `Effects.js` is ported in
+two halves. `play::effects` is its state without the engine, in the JS's
+structure and names: `Particles` (the 700-smoke and 500-spark ring
+buffers, simulated on the CPU, every array an `f32` store as the JS's
+`Float32Array`s: drag, gravity, growth, the alpha's fade in over the
+first tenth of the life and out over the rest), `SkidMarks` (the
+2,400-quad ring, a quad across the travel 3 cm above the road, segments
+under 5 cm or over 4 m dropped), and per car (`addCar`, in the JS's order:
+the player, the rivals, the traffic pool) its flames' lengths, its last
+rear-wheel contacts and its headlight pool, with `sparksAt`, `smokeAt`,
+`wheelWorld`, `resize` and `update` as the JS has them; the inexact math
+through `mr_math::kernel`. `play::fx` draws it (D803), and `play`'s
+`effects_frame` runs it once a rendered frame after the cars are placed,
+as `Race.update` runs `effects.update(dt, night, this.extras)` after its
+visual sync: the extras are the player's `{ nitro, skid, launch }` (launch:
+counting down with the throttle over half, the throttle the last tick
+read) and each rival's `{ nitro }`; traffic has none. The cars are taken
+between the last two ticks, as they are drawn (SPEC 6.5). Before the
+update come the frame's sparks, in `Race.update`'s order: a car-to-car hit
+with the player (`round(8 + strength × 30)`), the player's wall impacts
+(`round(6 + strength × 40)`), from the frame's tick events, then the
+scrape's two sparks at the car's side. A paused or held race does not
+update its effects (the JS does not call `race.update`); a restart makes
+them new (the JS's new `Race` builds new `Effects`); `race.dispose()`
+takes them away, the flames with the cars. `?fx=0` races without them (a
+measurement switch).
+
+The JS quirk SPEC 13 names is kept: every pool draws with the one shared
+`poolMat`, whose opacity the last line of `update` sets to 0.3 × night, so
+the per-car `0.35 × night` is a dead store and every pool, the player's
+too, shows at 0.3 × night. `tailPoolMat` is made and never used; it is
+not ported. The police's pools and the pursuit's smoke and sparks
+(`PursuitView`'s calls into `Effects`) are M8's.
+
+## D801. The effects' randomness: their own stream, in the JS's order
+
+2026-10-04. The JS draws every effect's randomness from `Math.random`,
+which nothing else in a race shares any more (the simulation has its
+streams, SPEC 4.3). The client's effects own a `mulberry32`, seeded from
+the race's seed (`seed ^ 0x5eed0e44`), so a seeded race's effects are the
+same each time, and draw from it in the JS's order exactly: per car the
+flames' lengths, the skid smoke's chance, its wheel, then `smokeAt`'s four
+draws (vx, vy, vz, life); per spark `sparksAt`'s six (vx, vy, vz, life,
+size, green). The staged scenes (D804) use `mulberry32(scene seed)` on
+both sides, so the JS and the Rust emit the same particles to the last
+bit: the sparks of `sparks-flames` land on the same pixels.
+
+## D802. What the JS does once a frame, at its 60 Hz rate
+
+2026-10-04, SPEC 6.5. A chance the JS takes once a frame becomes the same
+chance per 1/60 s at any frame rate: `1 − (1 − p)^(60 dt)` (exactly p at
+60 frames a second), for the skid smoke (`p = skid × 0.55`) and the
+scrape's sparks (`p = 0.6`); the launch puffs, one a frame in the JS,
+are one per 1/60 s (a remainder carried). Still once a frame, as the JS:
+the flames' random lengths (a flicker, not an amount), and the skid
+quads (one per wheel per frame; at 120 frames a second they are half as
+long and the 2,400-quad ring holds half the distance, and a slow skid's
+segments may fall under the 5 cm floor, but no mark is ever seen, D806).
+The particles integrate over the frame's dt as the JS's.
+
+## D803. The effects drawn: quads in the slab, two shader kinds, a light slot
+
+2026-10-04. `play::fx`:
+
+- **Smoke and sparks** are one mesh each of quads, four vertices a point
+  (D294), at the origin and never culled (`frustumCulled = false`); the
+  JS's `Points` sort by their origin too. The `Particles` kind is
+  `Patch::Particles` in `three_material.wgsl`: `gl_PointSize = aSize ×
+  uScale / max(0.1, −z)` (clamped to the GL range), the texture (the smoke
+  texture, normal blending; the glow texture, additive) tinted by the
+  point's colour, alpha × the point's alpha, then three's plain fog (a
+  `ShaderMaterial` has no lights, so no sun tint). `uScale` is the
+  material's, set by `resize` from the drawing buffer's height and the
+  camera's field of view when the race starts and when the window's
+  height changes (`main.js`), not as the field of view widens with speed.
+  The vertices go each frame a particle lives into the mesh's place in
+  Bevy's vertex slab (`animate::MeshWrites::push`, D701), never into the
+  asset; a ring with nothing alive is not written.
+- **Skid marks**: the 2,400-quad mesh, written when a mark was added,
+  `Patch::Skid` (`vec4(0.02, 0.02, 0.02, vA)`, normal blending, front faces
+  only as three's default side, polygon offset (−4, −4)).
+- **Flames**: the JS's open cone (`ConeGeometry(0.13, 1, 10, 1, true)`
+  turned to point down −Z, moved back half its length) built by
+  `mr_worldgen`'s three geometry, two `MeshBasicMaterial`s (0x66aaff at
+  0.85 and white at 0.9, additive, no depth write), the outer at each
+  exhaust on the car's body entity, the core inside it scaled (0.45, 0.45,
+  0.6); shown with the nitro, `scale.z` the frame's random length.
+- **Pools**: the JS's `PlaneGeometry(1, 1)` laid flat with the glow map,
+  0xfff1d0, additive, no depth write, one entity per car scaled 9 × 16 m
+  (7 × 12 for the others), placed 10 m (7.5 m) ahead along `yaw +
+  visualYaw`, 6 cm above the car. The shared opacity sits in a light slot
+  of the globals (`MaterialLights`, D456): a plain material with 3 in
+  `night.z` takes its opacity from slot `night.w`, so no material is
+  edited per frame.
+- **Polygon offset with its slope.** The pools first drew with a constant
+  depth bias only (D103's conversion): where the road is crowned or
+  banked under a flat pool, the road's own depth beat it and half a pool,
+  or all of it, vanished (the `skid-smoke` and `sparks-flames` scenes).
+  three's `polygonOffset(factor, units)` grows with the polygon's depth
+  slope; the effects' materials now carry it as a slope-scaled bias too
+  (`ThreeKey::depth_slope`, −factor: 6 for the pools, 4 for the skids),
+  beside the constant. Other materials keep D103's constant alone; one
+  that loses to the road the same way can take the same field.
+- Every effect material × mesh layout joins the warm-up with the cars
+  (D458), so a race compiles nothing once it runs; none casts a shadow.
+
+## D804. L4: the staged effect scenes
+
+2026-10-04. `parity/golden/effects/scenes.json` holds five staged scenes
+(pools at blue hour; a skid with its smoke at night; the same skid by
+day; nitro flames and three bursts of sparks; launch puffs and smoke
+bursts), each at a fly-camera station of its level, the scenery frozen:
+cars on the road at s + speed × frame × dt, a body at the last pose for
+the flames, the frames run at once (each frame's bursts, then
+`update(dt, night, extras)`), `Math.random` = `mulberry32(seed)`.
+`tools/parity/effects-scenes.mjs --side js` draws them with the JS's own
+`Effects.js` in the game's page (kernel on, the export's seeded
+`Math.random` restored after); `--side rust` loads the web build with
+`?fx=<scene>` (`play::fx_stage`), which stages the same through
+`play::fx` once the level is up and reports `__mr.fxStaged`. At 1280 ×
+800 against the JS (`cargo xtask parity shots`), all within SPEC 12's
+limits on WebGPU and on WebGL2 (the same numbers to the second decimal):
+
+| Scene | mean ΔE00 | 95 % block |
+|---|---|---|
+| pools | 0.133 | 0.331 |
+| skid-smoke | 0.966 | 5.675 |
+| skid-day | 0.197 | 0.385 |
+| sparks-flames | 0.139 | 0.382 |
+| launch | 0.235 | 0.415 |
+
+The particles, the flames and the pools land on the same pixels. What is
+left in `skid-smoke` is the smoke against the bottom-left edge, a little
+brighter in the JS: smoke points a few metres from the camera, hundreds
+of pixels wide, whose centres fall just outside the view. The port drops
+such a point as GL ES says (D294); Chrome's GL on Vulkan here appears to
+draw some of them. Within the limits, and it is D294's rule for every
+kind of point, so it is left.
+
+## D805. The night races with the effects, against the JS as drawn
+
+2026-10-04. D761's setup and pictures (seed 1, the sports car, the
+autopilot, pursuit off; the JS stopped at the tick, the Rust page taking
+its own screenshot the first frame the race time reaches it), the JS
+frames as drawn and with the effects hidden, through
+`tools/parity/race-night.mjs` and `tools/parity/lum.py`. Mean linear
+luminance (Rec. 709) of boxes on the road round the car ahead:
+
+| Where | JS no effects | JS as drawn | Rust before | Rust now | Rust WebGL2 |
+|---|---|---|---|---|---|
+| Coast 20 s, desktop hq, left and right of the car | 0.0066, 0.0051 | 0.0184, 0.0134 | 0.0066, 0.0051 | 0.0184, 0.0140 | 0.0183, 0.0144 |
+| Coast 20 s, desktop hq, the whole pool | 0.0138 | 0.0171 | 0.0154 | 0.0186 | 0.0188 |
+| Sierra 170 s, desktop hq, left and right of the car | 0.0052, 0.0038 | 0.0372, 0.0212 | 0.0059, 0.0044 | 0.0416, 0.0244 | 0.0400, 0.0234 |
+| Sierra 170 s, desktop hq, the whole pool | 0.0155 | 0.0254 | 0.0162 | 0.0270 | 0.0267 |
+| Sierra 170 s, iPhone portrait hq off, left and right of the car | 0.0112, 0.0052 | 0.0267, 0.0190 | 0.0168, 0.0060 | 0.0312, 0.0215 | |
+| Coast 20 s, iPhone portrait hq off, road ahead; round the car ahead | 0.0259; 0.1546 | 0.0264; 0.1585 | 0.0261; 0.1557 | 0.0270; 0.1596 | |
+
+The road beside the car is as bright as the JS draws it again, 3 to 7
+times what the spot alone gave; the pools' shape, size and place match,
+and so does the light they add (Sierra's phone boxes were already
+brighter before the effects; what the pools add is +0.0155, +0.0138 in the
+JS and +0.0144, +0.0155 here). The race frames are taken a fraction of a
+frame apart, so a pool's edge moves a little between them; the whole-pool
+boxes differ by 6 to 9 %. The native client draws the same pools
+(Coast's countdown and 20 s). Pictures: `parity/report/effects/` (not in
+git).
+
+Frame cost: Coast at 15 to 20 s, 1280 × 800, uncapped, WebGPU, six
+alternating runs each on a machine shared with other agents: median frame
+3.0 to 6.4 ms with the effects and 2.9 to 4.4 ms without; the quiet runs,
+3.0 to 3.2 ms against 2.9 to 3.3 ms, cannot tell them apart. Per frame the
+effects cost 28 pool quads and, while particles live, one write of the
+two rings (4,800 vertices, 211 kB) into the slab, as the JS uploads its
+four attribute arrays each frame.
+
+## D806. The JS never draws its skid marks; the port does the same
+
+2026-10-04. `SkidMarks.add` lays each quad's corners as a + n, a − n,
+b + n, b − n with n the travel turned left, and indexes it (0, 1, 2),
+(1, 3, 2): both triangles wind clockwise seen from above, so their front
+faces point down, and the marks' `ShaderMaterial` has three's default
+side, FrontSide. Every mark is culled: none shows in the game, by day or
+night (the staged `skid-day` scene, a hard skid on grey asphalt, shows
+none). Drawn double-sided (a probe in the JS page, not in the game) they
+appear as two dark trails (`parity/report/effects/scenes/js-skiddouble/`).
+Port, don't improve: the Rust lays the same quads with the same winding
+and culls the back faces, so it draws none either; DEVIATIONS lists it
+with the JS's other quirks. Making them show is a one-line change on both
+sides (the side, or the index order) and the owner's call; the marks are
+otherwise ported and checked (`SkidMarks` tests, the shader).

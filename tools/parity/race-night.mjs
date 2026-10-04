@@ -33,6 +33,7 @@ const dist = opt('--dist', 'next');
 const backend = opt('--backend', 'webgpu');
 const tag = opt('--name', side === 'js' ? 'js' : dist);
 const perfSecs = Number(opt('--perf', 0));
+const query = opt('--query', ''); // more of the Rust page's parameters (fx=0)
 const timeoutMs = Number(opt('--timeout', 420000));
 const OUT = path.resolve(opt('--out', path.join(ROOT, 'parity/report/effects')));
 const name = `${level}-${tick}-${device}-hq${hq ? 1 : 0}-${tag}${backend === 'webgl2' ? '-gl' : ''}.png`;
@@ -136,7 +137,7 @@ try {
     console.log(JSON.stringify({ file: path.join(OUT, name), ...info, perf }));
   } else {
     await cdp.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: OUT });
-    const url = `${baseUrl()}dist/${dist}/index.html?level=${level}&autostart=sports&autodrive=1&seed=1&pursuit=0&hq=${hq ? 1 : 0}`;
+    const url = `${baseUrl()}dist/${dist}/index.html?level=${level}&autostart=sports&autodrive=1&seed=1&pursuit=0&hq=${hq ? 1 : 0}${query ? `&${query}` : ''}`;
     console.error(url);
     await page.goto(url);
     let perf = null;
