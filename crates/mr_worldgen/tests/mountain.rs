@@ -19,8 +19,8 @@
 //!   against the export's pixels with the cache (side-by-side sheets in
 //!   `parity/report/mountain/`).
 //!
-//! The parked pickup and sedan are CarModel's (WP 4.1): the export's two
-//! baked car groups are listed and skipped (D311).
+//! The parked pickup and sedan are CarModel's (WP 4.1, D311): the two baked
+//! car groups are compared child by child like the rest (D412).
 //!
 //! The golden is compiled in, so the gate runs in CI and in wasm.
 
@@ -404,6 +404,89 @@ fn write_sheet(name: &str, w: usize, h: usize, js: &[u8], rust: &[u8]) {
 #[cfg(target_arch = "wasm32")]
 fn write_sheet(_name: &str, _w: usize, _h: usize, _js: &[u8], _rust: &[u8]) {}
 
+/// One child of the group against its golden entry: node, mesh line,
+/// instances, material (the first use of each JS material is compared
+/// parameter by parameter, later uses must be the same material here), and
+/// a group's children in order (the baked parked cars, D412).
+#[allow(clippy::too_many_arguments)]
+fn compare_child(
+    what: &str,
+    w: &Value,
+    c: u32,
+    s: &Scene,
+    d: &SceneDigest,
+    jt: &[Value],
+    pairs: &mut Vec<(usize, u32)>,
+    problems: &mut Vec<String>,
+) {
+    diff(what, &node_view(s, c), &w["node"], problems);
+    let n = &s.nodes[c as usize];
+    if let Some(mesh) = n.mesh {
+        if Some(mesh_line(d, mesh).as_str()) != w["mesh"].as_str() {
+            problems.push(format!(
+                "{what}: mesh {} vs the JS {}",
+                mesh_line(d, mesh),
+                w["mesh"]
+            ));
+        }
+        let dr = d.drawables.iter().find(|x| x.node == c).expect("drawable");
+        if let Some(wi) = w.get("instances") {
+            let bs = n
+                .instances
+                .and_then(|i| s.instances[i as usize].bounding_sphere.clone());
+            let ours = json!({
+                "count": dr.instances, "matrices": dr.instance_matrices,
+                "colors": dr.instance_colors, "bounding_sphere": bs,
+            });
+            diff(&format!("{what} instances"), &ours, wi, problems);
+        } else if dr.instances.is_some() {
+            problems.push(format!("{what}: instanced here, not in the JS"));
+        }
+        let jm = w["material"].as_u64().expect("material") as usize;
+        match pairs.iter().find(|(x, _)| *x == jm) {
+            Some(&(_, m)) if m != n.materials[0] => problems.push(format!(
+                "{what}: the JS uses its material {jm} again, here another"
+            )),
+            Some(_) => {}
+            None => {
+                pairs.push((jm, n.materials[0]));
+                diff(
+                    &format!("{what} material {jm}"),
+                    &material_view(s, d, n.materials[0]),
+                    &jt[jm],
+                    problems,
+                );
+            }
+        }
+    } else if w.get("mesh").is_some() {
+        problems.push(format!("{what}: no mesh here"));
+    }
+    let empty = Vec::new();
+    let wc = w
+        .get("children")
+        .and_then(Value::as_array)
+        .unwrap_or(&empty);
+    if wc.len() != n.children.len() {
+        problems.push(format!(
+            "{what}: {} children here, the JS {}",
+            n.children.len(),
+            wc.len()
+        ));
+    }
+    for (k, (w2, &c2)) in wc.iter().zip(&n.children).enumerate() {
+        compare_child(
+            &format!("{what} child {k}"),
+            w2,
+            c2,
+            s,
+            d,
+            jt,
+            pairs,
+            problems,
+        );
+    }
+}
+
 #[test]
 fn mountain_matches_the_js_export() {
     let g: Value = serde_json::from_str(GOLDEN).expect("golden parses");
@@ -435,64 +518,24 @@ fn mountain_matches_the_js_export() {
     let ours = &s.nodes[gi as usize].children;
     let jt = table(&g);
     let mut pairs: Vec<(usize, u32)> = Vec::new();
-    let mut skipped = Vec::new();
     let mut it = ours.iter();
     let mut matched = 0;
     for (j, w) in want.iter().enumerate() {
-        // The parked cars (CarModel, WP 4.1): baked groups the port leaves
-        // out until it has the car models.
-        if w["node"]["type"] == "Group" && w.get("children").is_some() {
-            skipped.push(j);
-            continue;
-        }
         let Some(&c) = it.next() else {
             problems.push(format!("child {j}: missing here"));
             continue;
         };
-        let what = format!("child {j}");
         let before = problems.len();
-        diff(&what, &node_view(&s, c), &w["node"], &mut problems);
-        let n = &s.nodes[c as usize];
-        if let Some(mesh) = n.mesh {
-            if Some(mesh_line(&d, mesh).as_str()) != w["mesh"].as_str() {
-                problems.push(format!(
-                    "{what}: mesh {} vs the JS {}",
-                    mesh_line(&d, mesh),
-                    w["mesh"]
-                ));
-            }
-            let dr = d.drawables.iter().find(|x| x.node == c).expect("drawable");
-            if let Some(wi) = w.get("instances") {
-                let bs = n
-                    .instances
-                    .and_then(|i| s.instances[i as usize].bounding_sphere.clone());
-                let ours = json!({
-                    "count": dr.instances, "matrices": dr.instance_matrices,
-                    "colors": dr.instance_colors, "bounding_sphere": bs,
-                });
-                diff(&format!("{what} instances"), &ours, wi, &mut problems);
-            } else if dr.instances.is_some() {
-                problems.push(format!("{what}: instanced here, not in the JS"));
-            }
-            let jm = w["material"].as_u64().expect("material") as usize;
-            match pairs.iter().find(|(x, _)| *x == jm) {
-                Some(&(_, m)) if m != n.materials[0] => problems.push(format!(
-                    "{what}: the JS uses its material {jm} again, here another"
-                )),
-                Some(_) => {}
-                None => {
-                    pairs.push((jm, n.materials[0]));
-                    diff(
-                        &format!("{what} material {jm}"),
-                        &material_view(&s, &d, n.materials[0]),
-                        &jt[jm],
-                        &mut problems,
-                    );
-                }
-            }
-        } else if w.get("mesh").is_some() {
-            problems.push(format!("{what}: no mesh here"));
-        }
+        compare_child(
+            &format!("child {j}"),
+            w,
+            c,
+            &s,
+            &d,
+            &jt,
+            &mut pairs,
+            &mut problems,
+        );
         if problems.len() == before {
             matched += 1;
         }
@@ -617,9 +660,8 @@ fn mountain_matches_the_js_export() {
         ));
     }
     println!(
-        "mountain: {matched} of {} children identical ({} left out: the parked cars, WP 4.1); {} materials",
+        "mountain: {matched} of {} children identical; {} materials",
         want.len(),
-        skipped.len(),
         pairs.len()
     );
     for r in &rows {
