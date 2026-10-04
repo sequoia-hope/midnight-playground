@@ -1241,8 +1241,15 @@ fn build(
     roots: Query<Entity, With<UiRoot>>,
     scroller: Query<&ScrollPosition, With<Scroller>>,
     mut loading: Local<(f32, String)>,
+    mut tilt_seen: Local<u8>,
 ) {
     let Some(icons) = icons else { return };
+    // `tilt.onChange = showTiltState`: the menu's tilt note follows the sensor.
+    let tilt = crate::play::tilt::state_code();
+    if *tilt_seen != tilt {
+        *tilt_seen = tilt;
+        ui.dirty = true;
+    }
     let Ok(w) = windows.single() else { return };
     let css = play.css_scale.max(0.01);
     let bp = Bp::new(
