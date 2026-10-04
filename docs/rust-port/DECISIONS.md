@@ -3622,19 +3622,24 @@ streams' four, the sky glow's `uK`, the road's `uWet`, the glow points'
 re-prepare each material every frame, the stall D455 removed. So each
 material an animator touches gets an *animation block*: five RGBA32F
 texels of the globals row from texel 160 (`lighting::G_BLOCKS`, after
-D456's light slots; 128 blocks, so the row is 800 texels): 0 the colour (w
-1 when set), 1 the emissive colour, 2 `emissiveIntensity` (x, y set) and
-the rotation (z, w set), 3 the map's (and alpha map's) offset since the
-export (xy) and the normal map's (zw), 4 the kind's uniforms. The shader
-reads a value from the block where the block has one and the material's
-parameter otherwise (`ThreeParams::slots.x` is the block's first texel, 0
-for none). The block is made the first time an animator touches the
-material, which edits the Bevy material once: `slots`, and the emissive
-colour held alone with its intensity in `night` (D455's form, day = night
-when it does not follow nightfall). On Sierra 15 materials get one in the
-first frame, behind the loading screen; an animator that only runs near
-its object (the waterfall's spray, within 800 m) touches its material
-later, once. A number or colour goes to the
+D456's light slots; 128 blocks): 0 the colour (w 1 when set), 1 the
+emissive colour, 2 `emissiveIntensity` (x, y set) and the rotation (z, w
+set), 3 the map's (and alpha map's) offset since the export (xy) and the
+normal map's (zw), 4 the kind's uniforms. The shader reads a value from
+the block where the block has one and the material's parameter otherwise.
+A material finds its block through a block map from texel 800
+(`G_BLOCK_MAP`, 512 materials four to a texel, so the row is 928 texels):
+the loader gives every scene material its index (`ThreeParams::slots.z`,
+index + 1; 0 for the race's cars, which have no block), and the map holds
+the block's first texel, 0 for none. So a block is made the first time an
+animator touches the material without the Bevy material ever being
+edited, even once (a first version edited it once, which an animator that
+runs only near its object, the waterfall's spray within 800 m, did in the
+middle of a flight). A new block starts with the emissive colour and
+intensity as exported (the intensity left to `night` when it follows
+nightfall, D455), so the shader needs no change of the material's emissive
+form. On Sierra 15 materials get one in the first frame and 16 in all. A
+number or colour goes to the
 kind's uniform of that name if it has one animated, else to the parameter
 (D411's rule); the sky's edits are left out (D493).
 
@@ -3768,3 +3773,32 @@ light pools and lamp lenses at their daytime colours). The material test
 scenes now include TriplanarRock, Reflector, Siding, CityFacade and
 SkyGlow (with the JS tool's uniform overrides, `animate::fix_uniforms`):
 23 scenes, 0 over, worst 0.150 as before.
+
+## D497. Nothing in the animator path allocates per frame; its cost
+
+2026-10-04, WP 3.9, after the coordinator's perf review. Of what the
+edits touch each frame, only instance streams made GPU objects: a moved
+InstancedMesh got a new `Instances` stream, so a new vertex buffer, each
+frame (Sierra's waterwheels every frame, the freeway's chase bulbs eight
+times a second), which is what drives Firefox's GC (D457). Now a stream
+with the same instance count is rewritten in place:
+`InstanceStream::update` keeps the new bytes and
+`instancing::write_instance_updates` (render world, at extraction) writes
+them into the existing buffer with `write_buffer` (the buffer gains
+`COPY_DST`); a new stream is made only when the count changes (an
+`InstanceCount` edit, or a zero-scale instance appearing or going, none
+on Sierra). Material values never touch a Bevy material (D490); node
+transforms and visibility are component writes; the flag's 18 vertices
+are written into Bevy's mesh slab in place (`write_buffer_with`, no new
+buffer in steady state). Unchanged values are not written, so a frozen
+frame costs only the update call.
+
+Measured in the wasm build over Sierra's whole route: the animator path
+(`run_animators`) takes 0.04 to 0.15 ms a frame on average, 3.2 ms at
+most. The world build runs before `ready` (2.9 s in wasm here), never
+during a flight. A/B flights against the build before (BASELINE.md, "The
+Rust client at WP 3.9"): the same frame-time distribution on WebGPU and
+WebGL2, no pipeline after the warm-up, and isolated slow frames in both
+builds under the machine's load. Ready is later on the dev machine (7 to
+11 s against 3 to 5 s), because the page holds the export back until the
+build is done (D491); `?world=gen` is ready in 7.5 s without the download.

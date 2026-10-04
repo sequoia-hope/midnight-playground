@@ -638,6 +638,7 @@ pub fn run_animators(
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     nodes: Query<(Entity, &NodeRef), With<SceneEntity>>,
     mut placed: Placed,
+    streams: Query<&Instances>,
     status: Res<Status>,
 ) {
     let Some(frame) = sky_res.frame.take() else {
@@ -908,6 +909,15 @@ pub fn run_animators(
                 .unwrap_or([1.0; 3]);
             instancing::push_instance(&mut data, &(world * local), tint, inst.receive);
         }
+        // The same count: written into the stream's buffer in place (no GPU
+        // allocation per frame, D497); else a new stream.
+        let first = entities.get(k).and_then(|v| v.first()).copied();
+        if !data.is_empty()
+            && let Some(cur) = first.and_then(|e| streams.get(e).ok())
+            && cur.0.update(&data)
+        {
+            continue;
+        }
         let stream = (!data.is_empty()).then(|| Instances(Arc::new(InstanceStream::new(&data))));
         for &e in entities.get(k).map_or(&[][..], |v| v.as_slice()) {
             match &stream {
@@ -1035,6 +1045,12 @@ pub fn plugin(app: &mut App) {
                 pack_blocks.after(crate::render::lighting::pack_globals),
             ),
         );
+    if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
+        render_app.add_systems(
+            bevy::render::ExtractSchedule,
+            instancing::write_instance_updates,
+        );
+    }
 }
 
 #[cfg(test)]
