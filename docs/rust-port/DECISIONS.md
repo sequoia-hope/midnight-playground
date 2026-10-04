@@ -3186,3 +3186,45 @@ hall convolver, the delays, the drum kit's buffers, the pulse waves) on the
 native backend. `audio-bands.mjs` now renders and compares every scenario
 by default, the songs included (111), instead of leaving the songs to an
 explicit prefix.
+
+## D511. A param event scheduled before a target curve re-anchors the curve (the burble)
+
+2026-10-04, WP 5.7. `shot-radio-burble` was 6.4 dB off at 158 Hz (D259).
+The burble schedules every syllable's `setTargetAtTime` on the buzz's
+frequency first and sets `buzz.frequency.value = f0` after: a set event
+at the present, before all of them. D254's workaround had already sent
+each target to the crate behind a `setValueAtTime` holding the value the
+param had when the target arrived, the oscillator's default 440 Hz, so
+the first syllable swept down from 440 Hz where Chrome's starts at f0
+(the first 0.3 s carried 15 dB more at 316 Hz). The native backend now
+re-sends a param's events from the new event's time on (cancel, then the
+mirrored timeline with every target anchored anew) whenever a value, set,
+ramp or target lands before a target curve already sent. The burble now
+matches Chrome to 0.01 dB in every band, and the full L4 run is 110 of
+111 within 1.5 dB; the one left is `engine-rally-6500-1`'s 25 Hz band
+(D259), 60 dB under the signal.
+
+## D512. Radio lines in `mr_audio::radio::lines`; `CALLSIGNS` in `mr_sim::pursuit`
+
+2026-10-04, WP 5.7. `radioLines.js` is `mr_audio::radio::lines`, per SPEC
+7.3's port map: `DIRS`, `TAKES`, `place_name`, a `Line { text, parts }`
+per `RADIO` entry as a function of the same name (`unit_down`,
+`rival_busted`), `radio_clips` and `levels_radio_clips` in the JS's order
+(a `Vec` stands in for the `Map` by id, first entry wins). The JS takes
+`CALLSIGNS` from `Pursuit.js` as `radioClips`' default units; `mr_audio`
+may depend on `mr_math` only (SPEC 3.2), so the units are an argument and
+the callers pass `mr_sim::pursuit::CALLSIGNS`, a new export computed from
+the chase pool as the JS computes it (10 to 30). `levels_radio_clips`
+takes a `LevelRadio` (police or not, zone names, rival names) per level
+for the same reason. The whole clip list (192 clips) was compared once
+with the JS's `levelsRadioClips(LEVELS)`, id, text and takes, and is
+identical. `test/unit/radio.test.js` and `pursuit-audio.test.js` are
+`tests/radio.rs` and `tests/pursuit_audio.rs`; they read the levels and
+the callsigns through dev-dependencies on `mr_track`, `mr_levels` and
+`mr_sim` (check-deps looks at normal dependencies only), and the check of
+`audio/radio/` against `index.json` runs natively, the rest in wasm too.
+The fake `fetch` and decoder are a `Fetch` that serves names as bytes and
+the null backend's decoder, which tells the files apart by the length it
+decodes them to. The sirens, the radio bus, the burble and the pursuit
+calls were already ported with `GameAudio` (D251); the stingers and the
+radio are exercised by the pursuit drive's call log, which stays exact.
