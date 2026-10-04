@@ -1,14 +1,16 @@
-//! The world data the simulation takes from the JS scenery (SPEC 4.3)
-//! against the dump of the live JS world (`parity/golden/sim/world-data.json`,
-//! WP 0.4): runout, the opposite carriageway's range, lanes and direction,
-//! and its height through the ported `oppY` at the dumped samples.
+//! The world data the simulation takes from the JS scenery (SPEC 4.3),
+//! computed by the scenery's rules from each level and its Track (WP 3.9,
+//! DECISIONS D471), against the dump of the live JS world
+//! (`parity/golden/sim/world-data.json`, WP 0.4): runout, roadEnd, the
+//! opposite carriageway's range, lanes and direction, and its height
+//! through the ported `oppY` at the dumped samples.
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::wasm_bindgen_test as test;
 
 mod common;
 
-use mr_levels::world::world_data;
+use mr_levels::world::{level_world_data, world_data};
 use serde_json::Value;
 
 const GOLDEN: &str = include_str!("../../../parity/golden/sim/world-data.json");
@@ -19,7 +21,8 @@ fn world_data_matches_the_js_world() {
     for (level, t) in common::tracks() {
         let id = level.id;
         let want = &g["levels"][id];
-        let w = world_data(id);
+        let w = level_world_data(level, t);
+        assert_eq!(world_data(id), w, "{id}: world_data by id");
         assert_eq!(
             want["track"]["runout"].as_f64().unwrap(),
             w.runout,
