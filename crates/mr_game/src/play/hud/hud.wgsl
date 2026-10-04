@@ -44,11 +44,34 @@ fn over(acc: vec4<f32>, rgb: vec3<f32>, a: f32) -> vec4<f32> {
     return vec4<f32>(rgb * a + acc.rgb * (1.0 - a), a + acc.a * (1.0 - a));
 }
 
+// The page composites in sRGB, the UI pass in linear: the alpha that lands
+// a translucent colour where the sRGB blend would over a typical
+// background (play/hud.rs `lin_alpha`, D823).
+fn lin1(v: f32) -> f32 {
+    return select(pow((v + 0.055) / 1.055, 2.4), v / 12.92, v <= 0.04045);
+}
+
+fn lin_alpha(l: f32, a: f32) -> f32 {
+    if (a <= 0.0 || a >= 1.0) {
+        return a;
+    }
+    let b = 0.25;
+    let t = lin1((1.0 - a) * b + a * l);
+    let bl = lin1(b);
+    let cl = lin1(l);
+    if (abs(cl - bl) < 0.0001) {
+        return a;
+    }
+    return clamp((t - bl) / (cl - bl), 0.0, 1.0);
+}
+
 fn done(acc: vec4<f32>) -> vec4<f32> {
     if (acc.a <= 0.0001) {
         return vec4<f32>(0.0);
     }
-    return vec4<f32>(to_linear(acc.rgb / acc.a), acc.a);
+    let c = acc.rgb / acc.a;
+    let l = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+    return vec4<f32>(to_linear(c), lin_alpha(l, acc.a));
 }
 
 // A box from `a` to `b` of half width `hw` (butt ends).
@@ -206,7 +229,7 @@ fn speedlines(uv: vec2<f32>, size: vec2<f32>) -> vec4<f32> {
     let far = length(max(c, size - c));
     let mask = clamp((length(d) / far - 0.32) / (0.75 - 0.32), 0.0, 1.0);
     let a = 0.07 * band * mask * p.head.y;
-    return vec4<f32>(1.0, 1.0, 1.0, a);
+    return vec4<f32>(1.0, 1.0, 1.0, lin_alpha(1.0, a));
 }
 
 @fragment
