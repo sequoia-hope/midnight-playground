@@ -3165,3 +3165,144 @@ at race time 3 and 8 s are the same before and after (mean 0.06 and 0.22
 of 255, the differences at the moving cars' edges from frame timing); the
 headlights and tail lights match. Measurements: BASELINE.md, "Races at
 dusk".
+
+## WP 6.1–6.2 decisions
+
+## D570. The menu comes first; what the address and the store decide
+
+2026-10-04, WP 6.2, the owner's request for the main menu. Opening
+`dist/next/` with no `level=` shows the main menu over the attract camera,
+as the JS game does; the level built behind it is the saved one
+(`mr.level`, else Sierra), and the page downloads that level's scene
+(`start_level()` tells it). `?level=…` still races at once (D432), and so
+do `autostart`, `race=1` and natively `shots=` (`ui::menu_first`). The
+fly camera, `freeze=1`, the material scenes, the stations and the
+measurement page are untouched (none of them is a race). Changes of
+default: a race started from the address now uses the saved car
+(`mr.car`) unless `car=`/`autostart=` names one, and the saved Race / Hot
+Pursuit choice for its level (`mr.mode.<id>`) unless `pursuit=` says;
+`hq` comes from `mr.hq` (the JS default, off on touch screens) unless
+`?hq=` says, on both platforms (natively it was always on). Natively the
+binary with no `--level` opens the menu too, on the saved level; the
+store is a file (D572), and `--level` races as before.
+
+## D571. The screens' font is Rajdhani, the JS's `--font`
+
+2026-10-04. The brief said "the bundled Roboto fonts"; the JS menus,
+HUD and screens are set in Rajdhani (`hud.css` `--font`, Google Fonts
+500/600/700), which D370 keeps for the HUD and mr_canvas already bundles,
+so the screens use it: the same files as the JS page's (subset, D371),
+registered with Bevy's text from mr_canvas's copies (no second copy in the
+wasm). Chrome only has 500, 600 and 700, so a normal weight draws Medium
+and 800/900 draw Bold, as there. Bevy draws no synthetic styles, and the
+menus' headings are `font-style: italic` (Chrome's fake italic of
+Rajdhani): `assets/fonts/oblique.py` bakes Skia's skew (x + y/4 about the
+baseline, advances unchanged) into a copy of Rajdhani Bold (27 KB), named
+"Rajdhani Oblique" so the text engine picks it by family. The M4 HUD and
+the touch controls (D431) switch from Bevy's FiraMono to Rajdhani Bold by
+putting that face at Bevy's default font handle; nothing else in them
+changes. If the owner wants Roboto for the screens after all, it is
+`widgets::FAMILY`.
+
+## D572. The store: `localStorage`'s keys and strings, a file natively
+
+2026-10-04, WP 6.1 (SPEC 8.3). `ui::store::Store` is `main.js`'s
+`store`: `mr.<key>`, the value as `JSON.stringify` writes it (numbers as
+JS prints them: `1`, `0.7`, `1e+21`), a missing or unparsable value gives
+the default. On the web it is `localStorage` (the page is served from the
+same origin as the JS game, so settings, best times and controller maps
+carry over); natively a JSON object of the same key → string pairs in
+`$XDG_CONFIG_HOME/midnight-racer/storage.json` (`~/.config`,
+`~/Library/Application Support` on macOS, `%APPDATA%` on Windows),
+rewritten on each change, `$MR_STORE` to point elsewhere. `Settings` is
+the JS's `settings` object with its defaults and checks; nothing is
+written until a control changes, as there. The volume, track, steering,
+pedal, tilt, auto gas and rumble settings are stored and shown but not yet
+used: the sound (M5) and the touch modes, tilt and gamepad (WP 6.4–6.6)
+read them when they come.
+
+## D573. The widgets, and what is approximated
+
+2026-10-04, WP 6.1 (SPEC 8.1). Sizes are the CSS's in CSS px, turned
+into Bevy UI px by the page's measured scale; the media queries are
+`widgets::Bp` (720 wide, 780 and 500 tall, portrait, touch), and the
+two-column phone menu is a Bevy UI grid. A screen is a scrolling column
+over the radial gradient, centred while it fits (`safe center`, as auto
+margins). What Bevy UI has no equivalent for:
+- Gradient text (the logo) is drawn with mr_canvas as the CSS paints it,
+  glow included, and shown as an image at the device's resolution.
+- The selected tab or car keeps its accent border and 1 px ring (an
+  outline); its 24 px glow is left out, because Bevy draws a box shadow
+  under the whole node and these nodes are translucent (it tints them).
+  The primary buttons' shadows are kept (they are opaque).
+- Native form controls are drawn as Chrome draws them with
+  `accent-color`: the 13 px checkbox, the range slider's 4 px track and
+  16 px thumb (dragged by finger or mouse), the select with a chevron,
+  which opens a list under it (Chrome on a desktop) rather than Android's
+  picker. No hover states; the keyboard focus ring is the gamepad's
+  (`.pad-focus`), Tab and Shift+Tab move it, Enter or Space activates.
+- Characters no bundled face has are drawn: ★ (results), ⏭ (Next track),
+  ♪ (the music link) and the tick; ◂ ▸ in the Steering choice and the
+  touch help become ← → (the faces have the arrows); N₂O is N2O (D431).
+- The music player link opens the JS page (`../../music.html`) until
+  M5's player screen; natively there is no link.
+Every control carries its DOM id (`btn-start`, `opt-hq`, …); level tabs,
+car picks and mode buttons, which had none, are `lvl-tab-<id>`,
+`pick-<car>` and `mode-<race|pursuit>`.
+
+## D574. The session flow: level tabs, Race, the warm-up race
+
+2026-10-04, WP 6.2 (`main.js` `loadLevel`, `startRace`, `toMenu`). A
+level tab saves the level and builds it behind the loading screen, as the
+JS does: the scene is torn down and the other level's export downloaded
+(the page's `__mr.reload`, D394; natively a thread reads it). Race loads
+the chosen level first if it is not the one built, then builds the field
+(`play::Play` gains `armed`, `hold` and `stop`) and holds the countdown,
+with the menu still up, until the frame's pipelines are compiled (three
+quiet frames, at most three seconds: the JS's `compileAsync` race); a
+second tap meanwhile does nothing. A menu-first run also builds a field
+behind the loading screen and drops it when the client is ready, so the
+warm-up (D390) covers the cars' pipelines and Race does not hitch. Main
+menu disposes the race and its cars and puts the attract camera back at
+`startS + 60`. The HUD and the touch controls hide while there is no race
+or it is held.
+
+## D575. The canvas draws the screens at up to twice the CSS resolution
+
+2026-10-04, WP 6.2. The screens are drawn into the game's canvas, which
+D437 renders at 1× on a phone without High quality: the menu's text would
+be a third of the iPhone's resolution, where the DOM's was always sharp.
+While a screen shows (menu, loading, pause, results, controller) the
+canvas is drawn at `max(JS ratio, min(devicePixelRatio, 2))`; while
+driving, at the JS's ratio as before. The attract camera behind the menu
+costs up to four times the pixels on a phone; the race is unchanged.
+
+## D576. The loading screens
+
+2026-10-04, WP 6.2. On the web the loading screen is the page's own (it
+shows while the wasm and the scene download, which only the page sees),
+now styled as the JS's `#loading` (the gradient, the logo, the bar and the
+spaced-out line, in the bundled Rajdhani by `@font-face` from
+`../../assets/fonts/`); the page shows it again for a level change.
+Natively, and on the web under the page's, the client draws the same
+screen with Bevy UI from its own state (waiting, building with the
+build's progress, preparing the shaders).
+
+## D577. The screens' part of the test bridge, and the suites
+
+2026-10-04, WP 6.2 (SPEC 8.5; WP 6.7 owns the rest). `window.__mr` gains
+`screen` and `mode` (`__game.mode`'s values), `ui(id)` (`{x, y, w, h,
+visible, enabled, value, sel, z}` in CSS px, from the last frame's
+layout; the touch controls' taps as `touch-reset`, `touch-camera`,
+`touch-pause`), `reveal(id)` (`scrollIntoView` to the middle), `focus`,
+`races` (races started, for "exactly one race"), `race.locked`, and
+`stage(cmd)` with `finish` (the suites' `teleportToFinish`), `cruise` (the
+score) and `padsetup`. `test/` is frozen, so the suites are adapted in
+`tools/parity/e2e/` (`harness.mjs` is the JS harness's API over `__mr`:
+`center` reveals a control and fails if another one is on top of it, as
+`elementFromPoint` did). Request interception cannot carry Sierra's full
+export (D106), so the harness answers a level's scene with its
+terrain-road-sky export. The page's gesture handlers now pass the
+pointer's position (`gesture_at`): a tap on Race, Race again or Restart
+on a touch screen goes fullscreen and asks for landscape inside the tap,
+as `enterFullscreen` does. The suites' sound checks wait for M5.

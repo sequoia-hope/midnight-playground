@@ -123,6 +123,7 @@ fn frame(mut play: ResMut<Play>, windows: Query<&Window, With<PrimaryWindow>>) {
     set(&o, "speed", mr_math::kernel::hypot(p.v.vx, p.v.vz));
     set(&o, "gear", p.phys.gear);
     set(&o, "finished", p.rules.finished);
+    set(&o, "locked", p.phys.locked);
     set(&o, "touch", touch_ui);
     let inp = Object::new();
     set(&inp, "steer", s.steer);

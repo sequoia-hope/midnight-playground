@@ -106,7 +106,7 @@ impl Params {
 
 /// A seed for a race nobody asked a seed for: the rivals' nitro timing
 /// differs from race to race, as `Math.random` makes it in the JS.
-fn clock_seed() -> u32 {
+pub fn clock_seed() -> u32 {
     #[cfg(target_arch = "wasm32")]
     {
         (js_sys::Math::random() * 4294967296.0) as u32
@@ -118,6 +118,11 @@ fn clock_seed() -> u32 {
             .map_or(1, |d| d.subsec_nanos() ^ d.as_secs() as u32)
     }
 }
+
+/// The race's frame: building it, input, ticks, drawing (the screens of
+/// `crate::ui` run before it).
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PlayFrame;
 
 /// The race and what draws it.
 #[derive(Resource)]
@@ -137,6 +142,13 @@ pub struct Play {
     /// positions are device pixels, which Bevy divides by the overridden
     /// scale factor, not the device's.
     pub touch_scale: f32,
+    /// A race is wanted: [`start`] builds one when there is none (the menu
+    /// clears it until Race is pressed; `crate::ui`).
+    pub armed: bool,
+    /// The countdown waits (the field's pipelines compiling, `startRace`).
+    pub hold: bool,
+    /// Take the race and its cars away (`race.dispose()`).
+    pub stop: bool,
 }
 
 /// A car's root entity.
@@ -161,12 +173,16 @@ pub fn plugin(app: &mut App) {
         started: false,
         css_scale: 1.0,
         touch_scale: 1.0,
+        armed: true,
+        hold: false,
+        stop: false,
     })
     .add_systems(Startup, (hud::spawn, touch_ui::spawn))
     .add_systems(
         Update,
         (start, read_input, step, draw)
             .chain()
+            .in_set(PlayFrame)
             .run_if(in_state(AppState::Running)),
     )
     .add_systems(
@@ -194,8 +210,19 @@ fn start(
     mut mats: ResMut<Assets<ThreeMaterial>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut lights: ResMut<MaterialLights>,
+    cars: Query<Entity, With<RaceCar>>,
 ) {
-    if play.race.is_some() {
+    if play.stop {
+        // `race.dispose()`: the field's cars go with the race.
+        for e in &cars {
+            commands.entity(e).despawn();
+        }
+        play.race = None;
+        play.models = None;
+        play.started = false;
+        play.stop = false;
+    }
+    if play.race.is_some() || !play.armed {
         return;
     }
     // The new field's light setters take their slots afresh (D456).
@@ -405,7 +432,7 @@ const MOUSE_ID: u64 = u64::MAX;
 /// Runs the frame's ticks, once the scene is up and compiled.
 fn step(time: Res<Time>, mut play: ResMut<Play>, status: Res<Status>) {
     let play = &mut *play;
-    if !status.ready {
+    if !status.ready || play.hold {
         return;
     }
     let Some(race) = play.race.as_mut() else {

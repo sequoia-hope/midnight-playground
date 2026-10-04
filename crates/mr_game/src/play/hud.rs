@@ -172,7 +172,19 @@ pub(super) fn update(
     mut texts: Query<(&HudText, &mut Text, &mut TextColor, Option<&mut Node>)>,
     mut panel: Query<&mut Visibility, With<Panel>>,
 ) {
-    let Some(race) = &play.race else { return };
+    // No race (the menu), or one waiting for its pipelines behind it: no
+    // HUD.
+    let Some(race) = play.race.as_ref().filter(|_| !play.hold) else {
+        for (_, mut t, _, _) in &mut texts {
+            set(&mut t, String::new());
+        }
+        if let Ok(mut v) = panel.single_mut()
+            && *v != Visibility::Hidden
+        {
+            *v = Visibility::Hidden;
+        }
+        return;
+    };
     let st = &race.session.curr;
     let p = &st.players[0];
     let lay: &Layout = &race.touch.layout;
