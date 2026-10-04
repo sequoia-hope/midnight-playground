@@ -125,3 +125,5 @@ jobs:
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/animators.mjs --level coast --check
       - name: The beach parts golden reproduces
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/beach-parts.mjs --check
+      - name: The Desert Run animators golden reproduces
+        run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/desert-animators.mjs --check
