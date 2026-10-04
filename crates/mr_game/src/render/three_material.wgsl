@@ -476,6 +476,12 @@ fn points_vertex(out: ptr<function, VOut>, extra: vec4<f32>) {
     let pixel_ratio = globals_at(g::G_ANIM2).w;
     // refreshUniformsPoints: size × pixelRatio; scale = height × 0.5 (CSS).
     var point_size = material.kind0.x * pixel_ratio;
+#ifdef PLAIN_ANIM
+    // An animator's size (block texel 4.y; Streets' phone flashes, D721).
+    if (has_block()) {
+        point_size = block_at(4).y * pixel_ratio;
+    }
+#endif
     var aux = 1.0;
 #ifdef POINTS_GLOW
     // gl_PointSize = size * gsize;
