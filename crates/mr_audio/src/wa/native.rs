@@ -234,24 +234,37 @@ pub struct NativeBackend<C: NativeContext> {
     detached: HashMap<NodeId, NativeNode>,
 }
 
+/// A live context's options: the latency hint, and the default device
+/// (`native-device`) or none.
+fn live_options(latency_hint: Option<&str>) -> AudioContextOptions {
+    AudioContextOptions {
+        latency_hint: match latency_hint {
+            Some("playback") => AudioContextLatencyCategory::Playback,
+            Some("interactive") => AudioContextLatencyCategory::Interactive,
+            _ => AudioContextLatencyCategory::Balanced,
+        },
+        sink_id: if cfg!(feature = "native-device") {
+            String::new()
+        } else {
+            "none".into()
+        },
+        ..AudioContextOptions::default()
+    }
+}
+
 impl NativeBackend<WaContext> {
     /// A live context. Without the `native-device` feature it processes the
     /// graph without an output device (the `"none"` sink).
     pub fn live(latency_hint: Option<&str>) -> Self {
-        let opts = AudioContextOptions {
-            latency_hint: match latency_hint {
-                Some("playback") => AudioContextLatencyCategory::Playback,
-                Some("interactive") => AudioContextLatencyCategory::Interactive,
-                _ => AudioContextLatencyCategory::Balanced,
-            },
-            sink_id: if cfg!(feature = "native-device") {
-                String::new()
-            } else {
-                "none".into()
-            },
-            ..AudioContextOptions::default()
-        };
-        Self::with(WaContext::new(opts))
+        Self::with(WaContext::new(live_options(latency_hint)))
+    }
+
+    /// [`NativeBackend::live`], or `None` where the output stream cannot be
+    /// made (no audio device): a game without sound rather than a panic.
+    pub fn try_live(latency_hint: Option<&str>) -> Option<Self> {
+        WaContext::try_new(live_options(latency_hint))
+            .ok()
+            .map(Self::with)
     }
 }
 
@@ -849,6 +862,18 @@ pub fn context(latency_hint: Option<&str>) -> super::AudioContext {
             latency_hint: latency_hint.map(str::to_owned),
         },
     )
+}
+
+/// A live native context, or `None` without an output device.
+pub fn try_context(latency_hint: Option<&str>) -> Option<super::AudioContext> {
+    NativeBackend::try_live(latency_hint).map(|b| {
+        super::AudioContext::new(
+            Box::new(b),
+            super::ContextOptions {
+                latency_hint: latency_hint.map(str::to_owned),
+            },
+        )
+    })
 }
 
 /// An offline native context; render it with

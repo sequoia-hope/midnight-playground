@@ -44,8 +44,10 @@ web-sys = { workspace = true, optional = true, features = [
     "OverSampleType",
     "PeriodicWave",
     "PeriodicWaveConstraints",
+    "Response",
     "StereoPannerNode",
     "WaveShaperNode",
+    "Window",
 ] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
