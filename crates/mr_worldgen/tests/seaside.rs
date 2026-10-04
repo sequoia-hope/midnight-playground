@@ -427,81 +427,6 @@ fn captured_rgba(k: usize, sha: &str) -> Option<Vec<u8>> {
     (sha256_hex(&b) == sha).then_some(b)
 }
 
-/// The bound on an alpha-tested stroke picture's premultiplied colour, as
-/// D534 holds Beach's palm leaf.
-const STROKE_PREMULTIPLIED: f64 = 6.0;
-
-/// How an alpha-tested picture compares where three draws it.
-struct AlphaTested {
-    /// Pixels on one side of `alphaTest` here and on the other in the JS.
-    cross: usize,
-    /// Mean absolute difference of the colour of the pixels both draw.
-    drawn: [f64; 3],
-    /// Mean absolute difference of the premultiplied colour, every pixel.
-    premultiplied: [f64; 3],
-    /// The relative difference of the total alpha (coverage).
-    alpha_total: f64,
-}
-
-/// Per channel means of the premultiplied colour (and alpha) over an 8×8
-/// grid of blocks (raceway-textures.mjs `premultiplied`).
-fn premultiplied_blocks(w: usize, h: usize, rgba: &[u8]) -> Vec<[f64; 4]> {
-    let mut out = Vec::with_capacity(64);
-    for by in 0..8 {
-        for bx in 0..8 {
-            let (x0, x1) = (bx * w / 8, (bx + 1) * w / 8);
-            let (y0, y1) = (by * h / 8, (by + 1) * h / 8);
-            let mut s = [0.0; 4];
-            for y in y0..y1 {
-                for x in x0..x1 {
-                    let p = &rgba[(y * w + x) * 4..][..4];
-                    let a = f64::from(p[3]);
-                    for k in 0..3 {
-                        s[k] += f64::from(p[k]) * a / 255.0;
-                    }
-                    s[3] += a;
-                }
-            }
-            let n = ((x1 - x0) * (y1 - y0)) as f64;
-            out.push(s.map(|v| v / n));
-        }
-    }
-    out
-}
-
-fn alpha_tested(a: &[u8], b: &[u8], alpha_test: f64) -> AlphaTested {
-    let n = a.len() / 4;
-    let cut = alpha_test * 255.0;
-    let (mut cross, mut drawn_n) = (0usize, 0usize);
-    let (mut drawn, mut pm) = ([0.0; 3], [0.0; 3]);
-    let (mut sa, mut sb) = (0.0, 0.0);
-    for i in 0..n {
-        let (aa, ba) = (f64::from(a[i * 4 + 3]), f64::from(b[i * 4 + 3]));
-        sa += aa;
-        sb += ba;
-        let (da, db) = (aa >= cut, ba >= cut);
-        if da != db {
-            cross += 1;
-        }
-        if da && db {
-            drawn_n += 1;
-        }
-        for c in 0..3 {
-            let (x, y) = (f64::from(a[i * 4 + c]), f64::from(b[i * 4 + c]));
-            pm[c] += (x * aa / 255.0 - y * ba / 255.0).abs();
-            if da && db {
-                drawn[c] += (x - y).abs();
-            }
-        }
-    }
-    AlphaTested {
-        cross,
-        drawn: drawn.map(|v| v / drawn_n.max(1) as f64),
-        premultiplied: pm.map(|v| v / n as f64),
-        alpha_total: (sa - sb) / sb.max(1.0),
-    }
-}
-
 /// JS, Rust and their difference side by side, in `parity/report/seaside/`.
 fn sheet(name: &str, w: usize, h: usize, js: &[u8], rust: &[u8]) {
     let dir = common::root().join("parity/report/seaside");
@@ -701,12 +626,6 @@ fn raceway_group() {
                     .map(|b| [0, 1, 2, 3].map(|i| b[i].as_f64().expect("mean")))
                     .collect();
                 let fbd = block_diff(&ours, &fblocks);
-                let alpha_test = scene.materials[m as usize]
-                    .params
-                    .get("alphaTest")
-                    .and_then(Value::as_f64)
-                    .unwrap_or(0.0);
-                let mut cut = None;
                 let fmad =
                     captured_rgba(p as usize, pw["sha256"].as_str().expect("sha")).map(|jpx| {
                         sheet(
@@ -722,47 +641,13 @@ fn raceway_group() {
                                 std::fs::write(dir.join(format!("{group}-m{k}-rust.rgba")), &px);
                             let _ = std::fs::write(dir.join(format!("{group}-m{k}-js.rgba")), &jpx);
                         }
-                        let mad = mr_canvas::compare::mean_abs_diff(&px, &jpx);
-                        if alpha_test > 0.0 && mad.iter().any(|&x| x >= LIMIT) {
-                            cut = Some(alpha_tested(&px, &jpx, alpha_test));
-                        }
-                        mad
+                        mr_canvas::compare::mean_abs_diff(&px, &jpx)
                     });
                 line += &format!(
                     "; with the bundled fonts (held): block diff {fbd:.2?}, mean abs diff {}",
                     fmad.map_or("(no cache)".into(), |m| format!("{m:.3?}"))
                 );
                 gate = fmad.unwrap_or(fbd);
-                // An alpha-tested picture of thin strokes (the catch fence):
-                // held where three draws it (D592); without the RGBA, by its
-                // premultiplied colour and alpha block by block.
-                if alpha_test > 0.0 && fmad.is_none() && fbd.iter().any(|&x| x >= LIMIT) {
-                    let theirs: Vec<[f64; 4]> = pw["premultiplied"]
-                        .as_array()
-                        .expect("premultiplied blocks")
-                        .iter()
-                        .map(|b| [0, 1, 2, 3].map(|i| b[i].as_f64().expect("mean")))
-                        .collect();
-                    let pbd = block_diff(&premultiplied_blocks(tw, th, &px), &theirs);
-                    line += &format!(
-                        "; alpha-tested at {alpha_test}: premultiplied block diff {pbd:.2?}"
-                    );
-                    gate = pbd;
-                }
-                if let Some(c) = cut {
-                    line += &format!(
-                        "; alpha-tested at {alpha_test}: {} pixels on the other side, the drawn pixels' colour {:.3?}, premultiplied {:.3?}, alpha total {:+.3} %",
-                        c.cross,
-                        c.drawn,
-                        c.premultiplied,
-                        c.alpha_total * 100.0
-                    );
-                    let ok = c.cross == 0
-                        && c.drawn.iter().all(|&x| x < LIMIT)
-                        && c.premultiplied.iter().all(|&x| x < STROKE_PREMULTIPLIED)
-                        && c.alpha_total.abs() < 0.005;
-                    gate = if ok { [0.0; 4] } else { [f64::INFINITY; 4] };
-                }
             } else if scene.textures[t as usize].source == TextureSource::Canvas {
                 problems.push(format!("{line}: a canvas picture the capture lacks"));
             }

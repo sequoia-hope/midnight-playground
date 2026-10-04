@@ -1,17 +1,22 @@
 //! `Canvas`: a canvas element and its 2D context in one, with the context's
 //! methods under their JS names in snake case.
 
+use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use tiny_skia::{LineCap, LineJoin, Path, Pixmap, Stroke};
+use tiny_skia::{LineCap, LineJoin, Path, PathSegment, Pixmap, Stroke};
 
 use crate::Matrix;
 use crate::color::{self, Rgba};
 use crate::fonts::{FontBook, FontSpec, parse_font};
 use crate::paint::{Gradient, GradientKind, IntoStyle, Op, Source, Style, blur};
 use crate::path::CanvasPath;
-use crate::raster::{Coverage, IBox, fill_coverage};
+use crate::raster::{
+    Coverage, IBox, SampleMask, fill_coverage, line_quad_coverage, msaa_triangles,
+};
+use crate::samples::{Samples, resolve};
+use crate::tess::{StrokeStyle, stroke_triangles};
 use crate::text::{Align, Baseline, layout};
 
 /// `ImageData`: unpremultiplied RGBA rows, top first.
@@ -106,6 +111,25 @@ impl Default for State {
     }
 }
 
+/// What Blink makes of the current path (DECISIONS D653): a lone line
+/// segment is drawn as a line and a lone arc as an arc, anything else as a
+/// path, which counts towards the canvas's slow paths.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PathKind {
+    Empty,
+    /// A `moveTo` only.
+    Move,
+    /// `moveTo` and one `lineTo`.
+    Line,
+    /// One `arc` on an empty path (radius at least 1), perhaps closed.
+    Arc,
+    Path,
+}
+
+/// After this many path draws, Chrome draws stroked line segments
+/// multisampled too (measured, DECISIONS D653).
+const SLOW_PATHS_FOR_MSAA_LINES: u32 = 5;
+
 /// A canvas of `width × height` premultiplied RGBA8 pixels (as Chrome keeps
 /// it) and its 2D context state.
 pub struct Canvas {
@@ -116,6 +140,15 @@ pub struct Canvas {
     stack: Vec<State>,
     path: CanvasPath,
     fonts: Arc<FontBook>,
+    /// The samples of a multisampled pass, from the first multisampled draw
+    /// until the canvas is read (DECISIONS D651).
+    samples: Option<Samples>,
+    /// Set when the canvas is read: the pass is resolved, so the next draw
+    /// starts from the pixels.
+    flushed: Cell<bool>,
+    path_kind: PathKind,
+    /// Paths filled or stroked so far (D653).
+    slow_paths: u32,
 }
 
 impl Canvas {
@@ -133,6 +166,10 @@ impl Canvas {
             stack: Vec::new(),
             path: CanvasPath::new(),
             fonts,
+            samples: None,
+            flushed: Cell::new(false),
+            path_kind: PathKind::Empty,
+            slow_paths: 0,
         }
     }
 
@@ -341,41 +378,77 @@ impl Canvas {
 
     pub fn begin_path(&mut self) {
         self.path = CanvasPath::new();
+        self.path_kind = PathKind::Empty;
+    }
+
+    /// Follows Blink's line and arc builders (`CanvasPath`): `next` is the
+    /// kind after a call whose arguments are all finite.
+    fn path_became(&mut self, finite: bool, next: PathKind) {
+        if finite {
+            self.path_kind = next;
+        }
     }
 
     pub fn move_to(&mut self, x: f64, y: f64) {
         self.path.move_to(&self.state.m, x, y);
+        let next = match self.path_kind {
+            PathKind::Empty | PathKind::Move => PathKind::Move,
+            _ => PathKind::Path,
+        };
+        self.path_became(x.is_finite() && y.is_finite(), next);
     }
 
     pub fn line_to(&mut self, x: f64, y: f64) {
         self.path.line_to(&self.state.m, x, y);
+        let next = match self.path_kind {
+            PathKind::Empty => PathKind::Move,
+            PathKind::Move => PathKind::Line,
+            _ => PathKind::Path,
+        };
+        self.path_became(x.is_finite() && y.is_finite(), next);
     }
 
     pub fn quadratic_curve_to(&mut self, cx: f64, cy: f64, x: f64, y: f64) {
         self.path.quadratic_curve_to(&self.state.m, cx, cy, x, y);
+        self.path_became(true, PathKind::Path);
     }
 
     pub fn bezier_curve_to(&mut self, c1x: f64, c1y: f64, c2x: f64, c2y: f64, x: f64, y: f64) {
         self.path
             .bezier_curve_to(&self.state.m, c1x, c1y, c2x, c2y, x, y);
+        self.path_became(true, PathKind::Path);
     }
 
     pub fn close_path(&mut self) {
         self.path.close_path();
+        let next = match self.path_kind {
+            PathKind::Empty => PathKind::Empty,
+            PathKind::Arc => PathKind::Arc,
+            _ => PathKind::Path,
+        };
+        self.path_became(true, next);
     }
 
     pub fn rect(&mut self, x: f64, y: f64, w: f64, h: f64) {
         self.path.rect(&self.state.m, x, y, w, h);
+        self.path_became(true, PathKind::Path);
     }
 
     pub fn round_rect(&mut self, x: f64, y: f64, w: f64, h: f64, r: f64) {
         self.path.round_rect(&self.state.m, x, y, w, h, r);
+        self.path_became(true, PathKind::Path);
     }
 
     /// `arc(x, y, r, start, end, anticlockwise)`; pass `false` where the JS
     /// leaves the last argument out.
     pub fn arc(&mut self, x: f64, y: f64, r: f64, a0: f64, a1: f64, anticlockwise: bool) {
         self.path.arc(&self.state.m, x, y, r, a0, a1, anticlockwise);
+        let next = if self.path_kind == PathKind::Empty && r >= 1.0 && a0 != a1 {
+            PathKind::Arc
+        } else {
+            PathKind::Path
+        };
+        self.path_became([x, y, r, a0, a1].iter().all(|v| v.is_finite()), next);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -392,21 +465,93 @@ impl Canvas {
     ) {
         self.path
             .ellipse(&self.state.m, x, y, rx, ry, rotation, a0, a1, anticlockwise);
+        self.path_became(true, PathKind::Path);
     }
 
     pub fn fill(&mut self) {
         let Some(p) = self.path.finish() else { return };
         let style = self.state.fill.clone();
         self.draw(&style, |limit| fill_coverage(&p, limit));
+        self.count_slow_path();
     }
 
+    /// A path draw (not a lone line or arc) counts towards D653's
+    /// threshold.
+    fn count_slow_path(&mut self) {
+        if !matches!(self.path_kind, PathKind::Line | PathKind::Arc) {
+            self.slow_paths += 1;
+        }
+    }
+
+    /// Strokes the current path as Chrome's GPU canvas does (DECISIONS
+    /// D650): a single line segment is a quad with analytic edge
+    /// anti-aliasing, any other path is multisampled (8×).
     pub fn stroke(&mut self) {
         let Some(p) = self.path.finish() else { return };
-        let Some(outline) = self.stroke_outline(&p) else {
-            return;
-        };
         let style = self.state.stroke.clone();
-        self.draw(&style, |limit| fill_coverage(&outline, limit));
+        if let Some(q) = self.stroked_line(&p) {
+            if self.slow_paths >= SLOW_PATHS_FOR_MSAA_LINES && !self.shadow_on() {
+                // Multisampled: the quad itself, no ramp (D653).
+                self.draw_quad_samples(&style, q);
+            } else {
+                self.draw(&style, |limit| line_quad_coverage(q, limit));
+            }
+            return;
+        }
+        self.count_slow_path();
+        if self.state.filter_blur > 0.0 {
+            // A filtered stroke is drawn into a layer of its own; not
+            // multisampled here (the game filters only fills).
+            let Some(outline) = self.stroke_outline(&p) else {
+                return;
+            };
+            self.draw(&style, |limit| fill_coverage(&outline, limit));
+            return;
+        }
+        self.draw_samples(&style, &p);
+    }
+
+    /// Skia's test for drawing a stroke as a quad (`Device::drawPath` to
+    /// `drawStrokedLine`): the path is one line segment, the cap is not
+    /// round, the transform keeps right angles, and the stroke is at least
+    /// a pixel wide on the device. Then the quad's device corners: the
+    /// segment's ends offset by half the width either side, and moved out
+    /// by half the width along it for a square cap.
+    fn stroked_line(&self, p: &Path) -> Option<[(f64, f64); 4]> {
+        let mut segs = p.segments();
+        let (Some(PathSegment::MoveTo(a)), Some(PathSegment::LineTo(b)), None) =
+            (segs.next(), segs.next(), segs.next())
+        else {
+            return None;
+        };
+        let m = self.state.m;
+        if self.state.line_cap == LineCap::Round || (m.a * m.c + m.b * m.d).abs() > 1e-9 {
+            return None;
+        }
+        let max_scale = (m.a * m.a + m.b * m.b).max(m.c * m.c + m.d * m.d).sqrt();
+        let width = self.state.line_width;
+        if width * max_scale < 1.0 || a == b {
+            return None;
+        }
+        let inv = m.invert()?;
+        let a = inv.apply(a.x as f64, a.y as f64);
+        let b = inv.apply(b.x as f64, b.y as f64);
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let len = (dx * dx + dy * dy).sqrt();
+        let hw = 0.5 * width;
+        let (px, py) = (dx / len * hw, dy / len * hw);
+        let (ox, oy) = (py, -px);
+        let (px, py) = if self.state.line_cap == LineCap::Butt {
+            (0.0, 0.0)
+        } else {
+            (px, py)
+        };
+        Some([
+            m.apply(a.0 - ox - px, a.1 - oy - py),
+            m.apply(a.0 + ox - px, a.1 + oy - py),
+            m.apply(b.0 + ox + px, b.1 + oy + py),
+            m.apply(b.0 - ox + px, b.1 - oy + py),
+        ])
     }
 
     /// `clip()` with the nonzero rule: intersects the clip region with the
@@ -447,6 +592,22 @@ impl Canvas {
         };
         let res = tiny_skia::PathStroker::compute_resolution_scale(&m.to_skia());
         user.stroke(&stroke, res)?.transform(m.to_skia())
+    }
+
+    /// The stroke of a device-space path as the GPU tessellates it
+    /// (DECISIONS D652): back to user space, tessellated there, and the
+    /// triangles mapped to device space.
+    fn stroke_tessellation(&self, p: &Path) -> Option<Vec<crate::tess::Triangle>> {
+        let m = self.state.m;
+        let inv = m.invert()?;
+        let user = p.clone().transform(inv.to_skia())?;
+        let style = StrokeStyle {
+            radius: (self.state.line_width * 0.5) as f32,
+            join: self.state.line_join,
+            miter_limit: self.state.miter_limit as f32,
+            cap: self.state.line_cap,
+        };
+        Some(stroke_triangles(&user, &style, &m))
     }
 
     // ── Rectangles ────────────────────────────────────────────────────
@@ -598,6 +759,8 @@ impl Canvas {
     /// Unpremultiplied pixels of a rectangle (outside the canvas reads as
     /// transparent black).
     pub fn get_image_data(&self, x: i32, y: i32, w: u32, h: u32) -> ImageData {
+        // Reading resolves a multisampled pass.
+        self.flushed.set(true);
         let mut out = ImageData::new(w, h);
         let src = self.pixmap.data();
         for j in 0..h as i32 {
@@ -630,6 +793,9 @@ impl Canvas {
     /// Writes pixels as they are (premultiplied on the way in), ignoring
     /// the transform, clip, alpha and compositing.
     pub fn put_image_data(&mut self, img: &ImageData, x: i32, y: i32) {
+        // Chrome flushes before it writes pixels: a multisampled pass ends.
+        self.samples = None;
+        self.flushed.set(false);
         let (cw, ch) = (self.width as i32, self.height as i32);
         let dst = self.pixmap.data_mut();
         for j in 0..img.height as i32 {
@@ -703,6 +869,8 @@ impl Canvas {
         let (x0, y0) = (sx.max(0.0).floor(), sy.max(0.0).floor());
         let x1 = (sx + sw).min(src.width as f64).ceil();
         let y1 = (sy + sh).min(src.height as f64).ceil();
+        // The source is read: its multisampled pass is resolved.
+        src.flushed.set(true);
         let source = Source::Image {
             data: src.pixmap.data(),
             width: src.width as usize,
@@ -761,33 +929,7 @@ impl Canvas {
         let clip = self.state.clip.clone();
         let op = self.state.op;
         if self.shadow_on() {
-            let sigma = self.state.shadow_blur / 2.0;
-            let r = (3.0 * sigma).ceil() as i32;
-            let (x0, y0) = (cov.x0 - r, cov.y0 - r);
-            let (w, h) = (cov.w + 2 * r as usize, cov.h + 2 * r as usize);
-            let mut a = vec![0.0f32; w * h];
-            for y in 0..cov.h {
-                for x in 0..cov.w {
-                    let c = cov.data[y * cov.w + x];
-                    if c > 0.0 {
-                        let s = src.sample(
-                            (cov.x0 + x as i32) as f64 + 0.5,
-                            (cov.y0 + y as i32) as f64 + 0.5,
-                        );
-                        a[(y + r as usize) * w + x + r as usize] = s[3] * c;
-                    }
-                }
-            }
-            blur(&mut a, w, h, 1, sigma);
-            let sc = self.state.shadow_color.premul();
-            let shadow = Coverage {
-                x0,
-                y0,
-                w,
-                h,
-                data: a,
-            };
-            self.composite(&shadow, &Source::Solid(sc), op, clip.as_deref());
+            self.draw_shadow(&cov, src);
         }
         if self.state.filter_blur > 0.0 {
             let sigma = self.state.filter_blur;
@@ -817,6 +959,152 @@ impl Canvas {
         }
     }
 
+    /// A multisampled stroke of the device-space path `p` (DECISIONS
+    /// D650-D652): the shadow from the outline's exact coverage, as
+    /// before, then the tessellated stroke into the samples it covers.
+    fn draw_samples(&mut self, style: &Style, p: &Path) {
+        let m = self.state.m;
+        let Some(src) = Source::from_style(style, &m, self.state.global_alpha) else {
+            return;
+        };
+        if self.shadow_on()
+            && let Some(outline) = self.stroke_outline(p)
+        {
+            let cov = fill_coverage(&outline, self.pad_bounds());
+            if !cov.is_empty() {
+                self.draw_shadow(&cov, &src);
+            }
+        }
+        let Some(tris) = self.stroke_tessellation(p) else {
+            return;
+        };
+        let mask = msaa_triangles(&tris, self.bounds());
+        let clip = self.state.clip.clone();
+        let op = self.state.op;
+        self.composite_samples(&mask, &src, op, clip.as_deref());
+    }
+
+    /// A stroked line segment drawn multisampled: the samples inside its
+    /// quad (DECISIONS D653).
+    fn draw_quad_samples(&mut self, style: &Style, q: [(f64, f64); 4]) {
+        let m = self.state.m;
+        let Some(src) = Source::from_style(style, &m, self.state.global_alpha) else {
+            return;
+        };
+        let snap = |p: (f64, f64)| {
+            let s = |v: f64| ((v as f32) * 256.0).round() / 256.0;
+            (s(p.0), s(p.1))
+        };
+        let c = q.map(snap);
+        let mask = msaa_triangles(&[[c[0], c[1], c[2]], [c[0], c[2], c[3]]], self.bounds());
+        let clip = self.state.clip.clone();
+        let op = self.state.op;
+        self.composite_samples(&mask, &src, op, clip.as_deref());
+    }
+
+    /// The shadow of a shape: its alpha blurred, in the shadow colour.
+    fn draw_shadow(&mut self, cov: &Coverage, src: &Source) {
+        let clip = self.state.clip.clone();
+        let op = self.state.op;
+        let sigma = self.state.shadow_blur / 2.0;
+        let r = (3.0 * sigma).ceil() as i32;
+        let (x0, y0) = (cov.x0 - r, cov.y0 - r);
+        let (w, h) = (cov.w + 2 * r as usize, cov.h + 2 * r as usize);
+        let mut a = vec![0.0f32; w * h];
+        for y in 0..cov.h {
+            for x in 0..cov.w {
+                let c = cov.data[y * cov.w + x];
+                if c > 0.0 {
+                    let s = src.sample(
+                        (cov.x0 + x as i32) as f64 + 0.5,
+                        (cov.y0 + y as i32) as f64 + 0.5,
+                    );
+                    a[(y + r as usize) * w + x + r as usize] = s[3] * c;
+                }
+            }
+        }
+        blur(&mut a, w, h, 1, sigma);
+        let sc = self.state.shadow_color.premul();
+        let shadow = Coverage {
+            x0,
+            y0,
+            w,
+            h,
+            data: a,
+        };
+        self.composite(&shadow, &Source::Solid(sc), op, clip.as_deref());
+    }
+
+    /// Ends a resolved pass: after the canvas was read, the next draw
+    /// starts from its pixels.
+    fn begin_write(&mut self) {
+        if self.flushed.replace(false) {
+            self.samples = None;
+        }
+    }
+
+    /// Blends `src` into the samples `mask` covers (and through the clip),
+    /// starting a multisampled pass if none is open.
+    fn composite_samples(
+        &mut self,
+        mask: &SampleMask,
+        src: &Source,
+        op: Op,
+        clip: Option<&Coverage>,
+    ) {
+        self.begin_write();
+        if src.is_clear() && matches!(op, Op::SourceOver | Op::Lighter | Op::DestinationOut) {
+            return;
+        }
+        let b = IBox {
+            x0: mask.x0,
+            y0: mask.y0,
+            x1: mask.x0 + mask.w as i32,
+            y1: mask.y0 + mask.h as i32,
+        };
+        let Some(b) = b.intersect(self.bounds()) else {
+            return;
+        };
+        let cw = self.width as usize;
+        let pixels = cw * self.height as usize;
+        let samples = self.samples.get_or_insert_with(|| Samples::new(pixels));
+        let dst = self.pixmap.data_mut();
+        for y in b.y0..b.y1 {
+            for x in b.x0..b.x1 {
+                let bits = mask.bits[(y - mask.y0) as usize * mask.w + (x - mask.x0) as usize];
+                if bits == 0 {
+                    continue;
+                }
+                let c = clip.map_or(1.0, |cl| cl.at(x, y));
+                if c <= 0.0 {
+                    continue;
+                }
+                let s = if op == Op::Clear {
+                    [0.0, 0.0, 0.0, c]
+                } else {
+                    let s = src.sample(x as f64 + 0.5, y as f64 + 0.5);
+                    [s[0] * c, s[1] * c, s[2] * c, s[3] * c]
+                };
+                let i = y as usize * cw + x as usize;
+                let p = i * 4;
+                if bits == 0xff && samples.get_mut(i).is_none() {
+                    let d = load(&dst[p..p + 4]);
+                    store(&mut dst[p..p + 4], op.blend(s, d));
+                    continue;
+                }
+                let px = [dst[p], dst[p + 1], dst[p + 2], dst[p + 3]];
+                let ss = samples.get_or_split(i, px);
+                for (k, smp) in ss.iter_mut().enumerate() {
+                    if bits & (1 << k) != 0 {
+                        let d = load(&smp[..]);
+                        store(&mut smp[..], op.blend(s, d));
+                    }
+                }
+                dst[p..p + 4].copy_from_slice(&resolve(ss));
+            }
+        }
+    }
+
     /// Blends `src` through `cov` (and the clip) onto the pixels.
     fn composite(&mut self, cov: &Coverage, src: &Source, op: Op, clip: Option<&Coverage>) {
         if src.is_clear() && matches!(op, Op::SourceOver | Op::Lighter | Op::DestinationOut) {
@@ -831,8 +1119,10 @@ impl Canvas {
         let Some(b) = b.intersect(self.bounds()) else {
             return;
         };
+        self.begin_write();
         let cw = self.width as usize;
         let dst = self.pixmap.data_mut();
+        let samples = &mut self.samples;
         for y in b.y0..b.y1 {
             for x in b.x0..b.x1 {
                 let mut c = cov.data[(y - cov.y0) as usize * cov.w + (x - cov.x0) as usize];
@@ -848,9 +1138,7 @@ impl Canvas {
                     let s = src.sample(x as f64 + 0.5, y as f64 + 0.5);
                     [s[0] * c, s[1] * c, s[2] * c, s[3] * c]
                 };
-                let i = (y as usize * cw + x as usize) * 4;
-                let d = load(&dst[i..i + 4]);
-                store(&mut dst[i..i + 4], op.blend(s, d));
+                blend_into(dst, samples, y as usize * cw + x as usize, s, op);
             }
         }
     }
@@ -876,8 +1164,10 @@ impl Canvas {
         let Some(b) = b.intersect(self.bounds()) else {
             return;
         };
+        self.begin_write();
         let cw = self.width as usize;
         let dst = self.pixmap.data_mut();
+        let samples = &mut self.samples;
         for y in b.y0..b.y1 {
             for x in b.x0..b.x1 {
                 let li = ((y - y0) as usize * w + (x - x0) as usize) * 4;
@@ -889,11 +1179,27 @@ impl Canvas {
                 if s[3] <= 0.0 && s[0] <= 0.0 && s[1] <= 0.0 && s[2] <= 0.0 {
                     continue;
                 }
-                let i = (y as usize * cw + x as usize) * 4;
-                let d = load(&dst[i..i + 4]);
-                store(&mut dst[i..i + 4], op.blend(s, d));
+                blend_into(dst, samples, y as usize * cw + x as usize, s, op);
             }
         }
+    }
+}
+
+/// Blends a premultiplied source (already scaled by coverage) into pixel
+/// `i`: into each of its samples when a multisampled pass holds them
+/// apart, the pixel then their resolve (DECISIONS D651).
+#[inline]
+fn blend_into(dst: &mut [u8], samples: &mut Option<Samples>, i: usize, s: [f32; 4], op: Op) {
+    let p = i * 4;
+    if let Some(ss) = samples.as_mut().and_then(|m| m.get_mut(i)) {
+        for smp in ss.iter_mut() {
+            let d = load(&smp[..]);
+            store(&mut smp[..], op.blend(s, d));
+        }
+        dst[p..p + 4].copy_from_slice(&resolve(ss));
+    } else {
+        let d = load(&dst[p..p + 4]);
+        store(&mut dst[p..p + 4], op.blend(s, d));
     }
 }
 
@@ -976,5 +1282,80 @@ mod tests {
         assert_eq!(&d[i..i + 4], &[255, 0, 0, 255]);
         // The fill style was restored to black.
         assert_eq!(&d[..4], &[0, 0, 0, 255]);
+    }
+
+    /// The alpha of a canvas row.
+    fn alpha_row(g: &Canvas, y: usize) -> Vec<u8> {
+        let w = g.width as usize;
+        (0..w)
+            .map(|x| g.premultiplied()[(y * w + x) * 4 + 3])
+            .collect()
+    }
+
+    /// The resolve levels of eight samples.
+    const LEVELS: [u8; 9] = [0, 32, 64, 96, 127, 159, 191, 223, 255];
+
+    #[test]
+    fn a_lone_line_is_an_analytic_quad() {
+        // Chrome (D650): a 45° stroke 1.6 wide through pixel centres.
+        let mut g = Canvas::new(64, 64);
+        g.set_stroke_style("#fff");
+        g.set_line_width(1.6);
+        g.begin_path();
+        g.move_to(0.0, 0.0);
+        g.line_to(64.0, 64.0);
+        g.stroke();
+        assert_eq!(&alpha_row(&g, 30)[28..33], &[17, 144, 255, 144, 17]);
+    }
+
+    #[test]
+    fn curves_are_multisampled_per_sample() {
+        // Two opaque curves crossing at a shallow angle: every pixel is a
+        // whole number of samples, red, blue or both (D651, D652).
+        let mut g = Canvas::new(128, 96);
+        g.set_line_width(2.5);
+        for (c, y) in [("#ff0000", 30.0), ("#0000ff", 40.0)] {
+            g.set_stroke_style(c);
+            g.begin_path();
+            g.move_to(2.0, 20.0);
+            g.quadratic_curve_to(62.0, y, 122.0, 80.0);
+            g.stroke();
+        }
+        let d = g.premultiplied();
+        for px in d.chunks(4) {
+            assert!(LEVELS.contains(&px[3]), "alpha {}", px[3]);
+            assert!(LEVELS.contains(&px[0]), "red {}", px[0]);
+        }
+        // Read back and drawn again: the samples were resolved.
+        let _ = g.get_image_data(0, 0, 1, 1);
+        g.set_stroke_style("#00ff00");
+        g.begin_path();
+        g.move_to(2.0, 25.0);
+        g.quadratic_curve_to(62.0, 35.0, 122.0, 80.0);
+        g.stroke();
+    }
+
+    #[test]
+    fn lines_are_multisampled_after_five_paths() {
+        // D653: after five path draws a lone line is multisampled too.
+        for (paths, quantised) in [(4, false), (5, true)] {
+            let mut g = Canvas::new(128, 128);
+            g.set_stroke_style("#fff");
+            g.set_line_width(3.0);
+            for i in 0..paths {
+                let x = 4.0 + 6.0 * i as f64;
+                g.begin_path();
+                g.move_to(x, 120.0);
+                g.quadratic_curve_to(x, 100.0, x + 5.0, 90.0);
+                g.stroke();
+            }
+            g.set_line_width(2.0);
+            g.begin_path();
+            g.move_to(60.0, 3.0);
+            g.line_to(120.0, 50.3);
+            g.stroke();
+            let all = (0..60).flat_map(|y| alpha_row(&g, y)[60..].to_vec());
+            assert_eq!(all.into_iter().all(|a| LEVELS.contains(&a)), quantised);
+        }
     }
 }
