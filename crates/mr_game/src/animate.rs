@@ -51,11 +51,11 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// Whether `mr_worldgen` builds this level whole, numbered as its export
-/// (D472 holds Sierra to it; the other levels still replay recorded
-/// scenery).
+/// Whether `mr_worldgen` builds this level whole, numbered as its export,
+/// in the client (D472 holds Sierra to it, D536 the Coast Highway; their
+/// scenery is named in `new_build`, the Coast's in `levels::coast`).
 pub fn generated(level: &str) -> bool {
-    level == "sierra"
+    matches!(level, "sierra" | "coast")
 }
 
 /// `?world=gen`: draw the level as the client builds it, without the
@@ -151,7 +151,10 @@ fn new_build(level: &str) -> Build {
     };
     Build::new(
         World::new(mr_levels::level_by_id(level)),
-        level_jobs(level_stages(setup), level1_scenery),
+        match level {
+            "coast" => level_jobs(level_stages(setup), crate::levels::coast::scenery),
+            _ => level_jobs(level_stages(setup), level1_scenery),
+        },
     )
 }
 
@@ -1193,7 +1196,7 @@ mod tests {
         assert_eq!(uniform_slot(Asphalt, "uWet"), Some(0));
         assert_eq!(uniform_slot(GlowPoints, "uFogK"), Some(0));
         assert_eq!(uniform_slot(Standard, "uTime"), None);
-        assert!(generated("sierra") && !generated("coast"));
+        assert!(generated("sierra") && generated("coast") && !generated("seaside"));
         for k in [Standard, Lambert, Basic, Sprite, Points] {
             assert_eq!(uniform_slot(k, "opacity"), Some(0));
         }
