@@ -283,6 +283,9 @@ fn unload_scene(
     inbox().scene = None;
     if level != opts.o.level {
         opts.o.level = level;
+        // `?scene=` names the first level's scene (the page's `sceneUrlOf`):
+        // another level is built (D678).
+        opts.o.scene = None;
         *tr = TrackRes::default();
         *sky = SkyRes::default();
         inbox().survey = None;

@@ -185,8 +185,8 @@ fn publish(mut status: ResMut<Status>, opts: Res<Opts>, mut counts_sent: Local<b
     }
 }
 
-/// Whether the client builds this level's scene itself with `?world=gen`
-/// (`animate`), so the page need not download it.
+/// Whether the client builds this level's scene itself (`animate`; the
+/// default, D678), so the page need not download it.
 #[wasm_bindgen]
 pub fn generates_scene(level: &str) -> bool {
     crate::animate::generated(level)

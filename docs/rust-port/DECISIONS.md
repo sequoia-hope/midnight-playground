@@ -5641,3 +5641,22 @@ the 210 MB download and keeps the wasm memory at 512 MB on reloads rather
 than 663; the pictures are within the limits both ways. Until decided,
 the default still downloads the export, and now also builds the level for
 its animators.
+
+## D678. The client builds every level by default
+
+2026-10-04, the owner ("yes make building in the browser the default"),
+closing D439's delivery question and D686, D703 and D723's. Every level
+is `animate::generated` (D680, D700, D720), so with no `world` parameter
+the client builds the level it shows, natively and on the web, and
+downloads no scene: what the JS game does, which builds its world in the
+page. `?world=export` draws the exported `.mrscene` from the parity
+cache instead, a parity tool now (as do `?world=off`, an explicit
+`?scene=` and `?mat=`); `?world=gen` is the default and still accepted.
+The measurements behind it: wasm memory after reloads, built against
+downloaded, Coast 512 against 663 MB, the Cruise 479–490 against 615 MB
+(phone budget 512 MB, SPEC 6.6); no 131 to 210 MB scene downloads; the
+stations within the limits either way. An explicit `?scene=` names the
+first level's scene only, as the page's `sceneUrlOf` does, so a level
+switch clears it. The tools follow: `rust-web-stations.mjs` builds by
+default (`--query world=export` for the exports), and `level-switch`
+runs built and `world=export`.

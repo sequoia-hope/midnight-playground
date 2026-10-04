@@ -1,8 +1,7 @@
 // Switching levels from the menu's tabs (roadmap WP 6.2; DECISIONS D574):
 // Sierra → Seaside → Sierra, each built behind the loading screen, then a
-// race on the last; with the scenes downloaded, and with `?world=gen`
-// (Sierra built by the client itself, `animate`, with its animators;
-// Seaside downloaded).
+// race on the last; built by the client itself (`animate`, the default,
+// D678), and with `?world=export` (the exported scenes downloaded).
 //
 //   cargo xtask web --release && node --test tools/parity/e2e/level-switch.test.mjs
 
@@ -23,7 +22,7 @@ async function pick(game, id) {
   assert.equal((await game.ui('#lvl-name')).value, { sierra: 'Sierra to the City', seaside: 'Seaside Raceway' }[id]);
 }
 
-for (const query of ['', 'world=gen']) {
+for (const query of ['', 'world=export']) {
   test(`level tabs: Sierra → Seaside → Sierra, then a race${query ? ' (' + query + ')' : ''}`, async () => {
     const game = await openGame(browser, { query: query ? query + '&timescale=2' : 'timescale=2', storage: { 'mr.level': 'sierra' } });
     try {
