@@ -37,25 +37,33 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def precompressed(self):
         """The Rust build under dist/: when `cargo xtask web --release` left a
-        `<file>.gz` beside the file and the browser takes gzip, send that with
-        Content-Encoding, so load times on phones are realistic (SPEC 6.6)."""
+        `<file>.br` or `<file>.gz` beside the file, send the best one the
+        browser takes with Content-Encoding, so load times on phones are
+        realistic (SPEC 6.6). Browsers offer brotli only on https, so phones
+        on the tailnet front get it and plain http gets gzip (D677)."""
         path = getattr(self, 'path', '').split('?', 1)[0].split('#', 1)[0]
-        if not path.startswith('/dist/') or 'gzip' not in self.headers.get('Accept-Encoding', ''):
+        if not path.startswith('/dist/'):
             return None
+        accepted = {t.split(';', 1)[0].strip().lower()
+                    for t in self.headers.get('Accept-Encoding', '').split(',')}
         file = self.translate_path(path)
-        if not os.path.isfile(file) or not os.path.isfile(file + '.gz'):
+        if not os.path.isfile(file):
             return None
-        try:
-            f = open(file + '.gz', 'rb')
-        except OSError:
-            return None
-        self.send_response(200)
-        self.send_header('Content-Type', self.guess_type(file))
-        self.send_header('Content-Encoding', 'gzip')
-        self.send_header('Content-Length', str(os.fstat(f.fileno()).st_size))
-        self.send_header('Vary', 'Accept-Encoding')
-        self.end_headers()
-        return f
+        for encoding, ext in (('br', '.br'), ('gzip', '.gz')):
+            if encoding not in accepted or not os.path.isfile(file + ext):
+                continue
+            try:
+                f = open(file + ext, 'rb')
+            except OSError:
+                continue
+            self.send_response(200)
+            self.send_header('Content-Type', self.guess_type(file))
+            self.send_header('Content-Encoding', encoding)
+            self.send_header('Content-Length', str(os.fstat(f.fileno()).st_size))
+            self.send_header('Vary', 'Accept-Encoding')
+            self.end_headers()
+            return f
+        return None
 
     def end_headers(self):
         self.send_header('Cache-Control', 'no-cache' if self.pinned() else 'no-store')

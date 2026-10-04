@@ -104,6 +104,8 @@ pub fn set_survey(bytes: &[u8]) {
     let r = SeasideData::parse(bytes)
         .map(Arc::new)
         .map_err(|e| e.to_string());
+    // Seaside's world build reads the same copy (`levels::seaside`).
+    crate::levels::seaside::survey_parsed(r.clone());
     *SURVEY.lock().unwrap_or_else(|e| e.into_inner()) = Some(r);
 }
 
@@ -317,6 +319,10 @@ pub fn section_of(track: &Track) -> Section {
 /// The level, ready to survey (Seaside with its survey); `None` until the
 /// survey is in.
 fn level_ready(id: &str) -> Option<Result<Level, String>> {
+    // The level's own inputs (Seaside's survey and, on the web, its photo).
+    if animate::generated(id) && !crate::levels::inputs_ready(id, true) {
+        return None;
+    }
     let mut level = mr_levels::level_by_id(id);
     if id == "seaside" {
         match survey()? {
@@ -1024,8 +1030,9 @@ pub fn plugin(app: &mut App) {
         match std::fs::read(&p) {
             Ok(b) => set_survey(&b),
             Err(e) => {
-                *SURVEY.lock().unwrap_or_else(|e| e.into_inner()) =
-                    Some(Err(format!("{}: {e}", p.display())))
+                let e = format!("{}: {e}", p.display());
+                crate::levels::seaside::survey_parsed(Err(e.clone()));
+                *SURVEY.lock().unwrap_or_else(|e| e.into_inner()) = Some(Err(e));
             }
         }
     }
@@ -1062,6 +1069,7 @@ mod web {
 
     #[wasm_bindgen]
     pub fn section_survey_failed(message: String) {
+        crate::levels::seaside::survey_parsed(Err(message.clone()));
         *SURVEY.lock().unwrap_or_else(|e| e.into_inner()) = Some(Err(message));
     }
 

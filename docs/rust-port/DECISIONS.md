@@ -5219,6 +5219,429 @@ budget, D675, or cut from the exports), their length, and the memory they
 may hold on a phone are for the package that does it; recorded in
 DEVIATIONS.md when it lands.
 
+## D677. Brotli for the web build
+
+2026-10-04, the owner ("turn on brotli"; D674 item 3). `cargo xtask web
+--release` writes a `.br` (quality 11, 16 MB window) beside the `.gz` for
+the wasm and its JS, and `tools/serve.py` sends the `.br` with
+`Content-Encoding: br` when the request offers it, the `.gz` otherwise.
+Browsers offer brotli only on https, so phones on the tailnet front get
+it and plain-http loads keep gzip. `cargo xtask size` reports both; the
+budget (16 MB, D675) stays on gzip, the encoding every load can fall
+back to. Scene files are not precompressed: they are the parity cache's
+exports, read only when a level is not built in the client, and their
+delivery is still open (D439).
+
+## Seaside Raceway and the Night City Cruise in the client
+
+The client halves of WP 7.4 and 7.5: D595's and D632's lists.
+
+## D680. Seaside Raceway is built in the client: `crate::levels`
+
+2026-10-04, WP 7.4 (D595's list). `animate::generated` is true for
+`seaside` (and `cruise`, D683), so the client builds Seaside Raceway for
+its animators, and with `?world=gen` draws that build without the
+download. What Seaside needs beyond Level 1's setup is in a module of its
+own, `crates/mr_game/src/levels/` (`animate` gains one line in
+`generated`, a call to `levels::new_build` at the top of `new_build`, a
+wait on `levels::inputs_ready` before a build starts, and the countdown of
+D682): the build is `tests/seaside_animators.rs`'s, `seaside::prepare`
+with the survey, `World::with_level_data` with the same
+`Arc<SeasideData>`, `TerrainSetup { ground_color:
+seaside_ground_color(survey), photo: GroundPhoto::seaside(..) }`, and a
+scenery factory naming Raceway alone (D498's rule: `scenery::PORTED`
+would link every level's modules).
+
+- **The survey** is the one `make_track` parses for the Track (the page's
+  download of `assets/seaside/survey.bin`, the file natively): it hands a
+  copy to `levels::seaside::survey_parsed`, which keeps it across reloads.
+  Natively `native::load` read the survey only when it also read the
+  export; it now reads it first, so `?world=gen` gets it too. A failed
+  survey still starts the build, whose first job (the Track) fails and
+  says so (D590).
+- **The photo** (`src/levels/seaside/photo.jpg`, 1843 × 2160) is the
+  caller's to decode (D234). On the web the page decodes it as the scene
+  exporter read it (`tools/parity/lib/scene-page.js`: an `Image` drawn on
+  a canvas, `getImageData`) and hands the bytes in (`load_photo`;
+  `photo_failed`; `has_photo`, so it is fetched once). Natively, D681. It
+  is kept once decoded (an `Arc<Texture>` every drawn build shares,
+  16 MB), so a reload, or the menu's sections (D740+), do not decode it
+  again. It is fetched only with `?world=gen`: with the export drawn, the
+  build is for the animators, which never read the photo, and a 1 × 1
+  blank stands in (the texture keeps its place in the numbering, so the
+  build's shape is the export's and the edits address it).
+- The wasm grows by Raceway's world generation: 8.12 MB (WebGPU) and
+  8.50 MB (WebGL2) after gzip, against 8.09 and 8.47 (D675).
+
+## D681. The photo natively: the `image` crate's JPEG decoder
+
+2026-10-04, WP 7.4. The native client decodes `photo.jpg` with `image`
+0.25 (JPEG only, zune-jpeg), a dependency of the native target alone, so
+the wasm does not link it (the browser decodes on the web, D680). It is
+not Chrome's decoder: against Chrome's decode in the export it differs by
+0.278 levels mean absolute, at most 4 levels, and 0.012 % of the bytes by
+more than 2 (IDCT and chroma upsampling). `levels::seaside::tests`
+holds it: byte for byte against the golden's SHA-256 if it ever matches,
+else under 1 level mean against the cached export. The pictures that gate
+the level are the web build's, whose decode is Chrome's (D684).
+
+## D682. The start lights follow the race's countdown
+
+2026-10-04, WP 7.4. `Race.update` calls `world.onCountdown(started ? -1 :
+this.countdown)` every frame of a race. The client's equivalent:
+`levels::RaceCountdown` (PostUpdate, before `run_animators`) holds the
+race's `countdown` while its state is `Countdown`, -1 after, and `None`
+with no race (the menu, the fly camera), when the JS does not call it;
+`run_animators` appends `WorldBuild::countdown(cd)`'s edits after
+`WorldBuild::update`'s, as D595 asked, and applies them as D493 applies
+any: the five lamp materials' `emissiveIntensity` goes to their animation
+blocks (D490), so in a Seaside race 6 materials have blocks (the road's
+`uWet` and the five lamps). The countdown is the simulation's at the last
+tick, as the HUD's numbers are. Checked in the web build, downloaded
+export and `?world=gen` alike: the lamps dark at the start, four columns
+lit at 0.89 s to go (`ceil((4 - 0.89) × 5 / 4) = 4`), all dark at GO.
+The JS e2e `circuit` test's count (`lampMats`) has no Rust bridge yet;
+the logic itself is held step by step by `tests/seaside_animators.rs`
+(D594).
+
+## D683. The Night City Cruise in the client
+
+2026-10-04, WP 7.5 (D632's list). The loop needs nothing beyond Level 1's
+setup: City is its only scenery, and `animate::level1_scenery` names it,
+so `generated("cruise")` is the whole change. The build has 12 animators;
+10 materials get animation blocks, as D632 counted. With the export drawn,
+its 52 nodes exported hidden are spawned hidden (D498) and the cut-off's
+visibility edits now show and hide them; with `?world=gen` the build's
+scene starts all visible and the first frame's cut-off hides what is far.
+
+## D684. The L4 gate on Seaside's and the loop's stations, from the web build
+
+2026-10-04, WP 7.4 and 7.5, D496's method: `rust-web-stations.mjs
+--level <id> --query world=gen` (no download; the photo through the
+request interception), then `cargo xtask parity shots` against the JS run
+`a`. **Seaside Raceway: all 29 stations within SPEC 12's limits** (14
+places × chase and high, and the attract view), median 0.21 mean ΔE00 and
+0.49 block 95 %, worst 0.925 / 5.01 (the attract view under the
+start-finish bridge, where the banner's "MIDNIGHT RACER" is set in the
+bundled Roboto and the JS shot in the machine's Arial, so one letter falls
+behind a post: D370). **Night City Cruise: all 115 stations within the
+limits** (57 places × 2 and the attract view), median 0.34 / 0.98, worst
+0.916 / 4.14 (03000-high).
+
+## D685. The races, keyboard and autopilot
+
+2026-10-04. In the web build (WebGPU, headless Chrome, `?world=gen` and
+the downloaded export): Seaside Raceway, W held from GO gives 13 m/s and
+200 m in 8 s; with `autodrive=1&timescale=4` the three laps run to the
+results (4:27.47, laps 1:31.21, 1:28.27, 1:27.99, results with the lap
+row). Natively the same with `shots=` (countdown, race, results). The
+Night City Cruise: W and autodrive both drive the loop, the score
+counting. The e2e suites that touch these levels pass against the build:
+`level-switch` (Sierra → Seaside → Sierra and a race, downloaded and
+`?world=gen`, where Seaside is now built rather than downloaded) and
+`race-flow` (11 tests, the cruise's End run among them).
+
+## D686. Budgets: memory and frame time on Seaside and the loop
+
+2026-10-04. Wasm size: D680. Wasm memory and frames from
+`tools/parity/rust-perf.mjs` (WebGPU, the dev machine's RTX 3060, uncapped
+frame rate, 30 s flight, the machine shared: load averages given):
+
+| Run | ready | p50 / p95 / max ms | wasm MB, load → reloads | load |
+|---|---|---|---|---|
+| Seaside `?world=gen` | 2.7 s | 3.0 / 7.2 / 41 | 205 → 236 (10 reloads, +0) | 10.0 → 10.5 |
+| JS Seaside | 1.3 s | 0.4 / 1.5 / 737 (242 over 50) | JS heap | 10 |
+| Cruise `?world=gen` | 5.4–6.7 s | 2.9 / 7.4 / 38 | 438 → 479–490 (10 reloads, +0) | 4.3–9.1 |
+| Cruise export, no build (`world=off`) | 4.2 s | 2.6 / 7.9 / 37 | 390 → **562** | 4.3 |
+| Cruise export with the build (default) | 5.2 s | 3.1 / 8.4 / 34 | 443 → **615** | 6.4 → 11.6 |
+| JS Cruise | 2.3 s | 0.5 / 1.7 / 105 (150 over 50) | JS heap | ~6 |
+
+Seaside's downloaded path (the 38 MB export and the build for the
+animators) stays at 192 MB. The race pages' figures agree: Seaside 219
+(`?world=gen`), Cruise 448 at load and 512 after two reloads with the
+race's cars and sound.
+
+So the loop's default path is over SPEC 6.6's 512 MB on a second load,
+and was before this package (562 MB with no world build; the build adds
+the animators' 50 MB). Its `?world=gen` path, with no 181 MB export to
+download and parse, stays under the budget and does not grow over ten
+reloads, at the same frame times. The animators cost nothing measurable
+(the loop's per-frame edits, D632, are mostly unchanged values). Not
+decided here, the owner's (D439, D492): whether the client should build
+its levels instead of downloading them. For the loop the memory now says
+it must, or the export path must lose its CPU copies; for Seaside either
+path fits.
+
+## D687. The lap and cruise lines of the plain HUD
+
+2026-10-04, WP 7.4's lap HUD and WP 7.5's cruise scoring HUD. The plain
+HUD (`play::hud`, D431, a stand-in until M6's styled HUD) carried `LAP
+n/of` and the cruise's score. It now carries what `HUD.js` `update` shows
+in `#hud-lap` and `#hud-cruise`: on a circuit the lap's time (`time -
+lapStart`, none once finished) and `BEST LAP` (the fastest lap so far);
+on the cruise the score (`Math.floor(…).toLocaleString()`), `×mult` with
+its timer as a ten-segment bar (`clamp(multTimer / 6, 0, 1)` when the
+multiplier is over 1, as `#hud-mult-fill`'s width), the distance in miles
+(`this.mph` is true) and the best (`max(hud.bestScore, score)`, the
+stored `bestScore.<level>` read at each start as `startRace` sets it). The
+layout, fonts and styling are M6's (WP 6.3).
+
+## M7 client: Desert Run and Downtown Streets decisions
+
+## D720. Desert Run and Downtown Streets are built in the client
+
+2026-10-04, roadmap M7 (WP 7.3's and 7.2's client halves). With the
+budget at 16 MB (D675), the client builds Desert Run and Downtown Streets
+as it builds Sierra (D491, D492): `animate::generated` names the three, and
+each level's scenery is named in a file of its own
+(`crates/mr_game/src/levels/desert.rs`, `streets.rs`: `Desert` and
+`Streets`, each the level's only module, D550, D610), not through
+`scenery::PORTED` (D498). Both are numbered as their exports (D551, D613),
+so as for Sierra: with `?world=gen` the page downloads nothing and the
+loader draws the build, and by default the export is drawn and the
+build's animators run over it (`?world=off` turns them off). The menu's
+level tabs build them too (D580). The wasm grew 0.15 MB after gzip
+(WebGPU 8.09 to 8.24 MB, WebGL2 8.47 to 8.62 MB; D674 item 7 estimated
+0.24), under SPEC 6.6's 16 MB.
+
+## D721. What the two levels' animators needed of the client
+
+2026-10-04. Every edit the two levels' animators make is now applied (no
+"not applied" line natively at `mr_game::animate=debug`), which closes
+D556's and D614's lists, whose kinds D500 and D501 drew:
+
+- **The train's spot light** (Desert; D553, D556). `SceneIndex` keeps the
+  scene's first spot light (the one the loader puts in `Lighting`, D456's
+  scene spot) and its target, the next sibling; its `Light` edit sets the
+  colour and intensity (0 by day, 90 at night) and the moved nodes' world
+  positions set its position and direction, as three reads `matrixWorld`
+  and `target.matrixWorld` (`levels::desert::follow_spot`). `Lighting` is
+  written only when a value changed. Other levels' animators make no
+  `Light` edit, and the sun and hemisphere lights stay the sky's.
+- **The flicker points' clock** (Desert's nine FlickerPoints, D553): the
+  animator's `uTime` goes to the block's texel 4.x like the pools' (the
+  `FlickerPoints` slot), and the vertex stage reads it through
+  `kind_uniforms()`, which without a block still gives the scene-wide clock
+  as before (D293), so the material test scene is unchanged. Their colour
+  edits (`colour × k`) were already block colours.
+- **A plain material's opacity** (Desert's headlight sprites and flame,
+  Coast's pools and sprites): the client-coast agent's commit (D701),
+  cherry-picked here so both branches carry the same change.
+- **A plain Points' size** (Streets' phone flashes, D612): the block's
+  texel 4.y (`(Points, "size")`, starting from the exported size, 1 if
+  none), read in the points' vertex stage under D701's `PLAIN_ANIM`.
+
+The train, its sprites and the tumbleweeds (Desert), the elevated train,
+the neon clock, the steam's clock and scale, the barrier flashers and the
+aircraft lights (Streets) are transforms, instance matrices, colours and
+kind uniforms the shared path already applied (D493, D490).
+
+## D722. Streets' build frees each chunk builder as it emits it
+
+2026-10-04, after measuring the client's build. Wasm memory never shrinks
+(SPEC 5.5), so a build's transient peak is the level's high-water mark.
+Measured natively with a counting allocator, Streets' scenery job (D610)
+peaked at 452 MB of heap with 28 MB before it and 169 MB after it: its
+ten chunked `GeoBuilder` sets hold every vertex as JS doubles, and
+`emitAll` built each one's `Float32Array` geometry while all of them were
+still alive. `Chunks::take` now hands over a builder and leaves an empty
+one with the same attributes in its place, and `emit` and `emitAll`'s own
+loops take each builder as they build it, so its doubles are freed once
+its geometry exists. The JS never reads an emitted builder again (the
+billboards' posts written after `emitAll`, D610, still go into a builder
+nothing emits), so the scene is unchanged: `tests/streets.rs` with the
+cache (the whole digest) and `streets_animators` pass. The job's peak is
+354 MB; in the web build Streets' wasm high-water mark went from 492 to
+394 MB after load (with `?world=gen`). Not done: keeping `GeoBuilder`'s
+arrays as `f32` from the start would halve the rest (the JS rounds them to
+f32 only in `build`, and nothing reads them back, so it would be exact),
+but `GeoBuilder` is shared with City and Harbor (WP 3.3), so it is left
+for a package that owns it.
+
+## D723. The gates for Desert Run and Downtown Streets in the client
+
+2026-10-04, the web build (release, WebGPU, 1280 × 800) through the
+registered server, `?world=gen`, the machine shared with other agents
+(load averages given per run; the GPU's 12 GB was at times nearly full
+with other agents' Chrome runs, which made a station flight fail with
+`VK_ERROR_OUT_OF_DEVICE_MEMORY` until they finished).
+
+- **L4 stations** (`rust-web-stations.mjs --server --query world=gen`,
+  `cargo xtask parity shots`): **Desert 63 stations, 0 over the limits**,
+  median 0.155 mean ΔE00 and 0.370 block 95 %, worst 0.268 / 0.778
+  (03500-high; D500 from the export: 0.681 / 1.564). **Streets 43, 0
+  over**, median 0.336 / 1.001, worst 0.755 / 5.171 (02500-chase). Against
+  the same flight of the export without the animators (`world=off`, D501's
+  numbers again: 0.489 / 1.812) the difference is the lettering: the
+  build's signs are drawn by `mr_canvas` with the bundled fonts (D370),
+  the JS shots and the export with the machine's fonts (D613: up to 36
+  levels in the glyphs); the neon and the banners light up the difference
+  maps and nothing else does. A spot check of the WebGL2 build (three
+  stations each): 0 over, worst 0.407 / 1.282. The material scenes
+  (`cargo xtask parity materials`): 33, 0 over, worst 0.150 as before.
+- **The race** (`tools/parity/e2e/built-levels.test.mjs`): from the menu
+  with the level saved, `world=gen`, the autopilot racing 8 s and the
+  finish staged, the results screen, no page error, for both levels; and
+  the level tabs Desert → Streets → Desert, then a race. Natively the
+  race runs on both with the animators (the train rolling beside Route 66
+  at night, its spot light following it).
+- **Size**: 8.24 MB (WebGPU) and 8.62 MB (WebGL2) after gzip, of 16.
+- **Memory** (wasm high-water mark, budget 512 MB on phones): Desert 309
+  MB after load (`world=gen`; the export path: 243 after load, 351 on
+  reloads), 320 MB after a race; Streets 394 MB after load (492 before
+  D722), 404 MB after a race; ten level switches between them 426 MB at
+  every one (no growth). The JS heap peaks were 127 MB (Desert) and 461
+  MB (Streets).
+- **Frame time** (`rust-perf.mjs`, fly at 60 m/s, 60 s, uncapped):
+  Desert `world=gen` (load 10.3 → 12.9) p50 / p95 / p99 3.3 / 9.1 / 15.2
+  ms, 4 frames over 50 ms (all in the first 30 s, at s 1,089 to 1,724,
+  load-dependent: none in the same flight of the export at load 38 → 17,
+  3.5 / 6.9 / 9.6); Streets `world=gen` (load 11.5 → 22.1) 3.9 / 9.2 / 15.0,
+  none over 50 ms in the first 30 s, 6 later. The JS game on this machine
+  (BASELINE.md, WP 0.8) flies them at 1.5 to 2.3 ms of CPU a frame, so the
+  Rust client is not yet "no worse" here, as on every level (BASELINE.md,
+  WP 2.6 on); the animators cost under 0.2 ms a frame (D497).
+- **Load**: ready 5.0 s (Desert) and 4.5 to 6.7 s (Streets) from
+  navigation including the wasm, 2.2 to 3.4 s on reloads; the JS loads to
+  the menu in 3.9 and 3.2 s. Streets' first load is the slower.
+
+Left: L5 (the owner's review and drive on the phone); the font
+difference in the lettering is D370's choice, not this package's.
+
+## Coast Highway client decisions
+
+## D700. The Coast Highway is built in the client
+
+2026-10-04, M7 (WP 7.1's client half). With the wasm budget at 16 MB
+(D675), Level 2's world generation is linked into the client as Level 1's
+is (D491, D492): `animate::generated` names "coast", and `animate`'s build
+takes the level's scenery from `levels::coast::scenery` (Coast, Beach and
+Harbor by name, D498's rule; no other module). Nothing else is
+level-specific: the stages are Level 1's (`LevelSetup` with no plan, as
+`tests/level2.rs` builds it). So, as on Sierra, the client builds Coast
+behind the loading screen on every load, runs its 14 animators (D537,
+D543) on whichever scene it draws, and with `?world=gen` draws its own
+build without the 210 MB download. The two scenes number alike (D536), so
+the animators run over the export too (the drawn scene's shape is checked
+against the build's, D491). The build is 1.2 s natively (release) and 3.1
+to 3.3 s in the web build on the dev machine. Wasm after gzip: WebGPU 8.09
+→ 8.22 MB, WebGL2 8.47 → 8.60 MB (D674's estimate was +0.20).
+
+What WP 7.1's client to-do still listed is done: the kinds were drawn
+from the export (D499); the wheel's multi-material mesh without groups
+draws nothing (the loader makes one draw per group, so none, as three);
+every edit Coast's animators make is applied: transforms of the beam's
+pivot, the Ferris wheel and the harbour boats, the glow sprite's scale,
+instance matrices and colours, material colours, `emissiveIntensity`,
+Surf's and the beam's uniforms, the beach surf's map offsets, the plain
+materials' opacity and the `Points` attributes (D701). The Sea's `uTime`
+and `uOff2` edits are left to the client's `lighting::Anim`, which
+computes the same values from the same dt (D495).
+
+## D701. The animator path: a plain material's opacity, `Points` attributes, and writes into the mesh slab
+
+2026-10-04. Three additions to the shared path (`animate`, `convert`,
+`render::material`, `three_material.wgsl`), which no other level's
+animators used before (Desert's opacity edits use the first; its agent
+took the commit):
+
+- **Opacity of three's own materials** (Coast's lamp pools, the
+  lighthouse glow, the beach surf, the boats' lights). The kinds Standard,
+  Physical, Lambert, Basic, Line, Sprite and Points take `opacity` in the
+  animation block's texel 4.x (D490), which starts at the exported opacity
+  (1 if absent); the shader reads it under a new `PLAIN_ANIM` def (no
+  patch, the sprite, plain points) when the material has a block, so a
+  material without one is unchanged. The lamp pools' opacity, `0.42 ×
+  smoothstep(0.08, 0.5, night)`, is what the three sunrise stations needed
+  (D499).
+- **`Points` attribute edits** (the boats' running-light positions, 21
+  points; the port's glow colours, 80). Unindexed `Points` geometries of
+  at most 4,096 points keep their CPU copy (`convert::KEEP_POINTS`), and a
+  geometry value goes to its point's four quad vertices; a colour edit of
+  three components goes to Bevy's four.
+- **Writes into the slab, not the asset.** Editing the Bevy mesh asset
+  (how the flag's cloth was written, D497) makes Bevy re-extract and
+  re-upload the mesh. On the web (Chrome, WebGPU) that left GPU memory
+  behind every frame: a Coast flight with `?world=gen` grew from 1.8 to
+  6.1 GB of VRAM over its two minutes (one run hung another agent's
+  WebGPU work out of memory), against 1.8 GB flat with the attribute edits
+  skipped, 1.6 GB with the animators off, 1.6 GB on Sierra and 830 MB flat
+  natively. Now the animator path keeps its own copy of each edited mesh
+  (`KeptMesh`), and its packed vertices go into the mesh's slice of Bevy's
+  vertex slab at extraction (`MeshWrites`, `write_mesh_updates`), as the
+  instance streams are written (D497); the asset is never modified. The
+  same flight holds 1.8 GB. The 67 Coast stations give the same pictures
+  either way (and differ from a run with the attribute edits skipped at
+  38 stations, the glows), and Sierra's stations 00250 to 02500 are within
+  the limits as before.
+
+Other per-frame asset edits left in the client, for whoever meets the
+same growth: `play::models` edits a car material when the race's light
+slots are all taken (D456's fallback), and a new instance stream (a new
+buffer) is made when an InstancedMesh's drawn count changes (D497). Neither
+happens on Coast's flights or race.
+
+## D702. The L4 gate on Coast's stations, with its animators
+
+2026-10-04. `rust-web-stations.mjs --server --level coast`, WebGPU, 1280 ×
+800, frozen, against the JS shots of the cache:
+
+- `?world=gen`: **67 stations, all within SPEC 12's limits**, median 0.258
+  mean ΔE00 and 0.575 block 95 %, worst 0.865 mean and 3.073 block 95 %
+  (07000-high, the harbour from above).
+- The export with the animators (the default): 67 within, median 0.229 /
+  0.504, worst 0.748 / 2.747 (07000-high). The build's canvas textures are
+  `mr_canvas`'s, hence the small difference.
+- The three sunrise stations that waited for the lamp-pool updater (D499,
+  commit 46b2e64): 04000-chase 5.16 / 30.22 → 0.554 / 0.723, 04250-chase
+  3.98 / 23.59 → 0.303 / 0.597, 04500-chase 2.72 / 22.24 → 0.247 / 0.470
+  (`?world=gen`; the export path 0.538 / 0.726, 0.287 / 0.595, 0.229 /
+  0.445).
+- WebGL2, seven stations (night, sunrise, the harbour): all within, the
+  same numbers as WebGPU to 0.003, but for the first station flown,
+  00250-chase (0.208 / 0.464 against 0.120 / 0.287).
+
+A race works: `?level=coast&world=gen` with the autopilot (`phone.cjs
+desktop`) runs from the countdown to the results.
+
+## D703. Coast's budgets: memory, GPU memory, frame time; the open question
+
+2026-10-04, the web build, headless Chrome on the dev machine (RTX 3060),
+1280 × 800, high quality. Details in BASELINE.md, "Coast Highway built in
+the client".
+
+- **Wasm memory** (SPEC 6.6: under 512 MB on phones, no growth over ten
+  level switches). `?world=gen`: 456 MB after load, 512 MB after each of
+  ten reloads (no growth after the first). The export path, with the
+  build: 456 MB after load, 663 MB after each reload (the export's copy and
+  the build's high-water marks no longer coincide; before Coast's build,
+  D394 measured 436 then 528 to 636). A race: 466 MB either way. So the
+  phone budget is met only by building the level in the client, and then
+  at its edge; WP 2.6 measured 929 MB as the native process's RSS, not
+  the wasm memory.
+- **GPU memory** (not budgeted in SPEC 6.6): a Coast race 1.36 GB of VRAM
+  as Chrome reports it for the tab, a flight 1.8 GB, 2.3 GB over ten
+  reloads, before D701's fix 6.1 GB and growing. Phones share far less
+  memory; worth watching when the owner runs the phone pages.
+- **Frame time.** The machine was overloaded (load average 21 to 190 on 24
+  cores, swap full, other agents' browsers on the GPU), so the numbers are
+  indications. Full route, uncapped: `?world=gen` p50 5.9 ms, p95 28.6, p99
+  46.7 (load 21 → 46); the export without animators 4.2 / 8.5 / 15.7 (36 →
+  58); the JS game 1.2 / 6.0 / 15.7 (47 → 36). Alternating 60 s flights
+  with the animators on and off at load 100 to 190 do not separate them
+  (medians within 0 to 1.4 ms either way, p95 from 8 to 49 ms in both).
+  Natively the whole animator path is 0.10 ms a frame on Coast (the
+  updaters 0.024 ms, 124 edits a frame). The gap to the JS game is the
+  renderer's, as BASELINE.md's earlier sections record; SPEC 6.6's "no
+  worse than JS" is not met on this desktop for Coast, as for Sierra.
+
+**For the owner (D439, D492):** whether the game should build its levels
+in the client instead of downloading the exports. On Coast building saves
+the 210 MB download and keeps the wasm memory at 512 MB on reloads rather
+than 663; the pictures are within the limits both ways. Until decided,
+the default still downloads the export, and now also builds the level for
+its animators.
+
 ## Menu section decisions
 
 D676's package: the menu switches levels at once, over a short section of
