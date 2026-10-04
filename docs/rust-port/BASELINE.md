@@ -433,3 +433,4 @@ a phone, as G1 asks.
 | iPhone | WebGPU | sierra | | | | | | | |
 | iPhone | WebGPU | coast | | | | | | | |
 | iPhone | WebGL2 | sierra | | | | | | | |
+| Owner's Linux desktop, Firefox 154 | WebGL2 (picked by itself: no WebGPU) | seaside, quick look, hq on, 3373×1323 @ dpr 1 | 60 / 52 (vsync) | 17.1 / 17.1 / 33.1 / 532.8 | 1 / 2 | 0.34 s | 1.37 s (37.5 MB scene in 0.2 s; 14 warm-up pipelines) | 159 → 159 (no reloads) | 2026-10-04, build 9b573da. The 50.2 ms frame is at 0.2 s, just after ready; the 532.8 ms one at 53.6 s, s 3272, with no pipeline compiled after warm-up |
