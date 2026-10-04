@@ -2,8 +2,10 @@
 //! Physical, Lambert and Basic, Line drawn as basic), the patched kinds of
 //! WP 2.4 (Terrain, Asphalt, Shoulder, Markings, Sea: each JS
 //! `onBeforeCompile` patch as a block of shader code at the same point of
-//! `three_material.wgsl`, selected by [`Patch`]), and points (Points,
-//! GlowPoints, FlickerPoints) drawn as camera-facing quads. A JS material's
+//! `three_material.wgsl`, selected by [`Patch`]), points (Points,
+//! GlowPoints, FlickerPoints) drawn as camera-facing quads, and Level 1's
+//! remaining kinds (WP 3.9: TriplanarRock, Reflector, Siding, CityFacade,
+//! the TrafficStreams and SkyGlow shaders, Sprite). A JS material's
 //! parameters become a [`ThreeMaterial`]: its uniforms, its maps, and a
 //! [`ThreeKey`] that picks the shader variant, culling, blending and depth
 //! state the way three's `WebGLPrograms` and `WebGLState` do.
@@ -40,6 +42,36 @@ pub enum Patch {
     /// A `PointsMaterial` drawn as quads (SPEC 6.2 "Points"):
     /// `sizeAttenuation`, and the kind's patch.
     Points { attenuate: bool, mode: PointsMode },
+    /// `Mountain.js` `rockMaterial`: triplanar strata from `tRock` in world
+    /// space, instancing-aware (WP 3.9).
+    Rock,
+    /// `Mountain.js`'s post reflectors: the emissive takes the instance
+    /// colour.
+    Reflector,
+    /// `Valley.js` `surfaceDetail`: lap siding, barn boards or shingles in
+    /// world space.
+    Siding(SidingMode),
+    /// `city/cityTextures.js` `patchCityMaterial`: the building atlas by
+    /// cell, lit windows, glass, shopfronts and light spill.
+    City,
+    /// `City.js` `buildTraffic`: a `ShaderMaterial` on points, head- and
+    /// tail-lights sliding along the streets in the vertex shader.
+    Traffic,
+    /// `City.js` `buildSkyGlow`: a `ShaderMaterial`, the warm haze over the
+    /// city.
+    SkyGlow,
+    /// three's `SpriteMaterial`: a camera-facing quad (the waterfall's
+    /// spray).
+    Sprite { attenuate: bool },
+}
+
+/// `surfaceDetail`'s `mode` (`kind_opts.mode`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub enum SidingMode {
+    #[default]
+    Siding,
+    Boards,
+    Roof,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
@@ -81,6 +113,26 @@ impl Patch {
             MaterialKind::FlickerPoints => points(PointsMode::Flicker {
                 blink: kind_opt(m, "blink").unwrap_or(0.0) > 0.0,
             }),
+            MaterialKind::TriplanarRock => Patch::Rock,
+            MaterialKind::Reflector => Patch::Reflector,
+            MaterialKind::Siding => Patch::Siding(
+                match m
+                    .kind_opts
+                    .as_ref()
+                    .and_then(|o| o.get("mode"))
+                    .and_then(|v| v.as_str())
+                {
+                    Some("boards") => SidingMode::Boards,
+                    Some("roof") => SidingMode::Roof,
+                    _ => SidingMode::Siding,
+                },
+            ),
+            MaterialKind::CityFacade => Patch::City,
+            MaterialKind::TrafficStreams => Patch::Traffic,
+            MaterialKind::SkyGlow => Patch::SkyGlow,
+            MaterialKind::Sprite => Patch::Sprite {
+                attenuate: m.boolean("sizeAttenuation").unwrap_or(true),
+            },
             _ if m.ty == "PointsMaterial" => points(PointsMode::Plain),
             _ => Patch::None,
         }
@@ -136,6 +188,9 @@ pub struct ThreeKey {
     /// A tangent-space normal map (the sea's), with three's derivative
     /// frame (no tangents).
     pub normal_map: bool,
+    /// `alphaMap` (`alphamap_fragment`: its green channel), bound in the
+    /// `photo` slot, which only the terrain uses otherwise.
+    pub alpha_map: bool,
 }
 
 /// The material's uniforms (`three_material.wgsl`'s `ThreeParams`).
@@ -155,7 +210,9 @@ pub struct ThreeParams {
     pub normal_t0: Vec4,
     pub normal_t1: Vec4,
     /// Per patch: Terrain `uPhotoBox`; Sea `normalScale` (xy); Points
-    /// `size`, `uMinPx`, and the flicker's rate and depth.
+    /// `size`, `uMinPx`, and the flicker's rate and depth; City `uGround`
+    /// (x); Traffic `uTime`, `uNight`, `uFogK`, `uHalfH` as exported;
+    /// SkyGlow `uK`, `uGround`, `uH`; Sprite `rotation` (x).
     pub kind0: Vec4,
     /// Points: the flicker's blink rate.
     pub kind1: Vec4,
@@ -166,6 +223,15 @@ pub struct ThreeParams {
     /// (`lighting::MaterialLights`, D456). Zero (the default) leaves
     /// `emissive` as it is.
     pub night: Vec4,
+    /// The alpha map's uv transform rows.
+    pub alpha_t0: Vec4,
+    pub alpha_t1: Vec4,
+    /// x: the first texel of the material's animation block in the
+    /// globals (`lighting::G_BLOCKS`, `crate::animate`), 0 for none: the
+    /// values the scenery's animators move (colours, `emissiveIntensity`,
+    /// texture offsets, a kind's uniforms), read by the shader instead of
+    /// these parameters, so no material is edited per frame (D490).
+    pub slots: Vec4,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
@@ -302,6 +368,11 @@ impl Material for ThreeMaterial {
                 }
             }
             attrs.push(crate::convert::ATTRIBUTE_EXTRA.at_shader_location(8));
+            // The traffic streams' second attribute (`aDir`, `aPar.z`).
+            if layout.0.contains(crate::convert::ATTRIBUTE_EXTRA2) {
+                attrs.push(crate::convert::ATTRIBUTE_EXTRA2.at_shader_location(14));
+                defs.push("VERTEX_EXTRA2".into());
+            }
             descriptor.vertex.buffers = vec![layout.0.get_layout(&attrs)?];
             defs.push("VERTEX_EXTRA".into());
         }
@@ -343,9 +414,31 @@ impl Material for ThreeMaterial {
                     }
                 }
             }
+            Patch::Rock => defs.push("PATCH_ROCK".into()),
+            Patch::Reflector => defs.push("PATCH_REFLECTOR".into()),
+            Patch::Siding(mode) => defs.push(
+                match mode {
+                    SidingMode::Siding => "SIDING_SIDING",
+                    SidingMode::Boards => "SIDING_BOARDS",
+                    SidingMode::Roof => "SIDING_ROOF",
+                }
+                .into(),
+            ),
+            Patch::City => defs.push("PATCH_CITY".into()),
+            Patch::Traffic => defs.push("PATCH_TRAFFIC".into()),
+            Patch::SkyGlow => defs.push("PATCH_SKYGLOW".into()),
+            Patch::Sprite { attenuate } => {
+                defs.push("SPRITE".into());
+                if attenuate {
+                    defs.push("USE_SIZEATTENUATION".into());
+                }
+            }
         }
         if k.normal_map {
             defs.push("USE_NORMALMAP".into());
+        }
+        if k.alpha_map {
+            defs.push("USE_ALPHAMAP".into());
         }
         match k.model {
             Model::Physical => {
@@ -462,9 +555,21 @@ pub fn model_of(ty: &str) -> Option<Model> {
     match ty {
         "MeshStandardMaterial" | "MeshPhysicalMaterial" => Some(Model::Physical),
         "MeshLambertMaterial" => Some(Model::Lambert),
-        "MeshBasicMaterial" | "LineBasicMaterial" | "PointsMaterial" => Some(Model::Basic),
+        "MeshBasicMaterial" | "LineBasicMaterial" | "PointsMaterial" | "SpriteMaterial" => {
+            Some(Model::Basic)
+        }
         _ => None,
     }
+}
+
+/// The lighting model a material draws with: its built-in type's, or for
+/// the `ShaderMaterial` kinds ported as blocks of `three_material.wgsl`
+/// (TrafficStreams, SkyGlow: unlit, their own colour), basic.
+pub fn model_of_material(m: &MaterialDesc) -> Option<Model> {
+    model_of(&m.ty).or(match m.kind {
+        MaterialKind::TrafficStreams | MaterialKind::SkyGlow => Some(Model::Basic),
+        _ => None,
+    })
 }
 
 /// A JS material as a [`ThreeMaterial`]: its built-in type with its patch
@@ -479,7 +584,7 @@ pub fn three_material(
     shared: &SharedImages,
     instance_color: bool,
 ) -> Option<ThreeMaterial> {
-    let model = model_of(&m.ty)?;
+    let model = model_of_material(m)?;
     let num = |n: &str, d: f64| m.number(n).unwrap_or(d);
     let flag = |n: &str, d: bool| m.boolean(n).unwrap_or(d);
     let col = |n: &str, d: [f64; 3]| m.color(n).unwrap_or(d);
@@ -604,7 +709,58 @@ pub fn three_material(
                 p.kind0.w = fixed3(kind_opt(m, "depth").unwrap_or(0.35));
             }
         }
-        Patch::Shoulder | Patch::None => {}
+        Patch::Rock => {
+            aux = tex("tRock").map(|(h, _)| h);
+        }
+        Patch::City => {
+            // uMask in the detail slot; the map and emissive map are the
+            // plain ones, sampled by cell (`atlasUv`).
+            detail = tex("uMask").map(|(h, _)| h);
+            p.kind0 = Vec4::new(m.number("uGround").unwrap_or(0.0) as f32, 0.0, 0.0, 0.0);
+        }
+        Patch::Traffic => {
+            let u = |n: &str, d: f64| m.number(n).unwrap_or(d) as f32;
+            p.kind0 = Vec4::new(
+                u("uTime", 0.0),
+                u("uNight", 1.0),
+                u("uFogK", 0.0),
+                u("uHalfH", 360.0),
+            );
+        }
+        Patch::SkyGlow => {
+            let u = |n: &str| m.number(n).unwrap_or(0.0) as f32;
+            p.kind0 = Vec4::new(u("uK"), u("uGround"), u("uH"), 0.0);
+        }
+        Patch::Sprite { .. } => {
+            p.kind0 = Vec4::new(num("rotation", 0.0) as f32, 0.0, 0.0, 0.0);
+        }
+        Patch::None => {
+            // A plain material's tangent-space normal map (Valley's creek),
+            // as the sea's (three's derivative frame).
+            if lit && let Some((h, t)) = tex("normalMap") {
+                aux = Some(h);
+                (p.normal_t0, p.normal_t1) = uv_rows(t);
+                normal_map = true;
+                let s = vec("normalScale").unwrap_or_else(|| vec![1.0, 1.0]);
+                p.kind0 = Vec4::new(
+                    s.first().copied().unwrap_or(1.0) as f32,
+                    s.get(1).copied().unwrap_or(1.0) as f32,
+                    0.0,
+                    0.0,
+                );
+            }
+        }
+        Patch::Shoulder | Patch::Reflector | Patch::Siding(_) => {}
+    }
+    // alphaMap (alphamap_fragment), in the photo slot (the terrain is the
+    // only other user, and has none).
+    let mut alpha_map = false;
+    if !matches!(patch, Patch::Terrain { .. })
+        && let Some((h, t)) = tex("alphaMap")
+    {
+        photo = Some(h);
+        (p.alpha_t0, p.alpha_t1) = uv_rows(t);
+        alpha_map = true;
     }
     let emissive_map = if lit { tex("emissiveMap") } else { None };
     if let Some((_, t)) = &emissive_map {
@@ -656,6 +812,7 @@ pub fn three_material(
         depth_bias,
         patch,
         normal_map,
+        alpha_map,
     };
     Some(ThreeMaterial {
         params: p,
