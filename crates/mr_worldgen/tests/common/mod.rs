@@ -36,6 +36,17 @@ pub fn level(id: &str) -> Level {
     l
 }
 
+/// A level's world, ready to build: Seaside's with its survey
+/// (`world.level.data`, which Raceway's `build()` reads).
+pub fn world(id: &str) -> World {
+    let w = World::new(level(id));
+    if id == "seaside" {
+        w.with_level_data(survey())
+    } else {
+        w
+    }
+}
+
 /// The plan golden of a level.
 pub fn plan_json(id: &str) -> Value {
     let text = match id {

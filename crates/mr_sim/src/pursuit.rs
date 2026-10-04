@@ -111,6 +111,29 @@ pub fn callsign(i: usize, rng: &mut dyn Rng) -> i32 {
     10 + i as i32 * 3 + (rng.next_f64() * 3.0).floor() as i32
 }
 
+/// Every callsign there is (`CALLSIGNS`): 10 up to 10 + three per unit of
+/// the chase pool, less one.
+pub const CALLSIGNS: [i32; POOL_UNITS * 3] = {
+    let mut a = [0; POOL_UNITS * 3];
+    let mut k = 0;
+    while k < a.len() {
+        a[k] = 10 + k as i32;
+        k += 1;
+    }
+    a
+};
+
+/// The chase pool's size (`Object.values(POOL).reduce((a, b) => a + b)`).
+const POOL_UNITS: usize = {
+    let mut n = 0;
+    let mut i = 0;
+    while i < POOL.len() {
+        n += POOL[i].1;
+        i += 1;
+    }
+    n
+};
+
 /// Top speed of a player car spec on the flat: where drive = drag.
 pub fn top_speed(spec: &CarSpec) -> f64 {
     let mut v = 40.0;

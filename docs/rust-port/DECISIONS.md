@@ -3802,3 +3802,604 @@ WebGL2, no pipeline after the warm-up, and isolated slow frames in both
 builds under the machine's load. Ready is later on the dev machine (7 to
 11 s against 3 to 5 s), because the page holds the export back until the
 build is done (D491); `?world=gen` is ready in 7.5 s without the download.
+## WP 7.4 Seaside decisions
+
+## D590. The shape of `mr_worldgen::raceway`; `world.level.data` and `world.onCountdown`
+
+2026-10-04, WP 7.4. `Raceway.js` is `mr_worldgen::raceway`
+(`raceway/mod.rs`), `raceway/textures.js` is `raceway::textures`.
+`Raceway` keeps what `plan()` decides (`this.corners`, from `findCorners`)
+and, after `build()`, the JS fields other code reads (`kerbs`,
+`tyre_runs`, `bridges`, `tree_count`, and `lamp_mats`, which the e2e
+`circuit` test reads as `lampMats`); `build()` makes a `Bld` that is the
+JS `this` (the track, the survey, the graph, the group `raceway`, the
+rendered-surface sampler `S`, whose height cache all the builders share in
+the JS order, the materials) and runs the JS `build*` methods in the JS
+order; the `await tick()`s are not needed in one job. The extrusion
+profiles' closures hold the track by an `Arc` clone (`road::Lat` closures
+are `'static`). Where the JS `continue`s past a loop update that draws
+(the crowd's seats, the near trees' cells) the port uses a labelled block,
+as D530 does. The textures are `TextureCache` entries under
+`raceway:kerb`, `raceway:tyre`, `raceway:fence`, `raceway:crowd` and
+`raceway:banners` (D352); `bannerAtlas().rect(name)` depends only on the
+panel's place in `BANNERS`, so `banner_rect` computes it without the
+picture. The helpers are Mountain's `SurfaceSampler` (`coast/kit.js` is
+Mountain's kit, D530), City's `GeoBuilder` and `staticMesh`, Road's
+`extrude` and `runs`, Valley's `canopyGeometry`; `blobGeometry` keys its
+vertices by `toFixed(3)` as Rust's `{:.3}` of `x + 0.0` (no coordinate of
+the icosahedron is a rounding tie; -0 prints as 0 in both).
+
+The JS reads two things the world did not have. `world.level.data`, the
+survey, is `World::level_data` (`Option<Arc<SeasideData>>`, set with
+`World::with_level_data`), which the caller sets with the level it
+prepared (D54); Raceway's `build()` without it fails ("prepare() first"),
+which the job logs, as the JS level's `path()` throws. `world.onCountdown`,
+the hook the race calls every frame (`Race.update`:
+`this.world.onCountdown?.(started ? -1 : this.countdown)`), is
+`World::on_countdown` (`CountdownFn`: `FnMut(cd, &mut Vec<Edit>)`), which
+`finish()` carries to `WorldBuild::on_countdown`;
+`WorldBuild::countdown(cd)` runs it and resolves its edits as
+`WorldBuild::update` does. Raceway's sets the five start-light materials'
+`emissiveIntensity` (6 lit, 0 dark; `lit = cd > 0 ? clamp(ceil((4 - cd) ×
+5 / 4), 0, 5) : 0`). Both are new fields with `None` defaults: no other
+level's build changes (the Sierra, Coast and Desert gates pass unchanged).
+Raceway is the last line of `scenery::PORTED`; its `plan()` registers
+nothing, so the terrain and road gates are unchanged, and Seaside Raceway
+now builds with `scenery_factory(None)`, from ported modules alone, with no
+recorded stand-in. The shared test helper `common::world(id)` gives
+Seaside's world its survey, and `tests/world_data.rs` builds through it,
+so Raceway's build there has its data (the runout and carriageway it
+checks are unchanged).
+
+## D591. The L3 gate for Seaside Raceway, and what it found
+
+2026-10-04, WP 7.4. `tools/parity/raceway-golden.mjs` (desert-golden.mjs's
+pattern, in a file of its own) writes `parity/golden/seaside/seaside.json`
+from the cached export: the group `raceway` as Desert's golden holds
+`desert` (a line per node, the material table in canonical form, every
+texture's 8×8 block means), every texture that is not a canvas (index,
+source, size, channels, SHA-256), the night parameters, the night factor,
+camera and lights. `tools/parity/raceway-textures.mjs`
+(coast-textures.mjs's pattern) captures the group's canvases in the game
+with the bundled fonts, every one held to it, lettered or not, to
+`parity/golden/seaside/textures.json` (with premultiplied block means too,
+D592) and the RGBA to `parity/cache/<key>/seaside/`. `tests/seaside.rs`
+builds the level through `level_jobs` with `scenery_factory(None)`,
+updates the sky at the export's focus, applies the night parameters and
+runs the updaters once as the frozen export ran them (the menu: no race,
+so `onCountdown` is never called and the lights stay dark), then holds the
+group to the golden (`raceway_group`) and the scene to the export
+(`seaside_is_the_export`: night parameters, counts and kinds always, the
+non-canvas textures byte for byte, and with the cache the whole digest
+entry by entry). Result: **identical**, native and in wasm, with no fix to
+any shared module: the group `raceway`, 165 nodes (63,253 vertices) and
+all 18 materials; the scene, 227 nodes, 126 meshes, 23 materials, 13
+textures, 90 instance sets, 2 lights, 220 drawables, 261,352 vertices,
+1,306,614 indices (the exporter's byte count, 39,061,944, comes out equal
+too), every digest entry equal but the pixels of the 9 canvas textures;
+the night parameters equal. The terrain's data texture and the
+loose-ground mask made from the survey are byte-identical to the export;
+the photo is the caller's (D593). Canvas textures against the capture:
+the concrete 0.03 levels mean absolute difference at most, the kerb 0.36,
+the tyre wall 0.21, the crowd 0.50, the banner atlas 0.20 (22.0 against
+the export, all in the glyphs: the export draws with the machine's fonts),
+the catch fence as D592 says. Rerun: `node tools/parity/raceway-golden.mjs`
+(with the cache), `node tools/parity/raceway-textures.mjs` when the fonts
+change, then `cargo test -p mr_worldgen --test seaside` (and in wasm).
+
+## D592. The catch fence is held where three draws it
+
+2026-10-04, WP 7.4. `fenceTexture` is D534's case again: diagonal strokes
+1.6 px wide on a transparent canvas, where Chrome's coverage across a
+stroke is 16, 137, 242, 137, 16 and mr_canvas's exact area 2, 151, 242,
+151, 2 (the same total). Unpremultiplied that is 11.8/11.7/9.1/5.1 levels
+mean absolute difference (R/G/B/A), the RGB of the faint edge pixels
+dominating. The fence material is `alphaTest` 0.35 and opaque, so three
+draws only the texels at or above the cut: no pixel falls on the other
+side of it (0 of 16,384), the colour of the drawn pixels is within
+0.88/0.56/1.19 levels, the premultiplied colour within 3.7/3.9/3.8 and the
+total alpha within 0.12 %. `tests/seaside.rs` holds an alpha-tested canvas
+over the threshold that way (no crossing, drawn colour under 3,
+premultiplied under D534's 6, alpha total within 0.5 %), and without the
+capture's RGBA (CI, wasm) by its premultiplied 8×8 block means, which the
+capture records (0.14/0.29/0.20/0.08). Matching Chrome's stroke coverage
+stays mr_canvas's (D534).
+
+## D593. The photo in the gate; the loose-ground mask byte for byte
+
+2026-10-04, WP 7.4. The draped photo and its mask were ported with the
+terrain (D234): the client decodes `photo.jpg` and passes it in
+`TerrainSetup::photo` (`GroundPhoto::seaside`); the mask is made from the
+survey. With the cache, `tests/seaside.rs` takes Chrome's decode from the
+export, as `tests/terrain_mesh.rs` does, so the whole digest (the photo's
+bytes and sampler, the terrain material's `tPhoto`, `tLoose` and
+`uPhotoBox`) is compared; without it a blank picture of the photo's size
+(1843×2160) stands in, and the photo's bytes alone go unchecked. The mask
+(1106×1296, one channel) and the terrain's data texture are compared to
+the golden's SHA-256 in every run, CI and wasm included: byte-identical.
+
+## D594. Seaside Raceway's start lights and animators, step by step
+
+2026-10-04, WP 7.4. Raceway registers no updater; its moving part is
+`world.onCountdown`. `tools/parity/seaside-animators.mjs`
+(desert-animators.mjs's pattern, D555, in a file and golden of its own,
+so that other packages can extend `animators.mjs`) runs the game's own
+`world.update` and then `world.onCountdown(cd)` over 16 uneven frames
+(dt 0 to 3.3 s round the lap and past the line, the camera at the line,
+the hairpin and the Corkscrew, the countdown lighting each column, GO,
+racing at -1, a fresh start) and 360 ticks of 1/120 s at 60 m/s with the
+countdown running from 4 to 0 (`cd = 4 - (k + 1) / 90`), recording every
+value that changes under `world.root`: 5 values on 5 targets, the
+start-light materials' `emissiveIntensity` (the road's dew and the night
+parameters hold still: Seaside's sky is at night 0 all race). The Node
+capture (the photo an empty texture, which nothing reads; three's
+"already non-indexed" warning from `blobGeometry`, which the game gives
+too, let through) and two browser captures agree; CI checks the Node one
+reproduces. `tests/seaside_animators.rs` replays them as the client runs a
+frame (`update_sky`, the night parameters, `update`, then
+`WorldBuild::countdown(cd)`): **identical, every frame and every tick**,
+native and in wasm.
+
+## D595. What the client still stands in for on Seaside Raceway
+
+2026-10-04, WP 7.4. The data side of every material kind Seaside Raceway
+uses is complete (D591): Terrain (with the photo), Asphalt, Markings,
+SkyDome and 19 built-in Standard materials. On `main` today none of them
+is stood in for or hidden by `convert::stand_in` (no Sprite, no effect
+`ShaderMaterial`): the Terrain patch already draws the drape (`MR_PHOTO`:
+`tPhoto`, `tLoose`, `uPhotoBox`), and Raceway's materials are plain
+`MeshStandardMaterial`s whose features the renderer has (maps, vertex
+colours, `instanceColor` on the oaks, `alphaTest` on the fence,
+`polygonOffset` on the kerbs, the grid and the pit lane, `DoubleSide`).
+What the client still has to do for the L4 stations and the race:
+
+- **Build Seaside from mr_worldgen** (`animate::generated` lists Sierra
+  only, D491; Seaside builds whole now, numbered as its export): the level
+  prepared with the survey (`seaside::prepare`), then
+  `World::new(level).with_level_data(survey)` with the same
+  `Arc<SeasideData>`; `TerrainSetup { ground_color:
+  Some(seaside_ground_color(survey)), photo: Some(GroundPhoto::seaside(
+  &survey, decoded_photo_jpg, url)), .. }` (D234: the decode is the
+  client's; the JS sets the texture sRGB, `flipY` false, anisotropy 8,
+  clamped; for the animators alone, which never read it, a blank picture
+  of its size does, as `tests/seaside_animators.rs` builds);
+  `scenery_factory(None)`. Without the survey Raceway's build fails and
+  the job logs it (D590).
+- **The start lights** (`Raceway.js` `buildStart`, `world.onCountdown`):
+  five `MeshStandardMaterial`s (colour 0x220806, emissive 0xff2010,
+  `emissiveIntensity` 0), two `CircleGeometry(0.17, 12)` lamps each, the
+  material's `emissiveIntensity` changed per frame. Every frame of a race,
+  after `world.update`, the client calls `WorldBuild::countdown(cd)` (`cd`
+  the countdown's seconds left while it runs, -1 once racing: `Race.js`
+  `this.world.onCountdown?.(started ? -1 : this.countdown)`) and applies
+  its `Change::Number { prop: "emissiveIntensity" }` edits to the
+  material's emissive intensity (6 lit, 0 dark) as D493 applies
+  `WorldBuild::update`'s (D490's material block). The e2e `circuit` test
+  counts the lit lamps (`__world.scenery[0].lampMats`).
+- The lap HUD and the rest of the race (not world generation).
+
+## D458. The race's car models join the warm-up
+
+2026-10-04. Every race compiled one (Coast) to three (Sierra) pipelines
+after `ready` (`__mr.lateFrames`): the car models (D440) are built when the
+race starts, during the warm-up, but most of their parts are hidden then
+(the traffic not yet on the road, the far models, the near models of cars
+drawn far), and Bevy specialises a pipeline only for what is drawn.
+`play::models::spawn` now notes each part's material key, mesh layout and
+shadow casting in a `warmup::Combos`, as the loader does (D390), and
+spawns its stand-ins: every kind and material variant of the field,
+racers and traffic, near and far models, lights included. The police are
+not drawn in a race yet (the race draws players, rivals and traffic,
+`flow::slots`), so there is nothing of theirs to warm up; when M8 draws
+them, their models go through the same spawn. A restart builds a new field
+after `ready`; its stand-ins are drawn for a frame and removed, and its
+combinations are the first race's. In the race runs since (Coast and
+Sierra, both backends, 30 and 10 s from the start, 20 runs) `lateFrames`
+is 0.
+
+## D459. The HUD's glyphs are laid out during the warm-up
+
+2026-10-04. With the late pipelines gone, WebGPU races still had 50 to
+130 ms frames in the first half second of racing (s 42 to 45). Counting
+the WebGPU calls per frame there: nothing changed but one or two
+`writeTexture`s of 512 × 512 a frame, the Bevy UI text's glyph atlas
+uploaded whole each time the race timer showed a digit not yet in it;
+in Chrome those uploads go through the GPU process's command stream (the
+D455 signature: the page waiting for command space). `warmup::spawn_glyphs`
+lays out all printable ASCII (the HUD shows nothing else) in each of the
+HUD's text styles (`play::hud`: bold, sizes 84, 44, 30, 26, 22, 17 and 15),
+hidden and off screen, beside the cars' stand-ins; they go when the
+warm-up ends, and the atlas keeps the glyphs. The sizes are copied from
+`play::hud`; a new HUD size must be added there too. After it, no atlas
+upload happens at the start, and the first frames of racing take 5 to 17
+ms (load 27).
+
+## WP 5.6–5.7 and race audio decisions
+
+## D510. The songs' L4 renders: all seven within 0.4 dB, and the songs join the default run
+
+2026-10-04, WP 5.6. The last gate of WP 5.6 is SPEC 7.5's offline renders
+of each song's first thirty seconds (`song-<id>` in `renders.json`, music
+at 0.7 through the music bus, SFX silent). They render on the native
+backend through `examples/render_scenarios.rs` as the other scenarios do
+(D253: `music.play(track)`, `setMusic(true)`, `pumpUntil(t + 1)` every 64
+control frames) and compare with Chrome's band levels in
+`tools/parity/audio-bands.mjs`. Nothing needed fixing: the worst band per
+song is midnight-run 0.36 dB (1259 Hz), neon-rush 0.36 dB (1259 Hz),
+mirage 0.17, seabright 0.13, afterburner 0.07, interstate 0.02 and
+chrome-heart 0.01 dB, against SPEC 7.5's 1.5 dB and Chrome's own run-to-run
+jitter; the RMS levels agree to 0.03 dB. The sequencer's call log was
+already exact (D251), so these renders check the instruments' DSP (the
+hall convolver, the delays, the drum kit's buffers, the pulse waves) on the
+native backend. `audio-bands.mjs` now renders and compares every scenario
+by default, the songs included (111), instead of leaving the songs to an
+explicit prefix.
+
+## D511. A param event scheduled before a target curve re-anchors the curve (the burble)
+
+2026-10-04, WP 5.7. `shot-radio-burble` was 6.4 dB off at 158 Hz (D259).
+The burble schedules every syllable's `setTargetAtTime` on the buzz's
+frequency first and sets `buzz.frequency.value = f0` after: a set event
+at the present, before all of them. D254's workaround had already sent
+each target to the crate behind a `setValueAtTime` holding the value the
+param had when the target arrived, the oscillator's default 440 Hz, so
+the first syllable swept down from 440 Hz where Chrome's starts at f0
+(the first 0.3 s carried 15 dB more at 316 Hz). The native backend now
+re-sends a param's events from the new event's time on (cancel, then the
+mirrored timeline with every target anchored anew) whenever a value, set,
+ramp or target lands before a target curve already sent. The burble now
+matches Chrome to 0.01 dB in every band, and the full L4 run is 110 of
+111 within 1.5 dB; the one left is `engine-rally-6500-1`'s 25 Hz band
+(D259), 60 dB under the signal.
+
+## D512. Radio lines in `mr_audio::radio::lines`; `CALLSIGNS` in `mr_sim::pursuit`
+
+2026-10-04, WP 5.7. `radioLines.js` is `mr_audio::radio::lines`, per SPEC
+7.3's port map: `DIRS`, `TAKES`, `place_name`, a `Line { text, parts }`
+per `RADIO` entry as a function of the same name (`unit_down`,
+`rival_busted`), `radio_clips` and `levels_radio_clips` in the JS's order
+(a `Vec` stands in for the `Map` by id, first entry wins). The JS takes
+`CALLSIGNS` from `Pursuit.js` as `radioClips`' default units; `mr_audio`
+may depend on `mr_math` only (SPEC 3.2), so the units are an argument and
+the callers pass `mr_sim::pursuit::CALLSIGNS`, a new export computed from
+the chase pool as the JS computes it (10 to 30). `levels_radio_clips`
+takes a `LevelRadio` (police or not, zone names, rival names) per level
+for the same reason. The whole clip list (192 clips) was compared once
+with the JS's `levelsRadioClips(LEVELS)`, id, text and takes, and is
+identical. `test/unit/radio.test.js` and `pursuit-audio.test.js` are
+`tests/radio.rs` and `tests/pursuit_audio.rs`; they read the levels and
+the callsigns through dev-dependencies on `mr_track`, `mr_levels` and
+`mr_sim` (check-deps looks at normal dependencies only), and the check of
+`audio/radio/` against `index.json` runs natively, the rest in wasm too.
+The fake `fetch` and decoder are a `Fetch` that serves names as bytes and
+the null backend's decoder, which tells the files apart by the length it
+decodes them to. The sirens, the radio bus, the burble and the pursuit
+calls were already ported with `GameAudio` (D251); the stingers and the
+radio are exercised by the pursuit drive's call log, which stays exact.
+
+## D513. The race's audio: `play::audio`, one `GameAudio` shared with the gesture bridge
+
+2026-10-04, race audio. `crates/mr_game/src/play/audio.rs` drives
+`mr_audio`'s `GameAudio` the way `main.js` and `Race.update` drive the
+JS one. `GameAudio` holds `Rc` handles, so it lives in a non-`Send` Bevy
+resource (`Shared`, an `Rc<RefCell<RaceAudio>>`) whose system runs after
+`draw` on the main thread; on the web the same `Rc` is in a thread-local
+that the page's gesture handlers reach through `web::gesture`. The
+backends are the facade's: the browser's Web Audio on wasm (`mr_audio`'s
+`web` feature), natively web-audio-api with an output device
+(`native-device`: cpal, so ALSA headers on Linux; CI installs
+`libasound2-dev`). `native::try_context` returns `None` where no output
+stream can be made, and the game is then silent instead of panicking.
+The radio clips are fetched through the `Fetch` trait: `../../audio/radio/`
+relative to the page on the web (as Seaside's survey is fetched, so it
+works under any sub-path), `audio/radio/` under the repository natively;
+the files are untouched. `play/mod.rs` gains `pub mod audio` and one
+`audio::plugin(app)` line; `flow.rs` and `session.rs` gain the per-tick
+observer (D515); `web.rs` gains one call in `gesture`.
+
+## D514. The graph is built behind the loading screen; the first gesture starts it
+
+2026-10-04, race audio. `GameAudio::init` builds every buffer, wave and
+node of the graph: 0.19 s natively in release on the null backend, 0.48 s
+on the native backend, 0.31 to 0.57 s in the browser (the WebGPU release
+build in headless Chrome on the dev machine, under load). In the JS game it runs inside the tap on
+Start, before the race. The Rust client has no menu yet (M6) and starts
+the race on its own, so the first gesture is a touch or key during the
+race; building there would stall the race for a third of a second or
+more on a phone. So the client calls `setCar(car)` then `init()` once the
+race is made and before it starts, behind the loading screen: the context
+is created suspended (outside a gesture a browser does not start it), and
+nothing plays, since a suspended context's clock stands still and
+`GameAudio` does not steer before it runs. `init` is documented in the
+JS to work this way ("the graph builds fine on a suspended context;
+unlock() starts it from a gesture"). Every gesture then runs the JS's
+`wakeAudio` (`init(); unlock()`) inside the page's handler: pointer-down,
+pointer-up, touch-end, click and key-down, the JS's five (the page gains
+`pointerdown`; on an iPhone the tap's pointer-up and touch-end are the
+gestures, and WP 5.3's `audioSession` "playback" is set in `init` before
+the context is made, so the Silent switch does not mute it). When the
+race starts, the client makes `startRace`'s calls in its order:
+`setPaused(false)`, `init()`, `unlock()`, `playTrack` (`pickMusic`, only
+when the level or the choice changed), `setVolume`, `setMusic` and
+`setCar`. Natively there is no autoplay rule and the context runs from the
+start. On a phone the sound starts when a finger first lifts (a touch's
+start is not a gesture to a browser): a player who holds the stick and
+the pedal from the countdown on hears nothing until then. The JS game's
+players tap Start first; the client gets its start button in M6.
+
+## D515. The audio hears every tick, and the camera as the JS's audio reads it
+
+2026-10-04, race audio. `Race.update` calls the audio once per update,
+and the parity drives update once per 1/120 s tick. The client's session
+now calls an observer after each tick with the state, the tick's events
+and its input (`Session::advance_observed`), and `flow::Race` keeps a
+`TickAudio` per tick of the frame: the one-shots from the `SimEvent`s
+(countdown and GO beeps, the player's car contacts and wall impacts,
+shifts, landings, near-miss and passing whooshes, the finish fanfare),
+`update`'s state (with the off-road amount computed as `Race.update` does:
+the road type's edge, the loose ground), the nitro, the rivals relative to
+the player, the tunnel spans, the car for the camera and the camera bumps.
+The audio system replays them in order after the frame. `update`'s
+throttle is the input's during the countdown and `ctrl.throttle` after it;
+when the controls are not the input (the cool-down driver after the
+finish, the hold of a bust) the simulation now says so with a new event,
+`SimEvent::Controls { player, throttle }` (state, hash and traces
+unchanged).
+
+The pans the JS takes from `camera.matrixWorld` (a contact's, the
+rivals') are not the drawn camera's. `Object3D.lookAt` brings the world
+matrix up to date before it sets the new orientation, so the matrix holds
+the orientation of the `lookAt` before: during the countdown the rivals
+hear the chase camera of that tick (`cam.update`'s `lookAt`), not the
+intro swing that is drawn (`introCamera`'s), and after it the previous
+tick's camera; a contact, read earlier in the update, hears the camera of
+one or two ticks before, depending on whether a render came between.
+With the drawn camera the countdown's pans were up to 1.85 off (the
+swing goes the other way round). So the audio driver steps its own
+`CameraRig` per tick on the tick's car, with the drawn rig's mode and the
+frame's look-back and the same bumps, and keeps the two orientations the
+JS keeps: the last `lookAt`'s and the matrix's, which takes the former at
+each `lookAt` and at the end of each rendered frame. Over the scripted
+race the 16,326 pans then agree with the JS's to 8e-16.
+
+## D516. The call-log gate for the race in the client
+
+2026-10-04, race audio. Two checks against `drive-race.jsonl.gz` (the JS
+game's calls on its audio over the 5400 ticks of the scripted race:
+Sierra, the sports car, seed 1, the autopilot). `play::audio::tests::
+the_scripted_race_makes_the_js_calls` runs the client's frame loop
+headless at 60 frames a second (two ticks a frame, as the drive) and
+requires all 10,962 calls, line for line, every argument bit for bit
+but the 16,326 pans, which agree to 8e-16 (three's quaternion round
+trip). `node tools/parity/rust-audio-race.mjs` runs the web release build
+in headless Chrome with a phone's autoplay rule, reading the page without
+user activation, and `?audiolog=1` (the client records its calls as the
+JS facade recorder writes them): before any gesture the graph is built
+and the context stays suspended with its clock at 0 for two seconds of
+countdown; a key press starts it; the race's 10,962 calls then match the
+JS drive's, method, tick and every argument but the pans exactly, the
+rivals' pans to 8e-16, and the car contacts' pans to 0.014 (74 to 89 of
+the 126 impacts differ beyond 1e-9: a contact hears the camera of the tick before or the
+one before that depending on whether a render came between, and the
+browser's frames are not the drive's two ticks long). The gesture's own
+`init`/`unlock` and the build behind the loading screen (`setCar`,
+`init`) are reported and left out. Since the Rust `GameAudio` turns the
+JS drive log into the JS Web Audio call log exactly (D251,
+`tests/game_calllog.rs`), the client's Web Audio calls are the JS game's
+but for those contact pans. What the audio costs the main thread is on
+`window.__mr.audio`: 0.35 ms a frame on average in that run, 11 ms on the
+race's first frame (`startRace`'s calls), and nothing in the measurement
+page (`?perf=1` flies the camera with no race, so no audio is made).
+
+## D517. Settings, keys and what is left to the menus and to Hot Pursuit
+
+2026-10-04, race audio. The music and SFX volumes and the track choice
+are read from the JS game's store keys (`mr.musicVol`, `mr.sfxVol`,
+`mr.track` in `localStorage`, JSON), so a player who set them in the JS
+game hears the same; natively the JS defaults (0.7, 0.85, the level's
+own). The music key (M) toggles the music between 0 and 0.7 and stores
+`mr.musicVol`, as `main.js` does; T plays the next track. Pause and resume
+call `setPaused`; the results' race again calls `uiClick('start')` before
+`startRace`, as the JS button does. Not done here: the volume sliders, the
+track picker and the now-playing toast (M6's menus and HUD), and Hot
+Pursuit's audio hook-up (sirens, mood, damage, spiked tyres, the radio
+lines and their prefetch, the stingers), which is WP 8.4; the client's
+pursuit races get the race's sounds only.
+
+## WP 7.2 Streets decisions
+
+## D610. The shape of `mr_worldgen::streets`
+
+2026-10-04, WP 7.2. `Streets.js` is `mr_worldgen::streets` (`streets/mod.rs`),
+`streets/props.js` is `streets::props`, `streets/facades.js`
+`streets::facades` and `streets/textures.js` `streets::textures` (their
+canvas pictures; `facadeMaterial` and `patchStreetAtlas` are in `mod.rs`
+beside `ambientPatch` and `neonFlicker`, which are kinds whose GLSL is the
+renderer's). The JS methods are spread over `mod.rs` (the route analysis,
+the materials, the blocks and their kerb outlines, the streets, the
+pavements, `emitAll`), `buildings.rs` (`block`, `midrise` and its signs,
+`rowhouse`, `tower`, `plaza`, `farBlock`, the trees, the aircraft lights,
+the billboards) and `dressing.rs` (the lamps, signals, barriers, gantries,
+crowds, lanterns, the elevated railway, the vents, the reflections), all
+`impl Bld`, where `Bld` is the JS `this` while it builds: the grid
+(`level.grid` is `mr_levels::streets`: `PX`, `PZ`, `HW`, `WALK`, the
+route's `setback` and `legs` from `build_route()`, `ground`, `district`),
+the generator 9090, the materials, the collected lists (fronts, sign
+lights, spill, steam, cables, trees, aircraft, billboards) and the ten
+chunked builders. `Chunks` keeps the JS `Map` keyed `"cx,cz"`: builders in
+the order first asked for, a `BTreeMap` used only for lookup. The JS
+makes a chunk wherever it writes `const P = this.bPlain.at(cx, cz)`, even
+when nothing goes into it, and the order of the chunks is the order of the
+meshes, so the port asks for the chunk at the same place (the gate found
+the one place it did not). `this.blocks` is a `Vec` in insertion order with
+a lookup map; `crossUse`'s values are only tested for truth, so it is a
+set. Where the JS draws from the generator in a loop condition (`k < (tier
+=== 0 ? 1 + Math.floor(rng() * 3) : 0)`, the wires, the newspaper boxes)
+the port draws the bound anew at every test (D350); where it draws inside
+an argument list or an array literal, into locals in the same order.
+`Props.parkedCars` bakes `car_model::build_vehicle` (`lod: 'low'`, seed 3)
+as `bakeCar` does, through `mountain::kit::world_matrices`;
+`setHeadlights(0)` changes only emissive intensities, which the bake does
+not read, so it is not called. `plan()` sets the runout by
+`mr_levels::world::plan_runout` (0), mirrors it into `sim_data`, and
+assigns `world.no_marks` (`t.noMarks = nm`; Streets is the level's only
+module). Streets is the eighth line of `scenery::PORTED`: the terrain and
+road gates run its own `plan()`, which gives the recorded unpainted
+stretches bit for bit, and Level 3 builds from ported modules alone. Two
+JS quirks are kept, not deviations: no traffic-signal mast stands on a
+kerb (the corner points fall outside the kerb's rounded corner), so
+`buildSignals` builds nothing but still draws its coin flips; and the
+billboards' posts go into a plain builder after `emitAll` has emitted it,
+so nothing draws them.
+
+## D611. The steam puffs' `Math.random`
+
+2026-10-04, WP 7.2. `buildSteam` gives each puff `aSeed = (k / 10,
+Math.random())`, from the page's `Math.random`, which the scene export
+seeds (D20). The 900 seeds of the export are 900 consecutive draws of
+mulberry32(0x5eed) from draw 15,284 on (found by scanning the stream for
+the export's first three values; all 900 then match as f32), so
+`streets::props::STEAM_RANDOM_AT` is 15,284 and the port draws them from
+`valley::page_random(STEAM_RANDOM_AT)`, as D332 does Valley's planks. A
+level built for play draws the same seeds. Nothing else in Streets reads
+`Math.random`.
+
+## D612. Downtown Streets' animators, step by step
+
+2026-10-04, WP 7.2. The updaters are, in the JS order, `NeonClock` (the
+one `uNTime` uniform the two neon materials share; the port writes it into
+both), `Signals` (none on Streets, D610), `Blink` (the barrier flashers'
+colour), `Flashes` (the phone flashes' point size), `Train` (the elevated
+train's position: scripted to meet the player from 380 m before the
+crossing to 160 m after it, free-running at 16 m/s and wrapping
+elsewhere; it reads the level's ground, so it keeps nothing of the
+build), `Steam` (its clock, and `uScale` = 0.5 × the drawing buffer's
+height (or 720) / tan(fov / 2) from the camera) and `Aircraft` (the warning
+lights' colour). `tools/parity/animators.mjs --level streets` captures the
+game's `world.update` over 16 uneven frames (dt 0 to 150 s, the player
+under the viaduct and away from it, one long frame letting the train wrap)
+and 360 ticks under the viaduct, as D537 does Level 2's: 7 values on 7
+targets, in `parity/golden/animators/streets.json`. The Node capture and
+two browser captures agree; the Sierra and Coast goldens are unchanged;
+CI checks it regenerates. `tests/streets_animators.rs`: **identical,
+every frame and every tick, native and in wasm**.
+
+## D613. The L3 gate for Downtown Streets, and what it found
+
+2026-10-04, WP 7.2. `tools/parity/streets-golden.mjs` (coast-golden.mjs's
+method, D531, in a file of its own) digests the groups `streets` and
+`road` (whose `asphalt2` Streets wets: roughness 0.62, metalness 0.05,
+colour 0.72) of the cached export into `parity/golden/streets/streets.json`.
+`tools/parity/streets-textures.mjs` (coast-textures.mjs's method, D535)
+captures every canvas of both groups as Chrome draws it with the bundled
+fonts: 22 pictures for 31 texture entries, in
+`parity/golden/streets/textures.json` and `parity/cache/<key>/streets/`.
+`tests/streets.rs` builds Level 3 with `scenery_factory(None)`, updates the
+sky at the export's focus, applies the night parameters, runs every
+updater once (dt 0, s 0, the export's camera) and holds (a) both groups to
+the golden and every canvas to the capture within WP 3.2's threshold, and
+(b) the whole scene to the export as Level 2 is (D536). Result:
+**identical**, native and in wasm: the group `streets` 346 nodes
+(2,379,330 vertices) and its 40 materials (StreetFacade, StreetAtlas,
+AmbientProp ×5 with their `rgb`, Neon ×2, the Steam `ShaderMaterial` with
+its GLSL, the built-ins) parameter by parameter; the group `road` 14 nodes
+and 3 materials; the scene 441 nodes, 432 meshes, 45 materials, 26
+textures, 10 instance sets, 434 drawables, 2,706,726 vertices, 1,855,224
+indices, every digest entry equal but the pixels of the 24 canvas
+textures. Against the capture the pictures are within 1.25 levels mean
+absolute difference: the neon atlases 1.23/1.25/1.18 and 1.04/0.96/0.94
+(R/G/B; the shadow-blurred glyphs, as Desert's neon, D551), the ads 0.19
+to 0.82, the banners 0.17 and 0.06, the shared glow 0.58, the barrier 0.42,
+the puddle (`filter: blur(6px)`) 0.23, the façade, street and train
+atlases 0.02 to 0.10, the pavement 0.06. The lettered ones differ from the
+export by up to 36 levels (the start banner), all in the glyphs (the
+export's machine fonts).
+The one port fix the gate found was a chunk's creation order (D610). No
+shared module's behaviour changed; mr_canvas gained `stroke_text_max`
+(`strokeText(text, x, y, maxWidth)`, beside `fill_text_max`, for the neon
+signs), an export only. Rerun: `node tools/parity/streets-golden.mjs`
+(with the cache), `node tools/parity/streets-textures.mjs` when the fonts
+change, then `cargo test -p mr_worldgen --test streets` (and in wasm).
+
+## D614. What the client still stands in for on Downtown Streets
+
+2026-10-04, WP 7.2. The data side of every material kind Downtown Streets
+uses is complete (D613). `convert::stand_in` and `render::material` on
+`main` today draw these with stand-ins or hide them; the list for the L4
+stations:
+
+- **StreetFacade** (`streets/facades.js` `facadeMaterial`; the upper
+  floors, far blocks, towers and roofs, one mesh per 560 m chunk): drawn as
+  a plain lit standard material, its atlas sampled at the raw tile-unit
+  uv. A `MeshStandardMaterial` (map and emissiveMap the 1024² façade atlas,
+  4×4 cells of 256 px, clamped; emissive white, emissiveIntensity 1.1,
+  roughness 0.62, metalness 0.2; no vertex colours), program key
+  `streets-facade`, attributes `position`, `normal`, `uv` (tile units,
+  unbounded), `cell` (atlas cell + 16 × the building's seed) and `fdata`
+  (street-level y, bounce strength, bounce hue; GeoBuilder's `color`
+  renamed). The patch: `vCell`, `vAUv`, `vFData` and the world y `vWY`
+  from the vertex stage; replacing `map_fragment`, `fIdx = mod(floor(vCell
+  + 0.5), 16)`, `fSeed = floor((vCell + 0.5) / 16)`, `fUv = ((cx +
+  clamp(fract(u), 0.004, 0.996)) / 4, (3 − cy + clamp(fract(v), 0.004,
+  0.996)) / 4)`, sampled with `textureGrad` and `dFdx/dFdy(vAUv) × 0.25`;
+  replacing `emissivemap_fragment`, `totalEmissiveRadiance *=
+  emissive(fUv) × windowLight(floor(vAUv × FSPEC[fIdx].xy), fSeed,
+  FSPEC[fIdx].z)` (`FSPEC` is `GRID`: columns, rows, lighting kind;
+  `fHash`, `fHue` and `windowLight` are `facades.js:363–390`), then the
+  street bounce `+= diffuse × (bc × fdata.y × exp(−max(vWY − fdata.x, 0) /
+  7) + (0.03, 0.032, 0.045))`, `bc` the sodium `(1, 0.68, 0.4)` or, for a
+  hue `fdata.z > 0.001`, `mix((1, 0.7, 0.45), fHue(fdata.z), 0.65)`.
+- **StreetAtlas** (`streets/textures.js` `patchStreetAtlas`; shop fronts,
+  rowhouses, awnings, vending machines, stalls, posters): drawn as a plain
+  lit standard material. A `MeshStandardMaterial` (map and emissiveMap the
+  1536×1152 street atlas, 4×3 cells of 384 px, clamped; emissive white,
+  emissiveIntensity 1.2, roughness 0.7, metalness 0.05, `vertexColors`
+  for the tint), program key `street-atlas-2`, attributes `position`,
+  `normal`, `uv` (tile units; a rowhouse's are mirrored, so negative),
+  `color`, `cell`. The patch as the façade's but `sUv = ((cx + clamp(fract
+  u)) / 4, (2 − cy + clamp(fract v)) / 3)` with gradients × (1/4, 1/3);
+  the emissive × `wl`, `wl = 0.65 + 0.6 × fHash(vec2(sSeed, 5))` for a
+  cell of kind 0, else `windowLight(floor(vAUv × SSPEC.xy), sSeed,
+  SSPEC.z) × 1.4` (`S_GRID`); then `totalEmissiveRadiance += diffuse ×
+  (0.075, 0.06, 0.05)`.
+- **AmbientProp** (`streets/props.js` `ambientPatch`; program keys
+  `streets-amb-pave`, `-plain`, `-car`, `-tree`, `-steel`; the pavements,
+  the plain dressing, the parked cars, the trees (an InstancedMesh with
+  `instanceColor`, `flatShading`) and the viaduct's steel and braces (an
+  InstancedMesh)): drawn as plain lit standard materials, so unlit sides
+  go black at night. The patch adds, after `emissivemap_fragment`,
+  `totalEmissiveRadiance += diffuseColor.rgb × kind_opts.rgb`.
+- **Neon** (`streets/props.js` `neonFlicker`; program keys `streets-neon-h`
+  and `-v`; the fascia and blade signs): drawn as a plain unlit basic
+  material, steady. A `MeshBasicMaterial` (map the 1024×512 horizontal or
+  vertical neon atlas, colour (2.4, 2.4, 2.4), HDR, not clamped), uniform
+  `uNTime` (the `NeonClock` animator's `Number` edit on both materials every
+  frame), attributes `position`, `normal`, `uv`, `ndata` (seed, mode, 0;
+  GeoBuilder's `color` renamed). The patch, before `opaque_fragment`: `sd
+  = ndata.x × 97`, `k = 0.94 + 0.06 sin(t·60 + sd)`; mode 1 `k ×=
+  nHash(floor(t·13) + sd) < 0.18 ? 0.12 : 1`; mode 2 `k ×= fract(t·0.35 +
+  ndata.x) < 0.72 ? 1 : 0.06`; mode 3 `k ×= 0.35 + 0.65 step(0.45,
+  nHash(floor(t·7) + sd))`; `outgoingLight ×= k`, with `nHash(p) =
+  fract(sin(p × 91.345) × 47453.5453)`.
+- **Steam** (`streets/props.js` `buildSteam`; one `Points` of 900 puffs,
+  `userData.dynamic`): hidden (`stand_in`'s `Steam => Hidden`). A
+  `ShaderMaterial` with its GLSL in the scene (`gl_PointSize = (0.8 +
+  life × 3.2) × uScale / −mv.z`, `gl_PointCoord` in the fragment stage,
+  premultiplied output), transparent, `depthWrite` false, `CustomBlending`
+  One / OneMinusSrcAlpha, no fog; uniforms `uTime` and `uScale`, both
+  `Number` edits of the `Steam` animator every frame (`uScale` from the
+  camera: 0.5 × drawing-buffer height / tan(fov / 2)); attributes
+  `position` and `aSeed` (vec2). Points become quads (D294).
+- Built-ins to mind: the lantern globes (671 instances, D452) are a
+  `MeshBasicMaterial` of colour (2.6, 0.5, 0.25) times `instanceColor` up
+  to 2.8, so up to 7.3 in red: the data equals the export bit for bit; the
+  renderer must multiply and not clamp. The lamp lenses are a basic colour
+  (4, 2.9, 1.7). The aircraft lights are a `PointsMaterial` with
+  `sizeAttenuation` false and `frustumCulled` false, their colour a
+  `Color` edit; the barrier flashers' colour and the phone flashes' size
+  are edits too. The elevated train is a `Mesh` the `Train` animator moves
+  (`Transform`; `matrixAutoUpdate` stays on). Puddles, spill, reflections
+  and lamp pools are additive basic materials with polygon offset −4/−4
+  and render order 2; the lane paint −2/−2, the side-street asphalt +1/+2.
+  The billboards are double-sided basic materials (colour 1.5) on the ad
+  textures.

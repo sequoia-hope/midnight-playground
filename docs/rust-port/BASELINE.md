@@ -630,6 +630,29 @@ owner's 3.5 s was a cold first run (his repeat: 0.61 s).
 (frames, GCs and markers from the profile), `calls.mjs` (WebGPU calls per
 frame in Chrome).
 
+**Race starts (D458, D459).** Races with the autopilot (seed 1,
+`timescale=2`, high quality, 10 s from the start of racing, three rounds,
+uncapped; load 10 to 26, the machine busy with other work): late
+pipelines 0 in every run on Coast and Sierra and both backends (were 1 and
+3). On WebGPU no frame over 50 ms in the start (s 42 to 50) in any of the
+six runs (before D459: 50 to 132 ms frames there in four of six); single
+stalls of 730 to 880 ms elsewhere in three runs at load 18 to 26 (s 108,
+678, 376), not seen at lower load. On WebGL2, Sierra none; Coast is
+GPU-bound from the start (56 to 77 ms intervals uncapped, as in the
+flights above), and with vsync on (`CAPPED=1`) holds 30 to 60 frames a
+second with no frame over 33.5 ms; WebGPU on Coast with vsync on holds 60
+with no frame over 16.8 ms.
+
+At lower load afterwards (30 s races, `timescale=2`, uncapped): WebGPU,
+Coast at load 4.7 and 8.9: 0 frames over 50 ms, worst 32.5 and 49.1 ms;
+Sierra at 8.7: 0, worst 24.8 ms; Sierra at 14.6: 2 (54 ms at s 67, 60 ms
+at s 1,899), worst 60.1 ms. No stall of the 730 to 880 ms kind in these
+four runs: they look like the busy machine, but that is not confirmed.
+WebGL2 at load 8.2 and 7.0: Coast 259 frames over 50 ms (73 to 76 ms
+intervals from the start, worst 123.6), Sierra 12 (54 to 57 ms, one of
+106 ms at s 708); both are the GPU-bound uncapped pacing described above
+(p50 6.6 and 6.0 ms), and late pipelines are 0 in all six runs.
+
 ## The Rust client at WP 3.9 (Level 1's kinds and animators, DECISIONS D490 to D497)
 
 2026-10-04, the same method (`node tools/parity/rust-perf.mjs --level

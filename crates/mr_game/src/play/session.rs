@@ -53,10 +53,18 @@ impl Session {
     /// Advances by a frame's time: as many whole ticks as have come due (at
     /// most [`MAX_TICKS`]), asking `input` for each tick's controls just
     /// before it runs. Returns the ticks run.
-    pub fn advance(
+    pub fn advance(&mut self, frame_dt: f64, input: impl FnMut(&SimState) -> InputFrame) -> u32 {
+        self.advance_observed(frame_dt, input, |_, _, _, _| {})
+    }
+
+    /// [`Session::advance`], with `observe` called after each tick with the
+    /// state it left, that tick's events and its input (the audio's
+    /// per-tick calls, `Race.update`'s tail).
+    pub fn advance_observed(
         &mut self,
         frame_dt: f64,
         mut input: impl FnMut(&SimState) -> InputFrame,
+        mut observe: impl FnMut(&LevelRuntime, &SimState, &[SimEvent], &InputFrame),
     ) -> u32 {
         self.events.clear();
         self.acc += frame_dt.clamp(0.0, MAX_FRAME);
@@ -65,7 +73,9 @@ impl Session {
         while self.acc >= DT - 1e-9 && n < MAX_TICKS {
             let frame = input(&self.curr);
             self.prev.clone_from(&self.curr);
+            let from = self.events.len();
             step(&self.lr, &mut self.curr, &[frame], &mut self.events);
+            observe(&self.lr, &self.curr, &self.events[from..], &frame);
             self.acc -= DT;
             n += 1;
         }
