@@ -269,7 +269,8 @@ fn unload_scene(
         return;
     };
     for e in &scene {
-        commands.entity(e).despawn();
+        // A menu section's entities go with their root (D742).
+        commands.entity(e).try_despawn();
     }
     commands.remove_resource::<Build>();
     commands.remove_resource::<cars::Cars>();

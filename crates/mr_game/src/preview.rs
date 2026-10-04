@@ -496,10 +496,12 @@ fn drive(
                     s.stage = Stage::Failed;
                     continue;
                 };
-                let Ok(track) = Track::new(&level) else {
+                let Ok(mut track) = Track::new(&level) else {
                     s.stage = Stage::Failed;
                     continue;
                 };
+                // As `make_track` keeps it: the race may start on this Track.
+                track.runout = mr_levels::world::world_data(level.id).runout;
                 let root = commands
                     .spawn((
                         Transform::default(),
@@ -651,21 +653,15 @@ fn switch(world: &mut World) {
             let mut pv = world.resource_mut::<Previews>();
             pv.free = false;
             pv.generation += 1;
-            let shown = pv.shown.take();
-            for (k, s) in pv.secs.iter_mut().enumerate() {
+            pv.shown = None;
+            for s in pv.secs.iter_mut() {
                 match std::mem::replace(&mut s.stage, Stage::Queued) {
-                    Stage::Up(up) => {
-                        roots.push(up.root);
-                        // The shown one's world and index are the client's;
-                        // they go with the scene's teardown or the race.
-                        let _ = (k, shown);
-                    }
+                    Stage::Up(up) => roots.push(up.root),
                     Stage::Spawning(sp) => roots.push(sp.root),
                     _ => {}
                 }
             }
             pv.t0 = None;
-            pv.first_ms = pv.first_ms.or(Some(0.0));
         }
         let warm: Vec<Entity> = world
             .query_filtered::<Entity, With<SectionWarm>>()

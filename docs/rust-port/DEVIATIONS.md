@@ -21,6 +21,7 @@ when a work package introduces one, with the package and the JS it concerns.
 | The music player link opens the JS page | Its Rust screen is M5's | WP 6.2, D573 |
 | A tap on no control of the pause screen resumes | The M4 phone flow, kept | WP 6.2, D578 |
 | The logo's gradients and glow are flat colours per line and letter | No gradient text in Bevy UI; drawing it in software cost 0.3 MB of wasm | WP 6.1, D573 |
+| A level tab only selects: the menu flies over a section of that level (its first 500 m from `startS + 60`, starting over at the end), prepared for every level when the menu opens; Race builds or downloads the level whole behind the loading screen (`main.js` `loadLevel` rebuilds the whole world on a tab, and the attract camera drifts along the whole first zone). Main menu after a race keeps the raced level for its tab, as the JS does | The owner (D676): instant switching, no full level per tab; a whole level is up to 210 MB to download | D676, D740–D746 |
 
 ## Known JS quirks reproduced, not fixed
 
