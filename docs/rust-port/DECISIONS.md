@@ -3165,3 +3165,20 @@ at race time 3 and 8 s are the same before and after (mean 0.06 and 0.22
 of 255, the differences at the moving cars' edges from frame timing); the
 headlights and tail lights match. Measurements: BASELINE.md, "Races at
 dusk".
+
+## D457. The post chain keeps its buffer and bind groups between frames
+
+2026-10-04, from the Firefox investigation (BASELINE.md, "Firefox"). The
+post chain (D174) made a uniform buffer (mapped at creation) and thirteen
+bind groups every frame. Each is a JavaScript object over a native
+allocation in the browser; in Firefox the content process then runs a
+major GC for "TOO_MUCH_MALLOC" about every 20 s of flight, and the frame
+it lands in can miss its vsync. They are now kept in `post::PostCache`:
+the buffer is written (`writeBuffer`) only when its contents change (the
+exposure, the bloom sizes), and the bind groups are made once per set of
+texture views (the view's two post-process textures swap every frame, so
+two sets are in use; a resize makes new ones). The pictures are identical
+(the material scenes and 153 native stations to the pixel). Per frame on
+Seaside the page now makes 28 bind groups and 5 buffers instead of 41 and
+6; what remains is Bevy's own (view and mesh bind groups, uniform buffers
+it recreates, one buffer mapped for reading every frame).
