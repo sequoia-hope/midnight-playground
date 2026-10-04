@@ -630,6 +630,8 @@ pub fn stand_in(m: &MaterialDesc) -> StandIn {
         // ShaderMaterials (and sprites) whose look is all shader: additive
         // glows, beams, foam, steam, particles, skid marks. Drawn as plain
         // quads they would be white sheets, so they wait for their kinds.
+        // The race's particles and skid marks are drawn by `play::fx`
+        // (WP 4.4), not from a scene; the police glow is M8's.
         Particles | SkidMarks | PoliceGlow => StandIn::Hidden,
         // Ported as blocks of three_material.wgsl (WP 3.9, Coast): unlit.
         TrafficStreams | SkyGlow | Surf | LighthouseBeam | Steam => StandIn::Unlit,

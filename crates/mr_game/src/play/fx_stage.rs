@@ -32,7 +32,10 @@ struct Staged {
 }
 
 pub fn plugin(app: &mut App) {
-    if app.world().resource::<Opts>().o.param("fx").is_none() {
+    if matches!(
+        app.world().resource::<Opts>().o.param("fx"),
+        None | Some("0")
+    ) {
         return;
     }
     app.init_resource::<Staged>().add_systems(Update, stage);
@@ -65,6 +68,13 @@ fn pose(track: &mr_track::Track, c: &Value, k: f64, dt: f64) -> CarIn {
     }
 }
 
+/// The asset stores the effects are made in.
+type Stores<'w> = (
+    ResMut<'w, Assets<Mesh>>,
+    ResMut<'w, Assets<Image>>,
+    ResMut<'w, Assets<ThreeMaterial>>,
+);
+
 #[allow(clippy::too_many_arguments)]
 fn stage(
     mut commands: Commands,
@@ -72,11 +82,7 @@ fn stage(
     opts: Res<Opts>,
     status: Res<Status>,
     tr: Res<crate::TrackRes>,
-    (mut meshes, mut images, mut mats): (
-        ResMut<Assets<Mesh>>,
-        ResMut<Assets<Image>>,
-        ResMut<Assets<ThreeMaterial>>,
-    ),
+    (mut meshes, mut images, mut mats): Stores<'_>,
     shared: Res<SharedImages>,
     mut lights: ResMut<MaterialLights>,
     writes: Res<MeshWrites>,
@@ -119,8 +125,9 @@ fn stage(
         let p = pose(track, c, last, dt);
         let body = commands
             .spawn((
-                Transform::from_xyz(p.x as f32, p.y as f32, p.z as f32)
-                    .with_rotation(Quat::from_rotation_y((std::f64::consts::FRAC_PI_2 - p.yaw) as f32)),
+                Transform::from_xyz(p.x as f32, p.y as f32, p.z as f32).with_rotation(
+                    Quat::from_rotation_y((std::f64::consts::FRAC_PI_2 - p.yaw) as f32),
+                ),
                 Visibility::Inherited,
                 crate::loader::SceneEntity,
                 Name::new("fx stage body"),
@@ -184,7 +191,10 @@ fn stage(
             .iter()
             .map(|c| pose(track, c, f64::from(k), dt))
             .collect();
-        for b in bursts.iter().filter(|b| num(b, "frame", -1.0) == f64::from(k)) {
+        for b in bursts
+            .iter()
+            .filter(|b| num(b, "frame", -1.0) == f64::from(k))
+        {
             let f = track.frame(num(b, "s", 0.0));
             let lat = num(b, "lat", 0.0);
             let (x, y, z) = (f.x + f.rx * lat, f.y + num(b, "h", 0.0), f.z + f.rz * lat);
