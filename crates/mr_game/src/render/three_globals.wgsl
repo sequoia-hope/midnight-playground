@@ -32,3 +32,4 @@ const G_POINT_COLOR: i32 = 24;  // rgb colour × intensity; w decay (0 colour: n
 const G_ANIM: i32 = 25;         // road uWet, sea uTime, sea uOff2 (xy)
 const G_ANIM2: i32 = 26;        // sea normal-map scroll (xy), glowTime, pixel ratio
 const G_LIGHTS: i32 = 32;       // 32..: material light slots, four a texel (D456)
+const G_BLOCKS: i32 = 160;      // 160..: the materials' animation blocks, five texels each (D490)
