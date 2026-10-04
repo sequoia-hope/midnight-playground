@@ -13,7 +13,6 @@ pub mod color_builder;
 pub mod colorizer;
 pub mod flora;
 pub mod geom;
-#[cfg(feature = "harbor-wip")]
 pub mod harbor;
 pub mod material;
 pub mod mountain;
