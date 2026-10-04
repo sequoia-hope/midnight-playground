@@ -3,12 +3,14 @@
 
 #![forbid(unsafe_code)]
 
+pub mod beach;
 pub mod builder;
 pub mod car_model;
 pub mod city;
 pub mod color;
 pub mod color_builder;
 pub mod colorizer;
+pub mod desert;
 pub mod flora;
 pub mod geom;
 pub mod material;
