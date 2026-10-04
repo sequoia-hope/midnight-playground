@@ -18,9 +18,16 @@ use bevy::render::extract_resource::ExtractResource;
 pub const G_LIGHTS: usize = 32;
 /// Material light slots, four to a texel.
 pub const LIGHT_SLOTS: usize = 512;
+/// The first texel of the materials' animation blocks (`crate::animate`,
+/// D490), after the material lights.
+pub const G_BLOCKS: usize = G_LIGHTS + LIGHT_SLOTS / 4;
+/// Texels per animation block.
+pub const BLOCK_TEXELS: usize = 5;
+/// Animation blocks (materials an animator touches; Sierra: 34).
+pub const MAX_BLOCKS: usize = 128;
 /// Texels in the globals row (`three_globals.wgsl`): the scene's state, then
-/// the material lights.
-pub const GLOBALS_WIDTH: usize = G_LIGHTS + LIGHT_SLOTS / 4;
+/// the material lights, then the animation blocks.
+pub const GLOBALS_WIDTH: usize = G_BLOCKS + MAX_BLOCKS * BLOCK_TEXELS;
 pub const G_SUN_DIR: usize = 0;
 pub const G_SUN_COLOR: usize = 1;
 pub const G_HEMI_SKY: usize = 2;
