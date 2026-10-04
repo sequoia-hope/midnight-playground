@@ -3404,6 +3404,7 @@ dependencies = [
  "bevy",
  "js-sys",
  "mr_audio",
+ "mr_canvas",
  "mr_levels",
  "mr_math",
  "mr_net",

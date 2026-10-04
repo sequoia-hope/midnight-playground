@@ -19,6 +19,7 @@
 //! - [`fly`]: the fly and attract cameras of `src/main.js`.
 //! - [`cars`]: stand-in cars driven by the simulation (WP 2.4).
 //! - [`play`]: a playable race (M4): session, input, camera, flow, HUD.
+//! - [`ui`]: the screens (M6): the settings store and the widgets.
 //! - [`warmup`]: every pipeline the scene needs, compiled behind the
 //!   loading screen (WP 2.6).
 //! - [`status`]: what the page and the window title show.
@@ -36,6 +37,7 @@ pub mod play;
 pub mod render;
 pub mod stations;
 pub mod status;
+pub mod ui;
 pub mod warmup;
 
 #[cfg(not(target_arch = "wasm32"))]
