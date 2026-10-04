@@ -6165,8 +6165,8 @@ the camera's run; `--query sectionshots=<dir>&menu=0` takes the views).
   diagnostic build, not committed): the five views after the first hold
   about 13 MB of heap between them (96 → 109 MB in use); each peaks about
   15 to 35 MB above that while it builds.
-- **Race after the menu** (Coast, built): wasm high-water 515 to 563 MB on WebGPU,
-  516 to 564 MB on WebGL2 (564 twice, 516 once; both vary run to
+- **Race after the menu** (Coast, built): wasm high-water 515 to 564 MB on WebGPU,
+  516 to 564 MB on WebGL2 (most runs 548 to 564; they vary run to
   run), against Coast raced
   straight from the address here: 466 to 498 MB (WebGPU), 473 to 507 MB
   (WebGL2), and 512 MB on reload (D678). The heap in use when Race is
