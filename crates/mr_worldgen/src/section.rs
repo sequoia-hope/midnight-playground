@@ -181,6 +181,23 @@ pub fn cut(w: &mut World) -> CutStats {
     for id in far {
         w.graph.detach(id);
     }
+    // The geometry only what was cut drew is dropped now, not with the
+    // world after the scene is assembled: less memory at the build's end
+    // (D745).
+    let mut used = vec![false; w.graph.geometries.len()];
+    let mut stack: Vec<NodeId> = w.graph.roots.clone();
+    while let Some(id) = stack.pop() {
+        let o = w.graph.get(id);
+        if let Some(g) = o.geometry {
+            used[g.0 as usize] = true;
+        }
+        stack.extend(o.children.iter().copied());
+    }
+    for (g, used) in w.graph.geometries.iter_mut().zip(used) {
+        if !used {
+            *g = crate::three_geom::BufferGeometry::new();
+        }
+    }
     stats
 }
 
