@@ -8,12 +8,18 @@
 //!   race's countdown drives (`world.onCountdown`).
 //! - The Night City Cruise: Level 1's setup and City, so `animate`'s own
 //!   build serves it; nothing here.
+//! - Desert Run ([`desert`]) and Downtown Streets ([`streets`]): their
+//!   scenery modules for `animate`'s build, so the wasm links only the
+//!   levels the client builds, and what each needs of the client beyond
+//!   the shared animator path (D720 to D723).
 //!
 //! The race's countdown reaches the world through [`RaceCountdown`], which
 //! `animate::run_animators` hands to `WorldBuild::countdown` after
 //! `WorldBuild::update`, as `Race.update` calls `world.onCountdown`.
 
+pub mod desert;
 pub mod seaside;
+pub mod streets;
 
 use bevy::prelude::*;
 use mr_sim::race::RaceStateKind;
