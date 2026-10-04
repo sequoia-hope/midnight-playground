@@ -546,6 +546,51 @@ impl RaceAudio {
         self.call(Call::UiClick(kind));
     }
 
+    /// The menus' volume sliders and track picker (`crate::ui`):
+    /// `applyVolume` when the sound is up, and `pickMusic` for a new track
+    /// choice.
+    pub fn menu_settings(&mut self, s: Settings, level: &str) {
+        let track = s.track != self.settings.track;
+        self.settings = s;
+        if self.audio.ready() {
+            self.apply_volume();
+            if track {
+                self.pick_music(level);
+            }
+        }
+    }
+
+    /// A level tab: `if (audio.ready) pickMusic()`.
+    pub fn menu_level(&mut self, level: &str) {
+        if self.audio.ready() {
+            self.pick_music(level);
+        }
+    }
+
+    /// `toMenu`: the sound unpaused, the engine idle, no rivals, the open
+    /// road's acoustics.
+    pub fn to_menu(&mut self) {
+        self.call(Call::SetPaused(false));
+        self.mode = Mode::Race;
+        self.call(Call::Update(
+            0.016,
+            Box::new(CarState {
+                rpm: Some(0.0),
+                rpm_max: Some(7800.0),
+                throttle: Some(0.0),
+                gear: Some(0.0),
+                speed: Some(0.0),
+                skid: Some(0.0),
+                nitro: Some(false),
+                on_ground: Some(true),
+                scrape: Some(0.0),
+                ..CarState::default()
+            }),
+        ));
+        self.call(Call::SetRivalEngines(Vec::new()));
+        self.call(Call::SetEnvironment("open"));
+    }
+
     /// The ticks of a frame, in order: each one's one-shots, then
     /// `update`, the nitro burst, the rivals and the tunnel (`Race.update`).
     /// The pans come from the camera as the JS reads it: `camera.matrixWorld`
@@ -658,6 +703,9 @@ impl RaceAudio {
         match (was, m) {
             (Mode::Race, Mode::Paused) => self.pause(true),
             (Mode::Paused, Mode::Race) => self.pause(false),
+            // End run (a cruise, from the pause screen):
+            // `audio.setPaused(false); showResults(...)`.
+            (Mode::Paused, Mode::Results) => self.pause(false),
             _ => {}
         }
     }
@@ -810,6 +858,13 @@ fn frame(shared: NonSend<Shared>, mut play: ResMut<Play>, mut keys: MessageReade
         .any(|k| k.state == ButtonState::Pressed && !k.repeat && k.key_code == KeyCode::KeyT);
     let started = play.started;
     let Some(race) = play.race.as_mut() else {
+        // The menus (`crate::ui`): the music plays on, and the page still
+        // sees the sound's state.
+        if next {
+            a.next_track();
+        }
+        a.poll();
+        publish(&mut a);
         return;
     };
     let t0 = now_ms();
@@ -905,6 +960,15 @@ fn publish(a: &mut RaceAudio) {
         JsValue::from_f64(a.audio.ctx().map_or(0.0, |c| c.current_time())),
     );
     set(&o, "music", JsValue::from_f64(a.settings.music));
+    set(&o, "sfx", JsValue::from_f64(a.settings.sfx));
+    set(&o, "track", JsValue::from_str(&a.settings.track));
+    set(
+        &o,
+        "playing",
+        a.audio
+            .track_info()
+            .map_or(JsValue::NULL, |t| JsValue::from_str(t.id)),
+    );
     set(&o, "prepareMs", JsValue::from_f64(a.prepare_ms));
     set(&o, "frameMsMax", JsValue::from_f64(a.frame_ms_max));
     set(
