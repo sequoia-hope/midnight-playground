@@ -425,6 +425,8 @@ fn uniform_slot(kind: MaterialKind, prop: &str) -> Option<usize> {
         // lamp pools, the lighthouse's glow, the beach surf, the boats'
         // lights; D701), read by the shader under `PLAIN_ANIM`.
         (Standard | Physical | Lambert | Basic | Line | Sprite | Points, "opacity") => 0,
+        // A plain Points' size (Streets' phone flashes; D721).
+        (Points, "size") => 1,
         _ => return None,
     })
 }
@@ -449,7 +451,7 @@ pub fn fix_uniforms(mat: &mut ThreeMaterial, kind: MaterialKind, overrides: &ser
 }
 
 /// Every animated uniform of [`uniform_slot`].
-const UNIFORMS: [&str; 11] = [
+const UNIFORMS: [&str; 12] = [
     "uTime",
     "uNight",
     "uFogK",
@@ -461,6 +463,7 @@ const UNIFORMS: [&str; 11] = [
     "opacity",
     "uNTime",
     "uScale",
+    "size",
 ];
 
 impl SceneIndex {
@@ -535,7 +538,11 @@ impl SceneIndex {
                 let mut uniforms = [0f32; 4];
                 for name in UNIFORMS {
                     if let Some(slot) = uniform_slot(m.kind, name) {
-                        let unset = if name == "opacity" { 1.0 } else { 0.0 };
+                        let unset = if matches!(name, "opacity" | "size") {
+                            1.0
+                        } else {
+                            0.0
+                        };
                         uniforms[slot] = m.number(name).unwrap_or(unset) as f32;
                     }
                 }

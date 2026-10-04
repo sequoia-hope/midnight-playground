@@ -19,8 +19,9 @@ after(async () => { await browser?.close(); });
 const NAMES = { desert: 'Desert Run', streets: 'Downtown Streets' };
 
 for (const level of ['desert', 'streets']) {
-  test(`${level} (world=gen): a race from the menu to the results`, async () => {
-    const game = await openGame(browser, { query: `level=${level}&world=gen&timescale=2&autodrive=1` });
+  test(`${level} (world=gen): a race from the menu to the results`, async (t) => {
+    // The saved level, not `?level=` (which races at once, D570).
+    const game = await openGame(browser, { query: 'world=gen&timescale=2&autodrive=1', storage: { 'mr.level': level } });
     try {
       assert.equal(await game.eval('window.__mr.level'), level);
       assert.equal((await game.ui('#lvl-name')).value, NAMES[level]);
@@ -35,6 +36,11 @@ for (const level of ['desert', 'streets']) {
       await game.eval(() => window.__mr.stage({ cmd: 'finish', rivalWon: false }));
       await game.waitFor(() => window.__mr.race.finished, { timeout: 30000, what: 'the player to cross the line' });
       await expectScreen(game, 'results', 30000);
+      // SPEC 6.6: the wasm memory's high-water mark under 512 MB, the race's
+      // cars and sound included.
+      const mb = await game.eval(() => Math.round(window.__mr.wasmMemoryBytes() / 1048576));
+      t.diagnostic(`${level}: wasm memory after the race ${mb} MB`);
+      assert.ok(mb < 512, `wasm memory ${mb} MB`);
       assert.deepEqual(game.errors, []);
     } finally { await game.close(); }
   });

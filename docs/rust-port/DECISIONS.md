@@ -5218,3 +5218,125 @@ in the client from each level's world generation, which now fits the
 budget, D675, or cut from the exports), their length, and the memory they
 may hold on a phone are for the package that does it; recorded in
 DEVIATIONS.md when it lands.
+
+## M7 client: Desert Run and Downtown Streets decisions
+
+## D720. Desert Run and Downtown Streets are built in the client
+
+2026-10-04, roadmap M7 (WP 7.3's and 7.2's client halves). With the
+budget at 16 MB (D675), the client builds Desert Run and Downtown Streets
+as it builds Sierra (D491, D492): `animate::generated` names the three, and
+each level's scenery is named in a file of its own
+(`crates/mr_game/src/levels/desert.rs`, `streets.rs`: `Desert` and
+`Streets`, each the level's only module, D550, D610), not through
+`scenery::PORTED` (D498). Both are numbered as their exports (D551, D613),
+so as for Sierra: with `?world=gen` the page downloads nothing and the
+loader draws the build, and by default the export is drawn and the
+build's animators run over it (`?world=off` turns them off). The menu's
+level tabs build them too (D580). The wasm grew 0.15 MB after gzip
+(WebGPU 8.09 to 8.24 MB, WebGL2 8.47 to 8.62 MB; D674 item 7 estimated
+0.24), under SPEC 6.6's 16 MB.
+
+## D721. What the two levels' animators needed of the client
+
+2026-10-04. Every edit the two levels' animators make is now applied (no
+"not applied" line natively at `mr_game::animate=debug`), which closes
+D556's and D614's lists, whose kinds D500 and D501 drew:
+
+- **The train's spot light** (Desert; D553, D556). `SceneIndex` keeps the
+  scene's first spot light (the one the loader puts in `Lighting`, D456's
+  scene spot) and its target, the next sibling; its `Light` edit sets the
+  colour and intensity (0 by day, 90 at night) and the moved nodes' world
+  positions set its position and direction, as three reads `matrixWorld`
+  and `target.matrixWorld` (`levels::desert::follow_spot`). `Lighting` is
+  written only when a value changed. Other levels' animators make no
+  `Light` edit, and the sun and hemisphere lights stay the sky's.
+- **The flicker points' clock** (Desert's nine FlickerPoints, D553): the
+  animator's `uTime` goes to the block's texel 4.x like the pools' (the
+  `FlickerPoints` slot), and the vertex stage reads it through
+  `kind_uniforms()`, which without a block still gives the scene-wide clock
+  as before (D293), so the material test scene is unchanged. Their colour
+  edits (`colour × k`) were already block colours.
+- **A plain material's opacity** (Desert's headlight sprites and flame,
+  Coast's pools and sprites): the client-coast agent's commit (D701),
+  cherry-picked here so both branches carry the same change.
+- **A plain Points' size** (Streets' phone flashes, D612): the block's
+  texel 4.y (`(Points, "size")`, starting from the exported size, 1 if
+  none), read in the points' vertex stage under D701's `PLAIN_ANIM`.
+
+The train, its sprites and the tumbleweeds (Desert), the elevated train,
+the neon clock, the steam's clock and scale, the barrier flashers and the
+aircraft lights (Streets) are transforms, instance matrices, colours and
+kind uniforms the shared path already applied (D493, D490).
+
+## D722. Streets' build frees each chunk builder as it emits it
+
+2026-10-04, after measuring the client's build. Wasm memory never shrinks
+(SPEC 5.5), so a build's transient peak is the level's high-water mark.
+Measured natively with a counting allocator, Streets' scenery job (D610)
+peaked at 452 MB of heap with 28 MB before it and 169 MB after it: its
+ten chunked `GeoBuilder` sets hold every vertex as JS doubles, and
+`emitAll` built each one's `Float32Array` geometry while all of them were
+still alive. `Chunks::take` now hands over a builder and leaves an empty
+one with the same attributes in its place, and `emit` and `emitAll`'s own
+loops take each builder as they build it, so its doubles are freed once
+its geometry exists. The JS never reads an emitted builder again (the
+billboards' posts written after `emitAll`, D610, still go into a builder
+nothing emits), so the scene is unchanged: `tests/streets.rs` with the
+cache (the whole digest) and `streets_animators` pass. The job's peak is
+354 MB; in the web build Streets' wasm high-water mark went from 492 to
+394 MB after load (with `?world=gen`). Not done: keeping `GeoBuilder`'s
+arrays as `f32` from the start would halve the rest (the JS rounds them to
+f32 only in `build`, and nothing reads them back, so it would be exact),
+but `GeoBuilder` is shared with City and Harbor (WP 3.3), so it is left
+for a package that owns it.
+
+## D723. The gates for Desert Run and Downtown Streets in the client
+
+2026-10-04, the web build (release, WebGPU, 1280 × 800) through the
+registered server, `?world=gen`, the machine shared with other agents
+(load averages given per run; the GPU's 12 GB was at times nearly full
+with other agents' Chrome runs, which made a station flight fail with
+`VK_ERROR_OUT_OF_DEVICE_MEMORY` until they finished).
+
+- **L4 stations** (`rust-web-stations.mjs --server --query world=gen`,
+  `cargo xtask parity shots`): **Desert 63 stations, 0 over the limits**,
+  median 0.155 mean ΔE00 and 0.370 block 95 %, worst 0.268 / 0.778
+  (03500-high; D500 from the export: 0.681 / 1.564). **Streets 43, 0
+  over**, median 0.336 / 1.001, worst 0.755 / 5.171 (02500-chase). Against
+  the same flight of the export without the animators (`world=off`, D501's
+  numbers again: 0.489 / 1.812) the difference is the lettering: the
+  build's signs are drawn by `mr_canvas` with the bundled fonts (D370),
+  the JS shots and the export with the machine's fonts (D613: up to 36
+  levels in the glyphs); the neon and the banners light up the difference
+  maps and nothing else does. A spot check of the WebGL2 build (three
+  stations each): 0 over, worst 0.407 / 1.282. The material scenes
+  (`cargo xtask parity materials`): 33, 0 over, worst 0.150 as before.
+- **The race** (`tools/parity/e2e/built-levels.test.mjs`): from the menu
+  with the level saved, `world=gen`, the autopilot racing 8 s and the
+  finish staged, the results screen, no page error, for both levels; and
+  the level tabs Desert → Streets → Desert, then a race. Natively the
+  race runs on both with the animators (the train rolling beside Route 66
+  at night, its spot light following it).
+- **Size**: 8.24 MB (WebGPU) and 8.62 MB (WebGL2) after gzip, of 16.
+- **Memory** (wasm high-water mark, budget 512 MB on phones): Desert 309
+  MB after load (`world=gen`; the export path: 243 after load, 351 on
+  reloads), 320 MB after a race; Streets 394 MB after load (492 before
+  D722), 404 MB after a race; ten level switches between them 426 MB at
+  every one (no growth). The JS heap peaks were 127 MB (Desert) and 461
+  MB (Streets).
+- **Frame time** (`rust-perf.mjs`, fly at 60 m/s, 60 s, uncapped):
+  Desert `world=gen` (load 10.3 → 12.9) p50 / p95 / p99 3.3 / 9.1 / 15.2
+  ms, 4 frames over 50 ms (all in the first 30 s, at s 1,089 to 1,724,
+  load-dependent: none in the same flight of the export at load 38 → 17,
+  3.5 / 6.9 / 9.6); Streets `world=gen` (load 11.5 → 22.1) 3.9 / 9.2 / 15.0,
+  none over 50 ms in the first 30 s, 6 later. The JS game on this machine
+  (BASELINE.md, WP 0.8) flies them at 1.5 to 2.3 ms of CPU a frame, so the
+  Rust client is not yet "no worse" here, as on every level (BASELINE.md,
+  WP 2.6 on); the animators cost under 0.2 ms a frame (D497).
+- **Load**: ready 5.0 s (Desert) and 4.5 to 6.7 s (Streets) from
+  navigation including the wasm, 2.2 to 3.4 s on reloads; the JS loads to
+  the menu in 3.9 and 3.2 s. Streets' first load is the slower.
+
+Left: L5 (the owner's review and drive on the phone); the font
+difference in the lettering is D370's choice, not this package's.
