@@ -5907,3 +5907,86 @@ the race reaches 596 to 609 MB, the sections' peak and the race's build
 not sharing all their memory (the wasm memory never shrinks, D745). Part
 of D746 (1). `level-switch.test.mjs` (built and `world=export`) passes on
 both backends.
+
+## D748. The menu shows simplified views, not cut-down levels
+
+2026-10-04, the owner on D746: "let's build simplified views for the
+menu. loading every level for the menu is not really what i intended";
+the stutter behind the menu is accepted for now. A level's menu **view**
+replaces D741's section of its full build:
+- **The level's land, road, sky, time of day and sea** from its own world
+  build, with `Section::scenery` false: every scenery module's `plan()`
+  runs (so the land and road are the level's), none builds. Terrain tiles
+  within **1,500 m** of the stretch (2,500 before; the radius changes
+  little: the textures dominate), the road cut at 600 m as before, and the
+  sea over the view's land only (`Sea::new_in` / `sea_geometry_in` with
+  `section::bounds`; a level's sea is unchanged): Coast's view 29 → 16 MB
+  of scene data.
+- **Stand-ins for its scenery** (`preview/hints.rs`, a job added after
+  the build with `Build::push_job`), chosen from what the attract camera
+  sees on each level and built from `mr_worldgen`'s flora templates and
+  boxes, with a fixed seed per level: Sierra a few spruce and fir up the
+  slopes and boulders by the road; Coast telegraph poles on the inland side
+  and scrub; Streets blocks of tinted walls with a generated window texture
+  lit after dark (`add_night`), lit shopfronts and street lamps; Desert
+  red hoodoos (stretched rocks under a cap) and scrub on the canyon floor;
+  Seaside the red, white and blue barrier, catch-fence posts and oaks on
+  the hills; the Cruise a skyline of lit towers and freeway lamps. These
+  are invented, not the JS's scenery (DEVIATIONS.md).
+- **Seaside's photo**: on the web the view drapes a quarter-size copy
+  (461 × 540, 1 MB) that the page scales on a canvas and hands in
+  (`section_photo`); the race's build fetches the whole photo as before.
+  Natively the view uses the level's own setup and photo.
+
+Everything else is D742 and D743: one view per level, built when the menu
+opens (the saved level's first), held under hidden roots, shown in the
+frame after a tab; Race frees them and builds the level whole (D678's
+default); Main menu keeps the raced level for its tab. The heaviest-first
+order (D745) is gone (views are light); they are built in menu order after
+the selected one. Pictures of every view beside its whole level from the
+same camera: `parity/report/menu-views/index.html` (natively, 200 m into
+the camera's run; `--query sectionshots=<dir>&menu=0` takes the views).
+
+## D749. What the views cost
+
+2026-10-04, release web build, headless Chrome, RTX 3060; load averages
+14 to 25 unless said.
+- **Memory at the menu** (wasm high-water): 81 MB before the first view is
+  built; 137 to 151 MB once Sierra's view and the menu's warm-up field are
+  up; **169 to 172 MB with all six views** (WebGPU and WebGL2), so the six
+  views and the warm-up field add about 91 MB, against 505 to 553 MB for
+  D747's cut-down sections. Counted with a heap-counting allocator (a
+  diagnostic build, not committed): the five views after the first hold
+  about 13 MB of heap between them (96 → 109 MB in use); each peaks about
+  15 to 35 MB above that while it builds.
+- **Race after the menu** (Coast, built): wasm high-water 515 MB on WebGPU,
+  516 to 564 MB on WebGL2 (564 twice, 516 once), against Coast raced
+  straight from the address here: 466 to 498 MB (WebGPU), 473 to 507 MB
+  (WebGL2), and 512 MB on reload (D678). The heap in use when Race is
+  tapped is about 98 MB after the views are freed (11 MB go with them),
+  against about 50 MB when a race from the address starts its build: the
+  menu, its warm-up field and the sound are live during the build, and the
+  build's own peak (about 410 MB of heap) lands on top. So the race peak
+  is about 10 to 50 MB above the level's own, from the menu rather than
+  from the views. Not met strictly; raised (D750).
+- **Time to the menu**: 4.77 s (WebGPU, load 23), 3.74 to 4.40 s (WebGL2,
+  load 14 to 20); the JS's is 3.2 s here. Views build in 0.3 to 1.3 s each
+  in wasm (Sierra's first, 1.3 s); all six up 5.8 to 7.3 s after the first
+  began.
+- **Frames behind the menu** while the other five build: 16 to 19 of
+  about 90 over 50 ms, the longest 200 ms (D747: up to 1.9 s).
+- **Tab switch**: shown the frame after the click (77 to 182 ms including
+  the harness's two frames), no frame over 50 ms after any switch.
+- **Wasm size**: 8.43 MB (WebGPU), 8.81 MB (WebGL2) after gzip (+0.01 MB
+  for the stand-ins).
+`sections.test.mjs` and `level-switch.test.mjs` pass on both backends.
+
+## D750. Open: the race after the menu
+
+2026-10-04. A race started from the menu reaches 515 to 564 MB of wasm
+memory where the same level raced from the address reaches 466 to 507
+(D749), because what the menu holds (its warm-up field, the sound, the
+screens; the views are freed) is live while the level builds. Ways to close
+it, none taken here: drop the menu's warm-up field earlier or not build it
+(D574 made it to warm the cars' pipelines), build the level before the
+race's field and sound come up, or accept the menu's share. For the owner.
