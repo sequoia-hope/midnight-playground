@@ -84,15 +84,23 @@ pub fn start_cars(
         },
     );
     let mut entities = Vec::new();
+    let mut warm = None;
     for (v, active) in bodies(&st) {
         let d = &v.dims;
-        let mesh = meshes.add(Cuboid::new(
+        let cuboid = Mesh::from(Cuboid::new(
             d.width as f32,
             d.height as f32,
             d.length as f32,
         ));
+        let layout = crate::warmup::Layout::of(&cuboid);
+        let mesh = meshes.add(cuboid);
         let c = hex_color(v.color);
-        let material = mats.add(stand_in_material(c, &shared));
+        let m = stand_in_material(c, &shared);
+        let key = m.key;
+        let material = mats.add(m);
+        if warm.is_none() {
+            warm = Some((key, material.clone(), layout));
+        }
         let e = commands
             .spawn((
                 Mesh3d(mesh),
@@ -109,6 +117,13 @@ pub fn start_cars(
             ))
             .id();
         entities.push(e);
+    }
+    // Their pipeline joins the warm-up (`warmup`), in case none is in view
+    // yet.
+    if let Some((key, material, layout)) = warm {
+        let mut combos = crate::warmup::Combos::default();
+        combos.note(key, &material, &layout, true);
+        combos.spawn(&mut commands, &mut meshes);
     }
     info!("stand-in cars: {} on {}", entities.len(), level.id);
     commands.insert_resource(Cars {
