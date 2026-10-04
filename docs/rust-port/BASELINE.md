@@ -736,3 +736,174 @@ difference between builds at low load is the median callback on Coast:
 3.9 and 4.0 ms (1bb2dd6, ba1f5f1), 4.5 (d2550fe), 5.0 (ecae56e). That is
 about 1 ms of frame work added with the audio and the new kinds, well
 inside the 16.7 ms.
+
+## Wasm size: where the bytes go (WP 9.1 brought forward, DECISIONS D670 to D674)
+
+2026-10-04. Sizes are MB of 2^20 bytes, as `cargo xtask size` prints them;
+"gzip" is gzip at level 9 (`xtask size` uses flate2's best, which comes
+out about 0.01 MB above `gzip -9`). Main at a60cb88 was over SPEC 6.6's
+budget: `mr_game_bg.wasm` 31.27 MB, **10.00 MB gzip** (WebGPU);
+`mr_game_webgl2_bg.wasm` 32.51 MB, **10.48 MB gzip** (WebGL2).
+
+**How it was measured.** The release build's wasm (`target/wasm32-
+unknown-unknown/web-release/mr_game.wasm`, which keeps its name section)
+through `wasm-bindgen` and then `wasm-opt -Oz -g`, the same optimisation
+as the shipped file but with function names kept (32.79 MB without the
+names, as shipped). Each function body is given to a crate: the first
+crate in its demangled name that is not std, core or alloc (an impl's
+self type comes first, so generic std code goes to the crate it was
+instantiated for), and a Bevy system (`FunctionSystem<..., f>`) to the
+crate of `f`. Data is split by content: the bundled font files found
+byte for byte, WGSL sources, other text, the rest. The gzip column
+compresses each part on its own and scales the parts to the file's
+gzip size, so it is an estimate; generic code instantiated inside
+`bevy_ecs` for another crate's types stays in the first row, so the rows
+of the crates around it are undercounts (removing the 2D sprites saved
+0.25 MB where their own row says 0.15). The linker map (`-C link-arg=
+--Map`) does not help: with fat LTO all data is anonymous. `twiggy top`
+on the same named file gives the per-function sizes.
+
+| Part (WebGPU, a60cb88) | Raw MB | Gzip MB (est.) | Share |
+|---|---:|---:|---:|
+| Bevy ECS, app, reflect, asset, math, tasks, log (with every system's generic code, `erased_serde`, `ron`, `glam`, `indexmap`) | 10.31 | 2.53 | 25 % |
+| Data: binary (vtables, Unicode and ICU tables, regex tables, constants) | 2.75 | 1.00 | 10 % |
+| Bevy UI and text (`bevy_ui`, `ui_render`, `bevy_text`, taffy, parley, swash, zeno, harfrust 0.6, skrifa 0.42 and 0.44, read-fonts 0.39 and 0.41) | 2.66 | 0.96 | 10 % |
+| naga, naga_oil, regex (WGSL composition and validation on the client; includes naga's GLSL front end, which `bevy_shader` turns on for wasm) | 2.16 | 0.83 | 8 % |
+| Bevy PBR, core pipelines (3D and 2D), lights | 2.23 | 0.76 | 8 % |
+| Data: the bundled fonts (`mr_canvas`, 17 files, `include_bytes!`) | 1.07 | 0.65 | 7 % |
+| Bevy render core, mesh, image, camera, `image` and `png` | 1.94 | 0.64 | 6 % |
+| `mr_worldgen`: the other levels' scenery (Coast, Beach, Harbor, Desert, Raceway, Streets) | 1.19 | 0.39 | 4 % |
+| `mr_canvas`'s text stack (harfrust 0.13, skrifa 0.46, read-fonts 0.43) | 0.82 | 0.30 | 3 % |
+| Bevy input, window, winit, a11y | 1.03 | 0.29 | 3 % |
+| `mr_game` | 0.62 | 0.24 | 2 % |
+| `mr_worldgen`: shared (terrain, road, sky, sea, flora, textures, car models, geometry) | 0.58 | 0.23 | 2 % |
+| `mr_worldgen`: Sierra's scenery (Mountain, Valley, City) | 0.51 | 0.18 | 2 % |
+| Bevy 2D sprites (`bevy_sprite`, `bevy_sprite_render`) | 0.49 | 0.15 | 2 % |
+| Data: WGSL sources (Bevy's and the client's) | 0.61 | 0.15 | 2 % |
+| Data: other text (type names, messages, JSON) | 0.44 | 0.12 | 1 % |
+| std, core, alloc | 0.31 | 0.12 | 1 % |
+| Simulation (`mr_sim`, `mr_levels`, `mr_track`, `mr_math`, `mr_net`) | 0.26 | 0.11 | 1 % |
+| `mr_canvas` and tiny-skia | 0.23 | 0.10 | 1 % |
+| `mr_audio` | 0.18 | 0.07 | 1 % |
+| `mr_scene`, serde_json, sha2 | 0.19 | 0.07 | 1 % |
+| Bevy `post_process` (bloom, depth of field, motion blur, ...) | 0.16 | 0.06 | 1 % |
+| wgpu and the web-sys glue | 0.09 | 0.04 | 0 % |
+| Section headers, import and export names, the function table | 0.54 | | |
+| **Whole file** | 31.27 | 10.00 | |
+
+The WebGL2 file is 0.48 MB larger after gzip: wgpu-core, wgpu-hal's GLES
+backend, glow and naga's GLSL back end, which the browser's WebGPU
+replaces in the other build. wgpu itself is small on WebGPU.
+
+**Duplicate crates** (`cargo tree -d`, wasm target): two font stacks
+(above; three copies of read-fonts and skrifa, two of harfrust,
+font-types), codespan-reporting 0.12 and 0.13 (naga_oil and naga),
+hashbrown 0.16 and 0.17 (bevy_platform and indexmap), miniz_oxide 0.8 and
+0.9 (both from `png`: its decoder and flate2), syn 2 and 3 (proc macros,
+not in the wasm). Only the font stacks are ours to change: `mr_canvas`'s
+copy is what world generation draws its signs with, reached from the
+client's world build (D491), not from the menus (their icons draw paths
+only).
+
+**Trims committed** (no behaviour change; checked with Seaside's 29
+stations on both backends and Sierra's 06250 to 07500 through the web
+build, pixel for pixel against the build before, the phone harness, the
+workspace tests and `cargo xtask parity materials`):
+
+| Change | WebGPU gzip | WebGL2 gzip |
+|---|---:|---:|
+| a60cb88 | 10.00 | 10.48 |
+| No `bevy_post_process` (D670) | 9.85 | 10.33 |
+| Debug and trace logging compiled out of release wasm (D671) | 9.81 | 10.28 |
+| `ClientPlugins`: `DefaultPlugins` less the 2D sprites (D672) | 9.56 | 10.01 |
+| Main at c609122 (menus +0.14, WP 3.9's Sierra-only scenery factory -0.40), without the trims | 9.73 | 10.22 |
+| **c609122 merged with the trims (this branch)** | **9.29** | **9.76** |
+
+The pictures through the merged build equal c609122's (Seaside on both
+backends and Sierra's stretch; WebGL2's usual one or two pixels apart),
+and the e2e suites (`menu`, `race-flow`, `level-switch`, `race-button`:
+30 tests), the phone harness (`tools/parity/e2e/phone.cjs`, touch and
+autopilot) and `phone-menu.mjs` pass on it.
+
+**Build settings, measured but not changed** (on a60cb88 plus the three
+trims; gzip -9 MB; frame times from `tools/parity/rust-perf.mjs`, 40 s
+flights uncapped at 1280 × 800, high quality, three alternating rounds at
+load average 1.5 to 3.3 (the wasm-opt rows two rounds, load up to 14.5);
+"p50" is the median frame in ms, "ready" the seconds from navigation to
+ready, which on Sierra includes the client's world build in wasm, the
+most CPU-bound number here):
+
+| Setting | WebGPU gzip | WebGL2 gzip | Sierra WebGPU p50 / p95, ready | Sierra WebGL2 p50 / p95, ready | Seaside WebGPU p50 / p95 | Seaside WebGL2 p50 / p95 | Pictures |
+|---|---:|---:|---|---|---|---|---|
+| Current: `opt-level = 3`, `wasm-opt -Oz` | 9.54 | 10.00 | 2.1 / 9.2, 5.5 s | 1.7 / 19.0, 6.2 s | 2.9 / 6.4 | 0.9 / 7.1 | |
+| `opt-level = "s"` | 8.22 | 8.60 | 2.3 / 9.2, 6.1 s | 1.8 / 19.4, 6.7 s | 2.7 / 6.4 | 1.1 / 4.5 | identical |
+| `opt-level = "z"` | 7.18 | 7.51 | 2.7 / 8.3, 7.0 s | 2.0 / 19.7, 7.7 s | 2.3 / 5.6 | 1.3 / 4.4 | 5 single pixels differ on WebGPU (up to 40 levels), reproducibly |
+| `wasm-opt -O3` | 9.68 | 10.14 | 2.1 / 9.3, 5.5 s | 1.7 / 19.0, 6.3 s | 2.8 / 6.6 | 0.9 / 9.2 | |
+| `wasm-opt -O4` | 9.71 | 10.18 | 2.1 / 8.8, 5.4 s | 1.7 / 19.0, 6.3 s | 2.8 / 6.3 | 0.9 / 8.7 | |
+| `wasm-opt -Oz --converge` | 9.54 (-4 KB) | 10.00 (-5 KB) | not run (the same code within 5 KB) | | | | |
+| `strip = true` | no change | no change | | | | | |
+| `-C target-feature=+simd128` | 9.39 | 9.84 | 2.1 / 9.2, 5.4 s | 1.7 / 19.0, 6.2 s | 2.8 / 6.5 | 0.9 / 7.5 | identical |
+
+- `opt-level` "s" and "z" cost CPU time: Sierra is ready 0.5 to 0.6 s
+  (8 to 11 %) later with "s" and 1.5 s (24 to 27 %) later with "z",
+  most of it the world build in the page, and the CPU-bound median
+  frames grow by 0.1 to 0.2 ms ("s") and 0.3 to 0.6 ms ("z") on Sierra and
+  on Seaside's WebGL2. Seaside on WebGPU and the 95th percentiles move the
+  other way or not at all, because uncapped those frames wait for the GPU.
+  On a phone, whose CPU is several times slower, the CPU share is what
+  grows. Not decided (the owner's call, D674).
+- `wasm-opt -O3` and `-O4` are 0.14 to 0.18 MB larger and no faster
+  measurably; `--converge` saves 4 to 5 KB for six times the wasm-opt time
+  (46 s to 273 s). `-Oz` stays.
+- `strip`: wasm-opt already drops the name section; the shipped file's
+  custom sections are `producers` and `target_features` (219 bytes).
+- `simd128` lets LLVM move 16-byte values with one load and store: 0.16
+  MB smaller, no frame-time change, pictures identical, and the
+  simulation's tests in wasm pass with it (release, Node). Every browser
+  with WebGPU has wasm SIMD (Chrome 91, Firefox 89, Safari 16.4); the
+  WebGL2 fallback would lose Safari before 16.4. Not committed (D674).
+- The simulation's tests in wasm pass at `opt-level` "s" and "z" too (21
+  test binaries each, release profile): the floating-point results do not
+  depend on the optimisation level.
+
+**Compression** (the merged build; how files are delivered is the
+owner's, D439 and D674):
+
+| Encoding of the merged build | WebGPU | WebGL2 |
+|---|---:|---:|
+| gzip -9 (as now) | 9.27 | 9.73 |
+| gzip by zopfli (`pigz -11`; any browser decodes it, only the build's `precompress` changes) | 8.86 | 9.31 |
+| brotli 11 (`Content-Encoding: br`; browsers send `Accept-Encoding: br` only over https, which the tailnet front and Pages are) | 5.82 | 6.12 |
+
+**Frame time of the merged build against c609122** (two alternating
+rounds of all four, then four more of Seaside on WebGL2; load 1.9 to 3.1):
+the same on Sierra (both backends) and Seaside on WebGPU (p50 2.0 to 2.1,
+1.8, 2.8 ms; ready within 0.2 s). Seaside on WebGL2, uncapped, is the one
+difference: mean 1.7 against 1.5 ms and p95 10.5 against 7.4 ms, every
+run, with the median frame 0.9 against 1.0 ms. Bisected to D672 (a60cb88
+with D670 and D671: p95 6.4 to 7.2; with D672: 10.2 to 10.5). With vsync
+(`--capped`) the two are the same (16.7 ms at the 50th, 95th and 99th
+percentiles, worst 17 ms, both builds). Uncapped at about 600 frames a
+second this looks like the GPU-bound pacing of WebGL2 described above (a
+page with a little less work per frame, waiting longer on some), not
+work added; with vsync on, as players run it, nothing changes.
+
+**Each further level's world generation, if linked** (a standalone
+cdylib of `mr_worldgen` with the stages and a chosen set of scenery
+modules, fat LTO, `wasm-opt -Oz`, gzip -9; deltas over the Sierra set):
+
+| Added to Sierra's Mountain, Valley and City | Gzip |
+|---|---:|
+| Seaside Raceway (`Raceway`) | +0.03 MB (34 KB) |
+| Coast Highway (`Coast`, `Beach`, `Harbor`) | +0.20 MB (200 KB) |
+| Desert Run (`Desert`) | +0.14 MB (140 KB) |
+| Downtown Streets (`Streets`) | +0.10 MB (106 KB) |
+| Night City Cruise (`City` only, already in) | 0 |
+| All of them | +0.44 MB (452 KB) |
+
+Alone, without Sierra's, each costs far more (Raceway 0.47 MB, Coast's
+three 0.74, Desert 0.67, Streets 0.63; Sierra's three 0.75 over the
+stages), because the builders, flora, textures, geometry and the text
+stack they share come in with the first module. The client-side animator
+and kind code each level brings (`animate`, `render`) is extra and not
+counted here. The stages and the fonts alone are 0.84 MB. (KB here are 1024 bytes.)

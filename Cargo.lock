@@ -3407,6 +3407,7 @@ dependencies = [
  "bevy",
  "flate2",
  "js-sys",
+ "log",
  "mr_audio",
  "mr_canvas",
  "mr_levels",
@@ -3417,6 +3418,7 @@ dependencies = [
  "mr_track",
  "mr_worldgen",
  "serde_json",
+ "tracing",
  "wasm-bindgen",
  "web-sys",
 ]
