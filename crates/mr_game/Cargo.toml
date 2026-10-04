@@ -48,7 +48,10 @@ bevy = { version = "=0.19.1", default-features = false, features = [
     "bevy_color",
     "bevy_material",
     "bevy_shader",
-    "bevy_post_process",
+    # Not `bevy_post_process`: its bloom, depth of field, motion blur, auto
+    # exposure and effect stack are unused (the post chain is three's,
+    # `render::post`), and it cost about 80 KB of the gzipped wasm
+    # (DECISIONS D670).
     "keyboard",
     "mouse",
     "touch",
