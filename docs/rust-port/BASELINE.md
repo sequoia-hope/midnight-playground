@@ -695,3 +695,7 @@ Memory, ten reloads of Sierra (WebGPU): after load 348 MB, then 357, 488
 Size: `mr_game_bg.wasm` 9.44 MB and `mr_game_webgl2_bg.wasm` 9.93 MB after
 gzip (budget 10 MB; before: 8.77 and 9.24). World generation is now linked
 into the client (the level build, its textures and the bundled fonts).
+After merging main (race audio, the race warm-up, the other levels'
+world generation) and building Level 1's scenery by name (D498): 9.60 and
+10.08 MB, the WebGL2 build 0.08 MB over the budget; the budget question is
+the owner's (D498).
