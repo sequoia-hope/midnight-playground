@@ -20,6 +20,8 @@
 //! - [`cars`]: stand-in cars driven by the simulation (WP 2.4).
 //! - [`play`]: a playable race (M4): session, input, camera, flow, HUD.
 //! - [`plugins`]: Bevy's default plugins less its 2D sprites.
+//! - [`ui`]: the screens (M6): loading, menu, pause, results, controller
+//!   setup, and the settings store.
 //! - [`warmup`]: every pipeline the scene needs, compiled behind the
 //!   loading screen (WP 2.6).
 //! - [`status`]: what the page and the window title show.
@@ -39,6 +41,7 @@ pub mod plugins;
 pub mod render;
 pub mod stations;
 pub mod status;
+pub mod ui;
 pub mod warmup;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -329,9 +332,12 @@ pub fn fly_system(
     mut lighting: ResMut<Lighting>,
     mut env: ResMut<EnvRequest>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    play: Option<Res<play::Play>>,
 ) {
-    if opts.o.race_on() {
-        return; // the race drives the camera and the sky (`play`)
+    // The race drives the camera and the sky (`play`); without one (the
+    // menu, `ui`) the attract camera flies.
+    if opts.o.race_on() && play.as_ref().is_none_or(|p| p.race.is_some()) {
+        return;
     }
     // `Math.min(frameDt, 1 / 20)` (main.js tick). The camera holds still
     // while the warm-up compiles behind the loading screen, as the JS game
@@ -540,6 +546,7 @@ pub fn app(o: Options, hq: bool) -> App {
         stations::plugin(&mut app, &path, out);
     }
     play::plugin(&mut app);
+    ui::plugin(&mut app);
     animate::plugin(&mut app);
     #[cfg(not(target_arch = "wasm32"))]
     native::plugin(&mut app);

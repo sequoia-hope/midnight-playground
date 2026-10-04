@@ -652,3 +652,87 @@ WebGL2 at load 8.2 and 7.0: Coast 259 frames over 50 ms (73 to 76 ms
 intervals from the start, worst 123.6), Sierra 12 (54 to 57 ms, one of
 106 ms at s 708); both are the GPU-bound uncapped pacing described above
 (p50 6.6 and 6.0 ms), and late pipelines are 0 in all six runs.
+
+## The Rust client at WP 3.9 (Level 1's kinds and animators, DECISIONS D490 to D497)
+
+2026-10-04, the same method (`node tools/parity/rust-perf.mjs --level
+sierra`, headless Chrome, 1280 × 800, high quality, uncapped, the full
+route), A/B against the build before WP 3.9's client (1bb2dd6), alternating
+runs. The machine was shared with other agents' builds the whole time
+(1-minute load average 8 to 21 at the starts, higher during runs), so single
+slow frames come and go in both builds.
+
+| Build, backend | Load | Frame ms p50 / p95 / p99 / max | > 50 ms (30 s / all) | Ready |
+|---|---:|---|---|---:|
+| before, WebGPU | 9.5 | 3.7 / 8.1 / 12.1 / 34.8 | 0 / 0 | 3.9 s |
+| WP 3.9, WebGPU | 8.8 | 3.2 / 8.0 / 12.2 / 59.9 | 0 / 4 | 7.1 s |
+| before, WebGPU | 8.9 | 4.6 / 12.6 / 24.0 / 69.1 | 0 / 4 | 4.6 s |
+| WP 3.9, WebGPU | 21.3 | 3.3 / 8.6 / 12.0 / 243.4 | 0 / 2 | 8.3 s |
+| before, WebGPU | 18.3 | 3.8 / 12.4 / 23.7 / 126.2 | 1 / 14 | 3.2 s |
+| WP 3.9, WebGPU | 21.1 | 3.8 / 12.0 / 19.4 / 123.2 | 0 / 4 | 10.9 s |
+| before, WebGL2 (30 s) | | 1.6 / 19.1 / 20.0 / 36.6 | 0 / 0 | |
+| WP 3.9, WebGL2 (30 s) | 9.3 | 2.6 / 19.2 / 20.7 / 37.2 | 0 / 0 | |
+| WP 3.9, WebGL2 (30 s), `?world=off` | 10.8 | 2.3 / 35.7 / 38.3 / 55.2 | 34 / 34 | |
+
+No pipeline was compiled after the warm-up in any run (61 combinations
+now, 52 before: the new kinds). The frame-time distribution is the same;
+the slow frames are isolated, at different places from run to run, in
+both builds. On WebGL2 the uncapped page's GPU-bound pacing (frames of
+17.7, 36 or 53 ms, described above for Coast) comes and goes between
+identical runs (the `world=off` row, and a full-route WebGL2 run of this
+build with 231 such frames in its first 30 s next to one with none).
+
+The animator path itself, timed in the wasm build over the full flight
+(every 300 frames): 0.04 to 0.15 ms a frame on average, at most 3.2 ms.
+It allocates no GPU object per frame: material values go to the globals
+(D490), moved instances are written into their stream's buffer in place
+(D497), and the flag's 18 vertices are rewritten in Bevy's mesh slab. The
+world build is done before `ready` (2.9 s in wasm on the dev machine).
+
+Memory, ten reloads of Sierra (WebGPU): after load 348 MB, then 357, 488
+(before: 303, then 443). With `?world=gen`: 348, then 357, 375.
+
+Size: `mr_game_bg.wasm` 9.44 MB and `mr_game_webgl2_bg.wasm` 9.93 MB after
+gzip (budget 10 MB; before: 8.77 and 9.24). World generation is now linked
+into the client (the level build, its textures and the bundled fonts).
+After merging main (race audio, the race warm-up, the other levels'
+world generation) and building Level 1's scenery by name (D498): 9.60 and
+10.08 MB, the WebGL2 build 0.08 MB over the budget; the budget question is
+the owner's (D498).
+
+**Races under vsync, and the WebGL2 Sierra question (2026-10-04).** The
+uncapped WebGL2 Sierra race above (12 frames over 50 ms) was run on a
+build of 5350be2, before the WP 3.9 client animators and the race audio
+were merged, so those could not have caused it. Run as browsers run it
+(vsync on, `CAPPED=1`, 30 s races, `timescale=2`), four builds alternating:
+1bb2dd6 (before the animators, and before the car-model warm-up of D458),
+ba1f5f1 (with the animators), d2550fe (with the race audio) and ecae56e
+(the 24-float instance stream), on Sierra and Coast, WebGL2 and WebGPU, two
+rounds (load 7 to 32, other GPU users at 0 to 61 % between runs):
+
+- Frames over 50 ms under vsync: 0 to 1 per run in every build and on both
+  backends, except one 850 ms stall (d2550fe, Coast, WebGL2, s 1,867, at
+  load 7; not seen again).
+- Frames over 33 ms on WebGL2: 0 to 16 on Sierra and 0 to 36 on Coast,
+  with no order by build (1bb2dd6: 0, 0, 4, 1; ba1f5f1: 0, 7, 0, 11;
+  d2550fe: 11, 0, 33, 36; ecae56e: 16, 0, 26, 4). WebGPU: 0 to 6 in every
+  build.
+- `lateFrames` 1 and 3 on 1bb2dd6 and ba1f5f1 (no D458), 0 from d2550fe on.
+
+To tell the client's work from the machine, a second alternating series
+timed every `requestAnimationFrame` callback (the client's frame work, on
+WebGL2 where Bevy batches on the CPU). In the quiet runs (Coast at load
+3.8 to 4.8, all four builds; Sierra at 8.0 to 13.3 for ba1f5f1, d2550fe
+and ecae56e) the callback is 3.9 to 5.7 ms at the median and at most 7.4
+to 20.9 ms, and no frame misses a vsync. Long callbacks come in whole runs
+and in every build, the oldest included: 1bb2dd6 had 60 and 79 over 16.7
+ms on Sierra and 64 on Coast, ba1f5f1 159 on Sierra, d2550fe and ecae56e
+778 and 755 on Sierra (median 17 ms, load 13.5 and 29.7), and those are
+the runs with frames over 33 ms. d2550fe and ecae56e were clean on Sierra
+in the next round, so it is not a commit. The load average does not catch
+every busy spell (ba1f5f1's bad run started at 7.3), but the slow frames
+on WebGL2 follow the machine, not the code. The one
+difference between builds at low load is the median callback on Coast:
+3.9 and 4.0 ms (1bb2dd6, ba1f5f1), 4.5 (d2550fe), 5.0 (ecae56e). That is
+about 1 ms of frame work added with the audio and the new kinds, well
+inside the 16.7 ms.

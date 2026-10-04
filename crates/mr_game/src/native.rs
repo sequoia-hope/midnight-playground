@@ -39,6 +39,31 @@ fn start_loading(opts: Res<Opts>) {
     if o.materials.is_some() {
         return; // the material test scenes load their own sources
     }
+    load(o);
+}
+
+/// A level the menu asked for (`loadLevel`), loaded once the current
+/// scene is torn down.
+static RELOAD: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Tears the scene down and reads another level's (the menu's level tabs).
+pub fn reload(level: &str) {
+    inbox().unload = Some(level.to_owned());
+    *RELOAD.lock().unwrap_or_else(|e| e.into_inner()) = Some(level.to_owned());
+}
+
+fn reload_scene(opts: Res<Opts>, status: Res<Status>) {
+    let mut r = RELOAD.lock().unwrap_or_else(|e| e.into_inner());
+    if r.as_deref() == Some(opts.o.level.as_str())
+        && status.state == "waiting"
+        && inbox().unload.is_none()
+    {
+        *r = None;
+        load(opts.o.clone());
+    }
+}
+
+fn load(o: Options) {
     // `?world=gen`: the scene is the client's own world build (`animate`).
     let generated = crate::animate::draws_generated(&o);
     std::thread::spawn(move || {
@@ -152,7 +177,7 @@ fn finish(
 
 pub fn plugin(app: &mut App) {
     app.add_systems(Startup, start_loading)
-        .add_systems(Update, (title, finish));
+        .add_systems(Update, (title, finish, reload_scene));
 }
 
 /// The native entry point: parse the command line, run the app.
@@ -178,6 +203,10 @@ pub fn run() -> AppExit {
             }
         };
     }
-    let hq = o.hq.unwrap_or(true);
+    // The saved level for the menu, the saved High quality (DECISIONS
+    // D570).
+    let mut o = o;
+    let touch = crate::ui::touch_ui(&o);
+    let hq = crate::ui::prepare(&mut o, touch);
     crate::app(o, hq).run()
 }
