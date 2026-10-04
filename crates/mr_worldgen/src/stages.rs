@@ -104,7 +104,9 @@ pub fn sea_stage() -> StageFn {
             return Ok(Vec::new());
         };
         let terrain = w.terrain.as_ref().ok_or("no terrain")?;
-        let sea = Sea::new(&mut w.graph, &mut w.textures, terrain, sea_y);
+        // A menu view's sea covers its land only (D748).
+        let bounds = crate::section::bounds(w);
+        let sea = Sea::new_in(&mut w.graph, &mut w.textures, terrain, sea_y, bounds);
         w.graph.add(w.root, sea.mesh);
         w.add_animator(sea.animator());
         w.sea = Some(sea);

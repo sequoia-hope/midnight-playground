@@ -22,6 +22,7 @@ pub mod raceway;
 pub mod road;
 pub mod scenery;
 pub mod sea;
+pub mod section;
 pub mod sky;
 pub mod stages;
 pub mod streets;

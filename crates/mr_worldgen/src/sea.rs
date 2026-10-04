@@ -105,10 +105,34 @@ pub struct Sea {
 
 /// The sea's mesh geometry over the terrain's bounds (`step` 20 m).
 pub fn sea_geometry(t: &Terrain, sea_y: f64) -> BufferGeometry {
+    sea_geometry_in(t, sea_y, None)
+}
+
+/// [`sea_geometry`], over the part of the terrain's bounds inside `bounds`
+/// (`[x0, z0, x1, z1]`, on the same 20 m grid) when given: a menu view's
+/// sea (D748). `None` is the level's, unchanged.
+pub fn sea_geometry_in(t: &Terrain, sea_y: f64, bounds: Option<[f64; 4]>) -> BufferGeometry {
     let step = 20.0;
-    let (x0, z0) = (t.min_x, t.min_z);
-    let nx = ((t.max_x - t.min_x) / step).ceil() as usize + 1;
-    let nz = ((t.max_z - t.min_z) / step).ceil() as usize + 1;
+    let (x0, z0, nx, nz) = match bounds {
+        None => (
+            t.min_x,
+            t.min_z,
+            ((t.max_x - t.min_x) / step).ceil() as usize + 1,
+            ((t.max_z - t.min_z) / step).ceil() as usize + 1,
+        ),
+        Some([bx0, bz0, bx1, bz1]) => {
+            let x0 = t.min_x + ((bx0 - t.min_x) / step).floor().max(0.0) * step;
+            let z0 = t.min_z + ((bz0 - t.min_z) / step).floor().max(0.0) * step;
+            let x1 = bx1.min(t.max_x);
+            let z1 = bz1.min(t.max_z);
+            (
+                x0,
+                z0,
+                ((x1 - x0) / step).ceil().max(1.0) as usize + 1,
+                ((z1 - z0) / step).ceil().max(1.0) as usize + 1,
+            )
+        }
+    };
     // Float32Array.
     let mut h = vec![0f32; nx * nz];
     for j in 0..nz {
@@ -204,7 +228,18 @@ impl Sea {
         terrain: &Terrain,
         sea_y: f64,
     ) -> Sea {
-        let g = sea_geometry(terrain, sea_y);
+        Sea::new_in(graph, textures, terrain, sea_y, None)
+    }
+
+    /// [`Sea::new`] over `bounds` ([`sea_geometry_in`]): a menu view's.
+    pub fn new_in(
+        graph: &mut SceneGraph,
+        textures: &mut TextureCache,
+        terrain: &Terrain,
+        sea_y: f64,
+        bounds: Option<[f64; 4]>,
+    ) -> Sea {
+        let g = sea_geometry_in(terrain, sea_y, bounds);
         let normal_tex = Arc::new(wave_normals());
         let desc = normal_tex.desc("", 0);
         let normal_map = graph.add_texture(Image::Own(normal_tex), desc);
