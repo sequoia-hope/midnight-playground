@@ -5218,3 +5218,16 @@ in the client from each level's world generation, which now fits the
 budget, D675, or cut from the exports), their length, and the memory they
 may hold on a phone are for the package that does it; recorded in
 DEVIATIONS.md when it lands.
+
+## D677. Brotli for the web build
+
+2026-10-04, the owner ("turn on brotli"; D674 item 3). `cargo xtask web
+--release` writes a `.br` (quality 11, 16 MB window) beside the `.gz` for
+the wasm and its JS, and `tools/serve.py` sends the `.br` with
+`Content-Encoding: br` when the request offers it, the `.gz` otherwise.
+Browsers offer brotli only on https, so phones on the tailnet front get
+it and plain-http loads keep gzip. `cargo xtask size` reports both; the
+budget (16 MB, D675) stays on gzip, the encoding every load can fall
+back to. Scene files are not precompressed: they are the parity cache's
+exports, read only when a level is not built in the client, and their
+delivery is still open (D439).
