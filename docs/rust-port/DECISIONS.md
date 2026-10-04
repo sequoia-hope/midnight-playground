@@ -5889,3 +5889,21 @@ chosen here. `level-switch.test.mjs` (both forms) passes on WebGPU and on
 WebGL2 (`MR_BACKEND=webgl2`, new), as does `sections.test.mjs` on both.
 Wasm 8.42 MB (WebGPU) and 8.80 MB (WebGL2) after gzip with every level's
 world generation linked.
+
+With D678 merged (main 7bcdb89: the client builds every level by default),
+Race from the menu builds the level in the client, nothing downloaded.
+The same suite then (load 45 to 49, so the times are long):
+
+| | WebGPU | WebGL2 |
+|---|---|---|
+| Menu ready | 6.11 s | 5.16 s |
+| Wasm at the menu; all six held | 176; 505 MB | 169; 503 MB |
+| Frames behind the menu over 50 ms (of 165 to 173); longest | 38; 1.67 s | 48; 1.92 s |
+| Tab shown after the click | 76 to 132 ms | 105 to 171 ms |
+| Race on Coast: racing after the click; wasm high-water | 6.4 s; 596 MB | 5.6 s; 609 MB |
+
+A Coast build alone reloads at 512 MB (D678); after the menu's sections
+the race reaches 596 to 609 MB, the sections' peak and the race's build
+not sharing all their memory (the wasm memory never shrinks, D745). Part
+of D746 (1). `level-switch.test.mjs` (built and `world=export`) passes on
+both backends.
