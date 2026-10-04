@@ -10,8 +10,9 @@
 //! loads the chosen level if it is not the one built (`loadLevel`), builds
 //! the field and holds the countdown until its pipelines are compiled
 //! (`startRace`'s `compileAsync`), then drives; pause, results, Restart,
-//! Race again and Main menu as there. A level tab builds its level behind
-//! the loading screen. Opening the page with `?level=` still races straight
+//! Race again and Main menu as there. A level tab only selects: the menu's
+//! attract camera shows that level's section (`crate::preview`, D676,
+//! D740 on), and Race builds or downloads the level whole. Opening the page with `?level=` still races straight
 //! away (DECISIONS D432); the menu is the default with no level given
 //! (D570).
 
@@ -363,6 +364,7 @@ fn flow(
     time: Res<Time>,
     tr: Res<TrackRes>,
     mut cs: ResMut<CameraState>,
+    previews: Res<crate::preview::Previews>,
 ) {
     let ui = &mut *ui;
     // The race built behind the loading screen of a menu-first run warmed
@@ -379,7 +381,12 @@ fn flow(
     // Race: the level first, then the field and its pipelines.
     match ui.starting {
         Some(Starting::Level) => {
-            if status.ready && opts.o.level == ui.settings.level && !ui.preview {
+            // The level drawn whole, not its menu section (D743).
+            if status.ready
+                && opts.o.level == ui.settings.level
+                && previews.has_full(&ui.settings.level)
+                && !ui.preview
+            {
                 arm(ui, &mut play, &store, &opts.o);
                 ui.starting = Some(Starting::Build {
                     frames: 0,
@@ -866,6 +873,7 @@ struct ActCtx<'w, 's> {
     cs: ResMut<'w, CameraState>,
     tr: Res<'w, TrackRes>,
     status: Res<'w, Status>,
+    previews: ResMut<'w, crate::preview::Previews>,
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     windows: Query<'w, 's, &'static mut Window, With<PrimaryWindow>>,
 }
@@ -921,11 +929,10 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
             ui.settings.level = id.into();
             ctx.store.set_str("level", id);
             ui.audio_level = Some(id.into());
-            // Build the new level behind the menu so it's ready when you
-            // start.
-            if ctx.opts.o.level != id {
-                request_level(id);
-            }
+            // The JS builds the new level behind the loading screen here;
+            // the menu shows its section instead, at once if it is up, and
+            // Race builds the level (D676, D743).
+            ctx.previews.select(id);
         }
         Act::Car(k) => {
             ui.settings.car = k.into();
@@ -943,8 +950,13 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
             if busy || ui.screen != Screen::Menu {
                 return;
             }
-            if ctx.opts.o.level != ui.settings.level {
-                request_level(&ui.settings.level.clone());
+            // The menu's sections go; the level is built or downloaded
+            // whole behind the loading screen unless it is drawn whole
+            // already (D743).
+            let level = ui.settings.level.clone();
+            ctx.previews.free_sections();
+            if !ctx.previews.has_full(&level) {
+                request_level(&level);
             }
             ui.starting = Some(Starting::Level);
         }
@@ -1048,6 +1060,10 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
             ui.screen = Screen::Menu;
             ui.scroll = 0.0;
             ui.to_menu = true;
+            // The level stays drawn for its tab; the sections are prepared
+            // again behind the menu (D743).
+            let level = ctx.opts.o.level.clone();
+            ctx.previews.back_to_menu(&level);
         }
     }
     let _ = &ctx.status;
@@ -1236,7 +1252,8 @@ fn build(
     for e in &roots {
         commands.entity(e).despawn();
     }
-    if ui.screen == Screen::None {
+    // `menu=0`: the screens are not drawn (pictures of what is behind).
+    if ui.screen == Screen::None || opts.o.param("menu") == Some("0") {
         ui.focus_order.clear();
         return;
     }

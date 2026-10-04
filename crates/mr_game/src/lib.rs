@@ -20,6 +20,7 @@
 //! - [`cars`]: stand-in cars driven by the simulation (WP 2.4).
 //! - [`play`]: a playable race (M4): session, input, camera, flow, HUD.
 //! - [`plugins`]: Bevy's default plugins less its 2D sprites.
+//! - [`preview`]: the menu's flyover sections of every level (D740).
 //! - [`ui`]: the screens (M6): loading, menu, pause, results, controller
 //!   setup, and the settings store.
 //! - [`warmup`]: every pipeline the scene needs, compiled behind the
@@ -38,6 +39,7 @@ pub mod matscene;
 pub mod options;
 pub mod play;
 pub mod plugins;
+pub mod preview;
 pub mod render;
 pub mod stations;
 pub mod status;
@@ -546,6 +548,7 @@ pub fn app(o: Options, hq: bool) -> App {
         stations::plugin(&mut app, &path, out);
     }
     play::plugin(&mut app);
+    preview::plugin(&mut app);
     ui::plugin(&mut app);
     animate::plugin(&mut app);
     #[cfg(not(target_arch = "wasm32"))]

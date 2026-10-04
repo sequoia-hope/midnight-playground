@@ -107,6 +107,9 @@ pub struct Build {
     offset: Vec<Vec3>,
     out: Loaded,
     hidden: Vec<(MaterialKind, usize)>,
+    /// The entity every spawned entity goes under (a menu section's root,
+    /// `crate::preview`); none for a level, whose entities have no parent.
+    parent: Option<Entity>,
 }
 
 impl Build {
@@ -153,10 +156,17 @@ impl Build {
                 }
             },
             hidden: Vec::new(),
+            parent: None,
             step: Step::Textures,
             cursor: 0,
             scene,
         }
+    }
+
+    /// Spawns the scene under `parent` (a menu section's root, D742).
+    pub fn under(mut self, parent: Entity) -> Build {
+        self.parent = Some(parent);
+        self
     }
 
     /// Fraction done, for the loading bar.
@@ -396,6 +406,9 @@ fn spawn_node(
                 NoFrustumCulling,
             ));
             e.insert(Name::new("sky dome"));
+            if let Some(p) = b.parent {
+                e.insert(ChildOf(p));
+            }
             spawned += 1;
             continue;
         }
@@ -423,6 +436,9 @@ fn spawn_node(
                 shadows(&mut e);
                 if hidden {
                     e.insert(Visibility::Hidden);
+                }
+                if let Some(p) = b.parent {
+                    e.insert(ChildOf(p));
                 }
                 spawned += 1;
             }
@@ -475,6 +491,9 @@ fn spawn_node(
                 shadows(&mut e);
                 if hidden {
                     e.insert(Visibility::Hidden);
+                }
+                if let Some(p) = b.parent {
+                    e.insert(ChildOf(p));
                 }
                 spawned += 1;
             }
@@ -574,8 +593,12 @@ pub fn instance_extras(scene: &Scene, inst: &mr_scene::InstanceDesc) -> Option<V
 /// point light, as three holds them. The sun, hemisphere light and fog follow
 /// the sky (`render::sky`), not the export.
 fn scene_lights(b: &Build, lighting: &mut Lighting) {
-    lighting.spot = None;
-    lighting.point = None;
+    (lighting.spot, lighting.point) = lights_of(b);
+}
+
+/// The scene's first spot light and point light.
+fn lights_of(b: &Build) -> (Option<Spot>, Option<Point>) {
+    let mut lighting = (None::<Spot>, None::<Point>);
     for l in &b.scene.lights {
         let node = &b.scene.nodes[l.node as usize];
         if !b.visible[l.node as usize] {
@@ -586,11 +609,11 @@ fn scene_lights(b: &Build, lighting: &mut Lighting) {
             .truncate()
             .as_dvec3();
         match l.ty {
-            NodeType::SpotLight if lighting.spot.is_none() => {
+            NodeType::SpotLight if lighting.0.is_none() => {
                 let t = l
                     .target
                     .map_or(p - DVec3::Y, |t| DVec3::new(t[0], t[1], t[2]));
-                lighting.spot = Some(Spot {
+                lighting.0 = Some(Spot {
                     color: l.color,
                     intensity: l.intensity,
                     position: p,
@@ -601,8 +624,8 @@ fn scene_lights(b: &Build, lighting: &mut Lighting) {
                     penumbra: l.penumbra.unwrap_or(0.0),
                 });
             }
-            NodeType::PointLight if lighting.point.is_none() => {
-                lighting.point = Some(Point {
+            NodeType::PointLight if lighting.1.is_none() => {
+                lighting.1 = Some(Point {
                     color: l.color,
                     intensity: l.intensity,
                     position: p,
@@ -613,6 +636,7 @@ fn scene_lights(b: &Build, lighting: &mut Lighting) {
             _ => {}
         }
     }
+    lighting
 }
 
 /// The client's state machine (WP 2.1).
@@ -735,5 +759,91 @@ pub fn build_step(
 pub fn follow_focus(focus: DVec3, sky: &mut Query<&mut Transform, With<SkyDome>>) {
     for mut t in sky.iter_mut() {
         t.translation = focus.as_vec3();
+    }
+}
+
+// ── Menu sections (D742) ────────────────────────────────────────────────
+
+/// What a menu section's scene leaves behind once spawned
+/// (`crate::preview`): what a level's build puts in resources, kept by the
+/// section until it is shown.
+pub struct SectionScene {
+    pub loaded: Loaded,
+    pub index: crate::animate::SceneIndex,
+    pub spot: Option<Spot>,
+    pub point: Option<Point>,
+    pub noise: Option<Handle<Image>>,
+    /// The warm-up's stand-ins (SPEC 6.3), spawned by [`finish_section`].
+    pub warm_up: Vec<Entity>,
+}
+
+/// One slice of a section's build: its textures, then its nodes, for at
+/// most `budget_ms`. True once everything is spawned.
+#[allow(clippy::too_many_arguments)]
+pub fn step_section(
+    b: &mut Build,
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<ThreeMaterial>,
+    sky_materials: &mut Assets<SkyMaterial>,
+    images: &mut Assets<Image>,
+    budget_ms: u128,
+) -> bool {
+    let t0 = Instant::now();
+    while t0.elapsed().as_millis() < budget_ms {
+        match b.step {
+            Step::Textures => {
+                if let Some(t) = b.scene.textures.get(b.cursor) {
+                    let img = convert::build_image(&b.scene, t).map(|i| images.add(i));
+                    b.images.push(img);
+                    b.cursor += 1;
+                } else {
+                    b.step = Step::Nodes;
+                    b.cursor = 0;
+                }
+            }
+            Step::Nodes => {
+                if b.cursor < b.scene.nodes.len() {
+                    let i = b.cursor;
+                    b.out.counts.entities +=
+                        spawn_node(b, i, commands, meshes, (materials, sky_materials));
+                    b.cursor += 1;
+                } else {
+                    b.step = Step::Lights;
+                }
+            }
+            Step::Lights | Step::Done => return true,
+        }
+    }
+    matches!(b.step, Step::Lights | Step::Done)
+}
+
+/// The end of a section's build, as [`build_step`]'s for a level: the
+/// counts, the warm-up's stand-ins, the animators' index, the local lights
+/// and the sky's noise; the scene's CPU copy is dropped with the build.
+pub fn finish_section(
+    mut b: Build,
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    images: &mut Assets<Image>,
+) -> SectionScene {
+    let c = &mut b.out.counts;
+    c.meshes = b.meshes.values().filter(|m| m.is_some()).count();
+    c.materials = b.materials.values().filter(|m| m.is_some()).count();
+    c.images = b.images.iter().filter(|m| m.is_some()).count();
+    c.hidden_kinds = std::mem::take(&mut b.hidden);
+    let (spot, point) = lights_of(&b);
+    let noise = b
+        .sky_noise()
+        .or_else(|| crate::render::sky::noise_image().map(|i| images.add(i)));
+    let warm_up = b.combos.spawn_each(commands, meshes);
+    let index = crate::animate::SceneIndex::new(&b.scene, &b.meshes, &b.offset);
+    SectionScene {
+        loaded: b.out.clone(),
+        index,
+        spot,
+        point,
+        noise,
+        warm_up,
     }
 }

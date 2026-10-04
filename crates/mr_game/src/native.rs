@@ -39,6 +39,9 @@ fn start_loading(opts: Res<Opts>) {
     if o.materials.is_some() {
         return; // the material test scenes load their own sources
     }
+    if crate::preview::active() {
+        return; // the menu's sections are built in the client (D742)
+    }
     load(o);
 }
 

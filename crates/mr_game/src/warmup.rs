@@ -124,6 +124,12 @@ impl Combos {
     /// box whatever the camera does) and are never culled, so each is
     /// specialised for the main view and the shadow view.
     pub fn spawn(&self, commands: &mut Commands, meshes: &mut Assets<Mesh>) -> usize {
+        self.spawn_each(commands, meshes).len()
+    }
+
+    /// [`Combos::spawn`], returning the stand-ins.
+    pub fn spawn_each(&self, commands: &mut Commands, meshes: &mut Assets<Mesh>) -> Vec<Entity> {
+        let mut out = Vec::with_capacity(self.list.len());
         let mut cache: HashMap<Signature, Handle<Mesh>> = HashMap::new();
         let mut stand_in = Vec::new();
         instancing::push_instance(
@@ -153,8 +159,9 @@ impl Combos {
             if *instanced {
                 e.insert((stream.clone(), NoAutomaticBatching));
             }
+            out.push(e.id());
         }
-        self.list.len()
+        out
     }
 }
 

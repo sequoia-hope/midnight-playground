@@ -510,7 +510,8 @@ pub fn terrain_stages(setup: TerrainSetup) -> (StageFn, StageFn, StageFn) {
     });
     let meshes: StageFn = Box::new(move |w: &mut World| {
         let t = w.terrain.as_ref().ok_or("no terrain")?;
-        let tiles = Arc::new(t.tile_list());
+        // A section meshes only the tiles near it (D741).
+        let tiles = Arc::new(crate::section::keep_tiles(w, t.tile_list()));
         let built: Arc<Mutex<Vec<BufferGeometry>>> = Arc::new(Mutex::new(Vec::new()));
         let mut jobs = Vec::new();
         let total = tiles.len();

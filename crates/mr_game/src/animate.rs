@@ -68,6 +68,8 @@ pub fn draws_generated(o: &crate::options::Options) -> bool {
 /// scene with `?world=gen`).
 fn wants_world(o: &crate::options::Options) -> bool {
     generated(&o.level)
+        // The menu's sections bring their own worlds (`crate::preview`).
+        && !crate::preview::active()
         && o.materials.is_none()
         && o.scene.is_none()
         && o.param("world") != Some("off")
@@ -153,6 +155,44 @@ fn new_build(level: &str) -> Build {
         World::new(mr_levels::level_by_id(level)),
         level_jobs(level_stages(setup), level1_scenery),
     )
+}
+
+/// A menu section of a level that world generation builds (D741): the
+/// level's own build, restricted to `section` (`mr_worldgen::section`).
+pub fn section_build(level: &str, section: mr_worldgen::section::Section) -> Build {
+    let mut b = new_build(level);
+    b.world.section = Some(section);
+    b
+}
+
+/// One job of a section's build, as [`drive_build`] steps a level's.
+pub fn section_step(b: &mut Build, t: Option<f64>) -> Result<(), String> {
+    step(b, t)
+}
+
+/// Puts a menu section's world in place of the level's: its animators
+/// run on the drawn scene from the next frame (`crate::preview`). Returns
+/// what was there (a level's world, kept by the caller or dropped).
+pub fn install_world(wg: &mut WorldGen, wb: WorldBuild, index: &SceneIndex) -> Option<WorldBuild> {
+    let old = take_world(wg);
+    wg.state = Gen::Ready {
+        wb: Box::new(Mutex::new(wb)),
+        shape: index.shape,
+    };
+    PENDING.store(false, Ordering::Relaxed);
+    old
+}
+
+/// Takes the world whose animators run, leaving none (`Off`: nothing is
+/// built in its place).
+pub fn take_world(wg: &mut WorldGen) -> Option<WorldBuild> {
+    match std::mem::replace(&mut wg.state, Gen::Off) {
+        Gen::Ready { wb, .. } => Some(wb.into_inner().unwrap_or_else(|e| e.into_inner())),
+        other => {
+            wg.state = other;
+            None
+        }
+    }
 }
 
 /// Level 1's scenery modules, named one by one rather than through
@@ -554,6 +594,24 @@ impl SceneIndex {
             meshes: by_mesh,
             entities: None,
             unknown: Vec::new(),
+        }
+    }
+
+    /// The entities drawn per node, for a scene that is not the only one
+    /// drawn (a menu section's, under its root).
+    pub fn set_entities(&mut self, by_node: Vec<Vec<Entity>>) {
+        self.entities = Some(by_node);
+    }
+
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Forgets the materials' animation blocks (the blocks were cleared
+    /// for another scene); they are made again on first use.
+    pub fn reset_blocks(&mut self) {
+        for m in &mut self.materials {
+            m.block = None;
         }
     }
 

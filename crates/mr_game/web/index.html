@@ -293,7 +293,18 @@
     };
 
     poll();
-    await loadScene(level, true);
+    // A menu-first run opens on the menu's sections, which the client builds
+    // itself (D742): no level is downloaded until Race (`__mr.reload`), and
+    // Seaside's section needs its survey.
+    if (glue.menu_sections && glue.menu_sections()) {
+      show(0.3, 'Preparing the menu…');
+      download('../../assets/seaside/survey.bin', () => {})
+        .then((b) => glue.section_survey(b))
+        .catch((e) => glue.section_survey_failed(String(e.message || e)));
+      level = '';
+    } else {
+      await loadScene(level, true);
+    }
     if (params.has('stats') || params.has('perf')) statsPanel();
     if (params.has('perf')) (await import('./perf.js')).runPerf(mr, new URLSearchParams(location.search));
   }
