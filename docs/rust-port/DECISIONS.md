@@ -3638,7 +3638,7 @@ runs only near its object, the waterfall's spray within 800 m, did in the
 middle of a flight). A new block starts with the emissive colour and
 intensity as exported (the intensity left to `night` when it follows
 nightfall, D455), so the shader needs no change of the material's emissive
-form. On Sierra 15 materials get one in the first frame and 16 in all. A
+form. On Sierra 15 materials get one in the first frame (at the start). A
 number or colour goes to the
 kind's uniform of that name if it has one animated, else to the parameter
 (D411's rule); the sky's edits are left out (D493).
