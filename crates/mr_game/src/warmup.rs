@@ -162,6 +162,35 @@ impl Combos {
 #[derive(Component)]
 pub struct WarmUp;
 
+/// The race HUD's text styles (`play::hud`'s `text`: bold, these sizes).
+const HUD_TEXT_SIZES: [f32; 7] = [84.0, 44.0, 30.0, 26.0, 22.0, 17.0, 15.0];
+
+/// Lays out every printable ASCII character in each of the race HUD's text
+/// styles, hidden, during the warm-up (D459), so the glyph atlas holds them
+/// before the race starts. Bevy adds a glyph to its atlas the first time a
+/// text shows it and then uploads the whole 512 × 512 atlas again: the
+/// timer's new digits in the race's first half second meant one or two
+/// such uploads a frame, which in Chrome's WebGPU took 30 to 80 ms frames.
+/// The HUD shows ASCII only.
+pub fn spawn_glyphs(commands: &mut Commands) {
+    let chars: String = (0x20u8..0x7f).map(char::from).collect();
+    for size in HUD_TEXT_SIZES {
+        commands.spawn((
+            Text::new(chars.clone()),
+            TextFont::from_font_size(size).with_font_weight(FontWeight::BOLD),
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(-100_000.0),
+                ..default()
+            },
+            Visibility::Hidden,
+            WarmUp,
+            crate::loader::SceneEntity,
+            Name::new("warm-up glyphs"),
+        ));
+    }
+}
+
 /// Once every pipeline has compiled, the stand-ins go.
 pub fn end_warm_up(mut commands: Commands, status: Res<Status>, q: Query<Entity, With<WarmUp>>) {
     if !status.ready || q.is_empty() {
