@@ -563,8 +563,14 @@ pub fn button_mini(
 
 pub fn focus_ring(e: &mut EntityCommands, bp: &Bp, focused: bool) {
     if focused {
-        // `body.pad-nav .pad-focus`'s ring (the keyboard's, here).
-        e.insert((Outline::new(bp.px(3.0), bp.px(3.0), accent2()), Focused));
+        // `body.pad-nav .pad-focus`'s ring (the keyboard's, here), #ffcf4d
+        // while the pad adjusts a slider or drop-down (`.pad-edit`).
+        let c = if super::nav::EDITING.load(std::sync::atomic::Ordering::Relaxed) {
+            gold()
+        } else {
+            accent2()
+        };
+        e.insert((Outline::new(bp.px(3.0), bp.px(3.0), c), Focused));
     }
 }
 

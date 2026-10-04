@@ -19,6 +19,8 @@
 pub mod audio;
 pub mod camera;
 pub mod flow;
+pub mod gamepad;
+pub mod gamepad_io;
 mod hud;
 pub mod input;
 mod models;
@@ -150,6 +152,9 @@ pub struct Play {
     pub hold: bool,
     /// Take the race and its cars away (`race.dispose()`).
     pub stop: bool,
+    /// The player's headlight spot's intensity this frame (`Race.update`:
+    /// `this.headlight.intensity = lightsOn * 140`).
+    headlight: f64,
 }
 
 /// A car's root entity.
@@ -177,6 +182,7 @@ pub fn plugin(app: &mut App) {
         armed: true,
         hold: false,
         stop: false,
+        headlight: 0.0,
     })
     .add_systems(Startup, (hud::spawn, touch_ui::spawn))
     .add_systems(
@@ -191,8 +197,15 @@ pub fn plugin(app: &mut App) {
         (hud::update, touch_ui::update)
             .after(draw)
             .run_if(in_state(AppState::Running)),
+    )
+    .add_systems(
+        PostUpdate,
+        headlight
+            .after(bevy::transform::TransformSystems::Propagate)
+            .before(crate::render::lighting::pack_globals),
     );
     audio::plugin(app);
+    gamepad_io::plugin(app);
     #[cfg(target_arch = "wasm32")]
     web::plugin(app);
     #[cfg(not(target_arch = "wasm32"))]
@@ -583,6 +596,7 @@ fn draw(
         }
         models.apply(e, &mut node_vis, &mut mats, &mut lights);
     }
+    play.headlight = lights_on * HEADLIGHT.intensity;
 
     // The world around the player (`world.update(dt, s, focus)`).
     cs.focus = DVec3::new(car.x, car.y, car.z);
@@ -604,6 +618,61 @@ fn draw(
         &mut lighting,
         &mut env,
     );
+}
+
+/// `Race.js`'s headlights for the player, "one real spotlight": `new
+/// THREE.SpotLight(0xfff2d6, 0, 140, 0.55, 0.55, 1.2)` (colour, intensity,
+/// distance, angle, penumbra, decay), no shadow, on the model's
+/// `headlightAnchor` at its origin, aimed at (0, -2.2, 30) in the anchor's
+/// frame; `intensity` here is the full one, `lightsOn` × 140.
+struct Headlight {
+    color: u32,
+    intensity: f64,
+    distance: f64,
+    angle: f64,
+    penumbra: f64,
+    decay: f64,
+    target: [f32; 3],
+}
+
+const HEADLIGHT: Headlight = Headlight {
+    color: 0xfff2d6,
+    intensity: 140.0,
+    distance: 140.0,
+    angle: 0.55,
+    penumbra: 0.55,
+    decay: 1.2,
+    target: [0.0, -2.2, 30.0],
+};
+
+/// The player's headlight spot where its anchor is this frame (after the
+/// transforms propagate, as three reads `matrixWorld` when it renders),
+/// with the intensity `draw` set; none without a race (`race.dispose()`
+/// removes it, D760).
+fn headlight(
+    play: Option<Res<Play>>,
+    anchors: Query<&GlobalTransform>,
+    mut lighting: ResMut<Lighting>,
+) {
+    let want = play.as_deref().and_then(|p| {
+        p.race.as_ref()?;
+        let e = p.models.as_ref()?.cars.first()?.headlight?;
+        let m = anchors.get(e).ok()?.affine();
+        let h = &HEADLIGHT;
+        Some(crate::render::lighting::Spot {
+            color: crate::render::sky::hex_color(h.color),
+            intensity: p.headlight,
+            position: m.transform_point3(Vec3::ZERO).as_dvec3(),
+            target: m.transform_point3(Vec3::from_array(h.target)).as_dvec3(),
+            distance: h.distance,
+            decay: h.decay,
+            angle: h.angle,
+            penumbra: h.penumbra,
+        })
+    });
+    if lighting.headlight != want {
+        lighting.headlight = want;
+    }
 }
 
 /// `shots=<dir>` natively: the countdown (a second in), the race (twenty

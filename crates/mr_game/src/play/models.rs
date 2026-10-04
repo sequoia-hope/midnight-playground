@@ -51,6 +51,8 @@ struct Wheel {
 pub struct Car {
     pub root: Entity,
     pub model: VehicleModel,
+    /// `headlightAnchor`'s entity (the player's headlight spot hangs on it).
+    pub headlight: Option<Entity>,
     body: Option<(Entity, Transform)>,
     wheels: Vec<Wheel>,
     pivots: Vec<(Entity, Transform)>,
@@ -157,8 +159,10 @@ pub fn spawn(
             .iter()
             .filter_map(|&id| Some((ent(id)?, base(handles.node(id)?))))
             .collect();
+        let headlight = ent(m.headlight_anchor);
         cars.push(Car {
             root,
+            headlight,
             model: m,
             body,
             wheels,
