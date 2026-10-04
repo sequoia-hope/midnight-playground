@@ -5661,6 +5661,212 @@ switch clears it. The tools follow: `rust-web-stations.mjs` builds by
 default (`--query world=export` for the exports), and `level-switch`
 runs built and `world=export`.
 
+## D780. Gamepads on the web: the browser's Gamepad API, read directly
+
+2026-10-04, WP 6.4. `play::gamepad` ports `Gamepad.js` (`Pads`, the
+bindings, labels, the default map, the mute set, capture, per-pad maps,
+rumble) over a plain snapshot of the pads (`Pad`: id, index, mapping,
+axes, buttons), and `play::gamepad_io` reads the platform's pads into it.
+On the web that is `navigator.getGamepads()` read property by property
+through `js_sys::Reflect`, as `Gamepad.js` reads it: the `standard`
+mapping's button and axis indices, the browser's `id` (the key of a pad's
+map in `mr.padMaps`, so a map made in the JS game is the Rust build's
+too, same origin) and `mapping` (a non-standard pad gets numbered labels
+and resting-axis triggers). Bevy's gilrs backend was not used there:
+gilrs on wasm re-maps the pad through its own layout (the raw indices a
+non-standard pad's map stores are lost, and so is the id string), has no
+force feedback on wasm (SPEC 8.2's rumble note), and would add to the
+wasm. Reading through `Reflect` also reads a page's own `getGamepads`
+(the tests' fake pad, as the JS suite installs it). Rumble is
+`vibrationActuator.playEffect('dual-rumble', {duration: 140,
+strongMagnitude, weakMagnitude})`, else `hapticActuators[0].pulse`, with
+`reset()` to stop, each promise's rejection swallowed (`.catch(() =>
+{})`), on the pad object of the same frame's poll. `window.__mr.pads` is
+the state for the tests (`window.__pads`): connected, value, held, nav,
+steerAxis, active, capture, rumbleOn, resetLabel.
+
+## D781. Gamepads natively: gilrs's raw events as the standard mapping
+
+2026-10-04, WP 6.4. Natively the client turns on `bevy_gilrs` (the
+native feature table only) and adds `GilrsPlugin` where `DefaultPlugins`
+has it. `gamepad_io` keeps its own pads from Bevy's `RawGamepadEvent`s,
+not Bevy's `Gamepad` state, whose `GamepadSettings` add a 0.05 axis dead
+zone and 0.75/0.65 press/release thresholds the JS does not have. They
+are laid out as the standard mapping: buttons 0–16 (South, East, West,
+North, the bumpers, LT and RT with their analogue values, Select, Start,
+the stick presses, the D-pad, Mode), axes 0–3 with y negated (gilrs is
+up-positive, the Gamepad API down-positive). `pressed` is value above
+30/255, Chrome's threshold for an analogue button; since `bindingValue`
+takes `max(value, pressed ? 1 : 0)`, a trigger pulled past 12 % reads
+as full throttle or brake, which is what the JS game does in Chrome too
+(its standard mapping marks a trigger pressed at the same threshold). A pad's index is the
+lowest free one, as a browser hands them out; its id is written as
+Chrome writes it, `Name (STANDARD GAMEPAD Vendor: 045e Product: 028e)`,
+so the Controller screen shows the same name (the store is a file
+natively, D572, so the maps are not shared with the web anyway). Rumble
+is Bevy's `GamepadRumbleRequest`: `Stop` then `Add` for 140 ms, so a new
+effect replaces the last as `playEffect` does; `reset` is `Stop`. Bevy
+0.19.1's gilrs rumble uploads the weak motor's share as a second *strong*
+effect with no replay length (`bevy_gilrs::rumble::get_base_effects`), so
+natively the weak magnitude also drives the strong motor; left as Bevy
+has it, for the owner to judge with a real pad (a virtual uinput pad
+received only strong-motor effects). gilrs also lists any HID device with
+a joystick interface: on this machine a Hall-effect keyboard shows up as
+pad 0 (no SDL mapping) and is the pad in hand until a real one is
+touched; Chrome lists such devices too. `RUST_LOG=
+mr_game::play::gamepad_io=debug` logs what the pads ask for each time it
+changes, for trying a controller.
+
+## D782. When the pads are polled, and how the race reads them
+
+2026-10-04, WP 6.4. `main.js`'s `tick` polls the pads first
+(`input.update` → `pads.poll`), then the Controller screen, the menus'
+navigation and the race. The client polls once a frame in `PreUpdate`,
+after Bevy's input systems, so every screen and the race see the same
+poll; `now` is real time in ms. The race's input layer runs at the tick
+rate (D433), so it takes the frame's poll once (`Input::pad_frame`, in
+the race's frame before the ticks): the one-shot presses (camera,
+reset, pause) are posted then, once, and each tick's `Input::update`
+reads the rest (`value`, `held`, `digital`, `steerAxis`) as `Input.js`
+does: the stick past 0.12 is `sign·((|ax|−0.12)/0.88)^1.4` through the
+kernel's `pow` and analogue, steering bound to buttons ramps like keys,
+the triggers merge by max above 0.05, nitro, handbrake and look back OR
+in. Posting the presses per tick would fire a reset twice in a frame of
+two ticks. What the race asks of the pads in a frame (`kick`s, `feel`,
+`hush`) is handed to them at the next frame's poll, before it reads the
+pads and flushes the rumble: a kick's start is then the previous poll's
+time, as `pads.now` was when `Race.update` kicked, and the flush is at
+the next poll, as in the JS. The kicks are `Race.js`'s and
+`PursuitView.js`'s: countdown beeps, GO, shifts, landings, wall and car
+hits (`jolt`), the nitro firing (looked at per tick, where the JS looked
+once a frame), and the player's takedown, spikes, barrier and bust; the
+steady buzz (`Race.rumble`: scrape, gravel, skid, nitro, spiked tyres)
+from the state after the frame's ticks, handed on only while a pad is
+connected, and not while paused, so it lapses after 150 ms. A race
+built, restarted or resumed hushes the pads (`startRace`'s and
+`pause(false)`'s `pads.hush()`), at the next poll with the last poll's
+state, which is the state the JS's `hush` reads. The Rumble switch is
+followed from the menus' settings (`rumbleOn`, and the 0.5/0.7/300 ms
+buzz when it is switched), the maps load from `mr.padMaps` and are saved
+there when a capture binds or Defaults resets. The stuck hint names the
+pad's reset button while one is connected (`PRESS BACK TO RESET`).
+
+## D783. The menus with a gamepad
+
+2026-10-04, WP 6.4. `ui::nav` ports `MenuNav.js` over the screens'
+controls: a control's box is its laid-out rectangle in CSS px (what
+`getBoundingClientRect` gave), the focusable ones are the screen's
+controls that take an action (the open drop-down's list left out), and
+the highlight is the screens' focus ring (`UiState::focus`, which Tab
+moves too, D573), drawn in #ffcf4d while a slider or drop-down is being
+adjusted (`.pad-edit`). The repeat timing (380 ms, then every 110 ms),
+the scoring (along + 3 × off-axis), the first push only showing where you
+are, the per-screen memory, A to press or to adjust, ◂ ▸ by five steps of
+a slider or one option of a select (its `change`: `Act::Choose`), B and
+Start per screen (`main.js`: B resumes from pause, goes to the menu from
+the results and closes the Controller screen; Start races from the menu
+and races again from the results), and the mouse or a finger hiding the
+highlight are the JS's. What the DOM gave by markup is named per screen:
+the first control of a screen is the Controller screen's first row
+(`data-nav-first`), else the primary button (Race, Resume, Race again).
+`scrollIntoView({block: 'nearest'})` scrolls only a control not wholly in
+view, to the middle (the `reveal` the screens already had), once the
+screen rebuilt with the highlight is laid out; `after_layout` now leaves a
+screen rebuilt that frame alone (it has no layout yet, and clamping its
+offset to an empty content had sent every rebuilt screen back to the
+top). A new
+screen's highlight waits for that screen's controls to be built (a frame
+later than the DOM, which had them all along). `body.pad` is
+`UiState::pads`, set from the pads each frame, which shows Controller
+setup on the menu and Controller on the pause screen.
+
+## D784. The Controller screen
+
+2026-10-04, WP 6.4. `ui::pad_setup` ports `PadSetup.js`: the pad's
+name (its id less the browser's "(STANDARD GAMEPAD Vendor: …)", with
+"· remapped" or the not-standard warning), each action's bindings as
+labels joined with " / ", rows lit while held (`.on`, not while
+listening), the listening row in gold, the hints, a row picked to listen
+(again to stop), Defaults and Done, and the Rumble switch (saved, D782).
+The screen (`screens::padsetup`) is rebuilt when what it shows changes.
+Esc, P and Start leave it or stop listening, before the race can take
+them as un-pause (`main.js`'s `padSetup.escape()` on `consume('pause')`):
+with a race (opened from pause) it consumes the race's pending pause in
+the race's frame, after the pads reach the input layer and before the
+ticks; from the menu (no race) it reads Esc and P itself and the pad's
+Start press. The Controller screen left any other way stops listening.
+`window.__mr.padsetup` (`name`, `binds`, `on`, `listening`, `hint`) is the
+screen for the tests, which read its DOM in the JS suite.
+
+## D760. The race's headlight spot, and three's spot lights as a list
+
+2026-10-04, WP 4.4 (the headlight spot; D440 left it open), on the owner's
+report that night races in the Rust build were too dark (the start of
+Coast Highway, the end of Sierra). `Race.js` gives the player's car "one
+real spotlight": `new THREE.SpotLight(0xfff2d6, 0, 140, 0.55, 0.55, 1.2)`,
+no shadow, on `pModel.headlightAnchor` at its origin, its target at
+(0, -2.2, 30) in the anchor's frame, `intensity = lightsOn × 140` each
+frame (`lightsOn = smoothstep(0.25, 0.6, night)`), removed by
+`dispose()`. Ported as `play::headlight`: `draw` sets the intensity, and a
+`PostUpdate` system after the transforms propagate (three reads
+`matrixWorld` when it renders) and before the globals are packed places
+the spot from the anchor entity's `GlobalTransform` (WP 4.1's
+`headlight_anchor`, which `play::models` now keeps per car). Without a race
+(`race.dispose()`, the menu) it is gone; a restart keeps the cars and so
+the spot, as the JS's new `Race` makes a new one.
+
+`Lighting` holds it as `headlight`, beside the scene's `spot` (the desert
+train's beam, which follows its animator, D720/D721). three keeps every
+spot light of the scene in `spotLights[]`, in render-list order (the
+world's lights before the race group's; neither casts a shadow, so the
+sort that puts shadow casters first keeps that order), and the shader
+loops over `NUM_SPOT_LIGHTS`. The globals carry two spot slots: the first
+at texels 19 to 22 as before, the second at 27 to 30 (`G_SPOT1_POS`), and
+`pack` fills them in three's order with no gap (the headlight is slot 0
+where the level has no spot). The material shader loops over the slots and
+stops at the first empty one. A light at intensity 0 stays in the loop
+(the train's beam by day, the headlight before dusk), as in three, where it
+costs the same and adds nothing. Physically correct units as before:
+colour × intensity, distance cut-off, decay, cone and penumbra cosines.
+
+## D761. The headlight checked against the JS in races at night
+
+2026-10-04. The same race on both sides (seed 1, the sports car, the
+autopilot, pursuit off), stopped at the same race time: the JS with
+`?parity=1&ticks=16`, stopped exactly at the tick through `__parity.onTick`
+and pictured three times from the frozen frame (as drawn; with WP 4.4's
+effects hidden, which are not ported: the fake headlight pools, smoke,
+sparks, skids; and then also with the spot at 0); the Rust web build
+through the registered server, the page itself asking for the screenshot
+the first frame the race time reaches it (tick for tick with the JS). The
+scripts and pictures are in `parity/report/headlight/` (not in git).
+Mean linear luminance (Rec. 709) of boxes on the road ahead:
+
+| Where | JS no spot | JS spot | Rust before | Rust after |
+|---|---|---|---|---|
+| Coast 20 s, desktop hq, beside the rival ahead (left, right) | 0.0026, 0.0012 | 0.0038, 0.0023 | 0.0026, 0.0013 | 0.0040, 0.0024 |
+| Coast 20 s, desktop hq, the lit cliff | 0.0057 | 0.0181 | 0.0058 | 0.0187 |
+| Coast 20 s, iPhone portrait hq off, road ahead; car ahead | 0.0156; 0.0140 | 0.0194; 0.2615 | 0.0166; 0.0169 | 0.0203; 0.2683 |
+| Sierra 170 s (city freeway), desktop hq, band round the rival | 0.0022 | 0.0038 | 0.0021 | 0.0038 |
+| Sierra 170 s, iPhone portrait hq off, band round the rival | 0.0040 | 0.0060 | 0.0058 | 0.0082 |
+| Desert 110 s (dry lake, train beam in the scene), desktop | 0.0339 | 0.0594 | | 0.0608 |
+
+The spot matches: the pool's shape and place, the rivals and the
+roadside it lights. The WebGL2 build gives the same (Coast desktop
+0.0041, 0.0025, 0.0188; phone 0.0204), and the native client draws the
+same pool. Frame cost (Coast at 15 to 20 s, 1280 × 800, uncapped, WebGPU,
+four alternating runs each on a loaded machine): median 3.35 ms with the
+spot, 3.13 ms without, within the runs' spread (2.9 to 4.0 ms).
+
+What still differs on the road ahead is not the spot: drawn as the player
+sees it, the JS road round the car ahead is several times brighter again
+(Coast 0.0164 and 0.0138 in the boxes above, Sierra 0.0194, against 0.0038
+without the effects) because of `Effects.js`'s fake headlight pools (an
+additive glow quad on the road ahead of each car, 9 × 16 m for the player
+and 7 × 12 m for the others, its opacity rising with night), WP 4.4's
+effects, still to port.
+Those, not the spot, are most of the "too dark" the owner sees.
+
 ## Menu section decisions
 
 D676's package: the menu switches levels at once, over a short section of

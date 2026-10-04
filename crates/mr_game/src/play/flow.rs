@@ -8,6 +8,7 @@
 use mr_sim::autopilot::autopilot;
 use mr_sim::input::{InputFrame, RESET};
 use mr_sim::physics::PhysEvent;
+use mr_sim::pursuit::PursuitEvent;
 use mr_sim::race::{
     DT, LevelRuntime, RaceOpts, RaceStateKind, ResultRow, SimEvent, SimState, results,
 };
@@ -127,6 +128,19 @@ pub struct Race {
     pub music_pressed: bool,
     /// Races started on this `Race` (`restart` counts one more).
     pub starts: u32,
+    /// The pads should quiet what is held (`input.pads.hush()` at the
+    /// start and on resume); the client's pad system does it.
+    pub hush_pads: bool,
+    /// Rumble asked for this frame (`pads.kick`): strong, weak, ms.
+    pub kicks: Vec<(f64, f64, f64)>,
+    /// The steady buzz this frame (`pads.feel`, `Race.rumble`); `None`
+    /// while paused.
+    pub feel: Option<(f64, f64)>,
+    /// What the reset action is on the pad in hand, while one is connected
+    /// (`pads.label('reset')`, for the stuck hint).
+    pub pad_reset: Option<String>,
+    was_nitro: bool,
+    offroad: f64,
 }
 
 /// Every car slot of a state: the players, the rivals, the traffic pool
@@ -162,6 +176,13 @@ impl Race {
             audio_ticks: Vec::new(),
             music_pressed: false,
             starts: next_start(),
+            // Nor does the A that started it.
+            hush_pads: true,
+            kicks: Vec::new(),
+            feel: None,
+            pad_reset: None,
+            was_nitro: false,
+            offroad: 0.0,
         }
     }
 
@@ -180,6 +201,8 @@ impl Race {
         self.results = None;
         self.input.pressed.clear();
         self.input.enabled = true;
+        self.hush_pads = true;
+        self.was_nitro = false;
         self.starts = next_start();
     }
 
@@ -199,6 +222,7 @@ impl Race {
         if !on {
             // Keys pressed while paused don't carry into the race.
             self.input.pressed.clear();
+            self.hush_pads = true;
         }
     }
 
@@ -209,6 +233,8 @@ impl Race {
     pub fn frame(&mut self, dt: f64) {
         self.log.clear();
         self.audio_ticks.clear();
+        self.kicks.clear();
+        self.feel = None;
         if self.input.consume("pause") {
             match self.mode {
                 Mode::Race => self.pause(true),
@@ -258,6 +284,7 @@ impl Race {
             self.on_event(e);
         }
         self.log = events;
+        self.rumble();
         self.stuck_hint();
         self.hud.tick(dt);
     }
@@ -267,8 +294,14 @@ impl Race {
     fn on_event(&mut self, e: &SimEvent) {
         let laps = self.session.curr.race.laps;
         match e {
-            SimEvent::Countdown(n) => self.hud.center(n.to_string(), 1.0),
-            SimEvent::Go => self.hud.center("GO!", 1.0),
+            SimEvent::Countdown(n) => {
+                self.hud.center(n.to_string(), 1.0);
+                self.kicks.push((0.0, 0.25, 90.0));
+            }
+            SimEvent::Go => {
+                self.hud.center("GO!", 1.0);
+                self.kicks.push((0.3, 0.6, 200.0));
+            }
             SimEvent::PerfectStart => self.hud.toast("PERFECT START", 1.6),
             SimEvent::Bonus {
                 text,
@@ -323,19 +356,90 @@ impl Race {
             SimEvent::CarHit {
                 hit,
                 player: Some(_),
-            } => self.rig.bump(hit.strength * 1.2),
+            } => {
+                self.jolt(hit.strength);
+                self.rig.bump(hit.strength * 1.2);
+            }
             SimEvent::Phys { e, player } => match e {
-                PhysEvent::Impact { strength, .. } => self.rig.bump(*strength),
-                PhysEvent::Land { strength, .. } => self.rig.bump(strength * 0.8),
+                PhysEvent::Impact { strength, .. } => {
+                    if *player == 0 {
+                        self.jolt(*strength);
+                    }
+                    self.rig.bump(*strength)
+                }
+                PhysEvent::Land { strength, .. } => {
+                    if *player == 0 {
+                        self.kicks.push((0.7 * strength, 0.5 * strength, 180.0));
+                    }
+                    self.rig.bump(strength * 0.8)
+                }
                 PhysEvent::Touchdown { impact } => {
                     if let Some(s) = self.springs.get_mut(*player) {
                         s.touchdown(*impact);
                     }
                 }
-                PhysEvent::Shift { .. } => {}
+                PhysEvent::Shift { .. } => {
+                    if *player == 0 {
+                        self.kicks.push((0.0, 0.2, 70.0));
+                    }
+                }
+            },
+            // PursuitView's jolts for the player.
+            SimEvent::Pursuit(pe) => match pe {
+                PursuitEvent::Takedown {
+                    by_player: true, ..
+                } => self.kicks.push((0.8, 0.7, 400.0)),
+                PursuitEvent::Spiked { player: true, .. } => self.kicks.push((0.6, 0.8, 350.0)),
+                PursuitEvent::Barrier { player: true, .. } => self.kicks.push((0.5, 0.6, 250.0)),
+                PursuitEvent::Busted { player: true, .. } => self.kicks.push((0.9, 0.9, 700.0)),
+                _ => {}
             },
             _ => {}
         }
+    }
+
+    /// `Race.jolt`: a hit, as a kick in the pad.
+    fn jolt(&mut self, strength: f64) {
+        if strength > 0.03 {
+            self.kicks.push((
+                0.25 + 0.75 * strength,
+                0.5 + 0.5 * strength,
+                120.0 + 280.0 * strength,
+            ));
+        }
+    }
+
+    /// `Race.rumble(speed, offroad)` and the nitro's kick, once a frame
+    /// after the ticks: the nitro firing up (per tick, where the JS looked
+    /// once a frame), then the steady buzz of a scrape, gravel, a skid, the
+    /// nitro or spiked tyres. The client hands `feel` to the pads only
+    /// while one is connected (`if (!pads?.state.connected) return`).
+    fn rumble(&mut self) {
+        for t in &self.audio_ticks {
+            if t.nitro && !self.was_nitro {
+                self.kicks.push((0.45, 0.6, 260.0));
+            }
+            self.was_nitro = t.nitro;
+            if let Some(o) = t.state.offroad {
+                self.offroad = o;
+            }
+        }
+        let p = &self.session.curr.players[0];
+        let ph = &p.phys;
+        let speed = mr_math::kernel::hypot(p.v.vx, p.v.vz);
+        let sp = mr_math::clamp(speed / 30.0, 0.0, 1.0);
+        let spiked = if ph.spiked > 0.0 { 0.3 * sp } else { 0.0 };
+        let max = mr_math::js::max_n;
+        self.feel = Some((
+            max(&[ph.scrape * 0.55, self.offroad * 0.35 * sp, spiked]),
+            max(&[
+                ph.scrape * 0.45,
+                self.offroad * 0.45 * sp,
+                ph.skid * 0.15,
+                if ph.nitro_active { 0.15 } else { 0.0 },
+                spiked,
+            ]),
+        ));
     }
 
     /// Stuck? Offer the reset key (`Race.update`, after the wrong-way check).
@@ -348,9 +452,14 @@ impl Race {
             .is_some_and(|pv| pv.held() || pv.pursuit.bust > 0.0);
         if p.rules.stuck.is_some_and(|s| s > 3.0) && self.hud.toast_timer <= 0.0 && !held {
             let t = if self.setup.touch {
-                "STUCK? TAP R TO RESET"
+                "STUCK? TAP R TO RESET".to_string()
             } else {
-                "STUCK? PRESS R TO RESET"
+                format!(
+                    "STUCK? PRESS {} TO RESET",
+                    self.pad_reset
+                        .as_deref()
+                        .map_or("R".into(), str::to_uppercase)
+                )
             };
             self.hud.toast(t, 2.0);
         }

@@ -50,15 +50,19 @@ impl PluginGroup for ClientPlugins {
             .add(bevy::light::LightPlugin);
         #[cfg(not(target_arch = "wasm32"))]
         let group = group.add(bevy::render::pipelined_rendering::PipelinedRenderingPlugin);
-        group
+        let group = group
             .add(bevy::core_pipeline::CorePipelinePlugin)
             // Where SpritePlugin and SpriteRenderPlugin were.
             .add(UiSpriteSupport)
             .add(bevy::text::TextPlugin)
             .add(bevy::ui::UiPlugin)
             .add(bevy::ui_render::UiRenderPlugin)
-            .add(bevy::pbr::PbrPlugin::default())
-            .add(bevy::state::app::StatesPlugin)
+            .add(bevy::pbr::PbrPlugin::default());
+        // Gamepads natively (WP 6.4); the web reads the browser's Gamepad
+        // API itself (`play::gamepad_io`, DECISIONS D780).
+        #[cfg(not(target_arch = "wasm32"))]
+        let group = group.add(bevy::gilrs::GilrsPlugin);
+        group.add(bevy::state::app::StatesPlugin)
     }
 }
 

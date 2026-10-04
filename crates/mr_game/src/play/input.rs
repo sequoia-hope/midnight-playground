@@ -1,7 +1,9 @@
 //! The input layer (port of the keyboard and touch parts of
 //! `src/game/Input.js`, SPEC 8.2, roadmap WP 4.5).
 //!
-//! Keyboard and on-screen touch controls feed one state. Keyboard and ◂ ▸
+//! Keyboard, gamepad ([`super::gamepad`], polled once a frame and handed in
+//! with [`Input::pad_frame`]) and on-screen touch controls feed one state.
+//! Keyboard and ◂ ▸
 //! steering are ramped so tapping gives small corrections and holding gives
 //! full lock, like an analogue stick. The layer runs at the tick rate (SPEC
 //! 8.2): the session calls [`Input::update`] with the fixed tick before each
@@ -9,10 +11,11 @@
 //!
 //! Keys are named by their DOM `KeyboardEvent.code` (`KeyW`, `ArrowUp`, …),
 //! as in the JS; the Bevy glue maps its key codes to them ([`dom_code`]).
-//! The gamepad (`Pads`) arrives with M6 (DECISIONS D433).
+//! The gamepad came with WP 6.4 (DECISIONS D433, D782).
 
+use super::gamepad::{self, Action};
 use bevy::input::keyboard::KeyCode;
-use mr_math::clamp;
+use mr_math::{clamp, kernel};
 use mr_sim::input::Input as SimInput;
 
 /// Held controls (`KEYMAP`).
@@ -90,6 +93,8 @@ pub struct Input {
     pub state: State,
     /// Off: every control reads zero (one-shot actions still get through).
     pub enabled: bool,
+    /// The pads as this frame's poll left them (`this.pads.poll()`).
+    pub pad: gamepad::State,
 }
 
 impl Default for Input {
@@ -100,6 +105,7 @@ impl Default for Input {
             steer: 0.0,
             state: State::default(),
             enabled: true,
+            pad: gamepad::State::default(),
         }
     }
 }
@@ -191,6 +197,15 @@ impl Input {
         }
     }
 
+    /// This frame's poll of the pads (`const g = this.pads.poll()`): kept
+    /// for the ticks' [`Input::update`]s, its one-shot presses posted once.
+    pub fn pad_frame(&mut self, g: &gamepad::State) {
+        self.pad = g.clone();
+        for a in &g.edges {
+            self.press(a.key());
+        }
+    }
+
     fn any(&self, codes: &[&str]) -> bool {
         codes.iter().any(|c| self.down.contains(c))
     }
@@ -202,7 +217,7 @@ impl Input {
         self.pressed.len() != n
     }
 
-    /// `update(dt)`: merges keys and touch into the state.
+    /// `update(dt)`: merges keys, the pads and touch into the state.
     pub fn update(&mut self, dt: f64, touch: Option<&mut dyn TouchSource>) -> State {
         let t = touch.as_deref();
         let mut throttle = if self.any(THROTTLE) {
@@ -215,8 +230,9 @@ impl Input {
         } else {
             t.map_or(0.0, |t| t.brake())
         };
-        let l = self.any(LEFT);
-        let r = self.any(RIGHT);
+        // A pad's steering bound to buttons (the D-pad, say) ramps like keys.
+        let l = self.any(LEFT) || self.pad.digital_left;
+        let r = self.any(RIGHT) || self.pad.digital_right;
         let t_steer = t.map(|t| t.steer());
         let t_handbrake = t.is_some_and(|t| t.handbrake());
         let t_nitro = t.is_some_and(|t| t.nitro());
@@ -247,7 +263,30 @@ impl Input {
         let mut steer = self.steer;
         let mut handbrake = self.any(HANDBRAKE) || t_handbrake;
         let mut nitro = self.any(NITRO) || t_nitro;
-        let look_back = self.any(LOOK_BACK);
+        let mut look_back = self.any(LOOK_BACK);
+
+        // Gamepad sticks and triggers (the standard layout unless remapped).
+        let g = &self.pad;
+        let ax = g.steer_axis;
+        if ax.abs() > 0.12 {
+            steer = mr_math::js::sign(ax) * kernel::pow((ax.abs() - 0.12) / 0.88, 1.4);
+            analog_steer = true;
+        }
+        if g.value(Action::Throttle) > 0.05 {
+            throttle = mr_math::js::max(throttle, g.value(Action::Throttle));
+        }
+        if g.value(Action::Brake) > 0.05 {
+            brake = mr_math::js::max(brake, g.value(Action::Brake));
+        }
+        if g.held(Action::Nitro) {
+            nitro = true;
+        }
+        if g.held(Action::Handbrake) {
+            handbrake = true;
+        }
+        if g.held(Action::LookBack) {
+            look_back = true;
+        }
         if !self.enabled {
             throttle = 0.0;
             brake = 0.0;
@@ -271,9 +310,29 @@ impl Input {
 
 #[cfg(test)]
 mod tests {
-    //! `test/unit/input.test.js`, the assertions that apply without a
-    //! gamepad (M6).
+    //! `test/unit/input.test.js`, and `gamepad.test.js`'s case with the
+    //! input layer.
     use super::*;
+    use crate::play::gamepad::{Binding, Button, NoRumble, Pad, Pads, default_map};
+
+    /// `input.update(dt)` with `navigator.getGamepads()` returning `list`:
+    /// the poll, then the update.
+    fn pad_update(input: &mut Input, pads: &mut Pads, list: &[Pad], t: &mut f64, dt: f64) -> State {
+        *t += dt * 1000.0;
+        let g = pads.poll(*t, list, &mut NoRumble).clone();
+        input.pad_frame(&g);
+        input.update(dt, None)
+    }
+
+    fn std_pad(id: &str) -> Pad {
+        Pad {
+            id: id.into(),
+            index: 0,
+            mapping: "standard".into(),
+            axes: vec![0.0; 4],
+            buttons: vec![Button::default(); 17],
+        }
+    }
 
     fn near(a: f64, b: f64, eps: f64) {
         assert!((a - b).abs() <= eps, "{a} ≉ {b}");
@@ -489,5 +548,116 @@ mod tests {
         // One-shot actions still get through (pause works on the menu).
         input.key_down("Escape", false);
         assert!(input.consume("pause"));
+    }
+
+    #[test]
+    fn a_gamepad_analogue_steering_with_a_dead_zone_triggers_and_buttons() {
+        let mut input = Input::new();
+        let mut pads = Pads::default();
+        let mut t = 0.0;
+        // `{ connected: true, axes: [0, 0], buttons }`: no id, no mapping.
+        let mut pad = Pad {
+            axes: vec![0.0, 0.0],
+            buttons: vec![Button::default(); 17],
+            ..Pad::default()
+        };
+        let mut up = |input: &mut Input, pad: &Pad| {
+            pad_update(input, &mut pads, std::slice::from_ref(pad), &mut t, 0.016)
+        };
+        assert_eq!(up(&mut input, &pad).steer, 0.0);
+        pad.axes[0] = 0.1;
+        assert_eq!(up(&mut input, &pad).steer, 0.0, "inside the dead zone");
+        pad.axes[0] = 0.56;
+        near(
+            up(&mut input, &pad).steer,
+            kernel::pow((0.56 - 0.12) / 0.88, 1.4),
+            1e-9,
+        );
+        pad.axes[0] = -1.0;
+        assert_eq!(up(&mut input, &pad).steer, -1.0);
+        pad.axes[0] = 0.0;
+        pad.buttons[7].value = 0.6;
+        pad.buttons[6].value = 0.3;
+        let s = up(&mut input, &pad);
+        near(s.throttle, 0.6, 1e-9);
+        near(s.brake, 0.3, 1e-9);
+        pad.buttons[0].pressed = true;
+        pad.buttons[2].pressed = true;
+        pad.buttons[1].pressed = true;
+        let s = up(&mut input, &pad);
+        assert!(s.nitro, "A: nitro");
+        assert!(s.handbrake, "X: handbrake");
+        assert!(s.look_back, "B: look back");
+        pad.buttons[2].pressed = false;
+        pad.buttons[5].pressed = true;
+        assert!(up(&mut input, &pad).handbrake, "RB: handbrake");
+        // Y, Start and Back fire once per press.
+        for (i, name) in [(3, "camera"), (9, "pause"), (8, "reset")] {
+            pad.buttons[i].pressed = true;
+            up(&mut input, &pad);
+            assert!(input.consume(name), "button {i} → {name}");
+            up(&mut input, &pad);
+            assert!(!input.consume(name), "held: no repeat");
+            pad.buttons[i].pressed = false;
+            up(&mut input, &pad);
+        }
+        // A disconnected pad is ignored (`connectedPads` leaves it out).
+        pad.buttons[7].value = 1.0;
+        let s = pad_update(&mut input, &mut pads, &[], &mut t, 0.016);
+        assert_eq!(s.throttle, 0.0);
+    }
+
+    #[test]
+    fn steering_is_flagged_analogue_from_a_gamepad_stick_not_at_rest() {
+        let mut input = Input::new();
+        let mut pads = Pads::default();
+        let mut t = 0.0;
+        let mut pad = std_pad("");
+        pad.axes[0] = 0.6;
+        let s = pad_update(
+            &mut input,
+            &mut pads,
+            std::slice::from_ref(&pad),
+            &mut t,
+            0.016,
+        );
+        assert!(s.analog, "a gamepad stick");
+        pad.axes[0] = 0.05;
+        let s = pad_update(
+            &mut input,
+            &mut pads,
+            std::slice::from_ref(&pad),
+            &mut t,
+            0.016,
+        );
+        assert!(!s.analog, "a gamepad at rest leaves it to the keys");
+    }
+
+    #[test]
+    fn a_remapped_dpad_steers_like_keys_ramped_not_analogue() {
+        let mut input = Input::new();
+        let mut map = default_map();
+        map[0].1 = vec![Binding::Button(14)];
+        map[1].1 = vec![Binding::Button(15)];
+        let mut pads = Pads::new(vec![("Pad".into(), map)]);
+        let mut t = 0.0;
+        let mut p = std_pad("Pad");
+        p.buttons[15] = Button {
+            pressed: true,
+            value: 1.0,
+        };
+        let mut s = pad_update(&mut input, &mut pads, std::slice::from_ref(&p), &mut t, 0.1);
+        near(s.steer, 0.36, 1e-9); // ramps in like a key
+        assert!(!s.analog);
+        for _ in 0..10 {
+            s = pad_update(&mut input, &mut pads, std::slice::from_ref(&p), &mut t, 0.1);
+        }
+        assert_eq!(s.steer, 1.0);
+        p.buttons[15] = Button::default();
+        p.axes[0] = 0.8; // the stick isn't bound any more
+        for _ in 0..10 {
+            s = pad_update(&mut input, &mut pads, std::slice::from_ref(&p), &mut t, 0.1);
+        }
+        assert_eq!(s.steer, 0.0);
     }
 }

@@ -58,6 +58,12 @@ pub const G_POINT_POS: usize = 23;
 pub const G_POINT_COLOR: usize = 24;
 pub const G_ANIM: usize = 25;
 pub const G_ANIM2: usize = 26;
+/// The second spot light's four texels, laid out as the first's
+/// (`G_SPOT_POS` to `G_SPOT_CONE`).
+pub const G_SPOT1_POS: usize = 27;
+/// Where each spot light's texels start, in three's order (`spotLights[i]`,
+/// D760).
+pub const SPOT_SLOTS: [usize; 2] = [G_SPOT_POS, G_SPOT1_POS];
 
 /// The per-frame state the WP 2.4 patches read, which the JS keeps in
 /// uniforms its updaters move (`World.js`, `Sea.js`, `desert/glow.js`):
@@ -211,7 +217,11 @@ pub struct Lighting {
     /// `renderer.toneMappingExposure`.
     pub exposure: f64,
     pub sky: SkyUniforms,
+    /// The scene's spot light (the desert train's).
     pub spot: Option<Spot>,
+    /// The race's headlight (`Race.js`: the player's one real spot light),
+    /// which three puts after the scene's in its spot lights (D760).
+    pub headlight: Option<Spot>,
     pub point: Option<Point>,
     /// The shadow map is on (the JS "high quality" setting).
     pub shadows: bool,
@@ -229,6 +239,7 @@ impl Default for Lighting {
             exposure: 1.0,
             sky: SkyUniforms::default(),
             spot: None,
+            headlight: None,
             point: None,
             shadows: true,
             anim: Anim::default(),
@@ -372,13 +383,16 @@ impl Lighting {
         g[G_SKY_SUN_DIR] = v3(s.sun_dir, 0.0);
         g[G_SKY_MOON_DIR] = v3(s.moon_dir, 0.0);
         g[G_SKY_PARAMS] = [s.night as f32, s.time as f32, s.cloud as f32, s.haze as f32];
-        if let Some(sp) = &self.spot {
-            g[G_SPOT_POS] = v3(dv(sp.position), sp.distance);
-            g[G_SPOT_DIR] = v3(dv((sp.target - sp.position).normalize_or_zero()), sp.decay);
-            g[G_SPOT_COLOR] = v3(scaled(sp.color, sp.intensity), 1.0);
+        // three's spot lights in its order (the scene's, then the race's
+        // headlight), packed into consecutive slots as `spotLights[i]`.
+        let spots = self.spot.iter().chain(self.headlight.iter());
+        for (sp, &b) in spots.zip(SPOT_SLOTS.iter()) {
+            g[b] = v3(dv(sp.position), sp.distance);
+            g[b + 1] = v3(dv((sp.target - sp.position).normalize_or_zero()), sp.decay);
+            g[b + 2] = v3(scaled(sp.color, sp.intensity), 1.0);
             // SpotLight uniforms: coneCos = cos(angle), penumbraCos =
             // cos(angle × (1 - penumbra)).
-            g[G_SPOT_CONE] = [
+            g[b + 3] = [
                 sp.angle.cos() as f32,
                 (sp.angle * (1.0 - sp.penumbra)).cos() as f32,
                 0.0,
