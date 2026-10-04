@@ -3,7 +3,7 @@
 //! Commands:
 //!   check-deps        enforce the crate dependency rules (SPEC 3.2)
 //!   web [--release]   build the web client into dist/next/
-//!   size              report the size of the built wasm (raw and gzip)
+//!   size              report the size of the built wasm (raw, gzip, brotli)
 //!   kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits
 //!   parity shots      compare two sets of screenshots (CIEDE2000), write a report
 //!   parity scene-check [files]  read exported scenes back and check their digests
@@ -65,7 +65,7 @@ fn usage() -> &'static str {
      commands:\n\
      \x20 check-deps        enforce the crate dependency rules (SPEC 3.2)\n\
      \x20 web [--release]   build the web client into dist/next/\n\
-     \x20 size [--budget]   report the built wasm's size; --budget fails over 10 MB gzip\n\
+     \x20 size [--budget]   report the built wasm's size; --budget fails over 16 MB gzip\n\
      \x20 kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits\n\
      \x20 parity shots --a <dir> --b <dir> [--label name]\n\
      \x20                   compare two sets of screenshots; report in parity/report/\n\

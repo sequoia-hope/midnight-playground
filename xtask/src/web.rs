@@ -244,9 +244,11 @@ fn locked_version(lock: &str, name: &str) -> Option<String> {
     None
 }
 
-/// Writes `<file>.gz` beside the given files, for a server that sends
-/// precompressed files, so load times on phones are as they will be (SPEC
-/// 6.6). `tools/serve.py` sends them for files under `dist/`.
+/// Writes `<file>.br` and `<file>.gz` beside the given files, for a server
+/// that sends precompressed files, so load times on phones are as they will
+/// be (SPEC 6.6). `tools/serve.py` sends them for files under `dist/`:
+/// brotli to browsers that take it (every current one, on https), gzip to
+/// the rest (D677).
 fn precompress(out: &Path, names: &[&str]) -> Result {
     use flate2::{Compression, write::GzEncoder};
     use std::io::Write;
@@ -258,6 +260,19 @@ fn precompress(out: &Path, names: &[&str]) -> Result {
         let gz = gz.finish().map_err(|e| e.to_string())?;
         let dest = out.join(format!("{name}.gz"));
         std::fs::write(&dest, gz).map_err(|e| format!("writing {}: {e}", dest.display()))?;
+
+        // Quality 11 with the largest standard window (16 MB): the wasm is
+        // built once and downloaded many times.
+        let mut br = Vec::new();
+        let params = brotli::enc::BrotliEncoderParams {
+            quality: 11,
+            lgwin: 24,
+            size_hint: bytes.len(),
+            ..Default::default()
+        };
+        brotli::BrotliCompress(&mut &bytes[..], &mut br, &params).map_err(|e| e.to_string())?;
+        let dest = out.join(format!("{name}.br"));
+        std::fs::write(&dest, br).map_err(|e| format!("writing {}: {e}", dest.display()))?;
     }
     Ok(())
 }
