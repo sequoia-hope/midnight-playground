@@ -4,16 +4,16 @@
 // port), the scenery frozen, then for each station of the JS run the fly
 // camera moved there (`__mr.flyTo`), three settled frames waited for
 // (`__mr.flyQuiet`: no pipeline compiling, the environment map built) and
-// `__mr.screenshot` saved. For a level the client builds itself, `?world=gen`
-// (the default for Sierra; `--query` replaces it) needs no scene download,
-// so Sierra fits through the interception (D106's 100 MB limit). Another
-// level's export is too big for it: `--server` loads the page from the
-// registered dev server instead (`--port`, else `$PORT`, else `proj port`;
-// no default port), as rust-perf.mjs does.
+// `__mr.screenshot` saved. The client builds every level itself by default
+// (D678), with no scene download, so any level fits through the
+// interception (D106's 100 MB limit). `--query world=export` draws the
+// exported scene instead; an export over that limit needs `--server`, which
+// loads the page from the registered dev server (`--port`, else `$PORT`,
+// else `proj port`; no default port), as rust-perf.mjs does.
 //
 //   cargo xtask web --release && node tools/parity/rust-web-stations.mjs \
 //       --level sierra [--only 06250:10000 | --only name,name] [--out <dir>] \
-//       [--query "world=gen"] [--backend webgl2] [--server [--port N]]
+//       [--query "world=export"] [--backend webgl2] [--server [--port N]]
 //
 // Writes <out>/<level>/<station>.png (default parity/cache/<key>/shots/
 // rust-web/), the layout `cargo xtask parity shots --a <dir> --b <js run>`
@@ -29,7 +29,7 @@ const args = process.argv.slice(2);
 const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const level = opt('--level', 'sierra');
 const jsRun = opt('--js-run', 'a');
-const query = opt('--query', level === 'sierra' ? 'world=gen' : '');
+const query = opt('--query', '');
 const server = args.includes('--server');
 const only = opt('--only', null);
 const backend = opt('--backend', 'webgpu');

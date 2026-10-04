@@ -67,7 +67,8 @@ fn reload_scene(opts: Res<Opts>, status: Res<Status>) {
 }
 
 fn load(o: Options) {
-    // `?world=gen`: the scene is the client's own world build (`animate`).
+    // The scene is the client's own world build (`animate`) unless
+    // `?world=export` (D678).
     let generated = crate::animate::draws_generated(&o);
     std::thread::spawn(move || {
         let root = repo_root();

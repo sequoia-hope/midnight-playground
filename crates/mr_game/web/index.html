@@ -257,8 +257,12 @@
           .catch((e) => glue.survey_failed(String(e.message || e)));
       }
       level = lv;
-      // ?world=gen: the client builds the level itself (Sierra), no download.
-      if (params.get('world') === 'gen' && glue.generates_scene(lv)) {
+      // The client builds the level itself, no download (D678); as
+      // animate::draws_generated: ?world=export (or off, ?scene= for this
+      // level, ?mat=) loads the exported scene instead, a parity tool.
+      const exported = ['export', 'off'].includes(params.get('world'))
+        || (params.get('scene') && sceneUrl === params.get('scene')) || params.has('mat');
+      if (!exported && glue.generates_scene(lv)) {
         show(0.3, `Building ${lv}…`);
         // Seaside's ground photo, decoded by the browser as the JS game's
         // texture (and the scene exporter) reads it: an image drawn on a
