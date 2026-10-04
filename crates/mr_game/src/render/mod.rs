@@ -159,6 +159,7 @@ impl Plugin for ThreeRenderPlugin {
         };
         render_app
             .init_resource::<pmrem::PmremState>()
+            .init_resource::<post::PostCache>()
             .add_systems(
                 RenderStartup,
                 (pmrem::init_pmrem_pipelines, post::init_post_pipelines),
