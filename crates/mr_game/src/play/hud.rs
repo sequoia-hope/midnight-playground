@@ -331,7 +331,7 @@ fn baseline(size: f32, lh: f32) -> f32 {
 fn tshadow(k: f32, y: f32, blur: f32, a: f32) -> TextShadow {
     TextShadow {
         offset: Vec2::new(0.0, y.max(1.0) * k),
-        color: Color::srgba(0.0, 0.0, 0.0, a * (4.0 / blur.max(4.0))),
+        color: hc(Color::srgba(0.0, 0.0, 0.0, a * (4.0 / blur.max(4.0)))),
     }
 }
 
@@ -398,7 +398,7 @@ struct Build<'a> {
 fn build(commands: &mut Commands, b: &Build) -> Entity {
     let (k, lay) = (b.k, b.lay);
     let fg = widgets::fg();
-    let dim = widgets::dim();
+    let dim = hc(widgets::dim());
     let root = commands
         .spawn((
             Node {
@@ -603,7 +603,7 @@ fn build(commands: &mut Commands, b: &Build) -> Entity {
                     overflow: Overflow::clip(),
                     ..default()
                 },
-                BackgroundColor(widgets::white(0.14)),
+                BackgroundColor(hc(widgets::white(0.14))),
                 ChildOf(m),
             ))
             .id();
@@ -650,8 +650,8 @@ fn build(commands: &mut Commands, b: &Build) -> Entity {
                     UiPosition::CENTER,
                     RadialGradientShape::Circle(px(r)),
                     vec![
-                        ColorStop::auto(widgets::rgba(0x0a0e18, 0.72)),
-                        ColorStop::auto(widgets::rgba(0x0a0e18, 0.55)),
+                        ColorStop::auto(hc(widgets::rgba(0x0a0e18, 0.72))),
+                        ColorStop::auto(hc(widgets::rgba(0x0a0e18, 0.55))),
                     ],
                 )
                 .in_srgb(),
@@ -659,7 +659,7 @@ fn build(commands: &mut Commands, b: &Build) -> Entity {
             // `box-shadow: 0 0 0 2px rgba(255,255,255,.18), 0 6px 24px
             // rgba(0,0,0,.4)`: the ring as an outline; the soft shadow is
             // left out (Bevy draws it under the translucent disc too).
-            Outline::new(px(2.0), Val::Px(0.0), widgets::white(0.18)),
+            Outline::new(px(2.0), Val::Px(0.0), hc(widgets::white(0.18))),
             MaterialNode(b.mats[1].clone()),
             El::Minimap,
             ChildOf(root),
@@ -715,7 +715,7 @@ fn build(commands: &mut Commands, b: &Build) -> Entity {
                     border_radius: BorderRadius::all(px(4.0)),
                     ..default()
                 },
-                BackgroundColor(widgets::white(0.08)),
+                BackgroundColor(hc(widgets::white(0.08))),
                 ChildOf(route),
             ))
             .id();
@@ -748,7 +748,7 @@ fn build(commands: &mut Commands, b: &Build) -> Entity {
                         ..default()
                     },
                     BackgroundColor(css_color(color)),
-                    BorderColor::all(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+                    BorderColor::all(hc(Color::srgba(0.0, 0.0, 0.0, 0.5))),
                     ChildOf(bar),
                 ))
                 .id();
@@ -884,13 +884,13 @@ fn build_br(commands: &mut Commands, b: &Build, root: Entity) {
                     border_radius: BorderRadius::all(px(14.0)),
                     ..abs()
                 },
-                BackgroundColor(widgets::rgba(0x080a12, 0.45)),
+                BackgroundColor(hc(widgets::rgba(0x080a12, 0.45))),
                 ChildOf(root),
             ))
             .id();
         // M8: `.hud-br.pz-on` grows the box to 74 px for the damage bar.
         let num = T::new(42.0).w(800).italic().lh(1.0);
-        let unit = T::new(11.0).w(800).ls(0.2).lh(1.0).c(widgets::dim());
+        let unit = T::new(11.0).w(800).ls(0.2).lh(1.0).c(hc(widgets::dim()));
         let sh = tshadow(k, 2.0, 10.0, 0.6);
         let row = commands
             .spawn((
@@ -969,7 +969,7 @@ fn build_br(commands: &mut Commands, b: &Build, root: Entity) {
                 l.text.clone(),
                 T::new(l.size as f32)
                     .w(l.weight)
-                    .c(widgets::rgba(l.color, l.alpha as f32)),
+                    .c(hc(widgets::rgba(l.color, l.alpha as f32))),
                 k,
             ),
             Node {
@@ -1018,7 +1018,7 @@ fn build_br(commands: &mut Commands, b: &Build, root: Entity) {
         ChildOf(speed),
     ));
     commands.spawn((
-        txt("MPH", T::new(15.0).w(800).ls(0.3).lh(1.0).c(widgets::dim()), k),
+        txt("MPH", T::new(15.0).w(800).ls(0.3).lh(1.0).c(hc(widgets::dim())), k),
         sh,
         Node {
             margin: UiRect::top(px(2.0)),
@@ -1062,7 +1062,7 @@ fn nitro(commands: &mut Commands, k: f32, br: Entity, g: (f32, f32, f32, f32), l
                 overflow: Overflow::clip(),
                 ..abs()
             },
-            BackgroundColor(widgets::white(0.12)),
+            BackgroundColor(hc(widgets::white(0.12))),
             ChildOf(br),
         ))
         .id();
@@ -1257,6 +1257,38 @@ fn set_vis(v: &mut Option<Mut<Visibility>>, on: bool) {
     }
 }
 
+/// The page composites in sRGB; Bevy blends the UI into a linear target,
+/// where a translucent colour shows more of what is behind it (a dark
+/// panel lighter, a faint white one brighter). `hc` gives a colour the
+/// alpha that, blended in linear, lands where the browser's sRGB blend
+/// would over a typical background (sRGB 0.25; exact for any background
+/// when the colour is black). D823.
+pub fn hc(c: Color) -> Color {
+    let s = c.to_srgba();
+    let l = 0.2126 * s.red + 0.7152 * s.green + 0.0722 * s.blue;
+    c.with_alpha(lin_alpha(l, s.alpha))
+}
+
+/// [`hc`]'s alpha for an sRGB luminance `l` (`hud.wgsl` has the same).
+pub fn lin_alpha(l: f32, a: f32) -> f32 {
+    if a <= 0.0 || a >= 1.0 {
+        return a;
+    }
+    let lin = |v: f32| {
+        if v <= 0.04045 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let b = 0.25;
+    let (t, bl, cl) = (lin((1.0 - a) * b + a * l), lin(b), lin(l));
+    if (cl - bl).abs() < 1e-4 {
+        return a;
+    }
+    ((t - bl) / (cl - bl)).clamp(0.0, 1.0)
+}
+
 fn with_alpha(c: Color, a: f32) -> Color {
     c.with_alpha(a)
 }
@@ -1265,6 +1297,7 @@ fn with_alpha(c: Color, a: f32) -> Color {
 pub(super) fn update(
     mut commands: Commands,
     play: Res<Play>,
+    opts: Res<crate::Opts>,
     ui: Option<Res<crate::ui::UiState>>,
     time: Res<Time<Real>>,
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -1275,6 +1308,10 @@ pub(super) fn update(
 ) {
     let Some(mut hs) = hs else { return };
     let hs = &mut *hs;
+    // `?hud=0`: no HUD (pictures and frame times without it).
+    if opts.o.param("hud") == Some("0") {
+        return;
+    }
     // No race (the menu), or one waiting for its pipelines behind it: no
     // HUD.
     let Some(race) = play.race.as_ref().filter(|_| !play.hold) else {
@@ -1374,9 +1411,6 @@ pub(super) fn update(
         hs.root = Some(build(&mut commands, &b));
         hs.key = Some(key.clone());
         // The new nodes take the view on the next frame.
-        if let Some(m) = hs.model.as_mut() {
-            m.last = model::Texts::default();
-        }
         hs.last_dial = None;
         hs.last_scene = None;
         hs.last_lines = -1.0;
@@ -1637,13 +1671,13 @@ fn fade(
     shadow_a: f32,
 ) {
     if let Some(mut tc) = color {
-        let want = with_alpha(c, c.alpha() * op);
+        let want = hc(with_alpha(c, c.alpha() * op));
         if tc.0 != want {
             tc.0 = want;
         }
     }
     if let Some(mut s) = shadow {
-        let want = Color::srgba(0.0, 0.0, 0.0, shadow_a * op);
+        let want = hc(Color::srgba(0.0, 0.0, 0.0, shadow_a * op));
         if s.color != want {
             s.color = want;
         }
@@ -1712,6 +1746,19 @@ mod tests {
     fn the_baseline_of_a_line_box() {
         // `.pos`: 64 px at line-height .9: 47.5 px down.
         assert!((baseline(64.0, 0.9) - 47.488).abs() < 1e-3);
+    }
+
+    #[test]
+    fn alphas_for_a_linear_blend() {
+        // Black at 50 %: the background at half its sRGB value, which in
+        // linear is (1 - a') of it.
+        let a = lin_alpha(0.0, 0.5);
+        let lin = |v: f32| ((v + 0.055) / 1.055).powf(2.4);
+        assert!(((1.0 - a) - lin(0.6 * 0.5) / lin(0.6)).abs() < 0.02, "{a}");
+        // Faint white is fainter; opaque and clear stay.
+        assert!(lin_alpha(1.0, 0.12) < 0.12);
+        assert_eq!(lin_alpha(1.0, 1.0), 1.0);
+        assert_eq!(lin_alpha(0.3, 0.0), 0.0);
     }
 
     #[test]
