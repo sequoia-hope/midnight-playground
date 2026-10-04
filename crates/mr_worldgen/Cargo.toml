@@ -30,6 +30,9 @@ mr_sim.workspace = true
 # Native only: run the pieces of a parallel build job on threads (SPEC 5.5;
 # std's scoped threads, DECISIONS D196). Ignored on wasm.
 parallel = []
+# Work in progress (WP 7.1): Harbor while it is ported. Removed when it
+# lands.
+harbor-wip = []
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"

@@ -63,6 +63,13 @@ fn captured() -> &'static Value {
 /// WP 3.2's threshold, per channel.
 const LIMIT: f64 = 3.0;
 
+/// The palm leaf's bound, unpremultiplied (DECISIONS D534): thin curved
+/// strokes on a transparent canvas, which Chrome's GPU canvas multisamples
+/// where mr_canvas takes the exact area (D151, D333).
+const LEAF_LIMIT: f64 = 10.0;
+/// Its bound premultiplied: where the colour actually lands.
+const LEAF_PREMULTIPLIED: f64 = 6.0;
+
 /// The scenery modules of Level 2 and the progress label each builds under.
 const MODULES: [(&str, &str); 3] = [
     ("coast", "Carving the coast"),
@@ -317,6 +324,9 @@ fn apply(graph: &mut SceneGraph, edits: Vec<Edit>) {
                     d => panic!("an edited buffer of {:?}", d.component()),
                 }
             }
+            (Handle::Texture(t), Change::TextureOffset(o)) => {
+                graph.texture_mut(t).desc.offset = o;
+            }
             (t, c) => panic!("an edit the gate does not apply: {t:?} {c:?}"),
         }
     }
@@ -462,6 +472,28 @@ fn captured_rgba(k: usize, sha: &str) -> Option<Vec<u8>> {
     let p = dir.parent()?.join(format!("coast/canvas-{k}.rgba"));
     let b = std::fs::read(p).ok()?;
     (sha256_hex(&b) == sha).then_some(b)
+}
+
+/// The mean absolute difference of the premultiplied colour, and the share
+/// of pixels whose alpha falls on the other side of `alpha_test` (0 for
+/// none).
+fn premultiplied(a: &[u8], b: &[u8], alpha_test: f64) -> ([f64; 3], f64) {
+    let n = a.len() / 4;
+    let mut s = [0.0; 3];
+    let mut cross = 0usize;
+    let cut = alpha_test * 255.0;
+    for i in 0..n {
+        let (aa, ba) = (f64::from(a[i * 4 + 3]), f64::from(b[i * 4 + 3]));
+        for c in 0..3 {
+            let x = f64::from(a[i * 4 + c]) * aa / 255.0;
+            let y = f64::from(b[i * 4 + c]) * ba / 255.0;
+            s[c] += (x - y).abs();
+        }
+        if alpha_test > 0.0 && ((aa >= cut) != (ba >= cut)) {
+            cross += 1;
+        }
+    }
+    (s.map(|v| v / n as f64), cross as f64 / n as f64)
 }
 
 /// JS, Rust and their difference side by side, in `parity/report/coast/`.
@@ -625,6 +657,8 @@ fn check(group: &str) {
                     gate = mad;
                 }
             }
+            let mut leaf = false;
+            let mut leaf_ok = true;
             // A canvas picture: held to the font-matched capture.
             if let Some(p) = ck["picture"].as_u64() {
                 let pw = &pics[p as usize];
@@ -644,6 +678,13 @@ fn check(group: &str) {
                     .map(|b| [0, 1, 2, 3].map(|i| b[i].as_f64().expect("mean")))
                     .collect();
                 let fbd = block_diff(&ours, &fblocks);
+                let alpha_test = b.scene.materials[m as usize]
+                    .params
+                    .get("alphaTest")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0);
+                leaf = group == "beach" && (tw, th) == (64, 256) && alpha_test == 0.4;
+                let mut extra = String::new();
                 let fmad =
                     captured_rgba(p as usize, pw["sha256"].as_str().expect("sha")).map(|jpx| {
                         sheet(
@@ -653,17 +694,32 @@ fn check(group: &str) {
                             &jpx,
                             &px,
                         );
-                        mr_canvas::compare::mean_abs_diff(&px, &jpx)
+                        let mad = mr_canvas::compare::mean_abs_diff(&px, &jpx);
+                        if std::env::var_os("COAST_DUMP").is_some() {
+                            let dir = common::root().join("parity/report/coast");
+                            let _ = std::fs::write(dir.join(format!("{group}-m{k}-rust.rgba")), &px);
+                            let _ = std::fs::write(dir.join(format!("{group}-m{k}-js.rgba")), &jpx);
+                        }
+                        if mad.iter().any(|&x| x >= LIMIT) {
+                            let (pm, cross) = premultiplied(&px, &jpx, alpha_test);
+                            leaf_ok = pm.iter().all(|&x| x < LEAF_PREMULTIPLIED);
+                            extra = format!(
+                                " (premultiplied RGB {pm:.2?}; {:.2} % of pixels on the other side of alphaTest {alpha_test})",
+                                cross * 100.0
+                            );
+                        }
+                        mad
                     });
                 line += &format!(
-                    "; with the bundled fonts (held): block diff {fbd:.2?}, mean abs diff {}",
+                    "; with the bundled fonts (held): block diff {fbd:.2?}, mean abs diff {}{extra}",
                     fmad.map_or("(no cache)".into(), |m| format!("{m:.3?}"))
                 );
                 gate = fmad.unwrap_or(fbd);
             } else if b.scene.textures[t as usize].source == TextureSource::Canvas {
                 problems.push(format!("{line}: a canvas picture the capture lacks"));
             }
-            let bad = gate.iter().any(|&x| x >= LIMIT);
+            let limit = if leaf { LEAF_LIMIT } else { LIMIT };
+            let bad = gate.iter().any(|&x| x >= limit) || !leaf_ok;
             println!("{line}");
             if bad {
                 problems.push(line);
@@ -686,6 +742,17 @@ fn check(group: &str) {
 #[test]
 fn coast_group() {
     check("coast");
+}
+
+#[test]
+fn beach_group() {
+    check("beach");
+}
+
+#[cfg(feature = "harbor-wip")]
+#[test]
+fn harbor_group() {
+    check("harbor");
 }
 
 /// The world data Level 2's build gives the simulation (SPEC 4.3): the

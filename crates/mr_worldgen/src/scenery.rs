@@ -39,6 +39,9 @@ pub const PORTED: &[(&str, MakeScenery)] = &[
     ("Valley", |info| Box::new(crate::valley::Valley::new(info))),
     ("City", |info| Box::new(crate::city::City::new(info))),
     ("Coast", |info| Box::new(crate::coast::Coast::new(info))),
+    ("Beach", |info| Box::new(crate::beach::Beach::new(info))),
+    #[cfg(feature = "harbor-wip")]
+    ("Harbor", |info| Box::new(crate::harbor::Harbor::new(info))),
 ];
 
 /// The ported module of that name, made as `loadScenery` makes it.
