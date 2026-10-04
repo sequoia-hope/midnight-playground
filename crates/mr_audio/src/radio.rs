@@ -8,6 +8,11 @@
 //! Fetching is the platform's ([`Fetch`]): the browser's `fetch`, a file
 //! read natively, `audio/radio/` on disk in the call-log playback. Its
 //! results are [`Pending`]s, chained as the JS chains its promises.
+//!
+//! [`lines`] is `radioLines.js`: the lines dispatch says and the clips
+//! that speak them.
+
+pub mod lines;
 
 use crate::wa::{AudioBuffer, AudioContext, Pending};
 use mr_math::Rng;

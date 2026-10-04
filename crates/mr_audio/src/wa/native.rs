@@ -395,6 +395,46 @@ impl<C: NativeContext> NativeBackend<C> {
         }
     }
 
+    /// An event just went into a param's timeline at `t`, before a target
+    /// curve already sent to the crate: that curve's anchor (D254) holds
+    /// the value the param had before this event, so the crate's events
+    /// from `t` on are sent again from the mirror, each target anchored
+    /// anew (`buzz.frequency.value = f0` after the burble's syllables are
+    /// scheduled; D511).
+    fn reanchor(&mut self, param: ParamId, t: f64) {
+        let Some(tl) = self.timelines.get(&param) else {
+            return;
+        };
+        let later_target = tl
+            .events
+            .iter()
+            .any(|e| e.t > t && matches!(e.kind, EventKind::Target { .. }));
+        if !later_target {
+            return;
+        }
+        let Some(p) = self.param(param) else {
+            return;
+        };
+        p.cancel_scheduled_values(t);
+        for e in tl.events.iter().filter(|e| e.t >= t) {
+            match e.kind {
+                EventKind::Set => {
+                    p.set_value_at_time(e.v as f32, e.t);
+                }
+                EventKind::Lin => {
+                    p.linear_ramp_to_value_at_time(e.v as f32, e.t);
+                }
+                EventKind::Exp => {
+                    p.exponential_ramp_to_value_at_time(e.v as f32, e.t);
+                }
+                EventKind::Target { tc } => {
+                    p.set_value_at_time(tl.at(e.t) as f32, e.t);
+                    p.set_target_at_time(e.v as f32, e.t, tc);
+                }
+            }
+        }
+    }
+
     /// `start(args)` on a source.
     fn start(&mut self, node: NodeId, args: &[f64]) {
         // Chrome starts a buffer at the frame nearest the offset (its read
@@ -526,6 +566,7 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                 if let Some(p) = self.param(param) {
                     p.set_value(v as f32);
                 }
+                self.reanchor(param, now);
             }
             Op::SetValue { param, v, t } => {
                 self.mirror(param, |tl| {
@@ -538,6 +579,7 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                 if let Some(p) = self.param(param) {
                     p.set_value_at_time(v as f32, t);
                 }
+                self.reanchor(param, t);
             }
             Op::LinRamp { param, v, t } => {
                 self.mirror(param, |tl| {
@@ -550,6 +592,7 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                 if let Some(p) = self.param(param) {
                     p.linear_ramp_to_value_at_time(v as f32, t);
                 }
+                self.reanchor(param, t);
             }
             Op::ExpRamp { param, v, t } => {
                 self.mirror(param, |tl| {
@@ -562,6 +605,7 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                 if let Some(p) = self.param(param) {
                     p.exponential_ramp_to_value_at_time(v as f32, t);
                 }
+                self.reanchor(param, t);
             }
             Op::SetTarget { param, v, t, tc } => {
                 // web-audio-api 1.7.0 evaluates a target curve that becomes
@@ -585,6 +629,7 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                     }
                     p.set_target_at_time(v as f32, t, tc);
                 }
+                self.reanchor(param, t);
             }
             Op::Cancel { param, t } => {
                 self.mirror(param, |tl| tl.cancel(t));

@@ -3375,7 +3375,10 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "js-sys",
+ "mr_levels",
  "mr_math",
+ "mr_sim",
+ "mr_track",
  "serde_json",
  "sha2",
  "wasm-bindgen",
