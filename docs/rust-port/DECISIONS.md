@@ -5218,3 +5218,137 @@ in the client from each level's world generation, which now fits the
 budget, D675, or cut from the exports), their length, and the memory they
 may hold on a phone are for the package that does it; recorded in
 DEVIATIONS.md when it lands.
+
+## Coast Highway client decisions
+
+## D700. The Coast Highway is built in the client
+
+2026-10-04, M7 (WP 7.1's client half). With the wasm budget at 16 MB
+(D675), Level 2's world generation is linked into the client as Level 1's
+is (D491, D492): `animate::generated` names "coast", and `animate`'s build
+takes the level's scenery from `levels::coast::scenery` (Coast, Beach and
+Harbor by name, D498's rule; no other module). Nothing else is
+level-specific: the stages are Level 1's (`LevelSetup` with no plan, as
+`tests/level2.rs` builds it). So, as on Sierra, the client builds Coast
+behind the loading screen on every load, runs its 14 animators (D537,
+D543) on whichever scene it draws, and with `?world=gen` draws its own
+build without the 210 MB download. The two scenes number alike (D536), so
+the animators run over the export too (the drawn scene's shape is checked
+against the build's, D491). The build is 1.2 s natively (release) and 3.1
+to 3.3 s in the web build on the dev machine. Wasm after gzip: WebGPU 8.09
+→ 8.22 MB, WebGL2 8.47 → 8.60 MB (D674's estimate was +0.20).
+
+What WP 7.1's client to-do still listed is done: the kinds were drawn
+from the export (D499); the wheel's multi-material mesh without groups
+draws nothing (the loader makes one draw per group, so none, as three);
+every edit Coast's animators make is applied: transforms of the beam's
+pivot, the Ferris wheel and the harbour boats, the glow sprite's scale,
+instance matrices and colours, material colours, `emissiveIntensity`,
+Surf's and the beam's uniforms, the beach surf's map offsets, the plain
+materials' opacity and the `Points` attributes (D701). The Sea's `uTime`
+and `uOff2` edits are left to the client's `lighting::Anim`, which
+computes the same values from the same dt (D495).
+
+## D701. The animator path: a plain material's opacity, `Points` attributes, and writes into the mesh slab
+
+2026-10-04. Three additions to the shared path (`animate`, `convert`,
+`render::material`, `three_material.wgsl`), which no other level's
+animators used before (Desert's opacity edits use the first; its agent
+took the commit):
+
+- **Opacity of three's own materials** (Coast's lamp pools, the
+  lighthouse glow, the beach surf, the boats' lights). The kinds Standard,
+  Physical, Lambert, Basic, Line, Sprite and Points take `opacity` in the
+  animation block's texel 4.x (D490), which starts at the exported opacity
+  (1 if absent); the shader reads it under a new `PLAIN_ANIM` def (no
+  patch, the sprite, plain points) when the material has a block, so a
+  material without one is unchanged. The lamp pools' opacity, `0.42 ×
+  smoothstep(0.08, 0.5, night)`, is what the three sunrise stations needed
+  (D499).
+- **`Points` attribute edits** (the boats' running-light positions, 21
+  points; the port's glow colours, 80). Unindexed `Points` geometries of
+  at most 4,096 points keep their CPU copy (`convert::KEEP_POINTS`), and a
+  geometry value goes to its point's four quad vertices; a colour edit of
+  three components goes to Bevy's four.
+- **Writes into the slab, not the asset.** Editing the Bevy mesh asset
+  (how the flag's cloth was written, D497) makes Bevy re-extract and
+  re-upload the mesh. On the web (Chrome, WebGPU) that left GPU memory
+  behind every frame: a Coast flight with `?world=gen` grew from 1.8 to
+  6.1 GB of VRAM over its two minutes (one run hung another agent's
+  WebGPU work out of memory), against 1.8 GB flat with the attribute edits
+  skipped, 1.6 GB with the animators off, 1.6 GB on Sierra and 830 MB flat
+  natively. Now the animator path keeps its own copy of each edited mesh
+  (`KeptMesh`), and its packed vertices go into the mesh's slice of Bevy's
+  vertex slab at extraction (`MeshWrites`, `write_mesh_updates`), as the
+  instance streams are written (D497); the asset is never modified. The
+  same flight holds 1.8 GB. The 67 Coast stations give the same pictures
+  either way (and differ from a run with the attribute edits skipped at
+  38 stations, the glows), and Sierra's stations 00250 to 02500 are within
+  the limits as before.
+
+Other per-frame asset edits left in the client, for whoever meets the
+same growth: `play::models` edits a car material when the race's light
+slots are all taken (D456's fallback), and a new instance stream (a new
+buffer) is made when an InstancedMesh's drawn count changes (D497). Neither
+happens on Coast's flights or race.
+
+## D702. The L4 gate on Coast's stations, with its animators
+
+2026-10-04. `rust-web-stations.mjs --server --level coast`, WebGPU, 1280 ×
+800, frozen, against the JS shots of the cache:
+
+- `?world=gen`: **67 stations, all within SPEC 12's limits**, median 0.258
+  mean ΔE00 and 0.575 block 95 %, worst 0.865 mean and 3.073 block 95 %
+  (07000-high, the harbour from above).
+- The export with the animators (the default): 67 within, median 0.229 /
+  0.504, worst 0.748 / 2.747 (07000-high). The build's canvas textures are
+  `mr_canvas`'s, hence the small difference.
+- The three sunrise stations that waited for the lamp-pool updater (D499,
+  commit 46b2e64): 04000-chase 5.16 / 30.22 → 0.554 / 0.723, 04250-chase
+  3.98 / 23.59 → 0.303 / 0.597, 04500-chase 2.72 / 22.24 → 0.247 / 0.470
+  (`?world=gen`; the export path 0.538 / 0.726, 0.287 / 0.595, 0.229 /
+  0.445).
+- WebGL2, seven stations (night, sunrise, the harbour): all within, the
+  same numbers as WebGPU to 0.003, but for the first station flown,
+  00250-chase (0.208 / 0.464 against 0.120 / 0.287).
+
+A race works: `?level=coast&world=gen` with the autopilot (`phone.cjs
+desktop`) runs from the countdown to the results.
+
+## D703. Coast's budgets: memory, GPU memory, frame time; the open question
+
+2026-10-04, the web build, headless Chrome on the dev machine (RTX 3060),
+1280 × 800, high quality. Details in BASELINE.md, "Coast Highway built in
+the client".
+
+- **Wasm memory** (SPEC 6.6: under 512 MB on phones, no growth over ten
+  level switches). `?world=gen`: 456 MB after load, 512 MB after each of
+  ten reloads (no growth after the first). The export path, with the
+  build: 456 MB after load, 663 MB after each reload (the export's copy and
+  the build's high-water marks no longer coincide; before Coast's build,
+  D394 measured 436 then 528 to 636). A race: 466 MB either way. So the
+  phone budget is met only by building the level in the client, and then
+  at its edge; WP 2.6 measured 929 MB as the native process's RSS, not
+  the wasm memory.
+- **GPU memory** (not budgeted in SPEC 6.6): a Coast race 1.36 GB of VRAM
+  as Chrome reports it for the tab, a flight 1.8 GB, 2.3 GB over ten
+  reloads, before D701's fix 6.1 GB and growing. Phones share far less
+  memory; worth watching when the owner runs the phone pages.
+- **Frame time.** The machine was overloaded (load average 21 to 190 on 24
+  cores, swap full, other agents' browsers on the GPU), so the numbers are
+  indications. Full route, uncapped: `?world=gen` p50 5.9 ms, p95 28.6, p99
+  46.7 (load 21 → 46); the export without animators 4.2 / 8.5 / 15.7 (36 →
+  58); the JS game 1.2 / 6.0 / 15.7 (47 → 36). Alternating 60 s flights
+  with the animators on and off at load 100 to 190 do not separate them
+  (medians within 0 to 1.4 ms either way, p95 from 8 to 49 ms in both).
+  Natively the whole animator path is 0.10 ms a frame on Coast (the
+  updaters 0.024 ms, 124 edits a frame). The gap to the JS game is the
+  renderer's, as BASELINE.md's earlier sections record; SPEC 6.6's "no
+  worse than JS" is not met on this desktop for Coast, as for Sierra.
+
+**For the owner (D439, D492):** whether the game should build its levels
+in the client instead of downloading the exports. On Coast building saves
+the 210 MB download and keeps the wasm memory at 512 MB on reloads rather
+than 663; the pictures are within the limits both ways. Until decided,
+the default still downloads the export, and now also builds the level for
+its animators.
