@@ -1,5 +1,6 @@
-//! `cargo xtask size [--budget]`: the size of the built wasm, raw and after
-//! gzip (SPEC 6.6: under 16 MB after gzip). Reads `dist/next/`, so run
+//! `cargo xtask size [--budget]`: the size of the built wasm, raw, after
+//! gzip and after brotli (SPEC 6.6: under 16 MB after gzip, the encoding
+//! plain http still gets; browsers on https get the brotli file, D677). Reads `dist/next/`, so run
 //! `cargo xtask web --release` first. In GitHub Actions the table is also
 //! written to the job summary.
 
@@ -33,19 +34,25 @@ pub fn run(args: &[String]) -> Result {
         let mut gz = GzEncoder::new(Vec::new(), Compression::best());
         gz.write_all(&bytes).map_err(|e| e.to_string())?;
         let gz = gz.finish().map_err(|e| e.to_string())?.len() as u64;
+        // The web build's own `.br` (quality 11 takes a while to redo).
+        let mut br_path = path.clone().into_os_string();
+        br_path.push(".br");
+        let br = std::fs::metadata(&br_path).ok().map(|m| m.len());
         rows.push((
             path.file_name().unwrap().to_string_lossy().into_owned(),
             bytes.len() as u64,
             gz,
+            br,
         ));
     }
     if rows.is_empty() {
         return Err("no .wasm or .js files in dist/next/".into());
     }
 
-    let mut table = String::from("| File | Raw | Gzip |\n|---|---:|---:|\n");
-    for (name, raw, gz) in &rows {
-        table += &format!("| {name} | {} | {} |\n", human(*raw), human(*gz));
+    let mut table = String::from("| File | Raw | Gzip | Brotli |\n|---|---:|---:|---:|\n");
+    for (name, raw, gz, br) in &rows {
+        let br = br.map_or("–".to_owned(), human);
+        table += &format!("| {name} | {} | {} | {br} |\n", human(*raw), human(*gz));
     }
     // A browser downloads one wasm: the WebGPU or the WebGL2 build (roadmap
     // WP 2.7), so the budget is per file.

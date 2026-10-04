@@ -200,15 +200,27 @@ pub fn draw_span(scene: &Scene, m: &MeshDesc, group: Option<usize>) -> (u32, u32
 /// Meshes of at most this many vertices keep their CPU copy.
 pub const KEEP_VERTICES: usize = 64;
 
+/// `Points` geometries of at most this many points keep their CPU copy
+/// (Level 2's boats' running lights and the port's glow points are moved
+/// by their animators; DECISIONS D701).
+pub const KEEP_POINTS: usize = 4096;
+
 /// Whether the Bevy mesh for `key` keeps its CPU copy: a triangle mesh
 /// small enough that keeping it costs nothing, whose vertices are the
-/// geometry's in order, so an animator's attribute edit (offsets into the
+/// geometry's in order, or an unindexed `Points` geometry of at most
+/// [`KEEP_POINTS`] points (four quad vertices a point, in order from the
+/// draw's start), so an animator's attribute edit (offsets into the
 /// geometry's arrays) can be written into it.
 pub fn keeps_cpu_copy(scene: &Scene, key: MeshKey) -> bool {
-    key.draw == Draw::Triangles
-        && scene.meshes[key.mesh as usize]
-            .attribute("position")
-            .is_some_and(|a| scene.buffers[a.accessor as usize].count() <= KEEP_VERTICES)
+    let m = &scene.meshes[key.mesh as usize];
+    let count = m
+        .attribute("position")
+        .map(|a| scene.buffers[a.accessor as usize].count());
+    match key.draw {
+        Draw::Triangles => count.is_some_and(|n| n <= KEEP_VERTICES),
+        Draw::Points => m.index.is_none() && count.is_some_and(|n| n <= KEEP_POINTS),
+        _ => false,
+    }
 }
 
 /// Builds the Bevy mesh for `key`, or none if it draws nothing.
@@ -401,10 +413,13 @@ fn build_points(scene: &Scene, m: &MeshDesc, key: MeshKey) -> Option<Mesh> {
         let b = (k * 4) as u32;
         idx.extend_from_slice(&[b, b + 1, b + 2, b, b + 2, b + 3]);
     }
-    let mut mesh = Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::RENDER_WORLD,
-    );
+    // A small one keeps its CPU copy, for an animator's attribute edits.
+    let usage = if keeps_cpu_copy(scene, key) {
+        RenderAssetUsages::default()
+    } else {
+        RenderAssetUsages::RENDER_WORLD
+    };
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, usage);
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, p);
     if colors.is_some() {
         mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, col);

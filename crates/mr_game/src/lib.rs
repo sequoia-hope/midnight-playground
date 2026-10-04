@@ -34,6 +34,7 @@ pub mod animate;
 pub mod cars;
 pub mod convert;
 pub mod fly;
+pub mod levels;
 pub mod loader;
 pub mod matscene;
 pub mod options;
@@ -177,14 +178,21 @@ fn make_track(mut tr: ResMut<TrackRes>, mut sky: ResMut<SkyRes>, opts: Res<Opts>
             None => return, // not yet
             Some(Err(e)) => {
                 warn!("seaside survey: {e}; the camera stays at the export's");
+                levels::seaside::survey_parsed(Err(e));
                 tr.none = true;
                 return;
             }
             Some(Ok(b)) => b,
         };
         match mr_levels::SeasideData::parse(&survey) {
-            Ok(d) => mr_levels::seaside::prepare(&mut level, std::sync::Arc::new(d)),
+            Ok(d) => {
+                // The client's world build reads it too (`levels`).
+                let d = std::sync::Arc::new(d);
+                levels::seaside::survey_parsed(Ok(d.clone()));
+                mr_levels::seaside::prepare(&mut level, d)
+            }
             Err(e) => {
+                levels::seaside::survey_parsed(Err(e.to_string()));
                 warn!("seaside survey: {e}");
                 tr.none = true;
                 return;
@@ -552,6 +560,7 @@ pub fn app(o: Options, hq: bool) -> App {
     preview::plugin(&mut app);
     ui::plugin(&mut app);
     animate::plugin(&mut app);
+    levels::plugin(&mut app);
     #[cfg(not(target_arch = "wasm32"))]
     native::plugin(&mut app);
     #[cfg(target_arch = "wasm32")]

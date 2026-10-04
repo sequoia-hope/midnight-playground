@@ -907,3 +907,39 @@ stages), because the builders, flora, textures, geometry and the text
 stack they share come in with the first module. The client-side animator
 and kind code each level brings (`animate`, `render`) is extra and not
 counted here. The stages and the fonts alone are 0.84 MB. (KB here are 1024 bytes.)
+
+## Coast Highway built in the client (DECISIONS D700 to D703)
+
+2026-10-04, the web release build (`opt-level = "s"`), headless Chrome on
+WebGPU, 1280 × 800, high quality, through the registered server
+(`rust-perf.mjs`, a race script reading `__mr.wasmMemoryBytes`). GPU memory
+is the tab's processes' use as `nvidia-smi` lists it, sampled every 2 s.
+The machine was overloaded throughout (load averages given per run, up to
+190 on 24 cores, swap full, other agents' browsers on the same GPU), so
+frame times are indications.
+
+| Run | Load | Frame ms p50 / p95 / p99 / max | Wasm MB after load → reloads | VRAM max |
+|---|---:|---|---|---:|
+| Rust `?world=gen`, full route | 21 → 46 | 5.9 / 28.6 / 46.7 / 282.8 | 488 | |
+| Rust, export, animators off (`?world=off`), full route | 36 → 58 | 4.2 / 8.5 / 15.7 / 219.3 | 440 | |
+| JS game, full route | 47 → 36 | 1.2 / 6.0 / 15.7 / 242.3 | | |
+| Rust `?world=gen`, 20 s and ten reloads | 40 | 4.8 / 19.1 / 33.4 / 92.7 | 456 → 512 (all ten) | 2.33 GB |
+| Rust, export with animators, 20 s and ten reloads | 64 | 5.5 / 22.7 / 39.1 / 153 | 456 → 663 (all ten) | 1.58 GB |
+| Rust `?world=gen`, race to results (autopilot, timescale 4) | ~100 | | 466 | 1.36 GB |
+| Rust, export, race to results | ~100 | | 466 | 1.38 GB |
+| Rust `?world=gen`, flight, before D701's fix | 15 | 11.6 / 17.2 / 17.3 / 55.5 | 504 | 6.1 GB, growing |
+| Rust `?world=gen`, 40 s flight, after the fix | 49 | | | 1.86 GB |
+| Rust `?world=off`, 30 s flight | 8.5 | | | 1.66 GB |
+| Sierra `?world=gen`, 40 s flight (VRAM from a second run at 9) | 3.5 | 2.7 / 6.9 / 8.8 / 53.8 | 347 | 1.57 GB |
+| Native release, Coast `world=gen`, 6,000 frames | n/r | | | 0.83 GB flat |
+
+Alternating 60 s flights with the animators on and off (`?world=gen`
+against `?world=off`, and the export with and without them) at load 100
+to 190 did not separate them: medians within 0 to 1.4 ms either way, p95
+from 8 to 49 ms in both. Natively, timed in the client over Coast's
+route, the animator path is 0.10 ms a frame (the updaters 0.024 ms; 124
+edits a frame: 64 instance colours, 26 instance matrices, 7 transforms, 17
+numbers, 4 colours, 3 texture offsets, 2 `Points` attributes). The world
+build: 1.2 s natively, 3.1 to 3.3 s in the web build. Ready from
+navigation 6.5 to 8.4 s with `?world=gen` (nothing downloaded), 8.1 to 9.4
+s with the export (199.8 MB downloaded locally in 3.2 to 3.8 s).
