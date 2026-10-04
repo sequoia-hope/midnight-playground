@@ -1903,6 +1903,12 @@ stroke coverage belongs to mr_canvas (WP 3.2's owner), so the test holds
 the corn strip to 6 levels until then and reports the numbers; every other
 Valley texture is within the gate.
 
+**Resolved 2026-10-04 (D650-D653).** mr_canvas now strokes as Chrome's
+GPU canvas does, and the corn strip is within 0.00/0.00/0.01/0.00 levels
+of the capture (from 4.56/4.95/2.04/4.20); `tests/valley.rs` holds it to
+the gate of 3 like every other Valley texture. The tassels, lone lines
+drawn after the strip's first five curves, are multisampled (D653).
+
 ## D334. Valley's updater
 
 2026-10-03, WP 3.7. The closure `build()` pushes onto `world.updaters` is
@@ -3495,6 +3501,14 @@ owner); until then `tests/coast.rs` holds the leaf to 10 levels
 unpremultiplied and 6 premultiplied and reports the numbers; every other
 Level 2 texture is held to 3.
 
+**Resolved 2026-10-04 (D650-D653).** With strokes tessellated and
+multisampled as Chrome does, the leaf is within 0.011/0.025/0.015/0.002
+levels (R/G/B/A, from 2.73/5.89/1.94/9.39) and no pixel crosses the
+`alphaTest`; `tests/coast.rs` holds it to 3 like every Level 2 texture
+(`LEAF_LIMIT` and `LEAF_PREMULTIPLIED` are gone). Chrome's coverage was
+not quantised for the leaf alone: the midrib, a lone line drawn after
+the leaflets, is multisampled too (D653).
+
 ## D535. Level 2's canvas reference: every canvas, with the bundled fonts
 
 2026-10-04, WP 7.1. `tools/parity/coast-textures.mjs` opens the game on
@@ -3871,6 +3885,16 @@ premultiplied under D534's 6, alpha total within 0.5 %), and without the
 capture's RGBA (CI, wasm) by its premultiplied 8×8 block means, which the
 capture records (0.14/0.29/0.20/0.08). Matching Chrome's stroke coverage
 stays mr_canvas's (D534).
+
+**Resolved 2026-10-04 (D650).** The fence's strokes are lone line
+segments, which Chrome draws as quads with an analytic edge ramp
+`|nx| + |ny|` wide (16, 137, 242, 137, 16 is that ramp at 45°, not
+multisampling). mr_canvas now draws them so, and the fence is within
+0.148/0.117/0.088/0.029 levels of the capture, every alpha equal;
+`tests/seaside.rs` holds it to 3 like the other canvases, and the
+alpha-tested criterion (`alpha_tested`, `STROKE_PREMULTIPLIED`, the
+premultiplied block means without the RGBA) is gone. The golden still
+records the premultiplied block means; nothing reads them.
 
 ## D593. The photo in the gate; the loose-ground mask byte for byte
 
@@ -4370,3 +4394,119 @@ stations:
   and render order 2; the lane paint −2/−2, the side-street asphalt +1/+2.
   The billboards are double-sided basic materials (colour 1.5) on the ad
   textures.
+
+
+## Canvas anti-aliasing decisions
+
+## D650. A lone stroked line is an analytic quad
+
+2026-10-04. Measured in Chrome 151 on the reference machine (headless,
+`--use-angle=vulkan`, the RTX 3060; probe pages drawn through the e2e
+harness, read with `getImageData`): a stroke of a path that is one line
+segment (`moveTo`, `lineTo`), with a butt or square cap, under a
+transform that keeps right angles and at least a device pixel wide, is
+Skia's `drawStrokedLine`: a quad (the segment's ends moved half the
+width either side, and half the width along it for a square cap) with
+per-edge anti-aliasing. Its coverage is not the exact area (D151): each
+edge ramps linearly from 0 to 1 over `|nx| + |ny|` (the pixel's width
+across the edge, 1 for an axis-aligned edge, √2 at 45°), centred on the
+edge. Fitted at 3°, 10°, 20°, 30°, 37°, 45°, 60° and 80° on a 6 px line,
+the ramp is within 0.0034 everywhere, the exact area up to 0.125 off.
+Opposite edges combine as `c₁ + c₂ − 1` (a 1 px line at 45° is 90, 180,
+90, as Chrome), and at the ends the pixel takes the smaller of the sides'
+and the ends' coverage (within 0.003 at the corners of butt and square
+caps). Skia draws this as an outer quad (each edge moved out by half its
+ramp) at coverage 0 and an inner one at 1, and the GPU snaps both quads'
+corners to its 1/256 px grid before it interpolates: mr_canvas does the
+same (`raster::line_quad_coverage`), which is what moves the catch
+fence's faint pixels' blue from 12.48 to 13 as Chrome rounds it. A round
+cap, a thinner line, a skewing transform and any other path go to the
+tessellated stroke (D652). This is the catch fence (D592): every stroke
+in it is a lone line.
+
+## D651. Multisampled strokes blend into samples until the canvas is read
+
+2026-10-04. Chrome multisamples every stroke that is not D650's quad,
+with the standard 8× pattern of Direct3D and Vulkan: a near-horizontal
+edge swept over 256 columns steps at sample rows (2k + 1)/16, a
+near-vertical one at the same columns, and a 45° sweep pins the pairing
+to (9,5), (7,11), (13,9), (5,3), (3,13), (1,7), (11,15), (15,1) in 1/16 px
+(`raster::MSAA8_X`, sorted by row). And it blends per sample: two opaque
+curves of different colours crossing at a shallow angle leave only whole
+eighths in alpha and in each colour, where blending their coverages would
+not. So once a canvas strokes a multisampled path, mr_canvas keeps eight
+samples for each pixel whose samples differ (`samples.rs`; the others
+stay in the pixmap), blends every later draw into each sample (analytic
+draws with their coverage, into all eight), and keeps the pixmap at the
+samples' mean, a tie rounded down (Chrome's half-covered opaque pixel is
+127; `(sum + 3) >> 3` matches every level seen). Reading the canvas
+(`getImageData`, the source of `drawImage`) resolves the pass: the next
+draw starts from the pixels, as Skia reloads the multisample buffer from
+the resolved texture; `putImageData` writes after a flush and ends it
+too. A stroke with a shadow takes its shadow from the outline's exact
+coverage as before; a stroke under a `filter` keeps the old exact-area
+layer (the game filters only fills).
+
+## D652. Strokes are tessellated as Skia's GPU stroker does
+
+2026-10-04. Multisampling the exact stroke outline (tiny-skia's stroker,
+flattened finely) left the leaf at 0.23 alpha and single curves one to
+three samples off along their length: Chrome's GPU follows a curve with
+straight pieces a quarter pixel from it. `tess.rs` ports
+`StrokeTessellator` and `GrStrokeTessellationShader` (Skia main,
+2026-10): each segment is a patch (a line as `p0, p0, p1, p1`, a
+quadratic as its cubic, a curve needing more than 32 parametric segments
+chopped evenly first); its edges are the union of Wang's formula's
+parametric segments (precision 4) and radial segments (`0.5 / acos(1 −
+1/(4r))` per radian of turn, r the device radius), each edge placed by
+the shader's own search, at the curve's point plus and minus the radius
+along its normal; consecutive edges make the strip's two triangles. Joins
+are fans of edges around the junction on the outer side (miter: the
+outer corners and the miter point, `miter_extent` falling back to the
+bevel past the limit; bevel; round: radial segments), none where the
+tangents are nearly parallel. Butt caps add nothing, square caps a line
+of half the width at each end, round caps a stroke-width circle of
+radial edges. The triangles are mapped to device space, snapped to the
+1/256 px grid and rasterised exactly in integers with the top-left rule
+(`raster::msaa_triangles`); a sample in any triangle is covered once.
+Single precision as the shader, transcendental functions through the
+kernel, so native and wasm agree. Against Chrome, sample for sample:
+quadratic strokes 1.6, 3 and 10 px wide, a three-point polyline, cracks
+0.8 and 1.2 px wide (the rock's and the asphalt's), a `rect()` path and a closed
+polyline with round joins and caps are identical; a native `roundRect`
+and an arc with lines differ in 80 pixels of 65,536 by a sample or two,
+a full circle in 353 (0.22 levels): Blink makes arcs conics where
+mr_canvas makes cubics (D150's path code), and a lone `arc()` is Skia's
+arc op. Not chased: no texture of the game strokes a lone circle.
+
+## D653. After five path draws, lone lines are multisampled too
+
+2026-10-04. The corn strip's tassels and the leaf's midrib are lone
+lines, yet Chrome's are whole eighths. Probed: a lone line after four
+path draws (fills or strokes of any path but a lone line or a lone arc)
+is D650's quad; after five it is multisampled, the quad's own samples
+with no ramp. Lines drawn before the fifth path stay analytic; reading
+the canvas does not reset the count; rectangles, `strokeRect`, circle
+fills, text and images stay analytic however many paths came before. So
+the canvas counts its path draws (`slow_paths`; the path's kind follows
+Blink's line and arc builders: `moveTo` + one `lineTo` is a line, one
+`arc()` of radius 1 or more on an empty path, perhaps closed, is an arc,
+anything else a path) and from the fifth on strokes a lone line by its
+snapped quad's samples. The mechanism is not pinned down (the count
+recalls Chromium's `kMinNumberOfSlowPathsForMSAA`, but Chromium counts
+only concave paths and Chrome here counts convex ones too); the rule is
+what was measured.
+
+The textures, mean absolute difference against Chrome (R/G/B/A, levels;
+before → after; every change over 0.05): Valley corn 4.56/4.95/2.04/4.20
+→ 0.00/0.00/0.01/0.00; Beach palm leaf 2.73/5.89/1.94/9.39 →
+0.011/0.025/0.015/0.002; Seaside catch fence 11.828/11.709/9.072/5.119 →
+0.148/0.117/0.088/0.029; the rock (all levels' `tRock`) 0.108/0.106/0.103
+→ 0.011/0.010/0.011; the freeway and harbour signs (rounded-rect borders)
+0.29-0.42 → 0.11-0.21 in R (sign-port-meridian 0.422/0.352/0.315 →
+0.128/0.107/0.095); City's 2048×768 and 2048×1536 billboards
+0.327/0.207/0.256 → 0.149/0.094/0.113 and 0.319/0.202/0.250 →
+0.142/0.089/0.106; Mountain's canvas 0 0.11/0.11/0.10 → 0.01/0.01/0.01
+and canvas 6 0.74/0.22/0.33 → 0.66/0.20/0.29; the paths probe
+0.447/0.381/0.289 → 0.292/0.202/0.157. Nothing got worse; every other
+texture and probe moved by less than 0.05.

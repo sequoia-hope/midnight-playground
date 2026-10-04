@@ -63,13 +63,6 @@ fn captured() -> &'static Value {
 /// WP 3.2's threshold, per channel.
 const LIMIT: f64 = 3.0;
 
-/// The palm leaf's bound, unpremultiplied (DECISIONS D534): thin curved
-/// strokes on a transparent canvas, which Chrome's GPU canvas multisamples
-/// where mr_canvas takes the exact area (D151, D333).
-const LEAF_LIMIT: f64 = 10.0;
-/// Its bound premultiplied: where the colour actually lands.
-const LEAF_PREMULTIPLIED: f64 = 6.0;
-
 /// The scenery modules of Level 2 and the progress label each builds under.
 const MODULES: [(&str, &str); 3] = [
     ("coast", "Carving the coast"),
@@ -657,8 +650,6 @@ fn check(group: &str) {
                     gate = mad;
                 }
             }
-            let mut leaf = false;
-            let mut leaf_ok = true;
             // A canvas picture: held to the font-matched capture.
             if let Some(p) = ck["picture"].as_u64() {
                 let pw = &pics[p as usize];
@@ -683,7 +674,6 @@ fn check(group: &str) {
                     .get("alphaTest")
                     .and_then(Value::as_f64)
                     .unwrap_or(0.0);
-                leaf = group == "beach" && (tw, th) == (64, 256) && alpha_test == 0.4;
                 let mut extra = String::new();
                 let fmad =
                     captured_rgba(p as usize, pw["sha256"].as_str().expect("sha")).map(|jpx| {
@@ -702,7 +692,6 @@ fn check(group: &str) {
                         }
                         if mad.iter().any(|&x| x >= LIMIT) {
                             let (pm, cross) = premultiplied(&px, &jpx, alpha_test);
-                            leaf_ok = pm.iter().all(|&x| x < LEAF_PREMULTIPLIED);
                             extra = format!(
                                 " (premultiplied RGB {pm:.2?}; {:.2} % of pixels on the other side of alphaTest {alpha_test})",
                                 cross * 100.0
@@ -718,8 +707,7 @@ fn check(group: &str) {
             } else if b.scene.textures[t as usize].source == TextureSource::Canvas {
                 problems.push(format!("{line}: a canvas picture the capture lacks"));
             }
-            let limit = if leaf { LEAF_LIMIT } else { LIMIT };
-            let bad = gate.iter().any(|&x| x >= limit) || !leaf_ok;
+            let bad = gate.iter().any(|&x| x >= LIMIT);
             println!("{line}");
             if bad {
                 problems.push(line);
