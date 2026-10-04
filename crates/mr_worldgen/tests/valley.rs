@@ -42,9 +42,6 @@ use serde_json::{Value, json};
 /// SPEC 5.7: mean absolute difference per channel, in 0..255 levels.
 const LIMIT: f64 = 3.0;
 
-/// The corn strip's bound (DECISIONS D333).
-const CORN_LIMIT: f64 = 6.0;
-
 fn golden() -> Value {
     serde_json::from_str(include_str!("../../../parity/golden/valley/sierra.json"))
         .expect("valley golden parses")
@@ -477,12 +474,9 @@ fn valley_l3() {
     for c in tg["cases"].as_array().expect("cases") {
         let name = c["name"].as_str().expect("name");
         let t = our_texture(s, name);
-        // The corn strip is thin curved strokes on a transparent canvas: Chrome
-        // rasterises them with the GPU's multisampling, mr_canvas with exact
-        // area coverage (D151), and the unpremultiplied edge colours differ
-        // more than the gate allows (DECISIONS D333). Held to a looser bound
-        // until mr_canvas reproduces the multisampled coverage.
-        let limit = if name == "corn" { CORN_LIMIT } else { LIMIT };
+        // The corn strip (thin curved strokes) is held like the rest since
+        // mr_canvas multisamples strokes as Chrome does (D333, D650-D653).
+        let limit = LIMIT;
         let (w, h, px) = pixels(s, t);
         let want = blocks_of(&c["blocks"]);
         let bd = block_diff(&block_means(w, h, &px), &want);
