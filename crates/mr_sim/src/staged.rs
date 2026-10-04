@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use mr_levels::world::{WorldData, world_data};
+use mr_levels::world::{WorldData, level_world_data};
 use mr_track::{Level, Track};
 
 use crate::ai::{AiCtx, AiDriver, AiOpts};
@@ -35,7 +35,7 @@ pub struct Stage {
 
 pub fn stage_level(level: Level) -> Stage {
     let mut t = Track::new(&level).expect("the level builds a track");
-    let world = world_data(level.id);
+    let world = level_world_data(&level, &t);
     t.runout = world.runout;
     Stage {
         level,

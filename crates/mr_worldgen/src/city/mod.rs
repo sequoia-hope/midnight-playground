@@ -30,15 +30,15 @@ pub mod textures;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use mr_levels::world::OppositeCarriageway;
+use mr_levels::world::City as WorldCity;
 use mr_math::{Mulberry32, clamp, js, kernel, lerp, smoothstep};
 use mr_scene::{MaterialKind, NodeType, three};
 use mr_track::{Frame, Track};
 use serde_json::Value;
 
 use self::freeway::{
-    AtlasQuad, Freeway, FwCtx, FwPath, OPP_C, OPP_LANES, Prof, SweepOpts, SweepUv, atlas_quads,
-    prof, step, sweep,
+    AtlasQuad, Freeway, FwCtx, FwPath, OPP_C, Prof, SweepOpts, SweepUv, atlas_quads, prof, step,
+    sweep,
 };
 use self::textures::{
     BRICK_CELL, CELL_COLS, CELL_ROWS, CELL_TILE, GLASS_CELL, ROOF_CELL, WAREHOUSE_CELL, ad_texture,
@@ -312,10 +312,11 @@ impl Scenery for City {
             self.plan_loop(t, tr);
             return Ok(());
         }
-        let z0 = t.zones[self.zone].s0;
-        self.s_a = t.tag("merge").first().map_or(z0 + 220.0, |g| g.s0);
+        // `t.tag('merge')[0]?.s0 ?? Z.s0 + 220` and the runout, by the rules
+        // the simulation reads its world data with (mr_levels::world::City).
+        self.s_a = WorldCity::s_a(t, self.zone);
         let path = FwPath::new(t, self.s_a, t.length, BACK_EXT, FWD_EXT);
-        t.runout = js::max(t.runout, FWD_EXT); // drivable after the finish
+        t.runout = WorldCity::plan_runout(t, t.runout); // drivable after the finish
         sim_data.runout = t.runout;
         // Level ground under the westbound lanes behind the merge, where the
         // terrain doesn't know about them.
@@ -354,12 +355,7 @@ impl Scenery for City {
         b.run();
         // For traffic: the westbound carriageway (lat relative to our centreline).
         // Level 1: from the merge to the end. Loop: all the way round.
-        sim_data.opposite_carriageway = Some(OppositeCarriageway {
-            s0: self.s_a,
-            s1: t.length,
-            lanes: OPP_LANES.to_vec(),
-            dir: -1.0,
-        });
+        sim_data.opposite_carriageway = Some(WorldCity::opposite_carriageway(t, self.zone));
         animators.extend(b.finish());
         Ok(())
     }
