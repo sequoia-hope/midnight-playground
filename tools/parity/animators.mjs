@@ -14,7 +14,13 @@
 // --level picks the level (default sierra). On the Coast Highway (WP 7.1)
 // the frames run the route from blue hour to morning with the camera by the
 // cliffs, the pier and the docks (no Coast, Beach or Harbor updater looks at
-// the camera), and the golden is parity/golden/animators/coast.json.
+// the camera), and the golden is parity/golden/animators/coast.json. On
+// Downtown Streets (WP 7.2) they run the route at midnight with the camera
+// by the start, under the viaduct and by the finish (only the steam reads
+// the camera, its field of view), the player passing under the elevated
+// railway where the train is scripted to meet him, one long frame letting
+// the free-running train wrap round, and the ticks run under the viaduct;
+// the golden is parity/golden/animators/streets.json.
 //
 // By default the world is built under Node: the game's own World.build on
 // Sierra with a canvas that draws nothing (no updater reads a pixel), and a
@@ -57,7 +63,7 @@ import { seedRandom, RANDOM_SEED } from './lib/seed-random.mjs';
 const CHECK = process.argv.includes('--check');
 const BROWSER = process.argv.includes('--browser');
 const LEVEL = process.argv.includes('--level') ? process.argv[process.argv.indexOf('--level') + 1] : 'sierra';
-if (!['sierra', 'coast'].includes(LEVEL)) throw new Error('animators: --level sierra or coast');
+if (!['sierra', 'coast', 'streets'].includes(LEVEL)) throw new Error('animators: --level sierra, coast or streets');
 const OUT = path.join(ROOT, `parity/golden/animators/${LEVEL}.json`);
 
 // Runs in the page (env null) or under Node, synchronously until the
@@ -176,8 +182,23 @@ async function run(env, level = 'sierra') {
   // within 600 m), by the waterfall's pool (the foam and spray move within
   // 800 m), in the city (neither). On the coast: by the cliffs, the pier and
   // the docks.
-  let at, FRAMES, PLACES;
-  if (level === 'coast') {
+  let at, FRAMES, PLACES, S0 = 4000;
+  if (level === 'streets') {
+    const t = world.track;
+    const by = (s) => { const f = t.frame(s, {}); return [f.x, f.y + 6, f.z]; };
+    const el = t.tag('el')[0];
+    const sx = Math.round((el.s0 + el.s1) / 2);
+    const L = t.length;
+    at = { start: by(t.startS + 20), viaduct: by(sx), finish: by(t.finishS - 40) };
+    PLACES = ['start', 'viaduct', 'finish'];
+    FRAMES = [
+      [0.0, 0, 'start'], [1 / 120, 0, 'viaduct'], [1 / 120, 40, 'finish'], [1 / 60, 300, 'start'],
+      [0.25, sx - 600, 'viaduct'], [0.5, sx - 380, 'finish'], [1 / 30, sx - 379, 'start'], [2, sx - 120, 'viaduct'],
+      [0.1, sx, 'finish'], [0.7, sx + 159, 'start'], [1 / 120, sx + 160, 'viaduct'], [3.3, sx + 400, 'finish'],
+      [150, Math.round(L * 0.7), 'start'], [1.25, Math.round(L * 0.8), 'viaduct'], [0.016, L - 10, 'finish'], [0.333, L, 'start'],
+    ];
+    S0 = sx - 300;
+  } else if (level === 'coast') {
     const t = world.track;
     const mid = (name) => { const g = t.tag(name)[0]; return (g.s0 + g.s1) / 2; };
     const by = (s) => { const f = t.frame(s, {}); return [f.x, f.y + 6, f.z]; };
@@ -215,7 +236,7 @@ async function run(env, level = 'sierra') {
   PLACES = ['flag', 'pool', 'city'];
   }
   // Then fixed ticks with the player moving at 60 m/s, the camera hopping.
-  const TICKS = 360, TICK = 1 / 120, S0 = 4000;
+  const TICKS = 360, TICK = 1 / 120;
   const focus = new THREE.Vector3();
   const step = (dt, s, where, look = true) => {
     camera.position.fromArray(at[where]);
