@@ -86,6 +86,11 @@ pub struct InstanceStream {
     count: u32,
     bytes: Mutex<Option<Vec<u8>>>,
     buffer: OnceLock<Buffer>,
+    /// New contents of the same size, written into the buffer in place
+    /// (`write_instance_updates`): the scenery's animators move instances
+    /// every frame, and a new buffer each time would be a GPU allocation
+    /// per frame (WP 3.9, D497).
+    update: Mutex<Option<Vec<u8>>>,
 }
 
 impl InstanceStream {
@@ -99,7 +104,32 @@ impl InstanceStream {
             count: (data.len() / INSTANCE_FLOATS) as u32,
             bytes: Mutex::new(Some(bytes)),
             buffer: OnceLock::new(),
+            update: Mutex::new(None),
         }
+    }
+
+    /// New contents for the stream, the same number of instances, to be
+    /// written in place; false (nothing done) if the count differs.
+    pub fn update(&self, data: &[f32]) -> bool {
+        if (data.len() / INSTANCE_FLOATS) as u32 != self.count {
+            return false;
+        }
+        let mut bytes = Vec::with_capacity(data.len() * 4);
+        for x in data {
+            bytes.extend_from_slice(&x.to_le_bytes());
+        }
+        if self.buffer.get().is_none()
+            && let Ok(mut b) = self.bytes.lock()
+            && b.is_some()
+        {
+            // Not on the GPU yet: it goes up with these contents.
+            *b = Some(bytes);
+            return true;
+        }
+        if let Ok(mut u) = self.update.lock() {
+            *u = Some(bytes);
+        }
+        true
     }
 
     pub fn count(&self) -> u32 {
@@ -117,9 +147,26 @@ impl InstanceStream {
             device.create_buffer_with_data(&BufferInitDescriptor {
                 label: Some("mr_instances"),
                 contents: &bytes,
-                usage: BufferUsages::VERTEX,
+                usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
             })
         })
+    }
+}
+
+/// Writes the streams' pending updates into their buffers (render world,
+/// at extraction).
+pub fn write_instance_updates(
+    queue: Res<bevy::render::renderer::RenderQueue>,
+    q: Extract<Query<&Instances>>,
+) {
+    for inst in &q {
+        let Some(buffer) = inst.0.buffer.get() else {
+            continue;
+        };
+        let Some(bytes) = inst.0.update.lock().ok().and_then(|mut u| u.take()) else {
+            continue;
+        };
+        queue.write_buffer(buffer, 0, &bytes);
     }
 }
 

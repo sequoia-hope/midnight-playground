@@ -209,6 +209,8 @@ impl Build {
         let emissive = m.color("emissive").unwrap_or([0.0; 3]);
         let h = three_material(scene, m, images, shared, instance_color).map(|mut m| {
             m.key.instanced = instanced;
+            // Its index, for its animation block (`animate`, D490).
+            m.params.slots.z = index as f32 + 1.0;
             if let Some(p) = night {
                 let w = m.params.emissive.w;
                 m.params.emissive = Vec4::new(
@@ -317,9 +319,11 @@ fn spawn_node(
         b.out.counts.skipped_nodes += 1;
         return 0;
     };
-    if !b.visible[i] {
+    // A node exported invisible (or under one) is spawned hidden, as three
+    // keeps it: an animator may show it (City's cut-off on the loop, D498).
+    let hidden = !b.visible[i];
+    if hidden {
         b.out.counts.invisible += 1;
-        return 0;
     }
     let world = Mat4::from_translation(b.offset[i]) * convert::mat4(&node.matrix_world);
     let desc = b.scene.meshes[mesh as usize].clone();
@@ -417,6 +421,9 @@ fn spawn_node(
                     crate::animate::NodeRef(i as u32),
                 ));
                 shadows(&mut e);
+                if hidden {
+                    e.insert(Visibility::Hidden);
+                }
                 spawned += 1;
             }
             Some(inst) => {
@@ -466,6 +473,9 @@ fn spawn_node(
                     }
                 }
                 shadows(&mut e);
+                if hidden {
+                    e.insert(Visibility::Hidden);
+                }
                 spawned += 1;
             }
         }
@@ -675,11 +685,7 @@ pub fn build_step(
         status.warm_up = n;
         // What the scenery's animators address (`crate::animate`).
         commands.insert_resource(crate::animate::SceneIndex::new(
-            &b.scene,
-            &b.materials,
-            &b.meshes,
-            &b.offset,
-            &b.visible,
+            &b.scene, &b.meshes, &b.offset,
         ));
         // Dropping the build drops the Scene: the CPU copies go here.
         commands.remove_resource::<Build>();
