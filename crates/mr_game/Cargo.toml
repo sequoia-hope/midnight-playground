@@ -52,6 +52,12 @@ bevy = { version = "=0.19.1", default-features = false, features = [
     "keyboard",
     "mouse",
     "touch",
+    # The race's HUD text, results list and touch controls (roadmap M4,
+    # DECISIONS D431): Bevy UI with its bundled font.
+    "bevy_ui",
+    "bevy_ui_render",
+    "bevy_text",
+    "default_font",
     # PNG encoding for screenshots (native --screenshot, the web test hook).
     "png",
 ] }

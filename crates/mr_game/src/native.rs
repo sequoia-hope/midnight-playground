@@ -164,6 +164,15 @@ pub fn run() -> AppExit {
             return AppExit::error();
         }
     };
+    if o.smoke_race {
+        return match crate::play::smoke_race_cli(&o) {
+            Ok(()) => AppExit::Success,
+            Err(e) => {
+                eprintln!("smoke race: {e}");
+                AppExit::error()
+            }
+        };
+    }
     let hq = o.hq.unwrap_or(true);
     crate::app(o, hq).run()
 }
