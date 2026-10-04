@@ -16,6 +16,7 @@
 //! - [`stations`]: the screenshot stations, flown natively (DECISIONS D17).
 //! - [`fly`]: the fly and attract cameras of `src/main.js`.
 //! - [`cars`]: stand-in cars driven by the simulation (WP 2.4).
+//! - [`play`]: a playable race (M4): session, input, camera, flow, HUD.
 //! - [`status`]: what the page and the window title show.
 
 pub mod cars;
@@ -24,6 +25,7 @@ pub mod fly;
 pub mod loader;
 pub mod matscene;
 pub mod options;
+pub mod play;
 pub mod render;
 pub mod stations;
 pub mod status;
@@ -260,6 +262,9 @@ pub fn fly_system(
     mut env: ResMut<EnvRequest>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
 ) {
+    if opts.o.race_on() {
+        return; // the race drives the camera and the sky (`play`)
+    }
     // `Math.min(frameDt, 1 / 20)` (main.js tick).
     let dt = f64::from(time.delta_secs()).min(1.0 / 20.0);
     let pixel_ratio = windows
@@ -319,7 +324,7 @@ pub fn fly_system(
 /// and `refreshEnv` (main.js): the environment is rebuilt when the time of
 /// day has moved 2.5 % of the route since the last build. `frame` is the
 /// world's dt and the pixel ratio.
-fn update_sky(
+pub(crate) fn update_sky(
     sky_res: &mut SkyRes,
     opts: &Opts,
     (dt, pixel_ratio): (f64, f64),
@@ -371,7 +376,10 @@ pub fn app(o: Options, hq: bool) -> App {
             resolution: bevy::window::WindowResolution::new(w, h).with_scale_factor_override(1.0),
             // A screenshot run draws without showing a window, where the
             // platform allows it.
-            visible: o.screenshot.is_none() && materials.is_none() && o.stations.is_none(),
+            visible: o.screenshot.is_none()
+                && o.param("shots").is_none()
+                && materials.is_none()
+                && o.stations.is_none(),
             ..default()
         }
     };
@@ -444,6 +452,7 @@ pub fn app(o: Options, hq: bool) -> App {
     if let Some(path) = stations {
         stations::plugin(&mut app, &path, out);
     }
+    play::plugin(&mut app);
     #[cfg(not(target_arch = "wasm32"))]
     native::plugin(&mut app);
     #[cfg(target_arch = "wasm32")]
