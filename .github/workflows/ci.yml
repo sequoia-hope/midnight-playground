@@ -132,3 +132,5 @@ jobs:
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/seaside-animators.mjs --check
       - name: The Downtown Streets animators golden reproduces
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/animators.mjs --level streets --check
+      - name: The Night City Cruise animators golden reproduces
+        run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/animators.mjs --level cruise --check

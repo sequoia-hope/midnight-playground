@@ -3636,19 +3636,24 @@ streams' four, the sky glow's `uK`, the road's `uWet`, the glow points'
 re-prepare each material every frame, the stall D455 removed. So each
 material an animator touches gets an *animation block*: five RGBA32F
 texels of the globals row from texel 160 (`lighting::G_BLOCKS`, after
-D456's light slots; 128 blocks, so the row is 800 texels): 0 the colour (w
-1 when set), 1 the emissive colour, 2 `emissiveIntensity` (x, y set) and
-the rotation (z, w set), 3 the map's (and alpha map's) offset since the
-export (xy) and the normal map's (zw), 4 the kind's uniforms. The shader
-reads a value from the block where the block has one and the material's
-parameter otherwise (`ThreeParams::slots.x` is the block's first texel, 0
-for none). The block is made the first time an animator touches the
-material, which edits the Bevy material once: `slots`, and the emissive
-colour held alone with its intensity in `night` (D455's form, day = night
-when it does not follow nightfall). On Sierra 15 materials get one in the
-first frame, behind the loading screen; an animator that only runs near
-its object (the waterfall's spray, within 800 m) touches its material
-later, once. A number or colour goes to the
+D456's light slots; 128 blocks): 0 the colour (w 1 when set), 1 the
+emissive colour, 2 `emissiveIntensity` (x, y set) and the rotation (z, w
+set), 3 the map's (and alpha map's) offset since the export (xy) and the
+normal map's (zw), 4 the kind's uniforms. The shader reads a value from
+the block where the block has one and the material's parameter otherwise.
+A material finds its block through a block map from texel 800
+(`G_BLOCK_MAP`, 512 materials four to a texel, so the row is 928 texels):
+the loader gives every scene material its index (`ThreeParams::slots.z`,
+index + 1; 0 for the race's cars, which have no block), and the map holds
+the block's first texel, 0 for none. So a block is made the first time an
+animator touches the material without the Bevy material ever being
+edited, even once (a first version edited it once, which an animator that
+runs only near its object, the waterfall's spray within 800 m, did in the
+middle of a flight). A new block starts with the emissive colour and
+intensity as exported (the intensity left to `night` when it follows
+nightfall, D455), so the shader needs no change of the material's emissive
+form. On Sierra 15 materials get one in the first frame (at the start). A
+number or colour goes to the
 kind's uniform of that name if it has one animated, else to the parameter
 (D411's rule); the sky's edits are left out (D493).
 
@@ -3718,8 +3723,8 @@ logged once at debug level. The loader tags every entity with its node
 (`animate::NodeRef`) and hands over what the edits need before it drops
 the scene (`animate::SceneIndex`: per node its parent, children, local and
 world matrices, and an InstancedMesh's instance matrices and colours, 4 MB
-on Sierra). Not covered: a node exported invisible is not spawned by the
-loader, so an animator cannot show it (none on Sierra).
+on Sierra). A node exported invisible is spawned hidden, so an animator
+can show it (D498).
 
 ## D494. Level 1's remaining material kinds
 
@@ -3782,6 +3787,130 @@ light pools and lamp lenses at their daytime colours). The material test
 scenes now include TriplanarRock, Reflector, Siding, CityFacade and
 SkyGlow (with the JS tool's uniform overrides, `animate::fix_uniforms`):
 23 scenes, 0 over, worst 0.150 as before.
+
+## D497. Nothing in the animator path allocates per frame; its cost
+
+2026-10-04, WP 3.9, after the coordinator's perf review. Of what the
+edits touch each frame, only instance streams made GPU objects: a moved
+InstancedMesh got a new `Instances` stream, so a new vertex buffer, each
+frame (Sierra's waterwheels every frame, the freeway's chase bulbs eight
+times a second), which is what drives Firefox's GC (D457). Now a stream
+with the same instance count is rewritten in place:
+`InstanceStream::update` keeps the new bytes and
+`instancing::write_instance_updates` (render world, at extraction) writes
+them into the existing buffer with `write_buffer` (the buffer gains
+`COPY_DST`); a new stream is made only when the count changes (an
+`InstanceCount` edit, or a zero-scale instance appearing or going, none
+on Sierra). Material values never touch a Bevy material (D490); node
+transforms and visibility are component writes; the flag's 18 vertices
+are written into Bevy's mesh slab in place (`write_buffer_with`, no new
+buffer in steady state). Unchanged values are not written, so a frozen
+frame costs only the update call.
+
+Measured in the wasm build over Sierra's whole route: the animator path
+(`run_animators`) takes 0.04 to 0.15 ms a frame on average, 3.2 ms at
+most. The world build runs before `ready` (2.9 s in wasm here), never
+during a flight. A/B flights against the build before (BASELINE.md, "The
+Rust client at WP 3.9"): the same frame-time distribution on WebGPU and
+WebGL2, no pipeline after the warm-up, and isolated slow frames in both
+builds under the machine's load. Ready is later on the dev machine (7 to
+11 s against 3 to 5 s), because the page holds the export back until the
+build is done (D491); `?world=gen` is ready in 7.5 s without the download.
+## D498. Level 1's scenery by name, the wasm budget, and invisible nodes
+
+2026-10-04, WP 3.9. The client's world build named its scenery through
+`scenery_factory(None)`, whose `PORTED` table links every level's scenery
+into the client; with Coast, Desert, Seaside and Streets ported on main
+that made the web build 10.00 MB (WebGPU) and 10.48 MB (WebGL2) after
+gzip, over SPEC 6.6's 10 MB. The client now builds Sierra with its own
+factory naming Mountain, Valley and City (`animate::level1_scenery`):
+9.60 and 10.08 MB. Linking Level 1's world generation costs about 0.7 MB
+after gzip (8.77 and 9.24 MB before WP 3.9; main's race audio and warm-up
+took the rest), so the WebGL2 build is still 0.08 MB over. Not decided
+here: the budget, or how the other levels' animators reach the client
+(each level built in the client links its scenery). Raised with the
+coordinator, who has started a size package; the owner decides.
+
+Ways to feed a level's animators without linking its scenery build, noted
+for that decision and not done: the updaters are small (City's 13 on
+Sierra, a few hundred lines) and need only handles and a few numbers per
+animator (positions, phases, base vertex arrays), which the build knows;
+the export could carry them (an `animators` list of plain data per
+updater: kind, target handles, constants), and the client run ported
+updater functions over that data without the builders; or `mr_worldgen`
+could split each module's updaters from its builders, so that a client
+linking only the updaters builds them from a small description the
+export or a build tool writes.
+
+Nodes exported invisible (or under one) were not spawned at all, so an
+animator could never show them (Cruise's cut-off hides and shows City's
+chunks by distance). The loader now spawns them with `Visibility::Hidden`,
+counted as before (`Counts::invisible`); the animators' visibility edits
+combine each node's own flag with its ancestors' as three does. Sierra has
+none; Cruise's export has 52 (486 entities instead of 432).
+
+## D499. Coast Highway's kinds, drawn from its export
+
+2026-10-04, after WP 7.1 (the coordinator's plan: the drawing side of the
+other levels, linking no scenery; Coast's to-do from WP 7.1). Blocks of
+`three_material.wgsl` as before: **Surf** (`foamMaterial`, a
+ShaderMaterial: value noise, swell bands, contact foam and ragged rings;
+the rings' phase from the instance's translation, the InstancedMesh being
+at the origin; three's FogExp2 on it), **LighthouseBeam** (additive, its
+`vV` carried interpolated as three does, its own fog fade), **Stucco**
+(`tGrain` in the detail slot, a triplanar grain and a broad mottle after
+`color_fragment`) and **ContainerAtlas** (the mask atlas's row by the
+instance's `aVar`, the body colour from the instance colour). `aVar` is an
+instance-rate attribute; the instance stream grows from 20 to 24 floats
+(96 bytes) to carry a geometry's instance-rate attributes, one float each
+in the geometry's order (`loader::instance_extras`, at shader location 15;
+zeros without; the shadow pass reads only the matrix): the containers'
+`aVar`, Desert's pools' `ph` and `fl` (D500). Sierra's 63,263 instances
+take 1 MB more for it. TriplanarRock
+(coast/kit.js) and the lighthouse's glow Sprite were drawn already (D494).
+Without the level's animators (D498), the animated uniforms follow the
+scene-wide state as the updaters set them (D293's rule: Surf's `uTime` the
+clock and `uBright` lerp(1, 0.32, night), the beam's `uStrength` 0.03 +
+0.32 × smoothstep(0.2, 0.8, night)); colours an updater moves on plain
+materials (the bulbs, the glow's opacity and scale) and the beam's turn
+stay as exported.
+
+Gate, the web build at 1280 × 800 through the registered server
+(`rust-web-stations.mjs --server`; Coast's export is over D106's
+interception limit): 67 stations, 3 over the limits (13 before), median
+0.26 / 0.62. The three are the beach at sunrise from the chase camera
+(04000, 04250, 04500: worst 5.1 / 30.2): the asphalt in the low sun
+reflects brighter than in the JS. They were the same before these kinds
+(5.2 / 30.2) and involve none of them; not resolved here. The material
+scenes for Surf, LighthouseBeam and Stucco pass (0.06 / 0.13 at worst)
+and join `all`; ContainerAtlas's scene is over (3.5 / 18.1) because the
+material tool draws it without the instance stream (no `aVar`), so it
+stays out of `all`; its stations (the harbour) pass.
+
+## D500. Desert Run's kinds, drawn from its export
+
+2026-10-04 (D556's list). **Sandstone** (strata from `tRock` in the aux
+slot, the varnish from `tDetail` in the detail slot, the instance's matrix
+included, as TriplanarRock), **GroundPool** (the flicker `vFl` from the
+instance's `ph` and `fl` in the stream's instance-rate floats, D499, and
+the clock) and **FloodBeam** (`vFace²`, the normal through the instance's
+matrix as three's `mat3(instanceMatrix)`, not its inverse transpose). The
+pools' and beams' opacity is a material value the updater moves with the
+night (`smoothstep(0.15, 0.7, n)` and `0.13 × smoothstep(0.3, 0.8, n)`;
+both 0 in the daytime export): it is one of the kind's animated values
+(the block's texel 4 with the animators, D490; the night factor without),
+as are the pools' `uTime` and the flicker points' clock (D293). The
+material colours Desert's updater moves (flares, fires, lanterns, lamps,
+bulbs, strings; `colour × k`) and the train (its sprites, its spot light)
+stay as exported without the level's animators (D498). The material test
+tool's overrides of a material value (`overrides.material`, the pools' and
+beams' night opacity) go through `animate::fix_uniforms` as its uniform
+overrides do; drawn without the instance stream, a pool has no flicker.
+
+Gate, the web build at 1280 × 800 through the registered server: **all 63
+Desert stations within the limits**, median 0.16 / 0.39, worst 0.681 mean
+(02250-high) and 1.564 block 95 % (07250-chase). The material scenes for
+the three pass (0.083 / 0.170 at worst) and join `all`.
 
 ## WP 7.4 Seaside decisions
 
@@ -4395,6 +4524,130 @@ stations:
   The billboards are double-sided basic materials (colour 1.5) on the ad
   textures.
 
+## WP 7.5 Cruise decisions
+
+## D630. The loop was ported with City; WP 7.5's world-generation half is its gates
+
+2026-10-04, WP 7.5. The roadmap row names the loop variants in `City.js`
+and `city/freeway.js` and the chunk cut-off. Both were ported in WP 3.8
+with the rest of City (D350): the districts, warehouses, container yards,
+the waterfront and ferris wheel, the loop sites and tunnel names, the
+sound-wall spans, the 2000 m building and ground chunks, the 1800 m
+freeway chunks, `emitInstanced`'s spatial chunks and `fadeable`, the
+cut-off that hides a mesh when the camera is further than its distance
+from its bounding sphere (2600 m the ground chunks and the street-lamp
+lenses, 2200 their light pools, 1900 the poles and arms, 1700 the trees,
+1300 the parked cars); and D354 already held the group `city` of the
+loop to the export, node by node. City is the loop's
+only scenery module, so the Night City Cruise builds from ported code
+alone (`scenery_factory(None)`), and no Rust source changed in this
+package: what it adds is the loop's gates, in the pattern of the other
+levels.
+
+- **Per group**, as before: `city` in `tests/city.rs` (194 nodes,
+  1,901,864 vertices, 43 materials parameter by parameter, every texture
+  within WP 3.2's threshold, the seven lettered canvases against
+  `city-textures.mjs`'s capture with the bundled fonts, at most 0.55
+  levels; the capture reproduces, `--check`), the road and the sky in
+  `tests/road.rs`, the ground in `tests/terrain.rs` and
+  `tests/terrain_mesh.rs`, the world data in `tests/city.rs` and
+  `mr_levels`' `tests/world_data.rs`.
+- **Whole level**, new: `tests/cruise.rs` holds the scene as Level 1 and
+  2 are held (D472, D536): built, the sky at the export's focus, every
+  updater once at the export's frame (dt 0, night 1, the export's camera
+  and drawing buffer), the edits applied to the objects. The counts and
+  kinds equal the world golden always (CI and wasm); with the cache the
+  whole `mr_scene` digest equals the export's entry by entry, and, since
+  the digest leaves them out, so do every node's visibility (the 52 nodes
+  the cut-off hid at the export's camera) and the night parameters.
+  Result: **identical**, native and in wasm: 495 nodes, 407 meshes, 49
+  materials, 19 textures, 94 instance sets, 2 lights, 486 drawables,
+  2,844,902 vertices, 4,989,900 indices (even the exporter's byte count,
+  180,093,320, comes out equal), but for the pixels of the 17 canvas
+  textures that differ, which the threshold gates hold (City's in
+  `tests/city.rs`, the shared terrain and road pictures in
+  `tests/textures.rs`). So the data side of every material kind the loop
+  uses is complete: Terrain, Asphalt, Shoulder, Markings, SkyDome,
+  CityFacade, GlowPoints, TrafficStreams, SkyGlow and the built-in
+  Standard, Basic and Points.
+
+Rerun: `cargo test -p mr_worldgen --test cruise --test city` (and in
+wasm); `node tools/parity/city-textures.mjs` when the fonts change.
+
+## D631. The Night City Cruise's animators, step by step
+
+2026-10-04, WP 7.5. Sierra's capture (D470) never runs the cut-off, which
+only the loop has. `tools/parity/animators.mjs --level cruise` builds the
+loop with the game's own `World.build` and runs its `world.update` over 16
+uneven frames (dt 0 to 150 s, s from 0 to the loop's length) and
+360 ticks of 1/120 s at 60 m/s from 300 m before the first downtown, with
+the camera hopping between three places a third of the loop apart (the
+start, the first downtown's middle, the second viaduct's middle; every
+40 ticks in the run), so that what one place sees the others cut off. It
+records 86 values on 86 targets in `parity/golden/animators/cruise.json`:
+the visibility of 82 of the 101 meshes and instanced chunks on the fade
+list (the other 19 are seen, or cut off, from all three places), the
+ferris wheel's rotor (a `Group`'s quaternion), the freeway's chase bulbs
+(62 instance colours of one InstancedMesh), the aircraft warning lights'
+blink (a `PointsMaterial` colour) and the traffic streams' `uTime`. The
+loop's sky is pinned at midnight (night 1), so the night's values (lamp
+lenses and pools, the neon, the glow points, the sky glow's `uK`, the
+road's dew) are written every frame and hold still; the test requires
+that too. The Node capture and two browser captures (`--browser`) are
+byte-identical; CI checks that the Node capture reproduces; the Sierra,
+Coast and Streets goldens are unchanged. `tests/cruise_animators.rs`
+replays the frames on the Rust build as the client runs them (D470's
+method): **identical, every frame and every tick, native and in wasm**;
+no port fix was needed.
+
+## D632. What the client still needs for the Night City Cruise
+
+2026-10-04, WP 7.5. Every material kind the loop uses is drawn by the
+client since D494 (CityFacade, TrafficStreams, SkyGlow, GlowPoints, the
+terrain and road kinds); `convert::stand_in` hides none of them and
+stands in for none. What is left is how the level is loaded and
+animated, on `main` today:
+
+- **The world build.** `animate::generated` is true for Sierra only, so
+  the loop gets no world build and no animators: nothing is cut off, the
+  chase bulbs, the aircraft lights and the traffic streams stand still,
+  the ferris wheel does not turn. The loop's build is numbered as its
+  export (D630), so `generated` can return true for `cruise`, with
+  `?world=gen` following.
+- **Nodes exported hidden.** The loader does not spawn a node exported
+  invisible (D493's "not covered"). The export was taken with the cut-off
+  run at its camera, so 52 of the loop's nodes (chunks of the ground and
+  of the street lamps' poles, arms, lenses and pools, the trees and the
+  parked cars) are exported hidden and are never drawn, even
+  when the camera drives up to them, and the cut-off's `Visible(true)`
+  has nothing to show. They need to be spawned hidden (or at least those
+  an animator addresses), so that a `Visible` edit can show them. With
+  `?world=gen` the build's scene has them all visible until the first
+  update, so this bites the default (download) path only.
+- **Per-frame edits.** 178 a frame: 101 `Visible` (the whole fade list
+  every frame, as the JS sets `visible` every frame; only changes need
+  applying, which D493 already does; the cut-off needs the camera's
+  position, and does nothing on a frame without a camera), 62
+  `InstanceColor` (the chase bulbs, one InstancedMesh), one `Transform`
+  (the ferris wheel's rotor, a `Group` whose subtree turns), and material
+  values: colours of the freeway's lamp lenses (`MeshBasicMaterial`,
+  4.5) and light pools, the neon, City's street-lamp lenses and pools
+  (each one material shared by 16 instanced chunks), the aircraft lights
+  (`PointsMaterial`, `sizeAttenuation` false) and the glow points; the
+  numbers `uTime`, `uNight`, `uFogK`, `uHalfH` (TrafficStreams), `uK`
+  (SkyGlow), `uFogK` (GlowPoints) and `uWet` (Asphalt). Ten materials
+  get animation blocks (D490).
+- **Size.** The loop is the second largest scene after Coast: 2.84 M
+  vertices against Sierra's 1.53 M, a 181 MB export against Sierra's
+  138 MB. D491's
+  memory numbers (the build and the downloaded scene not held at once)
+  should be measured again on the loop against SPEC 6.6's 512 MB, and
+  D492's `?world=gen` (no download) weighed for it as for Sierra.
+- **The loop itself.** The sky is pinned (the JS samples it at p = 0.5
+  on a loop, and so does `update_sky`), so the night factor is 1
+  throughout. The cruise scoring HUD (score, multiplier and its bar,
+  distance, best; the simulation's side is `mr_sim::race`'s cruise
+  fields, WP 1.5) is the client's, roadmap WP 7.5's third item.
 
 ## Canvas anti-aliasing decisions
 

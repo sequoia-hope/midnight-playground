@@ -5,12 +5,15 @@
 // camera moved there (`__mr.flyTo`), three settled frames waited for
 // (`__mr.flyQuiet`: no pipeline compiling, the environment map built) and
 // `__mr.screenshot` saved. For a level the client builds itself, `?world=gen`
-// (the default here; `--query` replaces it) needs no scene download, so
-// Sierra fits through the interception (D106's 100 MB limit).
+// (the default for Sierra; `--query` replaces it) needs no scene download,
+// so Sierra fits through the interception (D106's 100 MB limit). Another
+// level's export is too big for it: `--server` loads the page from the
+// registered dev server instead (`--port`, else `$PORT`, else `proj port`;
+// no default port), as rust-perf.mjs does.
 //
 //   cargo xtask web --release && node tools/parity/rust-web-stations.mjs \
 //       --level sierra [--only 06250:10000 | --only name,name] [--out <dir>] \
-//       [--query "world=gen"] [--backend webgl2]
+//       [--query "world=gen"] [--backend webgl2] [--server [--port N]]
 //
 // Writes <out>/<level>/<station>.png (default parity/cache/<key>/shots/
 // rust-web/), the layout `cargo xtask parity shots --a <dir> --b <js run>`
@@ -19,13 +22,15 @@
 import puppeteer from 'puppeteer-core';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { ROOT, jsTreeKey } from './lib/jstree.mjs';
 
 const args = process.argv.slice(2);
 const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const level = opt('--level', 'sierra');
 const jsRun = opt('--js-run', 'a');
-const query = opt('--query', 'world=gen');
+const query = opt('--query', level === 'sierra' ? 'world=gen' : '');
+const server = args.includes('--server');
 const only = opt('--only', null);
 const backend = opt('--backend', 'webgpu');
 const timeoutMs = Number(opt('--timeout', 300000));
@@ -47,7 +52,19 @@ if (only) {
   }
 }
 
-const ORIGIN = 'https://midnight-racer.test';
+// The registered server (as rust-perf.mjs): it serves the main checkout,
+// and a worktree sits below it.
+function serverBase() {
+  let port = opt('--port', null) || process.env.PORT;
+  if (!port) port = execFileSync('proj', ['port'], { cwd: ROOT, encoding: 'utf8' }).trim();
+  if (!/^\d+$/.test(port)) throw new Error(`no server port (gave "${port}")`);
+  const common = path.resolve(ROOT, execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8' }).trim());
+  const rel = path.relative(path.dirname(common), ROOT);
+  if (rel.startsWith('..')) throw new Error(`${ROOT} is not below the served checkout`);
+  return `http://127.0.0.1:${port}${rel ? '/' + rel.split(path.sep).map(encodeURIComponent).join('/') : ''}`;
+}
+
+const ORIGIN = server ? serverBase() : 'https://midnight-racer.test';
 const TYPES = {
   '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm',
   '.png': 'image/png', '.bin': 'application/octet-stream', '.mrscene': 'application/octet-stream',
@@ -75,8 +92,8 @@ try {
     if (process.env.MR_VERBOSE) console.log(`[page ${m.type()}] ${t}`);
   });
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.setRequestInterception(true);
-  page.on('request', (req) => {
+  if (!server) await page.setRequestInterception(true);
+  if (!server) page.on('request', (req) => {
     const u = new URL(req.url());
     if (u.origin !== ORIGIN) return req.continue();
     let p = path.join(ROOT, decodeURIComponent(u.pathname));
