@@ -19,6 +19,7 @@
 //! - [`fly`]: the fly and attract cameras of `src/main.js`.
 //! - [`cars`]: stand-in cars driven by the simulation (WP 2.4).
 //! - [`play`]: a playable race (M4): session, input, camera, flow, HUD.
+//! - [`plugins`]: Bevy's default plugins less its 2D sprites.
 //! - [`ui`]: the screens (M6): loading, menu, pause, results, controller
 //!   setup, and the settings store.
 //! - [`warmup`]: every pipeline the scene needs, compiled behind the
@@ -36,6 +37,7 @@ pub mod loader;
 pub mod matscene;
 pub mod options;
 pub mod play;
+pub mod plugins;
 pub mod render;
 pub mod stations;
 pub mod status;
@@ -479,7 +481,7 @@ pub fn app(o: Options, hq: bool) -> App {
         ..default()
     };
     app.add_plugins(
-        DefaultPlugins
+        plugins::ClientPlugins
             .set(WindowPlugin {
                 primary_window: Some(window),
                 ..default()

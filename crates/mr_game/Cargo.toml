@@ -50,7 +50,10 @@ bevy = { version = "=0.19.1", default-features = false, features = [
     "bevy_color",
     "bevy_material",
     "bevy_shader",
-    "bevy_post_process",
+    # Not `bevy_post_process`: its bloom, depth of field, motion blur, auto
+    # exposure and effect stack are unused (the post chain is three's,
+    # `render::post`), and it cost 0.15 MB of the gzipped wasm
+    # (DECISIONS D670).
     "keyboard",
     "mouse",
     "touch",
@@ -95,6 +98,12 @@ mr_audio = { workspace = true, features = ["web"] }
 wasm-bindgen.workspace = true
 js-sys.workspace = true
 web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Navigator", "Location", "Performance", "Storage"] }
+# Only for their features: debug and trace logging compiled out of release
+# wasm builds. On the web Bevy's LogPlugin filters at info and nothing can
+# change that at run time (there is no RUST_LOG), so those calls could never
+# print; natively RUST_LOG still works. DECISIONS D671.
+tracing = { version = "0.1", default-features = false, features = ["release_max_level_info"] }
+log = { version = "0.4", default-features = false, features = ["release_max_level_info"] }
 
 # `mr_webgl2` is the WebGL2 build's cfg (see the wasm dependency tables).
 [lints.rust]

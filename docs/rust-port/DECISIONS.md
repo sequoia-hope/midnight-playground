@@ -51,6 +51,9 @@ one did not have. Pinning keeps CI and every machine on the same lints.
 Upgrade it deliberately, between milestones, and rerun
 `cargo xtask kernel --check` when you do.
 
+Note (2026-10-04): `-Oz` against `-O3`, `-O4` and `--converge` was
+measured with frames to time in D673: `-Oz` stays.
+
 ## D5. The WP 0.1 page reports WebGPU and secure context
 
 2026-10-03, WP 0.1. The bare wasm page prints whether `navigator.gpu` exists
@@ -5037,3 +5040,144 @@ world build (`animate`, D490–D497).
 - **Phones.** The M4 phone check is `tools/parity/e2e/phone.cjs` (resume
   by the Resume button, D578), the menu-to-race one
   `tools/parity/e2e/phone-menu.mjs`.
+
+## Wasm size decisions
+
+Part of roadmap WP 9.1's wasm size work, brought forward because main went
+over SPEC 6.6's 10 MB budget (after gzip) once the client linked Level 1's
+world generation (D491), race audio and the menus. Measurements and the
+attribution are in `BASELINE.md`, "Wasm size: where the bytes go".
+
+## D670. No `bevy_post_process`
+
+2026-10-04. `mr_game` asked Bevy for `bevy_post_process` (D100's list),
+but the client's post chain is three's, ported in `render::post`, and no
+camera ever carries Bevy's `Bloom`, `DepthOfField`, `MotionBlur`,
+`AutoExposure` or effect-stack components. The feature only made
+`DefaultPlugins` add `PostProcessPlugin`: render-graph systems, pipelines
+and WGSL that did nothing (and `MsaaWritebackPlugin`, which only acts when
+a second camera draws into the same target; the client has one camera).
+Without it the gzipped wasm is 0.15 MB smaller (WebGPU 10.00 to 9.85 MB,
+WebGL2 10.48 to 10.33 MB). Seaside's 29 stations on both backends and
+Sierra's 06250 to 07500 stations through the web build are the same
+pixels as before (the one difference, 06250-high, is there between two
+runs of the same build too).
+
+## D671. Debug and trace logging compiled out of release wasm
+
+2026-10-04. On the web, Bevy's `LogPlugin` filters at `info` (plus its
+default `wgpu=error,naga=warn`), and the `RUST_LOG` override it reads is
+an environment variable the browser does not have, so no `debug!` or
+`trace!` from Bevy, wgpu, naga or the client can print there. The wasm
+target of `mr_game` now depends on `tracing` and `log` only to turn on
+their `release_max_level_info` features, which compile those calls and
+their strings out of builds without debug assertions. 0.04 to 0.05 MB
+after gzip (WebGPU 9.85 to 9.81 MB, WebGL2 10.33 to 10.28 MB). Native
+builds keep every level and `RUST_LOG`. Turning `info` off as well
+(`release_max_level_warn`) would remove messages the console shows today
+(adapter, window, warm-up), so it is not done.
+
+## D672. The client's plugins: `DefaultPlugins` less Bevy's 2D sprites
+
+2026-10-04. `bevy_ui_render` forces `bevy_sprite` and `bevy_sprite_render`
+on, and `DefaultPlugins` then adds `SpritePlugin` and `SpriteRenderPlugin`
+(sprites, 2D meshes, colour materials, tilemaps, 2D text and their
+pipelines and shaders), none of which the client draws. Disabling them in
+the group does not take their code out: a plugin group holds every plugin
+as a `Box<dyn Plugin>`, so the plugin's `build` and all it registers stay
+linked. `mr_game::plugins::ClientPlugins` is therefore `DefaultPlugins`
+for exactly the features `mr_game` turns on, in its order, natively and
+on the web (the native build keeps `TerminalCtrlCHandlerPlugin` and
+`PipelinedRenderingPlugin`), with the two sprite plugins replaced by
+`UiSpriteSupport`, the two things `UiRenderPlugin` reads from them:
+`TextureAtlasPlugin` (the `Assets<TextureAtlasLayout>` resource) and, in
+the render world, `SpriteAssetEvents` filled by `extract_sprite_events`
+(with which the UI drops the bind groups of images that changed). The
+gzipped wasm is 0.25 MB smaller (WebGPU 9.81 to 9.56 MB, WebGL2 10.28 to
+10.01 MB). Checked: Seaside's stations on both backends and Sierra's
+stretch the same as before (one WebGL2 pixel one level apart, inside that
+backend's run-to-run noise); the phone harness (touch driving, drift,
+brake, pause and resume, and the autopilot race to the results) passes,
+its HUD, touch controls and results screen as before; `cargo xtask parity
+materials` (native) 23 stations, 0 over the limits, worst mean 0.150 as
+before; the workspace tests pass. Frame time (`rust-perf.mjs`): the same
+on Sierra and on Seaside's WebGPU; on Seaside's WebGL2, uncapped, the mean
+frame is 1.7 ms against 1.5 and the 95th percentile 10.4 against 6.6 (the
+median 0.9 against 1.0), but with vsync on both hold 16.7 ms at every
+percentile, so it is WebGL2's uncapped pacing, not added work
+(`BASELINE.md`).
+
+The cost is a rule: **a Bevy feature that brings a plugin now needs that
+plugin added to `ClientPlugins`** at its place in `bevy_internal`'s
+`default_plugins.rs`, since `DefaultPlugins` no longer adds it; the
+module's header says so. The menus (WP 6.1 and 6.2) and WP 3.9's client
+work turn on no Bevy feature and add no Bevy plugin (both agents
+confirmed). At the move to Bevy 0.20 (D100) the list is redone from that
+version's `default_plugins.rs`.
+
+## D673. The web-release profile and wasm-opt stay as they are
+
+2026-10-04. D4 left `wasm-opt -Oz` against `-O3` to be measured once
+there were frames. Measured on a60cb88 with D670 to D672 (`BASELINE.md`,
+"Wasm size: where the bytes go"): `-O3` and `-O4` are 0.14 to 0.18 MB
+larger after gzip and no faster on any of the four flights (Sierra and
+Seaside, WebGPU and WebGL2); `-Oz --converge` saves 4 to 5 KB for six
+times the wasm-opt time. `strip = true` changes nothing in the shipped
+file (wasm-opt already drops the name section). So the profile keeps
+`opt-level = 3`, fat LTO, one codegen unit, `panic = "abort"`, and
+wasm-opt keeps `-Oz`. The settings that would change size a lot (`opt-
+level` "s" or "z", `simd128`) are the owner's to choose, D674.
+
+## D674. Open: further size options, for the owner
+
+2026-10-04, not decided: each is a choice the owner asked to make (D439)
+or costs something. Sizes are after gzip on the merged build (WebGPU 9.29
+MB, WebGL2 9.76 MB, under SPEC 6.6's 10 MB) unless said otherwise;
+details and frame times in `BASELINE.md`.
+
+1. **`opt-level = "s"` for web-release**: -1.33 MB WebGPU, -1.41 MB
+   WebGL2; pictures identical, the simulation's wasm tests pass; costs
+   CPU: Sierra ready 0.5 to 0.6 s later (the world build in the page),
+   median frames +0.1 to 0.2 ms where they are CPU-bound.
+   **`opt-level = "z"`**: -2.36 and -2.50 MB; ready 1.5 s later, median
+   frames +0.3 to 0.6 ms, and five single pixels of Seaside's WebGPU
+   stations differ (reproducibly). Either could also be applied to some
+   crates only (`[profile.web-release.package.<crate>]`, for example
+   Bevy's UI and text, naga, or `mr_worldgen` without the simulation),
+   not measured.
+2. **`-C target-feature=+simd128`**: -0.16 MB on each build, no frame-time
+   change, pictures identical, simulation tests pass in wasm. Safe for the
+   WebGPU build (every WebGPU browser has wasm SIMD); the WebGL2 fallback
+   would stop loading on Safari before 16.4. Needs its own target
+   directory or flags plumbing like D391's, since RUSTFLAGS change the
+   build cache.
+3. **Brotli** instead of gzip for `dist/`: WebGPU 5.82 MB, WebGL2 6.12 MB
+   (from 9.27 and 9.73 by gzip -9); the dev server would send `.br`, and
+   the budget would be measured in brotli. **Zopfli-made gzip**: 8.86 and
+   9.31 MB, decoded by every browser, a change to `precompress` only.
+4. **One font stack.** `mr_canvas` shapes and hints with harfrust 0.13 and
+   skrifa 0.46 (read-fonts 0.43, D152); Bevy's text uses harfrust 0.6 and
+   skrifa 0.42 (parley) and skrifa 0.44 (swash). Moving `mr_canvas` to
+   parley's versions would drop one copy of each, about 0.30 MB, but is a
+   port of its text code to older APIs with the texture gates rerun
+   (autohinting changed between those versions); or wait for Bevy 0.20's
+   parley.
+5. **A patched Bevy** (`[patch.crates-io]` for two crates) could drop what
+   no feature turns off: the 2D core pipeline that `CorePipelinePlugin`
+   always adds (about 0.08 MB), naga's GLSL front end and its
+   preprocessor, which `bevy_shader` turns on for wasm through naga_oil's
+   default features (about 0.09 MB), the UI debug overlay and the text
+   editing and clipboard systems (about 0.07 MB): about 0.25 MB, against
+   carrying a patched Bevy until 0.20.
+6. **Fonts out of the wasm**: the 17 bundled files are 0.65 MB of it after
+   gzip. As files fetched beside it they download the same bytes, unless
+   only the fonts a level's signs use are fetched.
+7. **World generation as a second wasm**, loaded when a level is built:
+   `mr_worldgen`, `mr_canvas`, its text stack and the fonts are about 1.5
+   MB of the first download today (Sierra's scenery only); more as levels
+   are built in the client: Seaside +0.03 MB, Coast +0.20, Desert +0.14,
+   Streets +0.10, the Cruise nothing (City only), +0.44 MB for all.
+   Linking all of them into the one wasm instead, with options 1 to 4
+   untaken, would bring WebGPU to about 9.7 MB and WebGL2 to about 10.2.
+8. **The material test scenes on the web** (`?mat=`, `matscene`, used
+   natively only by `cargo xtask parity materials`): about 0.02 MB.
