@@ -75,6 +75,10 @@ bevy = { version = "=0.19.1", default-features = false, features = [
     "multi_threaded",
     "x11",
     "wayland",
+    # Gamepads through gilrs, with force feedback (WP 6.4, DECISIONS D781).
+    # Not on the web: the browser's Gamepad API is read directly there
+    # (D780).
+    "bevy_gilrs",
 ] }
 # The world build's parallel jobs on threads natively (SPEC 5.5; the client
 # builds Level 1 for its animators, `animate`).
