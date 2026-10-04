@@ -26,6 +26,7 @@
 //! The web build comes in two backends, WebGPU and WebGL2 (the `mr_webgl2`
 //! cfg), one wasm file each; the page picks (WP 2.7).
 
+pub mod animate;
 pub mod cars;
 pub mod convert;
 pub mod fly;
@@ -119,6 +120,9 @@ pub struct CameraState {
 pub struct SkyRes {
     pub sky: Option<SkyState>,
     pub env_at: Option<f64>,
+    /// What `update_sky` was given this frame (`World.update`'s dt, s and
+    /// focus), for the scenery's animators (`animate`).
+    pub frame: Option<animate::WorldFrame>,
 }
 
 /// The JS camera: 62° vertical field of view, near 0.3, far 9000
@@ -404,6 +408,11 @@ pub(crate) fn update_sky(
     lighting: &mut Lighting,
     env: &mut EnvRequest,
 ) {
+    // The world update this frame, for the scenery's animators.
+    let f = sky_res.frame.get_or_insert_with(Default::default);
+    f.dt += dt;
+    f.s = s;
+    f.focus = focus;
     let Some(sky) = sky_res.sky.as_mut() else {
         return;
     };
@@ -529,6 +538,7 @@ pub fn app(o: Options, hq: bool) -> App {
         stations::plugin(&mut app, &path, out);
     }
     play::plugin(&mut app);
+    animate::plugin(&mut app);
     #[cfg(not(target_arch = "wasm32"))]
     native::plugin(&mut app);
     #[cfg(target_arch = "wasm32")]

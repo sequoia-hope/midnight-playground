@@ -409,7 +409,13 @@ fn spawn_node(
                     b.out.min = b.out.min.min(t.translation);
                     b.out.max = b.out.max.max(t.translation);
                 }
-                let mut e = commands.spawn((Mesh3d(mesh_h), MeshMaterial3d(mat), t, SceneEntity));
+                let mut e = commands.spawn((
+                    Mesh3d(mesh_h),
+                    MeshMaterial3d(mat),
+                    t,
+                    SceneEntity,
+                    crate::animate::NodeRef(i as u32),
+                ));
                 shadows(&mut e);
                 spawned += 1;
             }
@@ -436,6 +442,7 @@ fn spawn_node(
                     stream,
                     NoAutomaticBatching,
                     SceneEntity,
+                    crate::animate::NodeRef(i as u32),
                 ));
                 match sphere {
                     // three culls the InstancedMesh as a whole by its
@@ -666,6 +673,14 @@ pub fn build_step(
         let n = b.combos.spawn(&mut commands, &mut meshes);
         info!("warm-up: {n} material × mesh-layout combinations");
         status.warm_up = n;
+        // What the scenery's animators address (`crate::animate`).
+        commands.insert_resource(crate::animate::SceneIndex::new(
+            &b.scene,
+            &b.materials,
+            &b.meshes,
+            &b.offset,
+            &b.visible,
+        ));
         // Dropping the build drops the Scene: the CPU copies go here.
         commands.remove_resource::<Build>();
         next.set(AppState::Running);

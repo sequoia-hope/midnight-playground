@@ -42,11 +42,25 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub const SCENES_JSON: &str = include_str!("../../../parity/golden/materials/scenes.json");
 
 /// The kinds this client draws as the JS does: the plain ones and the sky
-/// (WP 2.3), the terrain, road and sea (WP 2.4). `all` renders these and the fixed scenes; `every` adds the
+/// (WP 2.3), the terrain, road and sea (WP 2.4), Level 1's mesh kinds (WP
+/// 3.9). `all` renders these and the fixed scenes; `every` adds the
 /// other kinds drawn as their plain stand-ins (for the record, not the gate).
-pub const PORTED_KINDS: [&str; 10] = [
-    "Standard", "Physical", "Lambert", "Basic", "SkyDome", "Terrain", "Asphalt", "Shoulder",
-    "Markings", "Sea",
+pub const PORTED_KINDS: [&str; 15] = [
+    "Standard",
+    "Physical",
+    "Lambert",
+    "Basic",
+    "SkyDome",
+    "Terrain",
+    "Asphalt",
+    "Shoulder",
+    "Markings",
+    "Sea",
+    "TriplanarRock",
+    "Reflector",
+    "Siding",
+    "CityFacade",
+    "SkyGlow",
 ];
 
 /// The scene definitions and the common setup.
@@ -768,6 +782,16 @@ fn run(
                         }
                         let tm =
                             three_material(&src.scene, m, &src.images, &shared, o.tint.is_some());
+                        // The JS tool's uniform overrides (full night for
+                        // the city's glows).
+                        let tm = tm.map(|mut t| {
+                            crate::animate::fix_uniforms(
+                                &mut t,
+                                m.kind,
+                                &def["overrides"]["uniforms"],
+                            );
+                            t
+                        });
                         (
                             crate::convert::stand_in(m) == crate::convert::StandIn::Lit,
                             convert::vertex_colors(m),
@@ -919,7 +943,8 @@ mod tests {
             assert!(names.contains(&n), "{n} in {names:?}");
         }
         assert!(names.contains(&"kind-Terrain") && names.contains(&"kind-Sea"));
-        assert!(!names.contains(&"kind-CityFacade"));
+        // WP 3.9's mesh kinds are in; the effects on points and sprites not.
+        assert!(names.contains(&"kind-CityFacade") && !names.contains(&"kind-TrafficStreams"));
         assert!(select(&d, "every").len() > all.len());
         assert_eq!(select(&d, "fog-ramp,kind-Basic").len(), 2);
         assert_eq!(
