@@ -12,11 +12,13 @@
 //!   scenery modules for `animate`'s build, so the wasm links only the
 //!   levels the client builds, and what each needs of the client beyond
 //!   the shared animator path (D720 to D723).
+//! - The Coast Highway ([`coast`]): its scenery modules (D700 to D703).
 //!
 //! The race's countdown reaches the world through [`RaceCountdown`], which
 //! `animate::run_animators` hands to `WorldBuild::countdown` after
 //! `WorldBuild::update`, as `Race.update` calls `world.onCountdown`.
 
+pub mod coast;
 pub mod desert;
 pub mod seaside;
 pub mod streets;

@@ -51,14 +51,15 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// Whether `mr_worldgen` builds this level whole, numbered as its export
-/// (D472 holds Sierra to it, D591 Seaside Raceway, D630 the Night City
-/// Cruise, D551 Desert Run, D613 Downtown Streets; the client's builds of
-/// them: `crate::levels`, D680, D720).
+/// Whether `mr_worldgen` builds this level whole, numbered as its export,
+/// in the client (D472 holds Sierra to it, D591 Seaside Raceway, D630 the
+/// Night City Cruise, D551 Desert Run, D613 Downtown Streets, D536 the
+/// Coast Highway; the client's builds of them: `crate::levels`, D680,
+/// D700, D720).
 pub fn generated(level: &str) -> bool {
     matches!(
         level,
-        "sierra" | "seaside" | "cruise" | "desert" | "streets"
+        "sierra" | "seaside" | "cruise" | "desert" | "streets" | "coast"
     )
 }
 
@@ -162,6 +163,7 @@ fn new_build(level: &str, draws: bool) -> Build {
         match level {
             "desert" => level_jobs(level_stages(setup), crate::levels::desert::scenery),
             "streets" => level_jobs(level_stages(setup), crate::levels::streets::scenery),
+            "coast" => level_jobs(level_stages(setup), crate::levels::coast::scenery),
             _ => level_jobs(level_stages(setup), level1_scenery),
         },
     )
@@ -325,6 +327,7 @@ pub fn reset_world(
     mut commands: Commands,
     mut wg: ResMut<WorldGen>,
     mut blocks: ResMut<AnimBlocks>,
+    mesh_writes: Res<MeshWrites>,
     opts: Res<Opts>,
 ) {
     let generation = wg.generation;
@@ -334,6 +337,9 @@ pub fn reset_world(
     };
     blocks.texels.clear();
     blocks.map.clear();
+    if let Ok(mut w) = mesh_writes.0.lock() {
+        w.clear();
+    }
     commands.remove_resource::<SceneIndex>();
     // Pending from now, so the page holds the downloaded scene back until
     // the build is done (`web::world_pending`).
@@ -402,7 +408,7 @@ pub struct SceneIndex {
     /// (small triangle meshes, [`convert::KEEP_VERTICES`]; small `Points`,
     /// [`convert::KEEP_POINTS`]), and how its vertices map to the
     /// geometry's.
-    meshes: Vec<Vec<(Handle<Mesh>, VertexMap)>>,
+    meshes: Vec<Vec<KeptMesh>>,
     /// Entities per node, gathered from [`NodeRef`] at the first frame.
     entities: Option<Vec<Vec<Entity>>>,
     /// Edits of kinds nothing here applies, reported once each.
@@ -571,7 +577,7 @@ impl SceneIndex {
                 }
             })
             .collect();
-        let mut by_mesh: Vec<Vec<(Handle<Mesh>, VertexMap)>> = vec![Vec::new(); scene.meshes.len()];
+        let mut by_mesh: Vec<Vec<KeptMesh>> = (0..scene.meshes.len()).map(|_| Vec::new()).collect();
         for (key, h) in meshes {
             if let Some(h) = h
                 && crate::convert::keeps_cpu_copy(scene, *key)
@@ -587,7 +593,11 @@ impl SceneIndex {
                         .then_some((key.start as usize, key.count as usize)),
                     color_size: size("color"),
                 };
-                v.push((h.clone(), map));
+                v.push(KeptMesh {
+                    handle: h.clone(),
+                    map,
+                    cpu: None,
+                });
             }
         }
         let spot = scene
@@ -728,7 +738,8 @@ pub fn run_animators(
     index: Option<ResMut<SceneIndex>>,
     mut sky_res: ResMut<SkyRes>,
     mut blocks: ResMut<AnimBlocks>,
-    mut meshes: ResMut<Assets<Mesh>>,
+    meshes: Res<Assets<Mesh>>,
+    mesh_writes: Res<MeshWrites>,
     camera: Query<(&Transform, &Projection), With<Camera3d>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     nodes: Query<(Entity, &NodeRef), With<SceneEntity>>,
@@ -888,10 +899,7 @@ pub fn run_animators(
                     values,
                 },
             ) => {
-                let Some(handles) = index.meshes.get(m as usize) else {
-                    continue;
-                };
-                if handles.is_empty() {
+                if index.meshes.get(m as usize).is_none_or(|k| k.is_empty()) {
                     index.report(format!("attribute {name} of mesh {m}"));
                     continue;
                 }
@@ -904,9 +912,13 @@ pub fn run_animators(
                         continue;
                     }
                 };
-                for (h, map) in handles.clone() {
-                    let size = if name == "color" { map.color_size } else { 3 };
-                    write_attribute(&mut meshes, &h, attr, &map, size, offset, &values);
+                for kept in &mut index.meshes[m as usize] {
+                    let size = if name == "color" {
+                        kept.map.color_size
+                    } else {
+                        3
+                    };
+                    write_attribute(&meshes, kept, attr, size, offset, &values, &mesh_writes);
                 }
             }
             (SceneRef::Material(i), change) => {
@@ -1151,22 +1163,75 @@ struct VertexMap {
     color_size: usize,
 }
 
+/// A drawn Bevy mesh an animator's attribute edits are written into.
+struct KeptMesh {
+    handle: Handle<Mesh>,
+    map: VertexMap,
+    /// Its vertices as the edits leave them: a copy of the asset's (which
+    /// the loader keeps on the CPU), made at the first edit. The asset is
+    /// never modified: that would have Bevy re-extract and re-upload the
+    /// mesh, which on the web left a GPU buffer behind each time (D701).
+    cpu: Option<Mesh>,
+}
+
+/// Vertex data for meshes already on the GPU, written into their place in
+/// Bevy's mesh slab at extraction (`write_mesh_updates`): the mesh's id,
+/// its packed vertices and the vertex size in bytes.
+#[derive(Resource, Clone, Default)]
+pub struct MeshWrites(Arc<Mutex<Vec<MeshWrite>>>);
+
+/// One pending write: the mesh, its packed vertices, the vertex size.
+type MeshWrite = (AssetId<Mesh>, Vec<u8>, u64);
+
+/// Writes the pending vertex data into the meshes' slab slices (render
+/// world, at extraction, as `instancing::write_instance_updates`). A mesh
+/// not allocated yet keeps its data for the next frame.
+pub fn write_mesh_updates(
+    queue: Res<bevy::render::renderer::RenderQueue>,
+    allocator: Res<bevy::render::mesh::allocator::MeshAllocator>,
+    writes: bevy::render::Extract<Res<MeshWrites>>,
+) {
+    let Ok(mut w) = writes.0.lock() else { return };
+    let pending = std::mem::take(&mut *w);
+    for (id, bytes, stride) in pending {
+        match allocator.mesh_vertex_slice(&id) {
+            Some(s) => {
+                let at = u64::from(s.range.start) * stride;
+                // wgpu's copy alignment (whole floats always are).
+                if at % 4 == 0 && bytes.len() % 4 == 0 {
+                    queue.write_buffer(s.buffer, at, &bytes);
+                }
+            }
+            None => w.push((id, bytes, stride)),
+        }
+    }
+}
+
 /// Values written into a mesh attribute from float `offset` of the
 /// geometry's array of `size` floats a vertex (an animator's edit): the
 /// geometry's vertices in order (triangles), or each point's four quad
 /// vertices (`Points`). A Bevy colour has four components, alpha kept.
+/// The mesh's whole vertex data then goes to the GPU in place
+/// ([`MeshWrites`]).
 fn write_attribute(
-    meshes: &mut Assets<Mesh>,
-    h: &Handle<Mesh>,
+    meshes: &Assets<Mesh>,
+    kept: &mut KeptMesh,
     attr: bevy::mesh::MeshVertexAttribute,
-    map: &VertexMap,
     size: usize,
     offset: usize,
     values: &[f32],
+    writes: &MeshWrites,
 ) {
     if size == 0 {
         return;
     }
+    let map = kept.map;
+    if kept.cpu.is_none() {
+        kept.cpu = meshes.get(&kept.handle).cloned();
+    }
+    let Some(mesh) = kept.cpu.as_mut() else {
+        return;
+    };
     // (Bevy vertex, component, value) for each value written.
     let targets = |len: usize| {
         values.iter().enumerate().flat_map(move |(j, &x)| {
@@ -1181,9 +1246,7 @@ fn write_attribute(
             quads.filter(move |&q| q < len).map(move |q| (q, c, x))
         })
     };
-    let Some(mesh) = meshes.get(h) else { return };
-    // Unchanged (a frozen frame): leave the asset alone, so it is not sent
-    // to the GPU again.
+    // Unchanged (a frozen frame): nothing is sent to the GPU.
     let same = match mesh.attribute(attr) {
         Some(VertexAttributeValues::Float32x3(v)) => {
             targets(v.len()).all(|(q, c, x)| c >= 3 || v[q][c] == x)
@@ -1196,9 +1259,6 @@ fn write_attribute(
     if same {
         return;
     }
-    let Some(mut mesh) = meshes.get_mut(h) else {
-        return;
-    };
     match mesh.attribute_mut(attr) {
         Some(VertexAttributeValues::Float32x3(v)) => {
             for (q, c, x) in targets(v.len()) {
@@ -1216,11 +1276,20 @@ fn write_attribute(
         }
         _ => {}
     }
+    let id = kept.handle.id();
+    let bytes = mesh.create_packed_vertex_buffer_data();
+    let stride = mesh.get_vertex_size();
+    if let Ok(mut w) = writes.0.lock() {
+        // The latest data for a mesh replaces any still pending.
+        w.retain(|(i, _, _)| *i != id);
+        w.push((id, bytes, stride));
+    }
 }
 
 pub fn plugin(app: &mut App) {
     app.init_resource::<WorldGen>()
         .init_resource::<AnimBlocks>()
+        .init_resource::<MeshWrites>()
         .add_systems(OnEnter(AppState::Waiting), reset_world)
         .add_systems(Update, drive_build)
         .add_systems(
@@ -1233,7 +1302,7 @@ pub fn plugin(app: &mut App) {
     if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
         render_app.add_systems(
             bevy::render::ExtractSchedule,
-            instancing::write_instance_updates,
+            (instancing::write_instance_updates, write_mesh_updates),
         );
     }
 }
@@ -1263,7 +1332,8 @@ mod tests {
         assert_eq!(uniform_slot(GlowPoints, "uFogK"), Some(0));
         assert_eq!(uniform_slot(Standard, "uTime"), None);
         assert!(generated("sierra") && generated("seaside") && generated("cruise"));
-        assert!(generated("desert") && generated("streets") && !generated("coast"));
+        assert!(generated("desert") && generated("streets") && generated("coast"));
+        assert!(!generated("models"));
         for k in [Standard, Lambert, Basic, Sprite, Points] {
             assert_eq!(uniform_slot(k, "opacity"), Some(0));
         }
