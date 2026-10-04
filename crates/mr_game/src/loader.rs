@@ -209,6 +209,8 @@ impl Build {
         let emissive = m.color("emissive").unwrap_or([0.0; 3]);
         let h = three_material(scene, m, images, shared, instance_color).map(|mut m| {
             m.key.instanced = instanced;
+            // Its index, for its animation block (`animate`, D490).
+            m.params.slots.z = index as f32 + 1.0;
             if let Some(p) = night {
                 let w = m.params.emissive.w;
                 m.params.emissive = Vec4::new(
@@ -675,11 +677,7 @@ pub fn build_step(
         status.warm_up = n;
         // What the scenery's animators address (`crate::animate`).
         commands.insert_resource(crate::animate::SceneIndex::new(
-            &b.scene,
-            &b.materials,
-            &b.meshes,
-            &b.offset,
-            &b.visible,
+            &b.scene, &b.meshes, &b.offset, &b.visible,
         ));
         // Dropping the build drops the Scene: the CPU copies go here.
         commands.remove_resource::<Build>();
