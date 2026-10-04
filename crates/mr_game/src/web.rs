@@ -25,13 +25,12 @@ static SCREENSHOT: Mutex<Option<String>> = Mutex::new(None);
 pub fn run() {
     let window = web_sys::window().expect("a window");
     let search = window.location().search().unwrap_or_default();
-    let o = Options::from_query(&search);
-    // The JS game's default: high quality off on touch devices.
-    let touch = Reflect::get(&window.navigator(), &JsValue::from_str("maxTouchPoints"))
-        .ok()
-        .and_then(|v| v.as_f64())
-        .is_some_and(|n| n > 0.0);
-    let hq = o.hq.unwrap_or(!touch);
+    let mut o = Options::from_query(&search);
+    // The saved level for the menu, and the saved High quality, which the
+    // JS game defaults to off on touch devices (DECISIONS D570).
+    let touch = crate::ui::touch_ui(&o);
+    let hq = crate::ui::prepare(&mut o, touch);
+    crate::ui::set_start_level(&o.level);
     crate::app(o, hq).run();
 }
 
