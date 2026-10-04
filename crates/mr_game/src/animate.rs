@@ -387,8 +387,10 @@ pub struct SceneIndex {
     /// Per texture, the materials using it and how.
     textures: Vec<Vec<(u32, TexRole, [f64; 2])>>,
     /// Per scene mesh, the Bevy meshes drawn from it that keep a CPU copy
-    /// (small triangle meshes: [`convert::KEEP_VERTICES`]).
-    meshes: Vec<Vec<Handle<Mesh>>>,
+    /// (small triangle meshes, [`convert::KEEP_VERTICES`]; small `Points`,
+    /// [`convert::KEEP_POINTS`]), and how its vertices map to the
+    /// geometry's.
+    meshes: Vec<Vec<(Handle<Mesh>, VertexMap)>>,
     /// Entities per node, gathered from [`NodeRef`] at the first frame.
     entities: Option<Vec<Vec<Entity>>>,
     /// Edits of kinds nothing here applies, reported once each.
@@ -419,6 +421,10 @@ fn uniform_slot(kind: MaterialKind, prop: &str) -> Option<usize> {
         (Neon, "uNTime") => 0,
         (Steam, "uTime") => 0,
         (Steam, "uScale") => 1,
+        // three's own materials: the opacity an updater moves (Level 2's
+        // lamp pools, the lighthouse's glow, the beach surf, the boats'
+        // lights; D701), read by the shader under `PLAIN_ANIM`.
+        (Standard | Physical | Lambert | Basic | Line | Sprite | Points, "opacity") => 0,
         _ => return None,
     })
 }
@@ -529,7 +535,8 @@ impl SceneIndex {
                 let mut uniforms = [0f32; 4];
                 for name in UNIFORMS {
                     if let Some(slot) = uniform_slot(m.kind, name) {
-                        uniforms[slot] = m.number(name).unwrap_or(0.0) as f32;
+                        let unset = if name == "opacity" { 1.0 } else { 0.0 };
+                        uniforms[slot] = m.number(name).unwrap_or(unset) as f32;
                     }
                 }
                 MatInfo {
@@ -545,13 +552,23 @@ impl SceneIndex {
                 }
             })
             .collect();
-        let mut by_mesh: Vec<Vec<Handle<Mesh>>> = vec![Vec::new(); scene.meshes.len()];
+        let mut by_mesh: Vec<Vec<(Handle<Mesh>, VertexMap)>> = vec![Vec::new(); scene.meshes.len()];
         for (key, h) in meshes {
             if let Some(h) = h
                 && crate::convert::keeps_cpu_copy(scene, *key)
                 && let Some(v) = by_mesh.get_mut(key.mesh as usize)
             {
-                v.push(h.clone());
+                let m = &scene.meshes[key.mesh as usize];
+                let size = |name: &str| {
+                    m.attribute(name)
+                        .map_or(3, |a| scene.buffers[a.accessor as usize].item_size as usize)
+                };
+                let map = VertexMap {
+                    points: (key.draw == crate::convert::Draw::Points)
+                        .then_some((key.start as usize, key.count as usize)),
+                    color_size: size("color"),
+                };
+                v.push((h.clone(), map));
             }
         }
         let spot = scene
@@ -857,13 +874,15 @@ pub fn run_animators(
                 let attr = match name {
                     "position" => Mesh::ATTRIBUTE_POSITION,
                     "normal" => Mesh::ATTRIBUTE_NORMAL,
+                    "color" => Mesh::ATTRIBUTE_COLOR,
                     _ => {
                         index.report(format!("attribute {name}"));
                         continue;
                     }
                 };
-                for h in handles.clone() {
-                    write_attribute(&mut meshes, &h, attr, offset, &values);
+                for (h, map) in handles.clone() {
+                    let size = if name == "color" { map.color_size } else { 3 };
+                    write_attribute(&mut meshes, &h, attr, &map, size, offset, &values);
                 }
             }
             (SceneRef::Material(i), change) => {
@@ -1044,6 +1063,16 @@ fn apply_material(index: &mut SceneIndex, i: u32, change: Change, blocks: &mut A
     if kind == MaterialKind::SkyDome {
         return; // the dome's uniforms are the client's sky (`Lighting`)
     }
+    if kind == MaterialKind::Sea
+        && matches!(
+            change,
+            Change::Number { prop: "uTime", .. } | Change::Vector { prop: "uOff2", .. }
+        )
+    {
+        // `Sea.js`'s clock and second ripple offset: the client's
+        // `lighting::Anim` computes the same from the same dt (D495, D701).
+        return;
+    }
     match change {
         Change::Number { prop, value } => {
             let slot = uniform_slot(kind, prop);
@@ -1087,33 +1116,81 @@ fn apply_material(index: &mut SceneIndex, i: u32, change: Change, blocks: &mut A
     }
 }
 
-/// Values written into a mesh attribute from float `offset` (the Bevy mesh
-/// holds the geometry's vertices in order: triangles and lines only).
+/// How a kept Bevy mesh's vertices map to its geometry's.
+#[derive(Clone, Copy, Debug)]
+struct VertexMap {
+    /// A `Points` geometry drawn as quads (`convert::build_points`, no
+    /// index): geometry vertex `start + k` is quad vertices `4k..4k + 4`,
+    /// for `k` below the count. `None`: the geometry's vertices in order.
+    points: Option<(usize, usize)>,
+    /// The geometry's `color` item size (3 or 4; the Bevy colour is four).
+    color_size: usize,
+}
+
+/// Values written into a mesh attribute from float `offset` of the
+/// geometry's array of `size` floats a vertex (an animator's edit): the
+/// geometry's vertices in order (triangles), or each point's four quad
+/// vertices (`Points`). A Bevy colour has four components, alpha kept.
 fn write_attribute(
     meshes: &mut Assets<Mesh>,
     h: &Handle<Mesh>,
     attr: bevy::mesh::MeshVertexAttribute,
+    map: &VertexMap,
+    size: usize,
     offset: usize,
     values: &[f32],
 ) {
+    if size == 0 {
+        return;
+    }
+    // (Bevy vertex, component, value) for each value written.
+    let targets = |len: usize| {
+        values.iter().enumerate().flat_map(move |(j, &x)| {
+            let (v, c) = ((offset + j) / size, (offset + j) % size);
+            let quads = match map.points {
+                None => v..v + 1,
+                Some((start, count)) if v >= start && v - start < count => {
+                    (v - start) * 4..(v - start) * 4 + 4
+                }
+                Some(_) => 0..0,
+            };
+            quads.filter(move |&q| q < len).map(move |q| (q, c, x))
+        })
+    };
     let Some(mesh) = meshes.get(h) else { return };
     // Unchanged (a frozen frame): leave the asset alone, so it is not sent
     // to the GPU again.
-    if let Some(VertexAttributeValues::Float32x3(v)) = mesh.attribute(attr) {
-        let flat = v.as_flattened();
-        if flat.get(offset..offset + values.len()) == Some(values) {
-            return;
+    let same = match mesh.attribute(attr) {
+        Some(VertexAttributeValues::Float32x3(v)) => {
+            targets(v.len()).all(|(q, c, x)| c >= 3 || v[q][c] == x)
         }
+        Some(VertexAttributeValues::Float32x4(v)) => {
+            targets(v.len()).all(|(q, c, x)| c >= 4 || v[q][c] == x)
+        }
+        _ => return,
+    };
+    if same {
+        return;
     }
     let Some(mut mesh) = meshes.get_mut(h) else {
         return;
     };
-    if let Some(VertexAttributeValues::Float32x3(v)) = mesh.attribute_mut(attr) {
-        let flat = v.as_flattened_mut();
-        let end = (offset + values.len()).min(flat.len());
-        if offset < end {
-            flat[offset..end].copy_from_slice(&values[..end - offset]);
+    match mesh.attribute_mut(attr) {
+        Some(VertexAttributeValues::Float32x3(v)) => {
+            for (q, c, x) in targets(v.len()) {
+                if c < 3 {
+                    v[q][c] = x;
+                }
+            }
         }
+        Some(VertexAttributeValues::Float32x4(v)) => {
+            for (q, c, x) in targets(v.len()) {
+                if c < 4 {
+                    v[q][c] = x;
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -1162,5 +1239,8 @@ mod tests {
         assert_eq!(uniform_slot(GlowPoints, "uFogK"), Some(0));
         assert_eq!(uniform_slot(Standard, "uTime"), None);
         assert!(generated("sierra") && !generated("coast"));
+        for k in [Standard, Lambert, Basic, Sprite, Points] {
+            assert_eq!(uniform_slot(k, "opacity"), Some(0));
+        }
     }
 }
