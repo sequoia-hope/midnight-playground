@@ -1246,6 +1246,21 @@ pub struct MeshWrites(Arc<Mutex<Vec<MeshWrite>>>);
 /// One pending write: the mesh, its packed vertices, the vertex size.
 type MeshWrite = (AssetId<Mesh>, Vec<u8>, u64);
 
+impl MeshWrites {
+    /// Queues `cpu`'s vertices (the same layout and count as the mesh
+    /// `handle` was made with) for the mesh's place in the slab, replacing
+    /// a write still pending for it (the race's effects, WP 4.4).
+    pub fn push(&self, handle: &Handle<Mesh>, cpu: &Mesh) {
+        let id = handle.id();
+        let bytes = cpu.create_packed_vertex_buffer_data();
+        let stride = cpu.get_vertex_size();
+        if let Ok(mut w) = self.0.lock() {
+            w.retain(|(i, _, _)| *i != id);
+            w.push((id, bytes, stride));
+        }
+    }
+}
+
 /// Writes the pending vertex data into the meshes' slab slices (render
 /// world, at extraction, as `instancing::write_instance_updates`). A mesh
 /// not allocated yet keeps its data for the next frame.

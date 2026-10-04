@@ -29,6 +29,9 @@ Unless the owner says otherwise (SPEC 15, question 2):
 
 - All headlight pools share one material, so one car's opacity wins
   (`Effects.js:249,273`).
+- The skid marks are never seen: their quads face down and their
+  `ShaderMaterial` draws front faces only (`Effects.js:118-136`), so every
+  mark is culled; drawn double-sided they show (D806).
 - The shadow box is said to snap to texels but does not (`Sky.js:271`).
 - `input.enabled` is never set false.
 
