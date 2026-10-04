@@ -109,7 +109,11 @@ pub fn extra_attribute(m: &MaterialDesc) -> Option<&'static str> {
             mode: PointsMode::Flicker { .. },
             ..
         } => Some("ph"),
-        Patch::City => Some("cell"),
+        Patch::City | Patch::StreetAtlas => Some("cell"),
+        // `cell` and `fdata` (D501).
+        Patch::StreetFacade => Some("cell+fdata"),
+        Patch::Neon => Some("ndata"),
+        Patch::Steam => Some("aSeed"),
         // With `aDir` beside it (`ATTRIBUTE_EXTRA2`).
         Patch::Traffic => Some("aPar"),
         _ => None,
@@ -315,8 +319,18 @@ pub fn build_mesh(scene: &Scene, key: MeshKey) -> Option<Mesh> {
     Some(mesh)
 }
 
-/// The patch attribute `name` as vec4s (zeros where the geometry lacks it).
+/// The patch attribute `name` as vec4s (zeros where the geometry lacks it);
+/// `cell+fdata` is the street façades' two, `cell` in x and `fdata` in yzw.
 fn extra_items(scene: &Scene, m: &MeshDesc, name: &str, n: usize) -> Vec<[f32; 4]> {
+    if name == "cell+fdata" {
+        let cell = extra_items(scene, m, "cell", n);
+        let fdata = extra_items(scene, m, "fdata", n);
+        return cell
+            .iter()
+            .zip(&fdata)
+            .map(|(c, f)| [c[0], f[0], f[1], f[2]])
+            .collect();
+    }
     match m
         .attribute(name)
         .map(|a| &scene.buffers[a.accessor as usize])
@@ -369,7 +383,11 @@ fn build_points(scene: &Scene, m: &MeshDesc, key: MeshKey) -> Option<Mesh> {
         let a = extra.as_ref().map_or([0.0; 4], |e| e[i]);
         // Points carry one value (gsize, ph); the traffic streams two
         // (aPar.xy), and their third with aDir.
-        let b = if dir.is_some() { a[1] } else { 0.0 };
+        let b = if dir.is_some() || key.extra == Some("aSeed") {
+            a[1]
+        } else {
+            0.0
+        };
         for c in CORNERS {
             p.push(pos[i]);
             if let Some(cs) = &colors {
@@ -595,9 +613,9 @@ pub fn stand_in(m: &MaterialDesc) -> StandIn {
         // ShaderMaterials (and sprites) whose look is all shader: additive
         // glows, beams, foam, steam, particles, skid marks. Drawn as plain
         // quads they would be white sheets, so they wait for their kinds.
-        Steam | Particles | SkidMarks | PoliceGlow => StandIn::Hidden,
+        Particles | SkidMarks | PoliceGlow => StandIn::Hidden,
         // Ported as blocks of three_material.wgsl (WP 3.9, Coast): unlit.
-        TrafficStreams | SkyGlow | Surf | LighthouseBeam => StandIn::Unlit,
+        TrafficStreams | SkyGlow | Surf | LighthouseBeam | Steam => StandIn::Unlit,
         _ => match m.ty.as_str() {
             "MeshStandardMaterial" | "MeshPhysicalMaterial" | "MeshLambertMaterial" => StandIn::Lit,
             "MeshBasicMaterial" | "LineBasicMaterial" | "PointsMaterial" | "SpriteMaterial" => {

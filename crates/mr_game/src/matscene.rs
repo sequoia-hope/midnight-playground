@@ -45,7 +45,7 @@ pub const SCENES_JSON: &str = include_str!("../../../parity/golden/materials/sce
 /// (WP 2.3), the terrain, road and sea (WP 2.4), Level 1's mesh kinds (WP
 /// 3.9). `all` renders these and the fixed scenes; `every` adds the
 /// other kinds drawn as their plain stand-ins (for the record, not the gate).
-pub const PORTED_KINDS: [&str; 21] = [
+pub const PORTED_KINDS: [&str; 25] = [
     "Standard",
     "Physical",
     "Lambert",
@@ -67,6 +67,10 @@ pub const PORTED_KINDS: [&str; 21] = [
     "Sandstone",
     "GroundPool",
     "FloodBeam",
+    "StreetFacade",
+    "StreetAtlas",
+    "AmbientProp",
+    "Neon",
 ];
 
 /// The scene definitions and the common setup.
