@@ -4370,3 +4370,128 @@ stations:
   and render order 2; the lane paint −2/−2, the side-street asphalt +1/+2.
   The billboards are double-sided basic materials (colour 1.5) on the ad
   textures.
+
+## WP 7.5 Cruise decisions
+
+## D630. The loop was ported with City; WP 7.5's world-generation half is its gates
+
+2026-10-04, WP 7.5. The roadmap row names the loop variants in `City.js`
+and `city/freeway.js` and the chunk cut-off. Both were ported in WP 3.8
+with the rest of City (D350): the districts, warehouses, container yards,
+the waterfront and ferris wheel, the loop sites and tunnel names, the
+sound-wall spans, the 2000 m building and ground chunks, the 1800 m
+freeway chunks, `emitInstanced`'s spatial chunks and `fadeable`, the
+cut-off that hides a mesh when the camera is further than its distance
+from its bounding sphere (2600 m the ground chunks and the street-lamp
+lenses, 2200 their light pools, 1900 the poles and arms, 1700 the trees,
+1300 the parked cars); and D354 already held the group `city` of the
+loop to the export, node by node. City is the loop's
+only scenery module, so the Night City Cruise builds from ported code
+alone (`scenery_factory(None)`), and no Rust source changed in this
+package: what it adds is the loop's gates, in the pattern of the other
+levels.
+
+- **Per group**, as before: `city` in `tests/city.rs` (194 nodes,
+  1,901,864 vertices, 43 materials parameter by parameter, every texture
+  within WP 3.2's threshold, the seven lettered canvases against
+  `city-textures.mjs`'s capture with the bundled fonts, at most 0.55
+  levels; the capture reproduces, `--check`), the road and the sky in
+  `tests/road.rs`, the ground in `tests/terrain.rs` and
+  `tests/terrain_mesh.rs`, the world data in `tests/city.rs` and
+  `mr_levels`' `tests/world_data.rs`.
+- **Whole level**, new: `tests/cruise.rs` holds the scene as Level 1 and
+  2 are held (D472, D536): built, the sky at the export's focus, every
+  updater once at the export's frame (dt 0, night 1, the export's camera
+  and drawing buffer), the edits applied to the objects. The counts and
+  kinds equal the world golden always (CI and wasm); with the cache the
+  whole `mr_scene` digest equals the export's entry by entry, and, since
+  the digest leaves them out, so do every node's visibility (the 52 nodes
+  the cut-off hid at the export's camera) and the night parameters.
+  Result: **identical**, native and in wasm: 495 nodes, 407 meshes, 49
+  materials, 19 textures, 94 instance sets, 2 lights, 486 drawables,
+  2,844,902 vertices, 4,989,900 indices (even the exporter's byte count,
+  180,093,320, comes out equal), but for the pixels of the 17 canvas
+  textures that differ, which the threshold gates hold (City's in
+  `tests/city.rs`, the shared terrain and road pictures in
+  `tests/textures.rs`). So the data side of every material kind the loop
+  uses is complete: Terrain, Asphalt, Shoulder, Markings, SkyDome,
+  CityFacade, GlowPoints, TrafficStreams, SkyGlow and the built-in
+  Standard, Basic and Points.
+
+Rerun: `cargo test -p mr_worldgen --test cruise --test city` (and in
+wasm); `node tools/parity/city-textures.mjs` when the fonts change.
+
+## D631. The Night City Cruise's animators, step by step
+
+2026-10-04, WP 7.5. Sierra's capture (D470) never runs the cut-off, which
+only the loop has. `tools/parity/animators.mjs --level cruise` builds the
+loop with the game's own `World.build` and runs its `world.update` over 16
+uneven frames (dt 0 to 150 s, s from 0 to the loop's length) and
+360 ticks of 1/120 s at 60 m/s from 300 m before the first downtown, with
+the camera hopping between three places a third of the loop apart (the
+start, the first downtown's middle, the second viaduct's middle; every
+40 ticks in the run), so that what one place sees the others cut off. It
+records 86 values on 86 targets in `parity/golden/animators/cruise.json`:
+the visibility of 82 of the 101 meshes and instanced chunks on the fade
+list (the other 19 are seen, or cut off, from all three places), the
+ferris wheel's rotor (a `Group`'s quaternion), the freeway's chase bulbs
+(62 instance colours of one InstancedMesh), the aircraft warning lights'
+blink (a `PointsMaterial` colour) and the traffic streams' `uTime`. The
+loop's sky is pinned at midnight (night 1), so the night's values (lamp
+lenses and pools, the neon, the glow points, the sky glow's `uK`, the
+road's dew) are written every frame and hold still; the test requires
+that too. The Node capture and two browser captures (`--browser`) are
+byte-identical; CI checks that the Node capture reproduces; the Sierra,
+Coast and Streets goldens are unchanged. `tests/cruise_animators.rs`
+replays the frames on the Rust build as the client runs them (D470's
+method): **identical, every frame and every tick, native and in wasm**;
+no port fix was needed.
+
+## D632. What the client still needs for the Night City Cruise
+
+2026-10-04, WP 7.5. Every material kind the loop uses is drawn by the
+client since D494 (CityFacade, TrafficStreams, SkyGlow, GlowPoints, the
+terrain and road kinds); `convert::stand_in` hides none of them and
+stands in for none. What is left is how the level is loaded and
+animated, on `main` today:
+
+- **The world build.** `animate::generated` is true for Sierra only, so
+  the loop gets no world build and no animators: nothing is cut off, the
+  chase bulbs, the aircraft lights and the traffic streams stand still,
+  the ferris wheel does not turn. The loop's build is numbered as its
+  export (D630), so `generated` can return true for `cruise`, with
+  `?world=gen` following.
+- **Nodes exported hidden.** The loader does not spawn a node exported
+  invisible (D493's "not covered"). The export was taken with the cut-off
+  run at its camera, so 52 of the loop's nodes (chunks of the ground and
+  of the street lamps' poles, arms, lenses and pools, the trees and the
+  parked cars) are exported hidden and are never drawn, even
+  when the camera drives up to them, and the cut-off's `Visible(true)`
+  has nothing to show. They need to be spawned hidden (or at least those
+  an animator addresses), so that a `Visible` edit can show them. With
+  `?world=gen` the build's scene has them all visible until the first
+  update, so this bites the default (download) path only.
+- **Per-frame edits.** 178 a frame: 101 `Visible` (the whole fade list
+  every frame, as the JS sets `visible` every frame; only changes need
+  applying, which D493 already does; the cut-off needs the camera's
+  position, and does nothing on a frame without a camera), 62
+  `InstanceColor` (the chase bulbs, one InstancedMesh), one `Transform`
+  (the ferris wheel's rotor, a `Group` whose subtree turns), and material
+  values: colours of the freeway's lamp lenses (`MeshBasicMaterial`,
+  4.5) and light pools, the neon, City's street-lamp lenses and pools
+  (each one material shared by 16 instanced chunks), the aircraft lights
+  (`PointsMaterial`, `sizeAttenuation` false) and the glow points; the
+  numbers `uTime`, `uNight`, `uFogK`, `uHalfH` (TrafficStreams), `uK`
+  (SkyGlow), `uFogK` (GlowPoints) and `uWet` (Asphalt). Ten materials
+  get animation blocks (D490).
+- **Size.** The loop is the second largest scene after Coast: 2.84 M
+  vertices against Sierra's 1.53 M, a 181 MB export against Sierra's
+  138 MB. D491's
+  memory numbers (the build and the downloaded scene not held at once)
+  should be measured again on the loop against SPEC 6.6's 512 MB, and
+  D492's `?world=gen` (no download) weighed for it as for Sierra.
+- **The loop itself.** The sky is pinned (the JS samples it at p = 0.5
+  on a loop, and so does `update_sky`), so the night factor is 1
+  throughout. The cruise scoring HUD (score, multiplier and its bar,
+  distance, best; the simulation's side is `mr_sim::race`'s cruise
+  fields, WP 1.5) is the client's, roadmap WP 7.5's third item.

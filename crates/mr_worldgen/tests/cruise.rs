@@ -7,10 +7,13 @@
 //! golden's (`parity/golden/world/cruise.json`, WP 0.5) always, in CI and
 //! in wasm; with the cache, the whole digest
 //! (`parity/cache/<key>/scenes/cruise.digest.json`) equals ours, but for
-//! the pixels of canvas textures, which WP 3.2's threshold gate holds per
-//! group in `tests/city.rs` (D354). The groups are held one by one there
-//! (`city`), in `tests/road.rs` (the road and the sky) and
-//! `tests/terrain.rs` (DECISIONS D630).
+//! the pixels of canvas textures, which WP 3.2's threshold gates hold
+//! (City's in `tests/city.rs`, D354; the shared terrain and road pictures
+//! in `tests/textures.rs`), and so do every node's visibility (what the
+//! chunk cut-off hid) and the night parameters, which the digest leaves
+//! out. The groups are held one by one in `tests/city.rs` (`city`),
+//! `tests/road.rs` (the road and the sky) and `tests/terrain.rs`
+//! (DECISIONS D630).
 //!
 //! The scene is taken as the export took it: built, the sky updated at the
 //! start of the route around the export's focus, the updaters run once
