@@ -3709,8 +3709,8 @@ logged once at debug level. The loader tags every entity with its node
 (`animate::NodeRef`) and hands over what the edits need before it drops
 the scene (`animate::SceneIndex`: per node its parent, children, local and
 world matrices, and an InstancedMesh's instance matrices and colours, 4 MB
-on Sierra). Not covered: a node exported invisible is not spawned by the
-loader, so an animator cannot show it (none on Sierra).
+on Sierra). A node exported invisible is spawned hidden, so an animator
+can show it (D498).
 
 ## D494. Level 1's remaining material kinds
 
@@ -3802,6 +3802,39 @@ WebGL2, no pipeline after the warm-up, and isolated slow frames in both
 builds under the machine's load. Ready is later on the dev machine (7 to
 11 s against 3 to 5 s), because the page holds the export back until the
 build is done (D491); `?world=gen` is ready in 7.5 s without the download.
+## D498. Level 1's scenery by name, the wasm budget, and invisible nodes
+
+2026-10-04, WP 3.9. The client's world build named its scenery through
+`scenery_factory(None)`, whose `PORTED` table links every level's scenery
+into the client; with Coast, Desert, Seaside and Streets ported on main
+that made the web build 10.00 MB (WebGPU) and 10.48 MB (WebGL2) after
+gzip, over SPEC 6.6's 10 MB. The client now builds Sierra with its own
+factory naming Mountain, Valley and City (`animate::level1_scenery`):
+9.60 and 10.08 MB. Linking Level 1's world generation costs about 0.7 MB
+after gzip (8.77 and 9.24 MB before WP 3.9; main's race audio and warm-up
+took the rest), so the WebGL2 build is still 0.08 MB over. Not decided
+here: the budget, or how the other levels' animators reach the client
+(each level built in the client links its scenery). Raised with the
+coordinator, who has started a size package; the owner decides.
+
+Ways to feed a level's animators without linking its scenery build, noted
+for that decision and not done: the updaters are small (City's 13 on
+Sierra, a few hundred lines) and need only handles and a few numbers per
+animator (positions, phases, base vertex arrays), which the build knows;
+the export could carry them (an `animators` list of plain data per
+updater: kind, target handles, constants), and the client run ported
+updater functions over that data without the builders; or `mr_worldgen`
+could split each module's updaters from its builders, so that a client
+linking only the updaters builds them from a small description the
+export or a build tool writes.
+
+Nodes exported invisible (or under one) were not spawned at all, so an
+animator could never show them (Cruise's cut-off hides and shows City's
+chunks by distance). The loader now spawns them with `Visibility::Hidden`,
+counted as before (`Counts::invisible`); the animators' visibility edits
+combine each node's own flag with its ancestors' as three does. Sierra has
+none; Cruise's export has 52 (486 entities instead of 432).
+
 ## WP 7.4 Seaside decisions
 
 ## D590. The shape of `mr_worldgen::raceway`; `world.level.data` and `world.onCountdown`

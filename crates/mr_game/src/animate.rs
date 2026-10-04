@@ -44,7 +44,8 @@ use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
 use mr_scene::{MaterialKind, Scene};
 use mr_worldgen::world::{
-    Build, CameraView, Change, SceneEdit, SceneRef, UpdateCtx, World, WorldBuild, level_jobs,
+    Build, CameraView, Change, SceneEdit, SceneRef, Scenery, SceneryInfo, UpdateCtx, World,
+    WorldBuild, level_jobs,
 };
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -139,7 +140,6 @@ impl Default for WorldGen {
 
 /// The level's world jobs, as `tests/level1.rs` builds Sierra.
 fn new_build(level: &str) -> Build {
-    use mr_worldgen::scenery::scenery_factory;
     use mr_worldgen::stages::{LevelSetup, level_stages};
     use mr_worldgen::terrain_mesh::TerrainSetup;
     let setup = LevelSetup {
@@ -151,8 +151,21 @@ fn new_build(level: &str) -> Build {
     };
     Build::new(
         World::new(mr_levels::level_by_id(level)),
-        level_jobs(level_stages(setup), scenery_factory(None)),
+        level_jobs(level_stages(setup), level1_scenery),
     )
+}
+
+/// Level 1's scenery modules, named one by one rather than through
+/// `scenery::PORTED`: the table would link every level's scenery into the
+/// client, over the wasm budget (SPEC 6.6; D498). Every other module is
+/// left out, as `scenery_factory` leaves out an unported one.
+fn level1_scenery(info: &SceneryInfo) -> Option<Box<dyn Scenery>> {
+    match info.name {
+        "Mountain" => Some(Box::new(mr_worldgen::mountain::Mountain::new(info))),
+        "Valley" => Some(Box::new(mr_worldgen::valley::Valley::new(info))),
+        "City" => Some(Box::new(mr_worldgen::city::City::new(info))),
+        _ => None,
+    }
 }
 
 /// One job, then the `?t=` override on the sky as soon as it exists (the
@@ -418,7 +431,6 @@ impl SceneIndex {
         scene: &Scene,
         meshes: &HashMap<crate::convert::MeshKey, Option<Handle<Mesh>>>,
         offset: &[Vec3],
-        visible: &[bool],
     ) -> SceneIndex {
         let nodes = scene
             .nodes
@@ -430,7 +442,7 @@ impl SceneIndex {
                 local: DMat4::from_cols_array(&n.matrix),
                 world: DMat4::from_cols_array(&n.matrix_world),
                 offset: offset.get(i).copied().unwrap_or(Vec3::ZERO),
-                visible: visible.get(i).copied().unwrap_or(true),
+                visible: n.visible,
                 instances: n.instances.and_then(|k| {
                     let d = scene.instances.get(k as usize)?;
                     let m = scene.buffers[d.matrices as usize].data.as_f32()?;
