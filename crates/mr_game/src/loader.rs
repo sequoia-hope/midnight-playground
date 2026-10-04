@@ -209,6 +209,8 @@ impl Build {
         let emissive = m.color("emissive").unwrap_or([0.0; 3]);
         let h = three_material(scene, m, images, shared, instance_color).map(|mut m| {
             m.key.instanced = instanced;
+            // Its index, for its animation block (`animate`, D490).
+            m.params.slots.z = index as f32 + 1.0;
             if let Some(p) = night {
                 let w = m.params.emissive.w;
                 m.params.emissive = Vec4::new(
@@ -317,9 +319,11 @@ fn spawn_node(
         b.out.counts.skipped_nodes += 1;
         return 0;
     };
-    if !b.visible[i] {
+    // A node exported invisible (or under one) is spawned hidden, as three
+    // keeps it: an animator may show it (City's cut-off on the loop, D498).
+    let hidden = !b.visible[i];
+    if hidden {
         b.out.counts.invisible += 1;
-        return 0;
     }
     let world = Mat4::from_translation(b.offset[i]) * convert::mat4(&node.matrix_world);
     let desc = b.scene.meshes[mesh as usize].clone();
@@ -417,6 +421,9 @@ fn spawn_node(
                     crate::animate::NodeRef(i as u32),
                 ));
                 shadows(&mut e);
+                if hidden {
+                    e.insert(Visibility::Hidden);
+                }
                 spawned += 1;
             }
             Some(inst) => {
@@ -466,6 +473,9 @@ fn spawn_node(
                     }
                 }
                 shadows(&mut e);
+                if hidden {
+                    e.insert(Visibility::Hidden);
+                }
                 spawned += 1;
             }
         }
@@ -493,6 +503,9 @@ fn instance_stream(
     let world = DMat4::from_translation(offset.as_dvec3()) * DMat4::from_cols_array(matrix_world);
     let mats = scene.buffers[inst.matrices as usize].data.as_f32()?;
     let colors = inst.colors.map(|c| &scene.buffers[c as usize].data);
+    // The geometry's instance-rate attributes (the harbour containers'
+    // `aVar`, the desert pools' `ph` and `fl`), in the stream (D499).
+    let extras = instance_extras(scene, inst);
     let mut data = Vec::with_capacity(inst.count as usize * instancing::INSTANCE_FLOATS);
     for k in 0..inst.count as usize {
         let Some(cols) = mats.get(k * 16..k * 16 + 16) else {
@@ -507,6 +520,9 @@ fn instance_stream(
             [v(0), v(1), v(2)]
         });
         instancing::push_instance(&mut data, &(world * local), tint, receive);
+        if let Some(x) = &extras {
+            instancing::set_instance_extra(&mut data, x.get(k).copied().unwrap_or([0.0; 4]));
+        }
     }
     if data.is_empty() {
         return None;
@@ -520,6 +536,38 @@ fn instance_stream(
             (c.as_vec3(), r as f32)
         });
     Some((Instances(Arc::new(InstanceStream::new(&data))), sphere))
+}
+
+/// An InstancedMesh's instance-rate attributes, per instance: the first
+/// component of each, in the geometry's order, up to four (none if the
+/// geometry has none).
+pub fn instance_extras(scene: &Scene, inst: &mr_scene::InstanceDesc) -> Option<Vec<[f32; 4]>> {
+    let node = scene.nodes.get(inst.node as usize)?;
+    let mesh = scene.meshes.get(node.mesh? as usize)?;
+    let attrs: Vec<&mr_scene::Buffer> = mesh
+        .attributes
+        .iter()
+        .filter(|a| a.instanced)
+        .take(4)
+        .map(|a| &scene.buffers[a.accessor as usize])
+        .collect();
+    if attrs.is_empty() {
+        return None;
+    }
+    let n = attrs.iter().map(|b| b.count()).max().unwrap_or(0);
+    Some(
+        (0..n)
+            .map(|i| {
+                let mut x = [0f32; 4];
+                for (j, b) in attrs.iter().enumerate() {
+                    if i < b.count() {
+                        x[j] = b.data.get(i * b.item_size as usize) as f32;
+                    }
+                }
+                x
+            })
+            .collect(),
+    )
 }
 
 /// The scene's local lights: its first spot light (the desert train's) and
@@ -675,11 +723,7 @@ pub fn build_step(
         status.warm_up = n;
         // What the scenery's animators address (`crate::animate`).
         commands.insert_resource(crate::animate::SceneIndex::new(
-            &b.scene,
-            &b.materials,
-            &b.meshes,
-            &b.offset,
-            &b.visible,
+            &b.scene, &b.meshes, &b.offset,
         ));
         // Dropping the build drops the Scene: the CPU copies go here.
         commands.remove_resource::<Build>();
