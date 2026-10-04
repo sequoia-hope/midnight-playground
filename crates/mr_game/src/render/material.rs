@@ -426,6 +426,19 @@ impl Material for ThreeMaterial {
                 .push(super::instancing::instance_layout(true));
             defs.push("MR_INSTANCED".into());
         }
+        // three's own materials (no kind patch): an animator's opacity is the
+        // block's texel 4.x (`crate::animate`, D701).
+        if matches!(
+            k.patch,
+            Patch::None
+                | Patch::Sprite { .. }
+                | Patch::Points {
+                    mode: PointsMode::Plain,
+                    ..
+                }
+        ) {
+            defs.push("PLAIN_ANIM".into());
+        }
         match k.patch {
             Patch::None => {}
             Patch::Terrain { packed, photo } => {

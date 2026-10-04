@@ -24,7 +24,8 @@
 // USE_ALPHAMAP. VERTEX_EXTRA: the patch's own attribute
 // (`convert::ATTRIBUTE_EXTRA`), VERTEX_EXTRA2 the traffic streams' second
 // one. A material's animated values come from its block in the globals
-// when it has one (`material.slots.x`, D490). MR_INSTANCED: an InstancedMesh drawn as one
+// when it has one (`material.slots.x`, D490); PLAIN_ANIM (three's own
+// materials) reads an animator's opacity there (D701). MR_INSTANCED: an InstancedMesh drawn as one
 // entity (`render::instancing`, D450): the world matrix, instanceColor and
 // receiveShadow come from the instance stream, not Bevy's mesh uniform.
 //
@@ -983,6 +984,13 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     let geometry_roughness = max(max(dxy.x, dxy.y), dxy.z);
 
     var diffuse_color = material.diffuse;
+#ifdef PLAIN_ANIM
+    // three's own materials: an animator's opacity (block texel 4.x, which
+    // starts at the exported opacity; D701).
+    if (has_block()) {
+        diffuse_color.a = block_at(4).x;
+    }
+#endif
 #ifdef PATCH_POOL
     // The pools' and the flood beams' opacity follows the night (their
     // updater's, or the animators').
