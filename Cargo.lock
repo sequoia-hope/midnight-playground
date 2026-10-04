@@ -3442,6 +3442,7 @@ dependencies = [
  "mr_levels",
  "mr_math",
  "mr_scene",
+ "mr_sim",
  "mr_track",
  "png",
  "serde_json",

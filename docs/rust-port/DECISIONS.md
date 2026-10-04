@@ -2423,3 +2423,120 @@ within the gate (largest mean absolute difference 0.87 of 255, gravel,
 which has no text; largest for text 0.53, the text-faces probe; Mountain's
 lettered canvases at most 0.74).
 
+
+## WP 4.1 decisions
+
+## D410. The shape of `mr_worldgen::car_model`; the module's caches live on the graph
+
+2026-10-03, WP 4.1. `vehicles/CarModel.js` is `mr_worldgen::car_model`, a
+directory following the JS file's sections: `kit.rs` the geometry kit
+(`interp`, `spline`, `sill`, `stations`, the loft with `halfRing` and the
+surface sampler `Surf`, `Tris`, `decal`, `ribbon`, `expandPoly`, `ellipse`,
+`sweep`, `latheX`, `airfoil`, `extrude`, `prep`, `boxUV`, `Parts`),
+`detail.rs` the detail and police kits and the loft presets (`lamp` to
+`strobes`, `detail`, `bodyLoft`, `cabinLoft`, `shaper`, `glassTop`,
+`dlo`), `wheels.rs` `wheelGeometry` and `caliperGeom`, `specs.rs` the
+thirteen `SPECS` in the JS order, `far.rs` the far LOD, `mod.rs`
+`buildVehicle` with the materials, the siren and the setters. Names and
+argument order are the JS's; an options object is a struct whose
+constructor or `Default` writes out the JS defaults (`LampOpts`,
+`DecalOpts`, `RibbonOpts`, `Shaper::new`, `BodyOpts::new`, ...). Options no
+caller passes are left out, as D331 did: `sweep`'s `fn` and `caps: false`,
+`loft`'s `caps: false`, `ribbon`'s function width, `dot`'s `rv`, `wing`'s
+`plates` and `upBucket`, `bodyLoft`'s `col`, `cabinLoft`'s `extraZ`,
+`dlo`'s `col`, `ellipse`'s `rot` (written as the JS computes it with 0).
+`build_vehicle(graph, textures, kind, &BuildOpts)` builds the object tree
+into a `SceneGraph` and returns a `VehicleModel` (the JS handle: `root`,
+`body`, `wheels`, `steer_pivots`, `headlight_anchor`, the siren's glow and
+anchor, the far mesh and what it stands in for, `dims`, `exhausts`, the
+per-instance materials); an unknown kind is `None` where the JS throws.
+`BuildOpts` holds `lod`, `far`, `color` (hex), `seed` (a `u32`: the game
+passes small whole numbers, and `Math.abs` of one is itself),
+`police_livery`, `stripes`, `spoiler`, `stripe_color` and `rim_dark`.
+
+The JS module keeps its state in module variables (`SHARED`,
+`stripeMats`, `lowPaints`, `wheelCache`, `caliperCache`, `partsCache`,
+`farCache`, `farMaterial`), so every car of a page shares the same trim,
+glass and tyre materials and the same wheel and body geometry; the export
+shows it (the parked pickup and sedan of Mountain share three materials).
+Those caches hold handles, which belong to one graph, so they are a
+`CarKit` kept on the graph: `SceneGraph::cars` (boxed, so the graph stays
+small), the one addition to `object.rs`. A scenery module or the client
+building cars into a graph therefore shares them as the JS page does, and
+the Mountain hook (`mountain::ParkedCars`, a plain function) needs no
+state of its own. `SceneGraph::append` keeps the receiving graph's kit and
+drops the appended one's, so cars built in a parallel part share nothing
+with the main graph (no scenery builds cars in a part today). Cache keys
+follow the JS keys where they decide sharing: the wheel's
+`[r, w, lod, spokes, rimFrac, type]` (numbers by their bits),
+`rimR.toFixed(3)` for calipers, `kind|lod|variant` for parts,
+`kind|lod|variant|rim material` for the far model.
+
+## D411. The light setters return edits
+
+2026-10-03, WP 4.1. `setHeadlights`, `setBrake`, `setReverse`, `setBoost`,
+`setSiren(mode, t)` and `setFar` keep the JS state in the handle
+(`brake`, `lights`, the siren levels, `isFar`) and return what they change
+as `world::Edit`s, addressed by handle like an animator's (D195): a
+`Change::Number` for `emissiveIntensity`, a `Change::Color` for the glow's
+`uRed`/`uBlue` uniforms, a `Change::Visible` for the glow and the far
+swap. The client resolves them through the scene's `HandleMap` and applies
+them to what it draws; `car_model::apply_edits` applies them to the graph
+itself (a number or colour goes to the uniform of that name if the material
+has one, else to the parameter), which `buildVehicle`'s own
+`setSiren('off')` and the parked cars' `setHeadlights(0)` use. A setter the
+JS handle lacks (`setSiren` on a car without a siren, `setFar` without a
+far model) returns no edits; `setBoost` without accents likewise.
+`sirenColor()` is `siren_color()`. The siren mode is an enum (`Off`,
+`Flash`, `Steady`, `Disabled`; the JS `true` and `false` are `Flash` and
+`Off`), and `siren_levels` is `sirenLevels`.
+
+## D412. Dimensions, and the parked cars in Mountain's gate
+
+2026-10-03, WP 4.1. A model's `dims` come from its spec, as in the JS.
+mr_worldgen does not depend on mr_sim (SPEC 3.2); `tests/car_model.rs`
+takes it as a dev-dependency (check-deps follows normal edges only) and
+requires every kind's `dims`, built at high and at low detail, to equal
+`mr_sim::dims::dims(kind)` and the JS dump that table was checked against
+(`parity/golden/sim/world-data.json`, default, high and low-far): all
+thirteen do.
+
+`Mountain::new` sets `parked_cars` to `car_model::parked_car`
+(`buildVehicle(kind, { color, seed, lod: 'low' })` and `setHeadlights(0)`),
+so every Sierra build now bakes the pickup at the diner and the sedan at
+the lookout. `tests/mountain.rs` compared the group's children but skipped
+the two baked groups; it now compares a group's children in order like any
+child (node, mesh line, material, with the JS's material sharing), so the
+gate covers all of them: **86 of 86 children identical**, 46 materials
+(the 34 of D312 and the cars' 12) equal parameter by parameter. The other
+Sierra gates (terrain, road, valley, city) look at their own groups and are
+unchanged.
+
+## D413. The L3 gate per kind, and what it found
+
+2026-10-03, WP 4.1. `tools/parity/car-model-golden.mjs` writes
+`parity/golden/car_model/models.json` (68 KB) from the cached models export
+(D29): per model (`car:<kind>[:police]:<lod>`, in the export's order) its
+build options, one line per node of the vehicle's tree (type, name, every
+attribute's and the index's SHA-256, the draw groups, the bounding sphere,
+flags, render order, the local matrix's bits, userData, whether the
+material is a list), each line hashed, which materials each node uses as
+indices into one table in order of first use, each material hashed in the
+canonical form of D354 (keys sorted, numbers as bits; textures by sampler),
+and the 8×8 block means of every texture a material uses. `--check`
+regenerates and compares. `tests/car_model.rs` builds the thirty models in
+that order into one graph (so the kit is shared as the page shared its
+caches), each under a group of the exporter's name, and compares; with the
+cache it shows a failing node beside the JS one and a failing material as
+both views, and checks every texture's mean absolute difference (sheets in
+`parity/report/car_model/`). Result: **every node of every model
+identical**, native and in wasm: the thirteen kinds at high detail and at
+low detail with the far model, and the muscle and sports cars in police
+livery at both (30 models, 727 nodes, 925,344 vertices), all 169
+materials equal (the CarLight and PoliceGlow kinds with their program key,
+uniforms and GLSL), the carbon weave within 0.03 levels of Chrome's canvas
+and the siren's glow within 0.58. No fix to a shared module was needed.
+The export's effects (a sports car with smoke, sparks, skids, a headlight
+pool and flames) and pursuit props (sawhorse, spike strip) are WP 4.4's
+and M8's. The roadmap's L4 gate against `tools/car-test.html` views is a
+rendering gate for the client and is not part of this package.
