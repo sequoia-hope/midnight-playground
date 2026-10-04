@@ -3,15 +3,17 @@
 // navigator.getGamepads (the JS suite's, installed once the page is up: the
 // client reads getGamepads every frame, as Gamepad.js does).
 //
-// `__race.input.state` is `__mr.race.input`, `__pads` is `__mr.pads`; the
-// JS suite's injected wall impact is a real one here (full throttle and
-// full right lock into the barrier).
+// `__race.input.state` is `__mr.race.input`, `__pads` is `__mr.pads`, the
+// highlight is `__mr.focus` with `__mr.padNav`, the Controller screen's DOM
+// is `__mr.padsetup`, and a control is named by its id rather than its
+// text; the JS suite's injected wall impact is a real one here (full
+// throttle and full right lock into the barrier).
 //
-//   cargo xtask web && node --test tools/parity/e2e/gamepad.test.mjs
+//   cargo xtask web --release && node --test tools/parity/e2e/gamepad.test.mjs
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, openGame, stored, waitRacing, expectScreen, sleep } from './harness.mjs';
+import { launch, openGame, stored, waitRacing, expectScreen, raceStarted, sleep } from './harness.mjs';
 
 let browser;
 before(async () => { browser = await launch(); });
@@ -45,6 +47,11 @@ async function press(game, b) {
   await hold(game, b, false); await sleep(90);
 }
 const input = (game) => game.eval(() => window.__mr.race.input);
+// The highlight (`.pad-focus`): the control's id, and whether it is being
+// adjusted (`.pad-edit`); null while hidden.
+const focused = (game) => game.eval(() => (window.__mr.padNav?.shown && window.__mr.focus
+  ? { id: window.__mr.focus, edit: !!window.__mr.padNav.editing } : null));
+const padsetup = (game) => game.eval(() => window.__mr.padsetup);
 async function open(o = {}) {
   const game = await openGame(browser, o);
   await game.eval(fakePad, PAD_ID);
@@ -166,4 +173,165 @@ test('rumble: the countdown and a wall hit jolt the pad, then it stops; off, not
     assert.deepEqual(await off.eval(() => window.__pad.effects), [], 'off: no rumble');
     assert.equal(await off.eval(() => window.__mr.pads.rumbleOn), false);
   } finally { await off.close(); }
+});
+
+test('the menus with a gamepad: a highlight, car pick, Start to race, pause and back', async () => {
+  const game = await open();
+  try {
+    await game.waitFor(() => window.__mr.ui('btn-pad')?.visible === true, { what: 'Controller setup to show' });
+    assert.equal(await focused(game), null, 'no highlight before the pad is used');
+    // The first push shows where you are (Race), without moving.
+    await press(game, 'down');
+    assert.equal((await focused(game))?.id, 'btn-start');
+    // Up from Race reaches the car picks; ◂ ▸ moves along them; A picks one.
+    await press(game, 'up');
+    const first = (await focused(game)).id;
+    assert.match(first, /^pick-/, `up from Race lands on a car (${first})`);
+    await press(game, 'right');
+    const second = (await focused(game)).id;
+    assert.match(second, /^pick-/);
+    assert.notEqual(second, first, 'right moves to the next car');
+    await press(game, 'A');
+    assert.equal(await stored(game, 'car'), second.slice(5), 'A picked it');
+
+    // Start races.
+    await press(game, 'Start');
+    await game.waitFor(raceStarted, { timeout: 30000, what: 'the race to start' });
+    await waitRacing(game);
+    // Start pauses, B resumes; Start pauses, down to Main menu, A.
+    await press(game, 'Start');
+    await expectScreen(game, 'pause');
+    await game.waitFor(() => window.__mr.focus === 'btn-resume', { timeout: 3000, what: 'Resume highlighted' });
+    await press(game, 'B');
+    await expectScreen(game, 'none');
+    assert.equal(await game.eval(() => window.__mr.mode), 'race');
+    await press(game, 'Start');
+    await expectScreen(game, 'pause');
+    await game.waitFor(() => window.__mr.focus === 'btn-resume', { timeout: 3000, what: 'Resume highlighted' });
+    await press(game, 'down'); await press(game, 'down'); // Restart, Main menu
+    assert.equal((await focused(game))?.id, 'btn-quit');
+    await press(game, 'A');
+    await expectScreen(game, 'menu');
+    assert.deepEqual(game.errors, []);
+  } finally { await game.close(); }
+});
+
+test('a slider and a drop-down: A to adjust, ◂ ▸ to change, A when done', async () => {
+  const game = await open({ storage: { 'mr.musicVol': 0.5 } });
+  try {
+    await press(game, 'down'); // show the highlight on Race
+    await press(game, 'down'); // into the options row, under Race: Track
+    assert.equal((await focused(game)).id, 'opt-track');
+    // Not adjusting: ◂ ▸ move along the row.
+    await press(game, 'left');
+    assert.equal((await focused(game)).id, 'vol-sfx');
+    await press(game, 'right');
+    await press(game, 'A');
+    assert.equal((await focused(game)).edit, true, 'adjusting the track');
+    await press(game, 'right');
+    const track = await stored(game, 'track');
+    assert.ok(track && track !== 'auto', `the next track (${track})`);
+    await press(game, 'A');
+    await press(game, 'left'); await press(game, 'left');
+    assert.equal((await focused(game)).id, 'vol-music');
+    await press(game, 'A');
+    assert.equal((await focused(game)).edit, true, 'adjusting the volume');
+    await press(game, 'right');
+    await press(game, 'right');
+    assert.equal(await stored(game, 'musicVol'), 0.6);
+    await press(game, 'B');
+    assert.equal((await focused(game)).edit, false, 'B: done, still on the menu');
+    await expectScreen(game, 'menu');
+    await press(game, 'right');
+    assert.equal((await focused(game)).id, 'vol-sfx');
+    assert.deepEqual(game.errors, []);
+  } finally { await game.close(); }
+});
+
+test('remapping: pick Throttle, press LB, and LB is the throttle (saved per controller)', async () => {
+  const game = await open();
+  try {
+    await game.waitFor(() => window.__mr.ui('btn-pad')?.visible === true, { what: 'Controller setup to show' });
+    await game.click('#btn-pad');
+    await expectScreen(game, 'padsetup');
+    await game.waitFor(() => !!window.__mr.padsetup);
+    const row = async (a) => (await padsetup(game)).binds[a];
+    assert.equal((await padsetup(game)).name, 'Test Pad');
+    assert.equal(await row('throttle'), 'RT');
+    assert.equal(await row('handbrake'), 'X / RB');
+    // Held buttons light their rows.
+    await hold(game, 'RT', true); await sleep(80);
+    assert.deepEqual((await padsetup(game)).on, ['throttle']);
+    await hold(game, 'RT', false);
+    // With the pad: highlight Throttle, A, then LB.
+    await press(game, 'down');
+    for (let i = 0; i < 6 && (await focused(game))?.id !== 'pad-bind-throttle'; i++) {
+      const f = await focused(game);
+      await press(game, /left|right/.test(f.id) ? 'down' : 'up');
+    }
+    assert.equal((await focused(game)).id, 'pad-bind-throttle');
+    await press(game, 'A');
+    assert.equal((await padsetup(game)).listening, 'throttle');
+    await press(game, 'LB');
+    assert.equal(await row('throttle'), 'LB');
+    assert.equal(await row('handbrake'), 'X / RB');
+    assert.equal((await padsetup(game)).hint, 'Throttle: LB');
+    assert.deepEqual((await stored(game, 'padMaps'))[PAD_ID].throttle, [{ button: 4 }]);
+    assert.equal((await padsetup(game)).listening, null, 'the A after it didn\'t start another');
+    // LB taken for the handbrake replaces X and RB there, and frees it from the throttle.
+    await game.click('#pad-bind-handbrake');
+    await sleep(50); // a frame to start listening
+    await press(game, 'LB');
+    assert.equal(await row('handbrake'), 'LB');
+    assert.equal(await row('throttle'), '—');
+    assert.equal((await padsetup(game)).name, 'Test Pad · remapped');
+    // Defaults puts it all back.
+    await game.click('#pad-defaults');
+    await sleep(100);
+    assert.equal(await row('throttle'), 'RT');
+    assert.equal((await stored(game, 'padMaps'))?.[PAD_ID], undefined);
+    // Remap again, and drive with it.
+    await game.click('#pad-bind-throttle');
+    await sleep(50);
+    await press(game, 'LB');
+    await press(game, 'B'); // back to the menu
+    await expectScreen(game, 'menu');
+    await press(game, 'Start');
+    await game.waitFor(raceStarted, { timeout: 30000, what: 'the race to start' });
+    await waitRacing(game);
+    await hold(game, 'LB', true); await sleep(100);
+    assert.equal((await input(game)).throttle, 1, 'LB: throttle');
+    await hold(game, 'LB', false);
+    await hold(game, 'RT', true); await sleep(100);
+    assert.equal((await input(game)).throttle, 0, 'RT: nothing now');
+    assert.deepEqual(game.errors, []);
+  } finally { await game.close(); }
+});
+
+test('the Controller screen from pause: Esc stops listening, the Rumble switch, Start leaves and Start resumes', async () => {
+  const game = await open({ query: 'autostart=sports' });
+  try {
+    await waitRacing(game);
+    await press(game, 'Start');
+    await expectScreen(game, 'pause');
+    await game.click('#btn-pad-pause');
+    await expectScreen(game, 'padsetup');
+    await game.click('#pad-bind-camera');
+    await sleep(50);
+    assert.equal((await padsetup(game)).listening, 'camera');
+    await game.key('Escape');
+    assert.equal((await padsetup(game)).listening, null, 'Esc: not listening');
+    await expectScreen(game, 'padsetup');
+    await game.click('#opt-rumble');
+    assert.equal(await stored(game, 'rumble'), false);
+    await press(game, 'Start'); // leaves the Controller screen…
+    await expectScreen(game, 'pause');
+    await press(game, 'Start'); // …and Start again resumes
+    await expectScreen(game, 'none');
+    await game.eval(() => window.__pad.effects.splice(0));
+    await hold(game, 'RT', true); await axis(game, 0, 1);
+    await sleep(4000);
+    assert.deepEqual((await game.eval(() => window.__pad.effects.splice(0))).filter((e) => e.type === 'dual-rumble'), [], 'off: no rumble');
+    assert.deepEqual(game.errors, []);
+  } finally { await game.close(); }
 });

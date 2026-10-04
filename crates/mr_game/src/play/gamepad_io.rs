@@ -20,6 +20,7 @@ use super::{Play, PlayFrame};
 use crate::loader::AppState;
 use crate::ui::UiState;
 use crate::ui::store::Store;
+use bevy::ecs::system::ScheduleSystem;
 use bevy::input::InputSystems;
 use bevy::prelude::*;
 use bevy::time::Real;
@@ -46,6 +47,19 @@ pub fn plugin(app: &mut App) {
         );
     #[cfg(not(target_arch = "wasm32"))]
     app.init_resource::<native::NativePads>();
+}
+
+/// Adds the Controller screen's frame (`crate::ui::pad_setup::frame`)
+/// where `main.js` ran `padSetup.escape()`: after the pads reach the race's
+/// input layer, before its ticks could take Esc or Start as un-pause.
+pub fn pad_setup_frame<M>(app: &mut App, sys: impl IntoScheduleConfigs<ScheduleSystem, M>) {
+    app.add_systems(
+        Update,
+        sys.in_set(PlayFrame)
+            .after(feed)
+            .before(super::step)
+            .run_if(in_state(AppState::Running)),
+    );
 }
 
 /// The frame's poll, after what the last frame asked of the pads: the
