@@ -132,7 +132,14 @@ pub fn gesture_at(_kind: &str, x: f64, y: f64) {
     if !on {
         return;
     }
+    // One tap brings pointer-up, touch-end and click: ask once.
+    static LAST: Mutex<f64> = Mutex::new(-1e9);
+    let now = js_sys::Date::now();
     let (x, y) = (x as f32, y as f32);
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    if now - *last < 800.0 {
+        return;
+    }
     if rects
         .iter()
         .any(|r| x >= r.0 && x <= r.0 + r.2 && y >= r.1 && y <= r.1 + r.3)
@@ -145,6 +152,7 @@ pub fn gesture_at(_kind: &str, x: f64, y: f64) {
                .catch(() => {}); } catch (e) { /* not allowed here */ }",
         );
         let _ = f.call0(&JsValue::NULL);
+        *last = now;
     }
 }
 

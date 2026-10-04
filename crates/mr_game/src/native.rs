@@ -64,7 +64,12 @@ fn reload_scene(opts: Res<Opts>, status: Res<Status>) {
 }
 
 fn load(o: Options) {
+    // `?world=gen`: the scene is the client's own world build (`animate`).
+    let generated = crate::animate::draws_generated(&o);
     std::thread::spawn(move || {
+        if generated {
+            return;
+        }
         let root = repo_root();
         if o.level == "seaside" {
             let p = root.join("assets/seaside/survey.bin");

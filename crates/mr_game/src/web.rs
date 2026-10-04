@@ -2,10 +2,11 @@
 //! this module, calls [`run`], downloads the scene with a progress bar and
 //! hands it in with [`load_scene`]. Status goes out on `window.__mr`.
 //!
-//! The gesture bridge is a stub for now: the page calls [`gesture`] inside
-//! its pointer-up, touch-end, click and key-down handlers, which is where
-//! audio resume, fullscreen, the landscape lock and the motion permission
-//! must happen (they are refused a frame later). M5 and M6 fill it in.
+//! The gesture bridge: the page calls [`gesture`] inside its pointer-down,
+//! pointer-up, touch-end, click and key-down handlers, which is where audio
+//! resume, fullscreen, the landscape lock and the motion permission must
+//! happen (they are refused a frame later). The audio wakes there
+//! (`play::audio::gesture`, M5); the rest is M6's.
 
 use crate::options::Options;
 use crate::status::Status;
@@ -81,6 +82,7 @@ pub fn survey_failed(message: String) {
 #[wasm_bindgen]
 pub fn gesture(_kind: &str) {
     GESTURES.fetch_add(1, Ordering::Relaxed);
+    crate::play::audio::gesture();
 }
 
 /// Captures the next frame with Bevy's screenshot and hands it to the
@@ -183,7 +185,78 @@ fn publish(mut status: ResMut<Status>, opts: Res<Opts>, mut counts_sent: Local<b
     }
 }
 
+/// Whether the client builds this level's scene itself with `?world=gen`
+/// (`animate`), so the page need not download it.
+#[wasm_bindgen]
+pub fn generates_scene(level: &str) -> bool {
+    crate::animate::generated(level)
+}
+
+/// The client is building the level's world (`animate`, for its
+/// animators): the page waits for it before handing in the downloaded
+/// scene, so the build's memory is free again when the scene is parsed
+/// (the wasm memory's high-water mark is the larger of the two, not their
+/// sum; D491).
+#[wasm_bindgen]
+pub fn world_pending() -> bool {
+    crate::animate::pending()
+}
+
+static FLY: Mutex<Option<crate::options::FlyParams>> = Mutex::new(None);
+static FLY_QUIET: AtomicU32 = AtomicU32::new(0);
+
+/// Moves the fly camera to a screenshot station (a test hook, as the
+/// native `--stations`, DECISIONS D17): `__mr.flyQuiet` then counts the
+/// frames since the camera arrived with no pipeline compiling and the
+/// environment map built; three is enough for a screenshot.
+#[wasm_bindgen]
+pub fn fly_to(s: f64, h: f64, back: f64, lat: f64, yaw: f64, pitch: f64) {
+    *FLY.lock().unwrap_or_else(|e| e.into_inner()) = Some(crate::options::FlyParams {
+        s,
+        h,
+        back,
+        lat,
+        speed: 0.0,
+        yaw,
+        pitch,
+    });
+    FLY_QUIET.store(0, Ordering::Relaxed);
+}
+
+fn fly_hook(
+    mut cs: ResMut<crate::CameraState>,
+    status: Res<Status>,
+    env: Res<crate::render::pmrem::EnvRequest>,
+    mut frames: Local<u32>,
+) {
+    if let Some(p) = FLY.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        cs.fly = Some(p);
+        *frames = 0;
+        return;
+    }
+    *frames += 1;
+    let settled = status.ready
+        && crate::status::PIPELINES_WAITING.load(Ordering::Relaxed) == 0
+        && crate::render::pmrem::ENV_DONE.load(Ordering::Relaxed) == env.generation;
+    if settled && *frames > 3 {
+        FLY_QUIET.fetch_add(1, Ordering::Relaxed);
+    } else {
+        FLY_QUIET.store(0, Ordering::Relaxed);
+    }
+}
+
+fn publish_fly() {
+    if let Some(w) = web_sys::window()
+        && let Ok(mr) = Reflect::get(&w, &JsValue::from_str("__mr"))
+        && let Some(mr) = mr.dyn_ref::<Object>()
+    {
+        set(mr, "flyQuiet", FLY_QUIET.load(Ordering::Relaxed));
+    }
+}
+
 pub fn plugin(app: &mut App) {
     app.add_systems(Last, publish)
         .add_systems(Update, take_screenshot);
+    app.add_systems(Update, fly_hook.after(crate::fly_system))
+        .add_systems(Last, publish_fly);
 }

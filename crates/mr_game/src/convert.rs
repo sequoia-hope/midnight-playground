@@ -88,6 +88,12 @@ fn index_values(b: &Buffer) -> Vec<u32> {
 pub const ATTRIBUTE_EXTRA: MeshVertexAttribute =
     MeshVertexAttribute::new("MR_Extra", 0x6d72_4558_5452_4101, VertexFormat::Float32x4);
 
+/// The traffic streams' second attribute, at shader location 14: `aDir`
+/// in xyz and `aPar.z` (tail light) in w; `aPar.xy` ride in
+/// [`ATTRIBUTE_EXTRA`]'s xy, the quad corner in its zw.
+pub const ATTRIBUTE_EXTRA2: MeshVertexAttribute =
+    MeshVertexAttribute::new("MR_Extra2", 0x6d72_4558_5452_4102, VertexFormat::Float32x4);
+
 /// The extra attribute a material's patch reads, if any.
 pub fn extra_attribute(m: &MaterialDesc) -> Option<&'static str> {
     use crate::render::material::{Patch, PointsMode};
@@ -103,6 +109,9 @@ pub fn extra_attribute(m: &MaterialDesc) -> Option<&'static str> {
             mode: PointsMode::Flicker { .. },
             ..
         } => Some("ph"),
+        Patch::City => Some("cell"),
+        // With `aDir` beside it (`ATTRIBUTE_EXTRA2`).
+        Patch::Traffic => Some("aPar"),
         _ => None,
     }
 }
@@ -120,6 +129,9 @@ pub enum Draw {
     /// `Points`: camera-facing quads (SPEC 6.2 "Points"), four vertices a
     /// point, sized in the vertex shader.
     Points,
+    /// `Sprite`: its quad, turned to face the camera in the vertex shader
+    /// (`render::material::Patch::Sprite`).
+    Sprite,
 }
 
 impl Draw {
@@ -130,6 +142,7 @@ impl Draw {
             NodeType::Line => Some(Draw::LineStrip),
             NodeType::LineLoop => Some(Draw::LineLoop),
             NodeType::Points => Some(Draw::Points),
+            NodeType::Sprite => Some(Draw::Sprite),
             _ => None,
         }
     }
@@ -180,6 +193,20 @@ pub fn draw_span(scene: &Scene, m: &MeshDesc, group: Option<usize>) -> (u32, u32
     (start as u32, end.saturating_sub(start) as u32)
 }
 
+/// Meshes of at most this many vertices keep their CPU copy.
+pub const KEEP_VERTICES: usize = 64;
+
+/// Whether the Bevy mesh for `key` keeps its CPU copy: a triangle mesh
+/// small enough that keeping it costs nothing, whose vertices are the
+/// geometry's in order, so an animator's attribute edit (offsets into the
+/// geometry's arrays) can be written into it.
+pub fn keeps_cpu_copy(scene: &Scene, key: MeshKey) -> bool {
+    key.draw == Draw::Triangles
+        && scene.meshes[key.mesh as usize]
+            .attribute("position")
+            .is_some_and(|a| scene.buffers[a.accessor as usize].count() <= KEEP_VERTICES)
+}
+
 /// Builds the Bevy mesh for `key`, or none if it draws nothing.
 pub fn build_mesh(scene: &Scene, key: MeshKey) -> Option<Mesh> {
     let m = &scene.meshes[key.mesh as usize];
@@ -192,11 +219,18 @@ pub fn build_mesh(scene: &Scene, key: MeshKey) -> Option<Mesh> {
         return build_points(scene, m, key);
     }
     let topology = match key.draw {
-        Draw::Triangles => PrimitiveTopology::TriangleList,
+        Draw::Triangles | Draw::Sprite => PrimitiveTopology::TriangleList,
         Draw::Lines | Draw::LineStrip | Draw::LineLoop => PrimitiveTopology::LineList,
         Draw::Points => PrimitiveTopology::PointList,
     };
-    let mut mesh = Mesh::new(topology, RenderAssetUsages::RENDER_WORLD);
+    // A small mesh keeps its CPU copy, for an animator's attribute edits
+    // (`crate::animate`: the flag's cloth).
+    let usage = if keeps_cpu_copy(scene, key) {
+        RenderAssetUsages::default()
+    } else {
+        RenderAssetUsages::RENDER_WORLD
+    };
+    let mut mesh = Mesh::new(topology, usage);
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, items::<3>(pos, 0.0));
     let same = |b: &Buffer| b.count() == n;
     let mut has_normals = false;
@@ -239,7 +273,7 @@ pub fn build_mesh(scene: &Scene, key: MeshKey) -> Option<Mesh> {
     let seq =
         |v: Option<Vec<u32>>| v.unwrap_or_else(|| (s as u32..(s + c).min(n) as u32).collect());
     let indices: Option<Vec<u32>> = match key.draw {
-        Draw::Triangles | Draw::Lines | Draw::Points => {
+        Draw::Triangles | Draw::Lines | Draw::Points | Draw::Sprite => {
             if whole {
                 None
             } else {
@@ -322,20 +356,29 @@ fn build_points(scene: &Scene, m: &MeshDesc, key: MeshKey) -> Option<Mesh> {
         None
     };
     let extra = key.extra.map(|name| extra_items(scene, m, name, n));
+    // The traffic streams: aDir, and aPar's third component (tail light).
+    let dir = (key.extra == Some("aPar")).then(|| extra_items(scene, m, "aDir", n));
     const CORNERS: [[f32; 2]; 4] = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
     let q = drawn.len() * 4;
     let mut p = Vec::with_capacity(q);
     let mut col = Vec::with_capacity(if colors.is_some() { q } else { 0 });
     let mut ex = Vec::with_capacity(q);
+    let mut ex2 = Vec::with_capacity(if dir.is_some() { q } else { 0 });
     let mut idx = Vec::with_capacity(drawn.len() * 6);
     for (k, &i) in drawn.iter().enumerate() {
-        let a = extra.as_ref().map_or(0.0, |e| e[i][0]);
+        let a = extra.as_ref().map_or([0.0; 4], |e| e[i]);
+        // Points carry one value (gsize, ph); the traffic streams two
+        // (aPar.xy), and their third with aDir.
+        let b = if dir.is_some() { a[1] } else { 0.0 };
         for c in CORNERS {
             p.push(pos[i]);
             if let Some(cs) = &colors {
                 col.push(cs[i]);
             }
-            ex.push([a, 0.0, c[0], c[1]]);
+            ex.push([a[0], b, c[0], c[1]]);
+            if let Some(d) = &dir {
+                ex2.push([d[i][0], d[i][1], d[i][2], a[2]]);
+            }
         }
         let b = (k * 4) as u32;
         idx.extend_from_slice(&[b, b + 1, b + 2, b, b + 2, b + 3]);
@@ -349,6 +392,9 @@ fn build_points(scene: &Scene, m: &MeshDesc, key: MeshKey) -> Option<Mesh> {
         mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, col);
     }
     mesh.insert_attribute(ATTRIBUTE_EXTRA, ex);
+    if dir.is_some() {
+        mesh.insert_attribute(ATTRIBUTE_EXTRA2, ex2);
+    }
     mesh.insert_indices(if q <= 65536 {
         Indices::U16(idx.into_iter().map(|i| i as u16).collect())
     } else {
@@ -549,11 +595,14 @@ pub fn stand_in(m: &MaterialDesc) -> StandIn {
         // ShaderMaterials (and sprites) whose look is all shader: additive
         // glows, beams, foam, steam, particles, skid marks. Drawn as plain
         // quads they would be white sheets, so they wait for their kinds.
-        TrafficStreams | SkyGlow | Surf | LighthouseBeam | Steam | Particles | SkidMarks
-        | PoliceGlow | Sprite => StandIn::Hidden,
+        Surf | LighthouseBeam | Steam | Particles | SkidMarks | PoliceGlow => StandIn::Hidden,
+        // Ported as blocks of three_material.wgsl (WP 3.9): unlit.
+        TrafficStreams | SkyGlow => StandIn::Unlit,
         _ => match m.ty.as_str() {
             "MeshStandardMaterial" | "MeshPhysicalMaterial" | "MeshLambertMaterial" => StandIn::Lit,
-            "MeshBasicMaterial" | "LineBasicMaterial" | "PointsMaterial" => StandIn::Unlit,
+            "MeshBasicMaterial" | "LineBasicMaterial" | "PointsMaterial" | "SpriteMaterial" => {
+                StandIn::Unlit
+            }
             _ => StandIn::Hidden,
         },
     }
@@ -719,6 +768,55 @@ mod tests {
             vec![[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]]
         );
         assert_eq!(m.attribute("gsize"), None);
+    }
+
+    #[test]
+    fn traffic_streams_carry_both_attributes() {
+        // The square's corners as traffic lights: aDir and aPar per point.
+        let mut s = square();
+        let n = s.buffers.len() as u32;
+        s.buffers.push(Buffer {
+            item_size: 3,
+            normalized: false,
+            data: BufferData::F32((0..12).map(|i| i as f32).collect()),
+        });
+        s.buffers.push(Buffer {
+            item_size: 3,
+            normalized: false,
+            data: BufferData::F32(vec![
+                0.1, 0.5, 0.0, 0.2, 0.6, 1.0, 0.3, 0.7, 0.0, 0.4, 0.8, 1.0,
+            ]),
+        });
+        for (name, acc) in [("aDir", n), ("aPar", n + 1)] {
+            s.meshes[0].attributes.push(mr_scene::AttributeRef {
+                name: name.into(),
+                accessor: acc,
+                instanced: false,
+                mesh_per_attribute: None,
+            });
+        }
+        let key = MeshKey {
+            mesh: 0,
+            start: 0,
+            count: 3,
+            draw: Draw::Points,
+            colors: false,
+            lit: false,
+            extra: Some("aPar"),
+        };
+        let q = build_mesh(&s, key).unwrap();
+        let Some(bevy::mesh::VertexAttributeValues::Float32x4(e)) = q.attribute(ATTRIBUTE_EXTRA)
+        else {
+            panic!("aPar")
+        };
+        let Some(bevy::mesh::VertexAttributeValues::Float32x4(e2)) = q.attribute(ATTRIBUTE_EXTRA2)
+        else {
+            panic!("aDir")
+        };
+        // The second point (index 1): aPar.xy and its corner; aDir, aPar.z.
+        assert_eq!(e[4], [0.2, 0.6, -1.0, -1.0]);
+        assert_eq!(e2[4], [3.0, 4.0, 5.0, 1.0]);
+        assert_eq!(e2.len(), 12);
     }
 
     #[test]

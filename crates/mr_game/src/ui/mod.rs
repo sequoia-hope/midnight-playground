@@ -183,6 +183,12 @@ pub struct UiState {
     pub races: u32,
     /// `__mr.reveal(id)`: scroll that control to the middle.
     pub reveal: Option<String>,
+    /// For the sound (`sync_audio`): the menu buttons' clicks, a level
+    /// tab's music, Next track, and `toMenu`.
+    clicks: Vec<&'static str>,
+    audio_level: Option<String>,
+    next_track: bool,
+    to_menu: bool,
     /// Gamepads connected (`body.pad`): none until WP 6.4 reads them.
     pub pads: bool,
     /// The page's safe-area inset at the top, CSS px.
@@ -276,16 +282,24 @@ pub fn plugin(app: &mut App) {
             press: None,
             races: 0,
             reveal: None,
+            clicks: Vec::new(),
+            audio_level: None,
+            next_track: false,
+            to_menu: false,
             pads: false,
             inset_top: 0.0,
         })
         .add_systems(Startup, (widgets::load_fonts, widgets::make_icons))
         .add_systems(
             Update,
-            (pointer, keys, flow, build, after_layout)
+            (pointer, keys, sync_audio, flow, build, after_layout)
                 .chain()
                 .before(PlayFrame),
         );
+    #[cfg(not(target_arch = "wasm32"))]
+    if o.param("uiscript").is_some() {
+        app.add_systems(Update, ui_script.before(pointer));
+    }
     #[cfg(target_arch = "wasm32")]
     web::plugin(app);
 }
@@ -436,6 +450,59 @@ fn flow(
         ui.dropdown = None;
         ui.focus = None;
         ui.dirty = true;
+    }
+}
+
+/// The menus and the race's sound (`play::audio`) share the volumes and the
+/// track choice (the same store keys): a change on the menus reaches the
+/// sound (`applyVolume`, `pickMusic`), and one the sound makes (M toggles
+/// the music) reaches the menus. Then the queued clicks, a level tab's
+/// music, Next track and `toMenu`.
+fn sync_audio(
+    mut ui: ResMut<UiState>,
+    shared: Option<NonSend<crate::play::audio::Shared>>,
+    mut last: Local<Option<(f64, f64, String)>>,
+) {
+    let Some(shared) = shared else { return };
+    let Ok(mut a) = shared.0.try_borrow_mut() else {
+        return;
+    };
+    let ours = (
+        ui.settings.music,
+        ui.settings.sfx,
+        ui.settings.track.clone(),
+    );
+    let theirs = (a.settings.music, a.settings.sfx, a.settings.track.clone());
+    if last.as_ref().is_some_and(|l| *l != theirs) {
+        ui.settings.music = theirs.0;
+        ui.settings.sfx = theirs.1;
+        ui.settings.track = theirs.2.clone();
+        ui.dirty = true;
+    } else if last.as_ref() != Some(&ours) || theirs != ours {
+        let level = ui.settings.level.clone();
+        a.menu_settings(
+            crate::play::audio::Settings {
+                music: ours.0,
+                sfx: ours.1,
+                track: ours.2.clone(),
+            },
+            &level,
+        );
+    }
+    *last = Some((a.settings.music, a.settings.sfx, a.settings.track.clone()));
+    if std::mem::take(&mut ui.to_menu) {
+        a.to_menu();
+    }
+    if let Some(l) = ui.audio_level.take() {
+        a.menu_level(&l);
+    }
+    if std::mem::take(&mut ui.next_track) {
+        a.next_track();
+    }
+    for c in std::mem::take(&mut ui.clicks) {
+        if a.audio.ready() {
+            a.ui_click(c);
+        }
     }
 }
 
@@ -826,6 +893,25 @@ fn slide(ui: &mut UiState, ctx: &mut ActCtx, which: Sl, x: f32, w: f32, px: f32)
 fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Act) {
     let busy = ui.starting.is_some();
     ui.dirty = true;
+    // The menus' buttons click (`main.js`'s document click handler; Race,
+    // Race again and Restart make the audio's "start" as the race starts).
+    if matches!(
+        act,
+        Act::Level(_)
+            | Act::Car(_)
+            | Act::Mode(_)
+            | Act::Resume
+            | Act::EndRun
+            | Act::Quit
+            | Act::Menu
+            | Act::PadSetup
+            | Act::PadDone
+            | Act::PadDefaults
+            | Act::PadBind(_)
+            | Act::NextTrack
+    ) {
+        ui.clicks.push("click");
+    }
     match act {
         Act::Level(id) => {
             // `if (mode !== 'menu') return;`
@@ -834,6 +920,7 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
             }
             ui.settings.level = id.into();
             ctx.store.set_str("level", id);
+            ui.audio_level = Some(id.into());
             // Build the new level behind the menu so it's ready when you
             // start.
             if ctx.opts.o.level != id {
@@ -927,7 +1014,8 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
         Act::PadDone => {
             ui.screen = ui.pad_return;
         }
-        Act::PadBind(_) | Act::PadDefaults | Act::NextTrack => {
+        Act::NextTrack => ui.next_track = true,
+        Act::PadBind(_) | Act::PadDefaults => {
             // Gamepads (WP 6.4) and music (M5) are not wired to the menus
             // yet.
         }
@@ -959,6 +1047,7 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
             to_attract(&mut ctx.cs, &ctx.tr);
             ui.screen = Screen::Menu;
             ui.scroll = 0.0;
+            ui.to_menu = true;
         }
     }
     let _ = &ctx.status;
@@ -970,6 +1059,71 @@ pub fn sel_id(sel: Sel) -> &'static str {
         Sel::Steer => "opt-steer",
         Sel::Pedals => "opt-pedals",
     }
+}
+
+/// Natively, `--query uiscript=lvl-tab-seaside,lvl-tab-sierra,btn-start`:
+/// activates those controls in turn, each once the client is ready on the
+/// menu (a level tab's build done), logs each step, and exits when the
+/// race after the last step is racing. A smoke test of the menu flow
+/// where there is no page to drive it (the web's is `__mr`).
+#[cfg(not(target_arch = "wasm32"))]
+fn ui_script(
+    mut ui: ResMut<UiState>,
+    status: Res<Status>,
+    controls: ControlQuery,
+    mut ctx: ActCtx,
+    mut step: Local<usize>,
+    mut wait: Local<u32>,
+    mut exit: MessageWriter<bevy::app::AppExit>,
+) {
+    let steps: Vec<String> = ctx
+        .opts
+        .o
+        .param("uiscript")
+        .unwrap_or("")
+        .split(',')
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect();
+    if *step >= steps.len() {
+        if ctx
+            .play
+            .race
+            .as_ref()
+            .is_some_and(|r| r.state() == RaceStateKind::Racing)
+            && ui.starting.is_none()
+        {
+            info!("uiscript: racing on {}; done", ctx.opts.o.level);
+            exit.write(bevy::app::AppExit::Success);
+        }
+        return;
+    }
+    if !status.ready || ui.screen != Screen::Menu || ui.starting.is_some() {
+        *wait = 0;
+        return;
+    }
+    // A few frames on the menu first, so its layout is there.
+    *wait += 1;
+    if *wait < 10 {
+        return;
+    }
+    *wait = 0;
+    let id = &steps[*step];
+    let act = controls
+        .iter()
+        .find(|(_, c, ..)| &c.id == id)
+        .and_then(|(_, c, ..)| c.act.clone());
+    let Some(act) = act else {
+        error!("uiscript: no control {id}");
+        exit.write(bevy::app::AppExit::error());
+        return;
+    };
+    info!(
+        "uiscript: {id} (level {}, scenes {})",
+        ctx.opts.o.level, status.scenes
+    );
+    activate(&mut ui, &mut ctx, &controls, act);
+    *step += 1;
 }
 
 /// The keyboard on the menus: Tab and Shift+Tab move the focus through the

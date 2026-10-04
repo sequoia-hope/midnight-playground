@@ -190,9 +190,13 @@
     mr.wasmMemoryBytes = () => wasm.memory.buffer.byteLength;
 
     // 3. The gesture bridge: inside the handler, into the wasm (SPEC 8.4).
-    for (const type of ['pointerup', 'touchend', 'click', 'keydown']) {
+    // Every gesture wakes the sound (pointerdown too: D510–D517); the
+    // up-events also carry where the pointer is, for the controls that go
+    // fullscreen inside the tap (Race, Race again, Restart; D577).
+    for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
       window.addEventListener(type, (e) => {
         glue.gesture(type);
+        if (type === 'pointerdown' || type === 'keydown') return;
         const t = e.changedTouches ? e.changedTouches[0] : e;
         if (t && t.clientX !== undefined) glue.gesture_at(type, t.clientX, t.clientY);
       }, { capture: true, passive: true });
@@ -222,6 +226,9 @@
     mr.ui = (id) => (mr.uiNodes || {})[id] ?? null;
     mr.reveal = (id) => glue.ui_reveal(String(id));
     mr.stage = (c) => glue.stage(typeof c === 'string' ? c : JSON.stringify(c));
+    // __mr.flyTo(station): the fly camera to a screenshot station; then
+    // __mr.flyQuiet counts settled frames (a test hook).
+    mr.flyTo = (p) => { mr.flyQuiet = 0; glue.fly_to(p.s, p.h, p.back, p.lat || 0, p.yaw || 0, p.pitch || 0); };
     glue.run();
 
     // 5. The scene (30–80 %), and Seaside's survey for its Track.
@@ -236,6 +243,8 @@
           .catch((e) => glue.survey_failed(String(e.message || e)));
       }
       level = lv;
+      // ?world=gen: the client builds the level itself (Sierra), no download.
+      if (params.get('world') === 'gen' && glue.generates_scene(lv)) { show(0.3, `Building ${lv}…`); return; }
       if (!sceneUrl) { glue.scene_failed('no scene: build.json has no scene directory and no ?scene= was given'); return; }
       let bytes;
       try {
@@ -247,6 +256,9 @@
         glue.scene_failed(`${sceneUrl}: ${e.message || e}\n(make the exports with: node tools/parity/scene-export.mjs)`);
         return;
       }
+      // The client may still be building the level's world for its
+      // animators: the scene goes in once that memory is free (D491).
+      while (glue.world_pending()) { show(0.8, `Building ${lv}…`); await nextFrame(); }
       show(0.8, 'Reading the scene…');
       // Let the bar paint before the synchronous parse.
       await nextFrame();

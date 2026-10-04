@@ -4,9 +4,8 @@
 // and results screen with best times, Race again, and ending a cruise.
 //
 // The DOM reads become `__mr.ui(id)`, `__race` is `__mr.race`, the staging
-// (`teleportToFinish`, the cruise score) is `__mr.stage`. The client has no
-// sound yet (M5's hook-up is in progress), so the suites' AudioContext
-// checks are left out.
+// (`teleportToFinish`, the cruise score) is `__mr.stage`; the AudioContext's
+// state is `__mr.audio.context`.
 //
 //   cargo xtask web && node --test tools/parity/e2e/race-flow.test.mjs
 
@@ -55,7 +54,9 @@ test('desktop: Esc pauses and freezes the race; Resume carries on', async () => 
     await waitRacing(game);
     await game.key('Escape');
     await expectScreen(game, 'pause');
-    assert.equal((await game.snapshot()).mode, 'paused');
+    const s = await game.snapshot();
+    assert.equal(s.mode, 'paused');
+    assert.equal(s.audio, 'suspended', 'the sound stops while paused');
     const t0 = await game.eval('__mr.race.time');
     await sleep(500);
     assert.equal(await game.eval('__mr.race.time'), t0, 'the clock is frozen');
@@ -63,6 +64,7 @@ test('desktop: Esc pauses and freezes the race; Resume carries on', async () => 
 
     await game.click('#btn-resume');
     await expectScreen(game, 'none');
+    await game.waitFor(() => window.__mr.audio?.context === 'running', { timeout: 5000, what: 'the sound to resume' });
     assert.equal((await game.snapshot()).mode, 'race');
     await game.waitFor(`__mr.race.time > ${t0}`, { timeout: 5000, what: 'the clock to run again' });
     assert.deepEqual(game.errors, []);
@@ -142,6 +144,20 @@ test('desktop: Restart from the pause menu starts a fresh race', async () => {
   } finally { await game.close(); }
 });
 
+test('desktop: Restart from the pause menu brings the sound back', async () => {
+  const game = await openGame(browser, { query: FAST });
+  try {
+    await startFromMenu(game);
+    await game.key('Escape');
+    await expectScreen(game, 'pause');
+    assert.equal((await game.snapshot()).audio, 'suspended');
+    await markRace(game);
+    await game.click('#btn-restart');
+    await game.waitFor(newRaceStarted, { timeout: 20000, what: 'a new race' });
+    await game.waitFor(() => window.__mr.audio?.context === 'running', { timeout: 5000, what: 'the sound to come back after Restart' });
+  } finally { await game.close(); }
+});
+
 test('phone: Main menu from pause returns to the menu with the pads hidden; Race works again', async () => {
   const game = await openGame(browser, { device: 'phone', query: FAST });
   try {
@@ -153,6 +169,7 @@ test('phone: Main menu from pause returns to the menu with the pads hidden; Race
     assert.equal((await game.snapshot()).mode, 'menu');
     assert.equal(await isShown(game, '#touch [data-tap="pause"]'), false, 'no pads on the menu');
     assert.equal(await game.eval('window.__mr.race === undefined'), true, 'no race (and no HUD) on the menu');
+    await game.waitFor(() => window.__mr.audio?.context === 'running', { timeout: 5000, what: 'the sound to unpause on the menu' });
     await markRace(game);
     await game.tap('#btn-start');
     await game.waitFor(newRaceStarted, { timeout: 30000, what: 'a new race from the menu' });
@@ -248,6 +265,7 @@ test('cruise: End run in the pause menu shows the score and saves the best', asy
     assert.deepEqual(res.rows[3], ['Near misses', '3']);
     assert.equal(res.best, 'Best score: 12,345');
     assert.equal(await stored(game, 'bestScore.cruise'), 12345);
+    await game.waitFor(() => window.__mr.audio?.context === 'running', { timeout: 5000, what: 'the sound to unpause on the results' });
 
     await game.click('#btn-menu');
     await expectScreen(game, 'menu');
