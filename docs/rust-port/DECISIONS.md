@@ -5218,3 +5218,192 @@ in the client from each level's world generation, which now fits the
 budget, D675, or cut from the exports), their length, and the memory they
 may hold on a phone are for the package that does it; recorded in
 DEVIATIONS.md when it lands.
+
+## Menu section decisions
+
+D676's package: the menu switches levels at once, over a short section of
+each level built in the client (`crates/mr_game/src/preview.rs`,
+`crates/mr_worldgen/src/section.rs`). The deviation is in DEVIATIONS.md.
+
+## D740. The menu flies over sections, prepared for every level
+
+2026-10-04 (D676). A menu-first run (`ui::menu_first`, not a test scene,
+station run, fly camera or given scene file; `?sections=0` keeps the old
+boot) downloads no level. The client builds a **section** of every level
+with `mr_worldgen` (D741), spawns each once under a root entity of its own
+(hidden unless shown) and shows the selected one behind the menu. A level
+tab or card only selects (it saves `mr.level` and plays the level's music,
+as before): if that level's section is up it is shown in the same frame,
+else as soon as it is. Showing one swaps what the client's single-scene
+systems read (D742), so the attract camera, sky and time of day, fog,
+environment map, local lights and the scenery's animators run on the
+section as on the level. Race frees the sections and builds or downloads
+the level whole behind the loading screen (D743). Generated in the client
+rather than cut from the exports: nothing to download (the exports are 39
+to 210 MB, D439), and the section is the level's own build, so it draws
+what the level draws there.
+
+## D741. What a section is: the level's build near the attract camera's run
+
+2026-10-04. The attract camera starts at `startS + 60` (`toMenu`) and
+flies **500 m** (31 s at 16 m/s), then starts over (`preview::wrap_attract`;
+the JS's runs the whole first zone, 2 to 14 km, which a section does not
+have). The stretch built is `startS + 20` to `startS + 660` (the eye is
+22 m behind, the camera looks 20 m ahead, and 100 m of road beyond the
+run's end). `mr_worldgen::section::Section` restricts a level's build,
+with `World::section` set (a new field, `None` for a level, which changes
+nothing):
+- **Terrain**: only tiles within **2,500 m** of the stretch are meshed
+  (`section::keep_tiles` in the terrain's mesh stage), at the steps and
+  seams the whole grid gives them; the far ridges stay, the rest of the
+  route's land is not built.
+- **Scenery**: every module's `plan()` runs (its flattens and carves shape
+  the land everywhere, so heights are the level's), but its `build()` only
+  when one of the zones naming it passes within 600 m of the stretch
+  (`section::builds_module`): Sierra builds Mountain only.
+- **The cut**: after the last job, every drawable whose bounds (an
+  InstancedMesh's: all its drawn instances') lie wholly beyond **600 m**
+  of the stretch leaves the tree, and geometry nothing drawn uses is
+  dropped before the scene is assembled (`section::cut`,
+  `section::finish`). Animators addressing what was cut find nothing
+  (`WorldBuild::resolve` already drops such edits).
+
+Seeds and the order of draws are the level's, so what is kept is what the
+level draws: natively, 200 m into the run, the section and the whole
+level (`?world=gen` for Sierra, the exports for the others; the other
+sections built with all of `mr_worldgen`'s scenery for the comparison,
+`MR_SECTION_SCENERY=1`) give the same pictures for all six levels, the
+only differences beyond 600 m (a far hill on Seaside, a distant lorry on
+Desert). The radii and length are `preview::{CAMERA_RUN, TERRAIN_RADIUS,
+SCENERY_RADIUS}`; at 600 m the city skylines the sections look at stay
+(Cruise's towers are within it). `cargo run --release -p mr_worldgen
+--example section_cost -- <levels>` (`LEN=640 RS=600 RT=2500` for a
+section, `JOBS=1` per job) times each job and counts the heap. Natively
+(load 7): sections build in 0.25 s (Seaside) to 1.1 s (Streets, Cruise),
+the whole levels in 0.25 to 1.6 s.
+
+## D742. How sections are held and shown
+
+2026-10-04. `preview::Previews` holds one entry per level, built one at a
+time: natively on a thread, on the web a few jobs a frame (30 ms while the
+loading screen is up, 8 ms behind the menu), then spawned by the loader a
+slice a frame (`loader::step_section`, `loader::finish_section`: the level
+path's code, with every entity under the section's root, `Build::under`).
+Its CPU copy goes as a level's does; what stays is its world (animators,
+sky), its animators' index (`animate::SceneIndex`, entities set per node
+from the root's children), its Track, lights and sky noise. Showing one
+(`preview::show`, an exclusive system, under 0.4 ms) hides the root shown
+before, makes the new one visible, and puts its Track and level in
+`TrackRes`, a new `SkyState` in `SkyRes` (the environment map rebuilds),
+its spot and point light in `Lighting`, its noise in `EnvRequest`, its
+world in `animate::WorldGen` (`install_world`) and its index as the
+`SceneIndex` resource, clears the animation blocks (material numbers are
+per scene), sets `opts.o.level` and the attract camera. Nothing else
+changes; `animate::wants_world` is false while sections are drawn, so no
+level world is built for animators behind them. The first section goes
+through `AppState::Running` and the warm-up (D390) behind the loading
+screen; later ones get their own stand-ins (`SectionWarm`), despawned once
+nothing compiles, so a tab never compiles a pipeline (no frame over 50 ms
+in the 60 after each switch). The page skips its boot download when
+`menu_sections()` says so and fetches Seaside's survey (0.6 MB) for its
+section (`section_survey`). Order: the saved level's first; the others
+once the menu is ready (not during its warm-up), the largest build peaks
+first (Streets, Cruise, Desert, Coast, Sierra, Seaside: D745), a tapped
+tab's level moving to the front. Natively `--query
+sectionshots=<dir>[&shot_s=200&menu=0]` saves each level's section and
+exits; `menu=0` draws no screens.
+
+## D743. Race, Main menu and the level drawn whole
+
+2026-10-04. Race (`ui` Act::Start) frees the sections (roots despawned,
+worlds and indexes dropped, any build in flight abandoned) and, unless
+that level is drawn whole already, asks for it as a tab did before
+(`__mr.reload` on the web, a thread natively): downloaded, or built by the
+client with `?world=gen`, behind the loading screen; the countdown arms
+once the level drawn whole is that level (`Previews::full`) and ready.
+Main menu after a race keeps the raced level drawn whole for its tab, as
+the JS's `toMenu` does (attract camera at `startS + 60`, its own run), and
+prepares the six sections again behind the menu, that level's last. The
+first time another level is shown the whole level is freed (its entities
+despawned, its world dropped); Race on the level still drawn whole starts
+at once, as Race again does. `unload_scene` despawns with `try_despawn`
+(a section's entities go with their root). The level-switch suite
+(`tools/parity/e2e/level-switch.test.mjs`) now checks that a tab loads no
+scene and Race loads one; `tools/parity/e2e/sections.test.mjs` checks the
+whole flow and prints the measurements of D745.
+
+## D744. Levels the client does not build yet: terrain, road, sky and sea
+
+2026-10-04. A section of a level that `animate::generated` does not name
+is built from the same stages with no scenery (terrain, road, sky, sea;
+Seaside with its survey and ground colours), the modules' `plan()` not
+run: a stand-in until that level's client build lands. On this branch
+that is every level but Sierra; the agents adding Seaside and Cruise
+(D680+), Coast (D700+) and Desert and Streets (D720+) make
+`animate::generated` true for theirs, and their sections then come from
+`animate::section_build` (their `new_build`, with the section set). When
+merging: `section_build` calls `new_build(level)`; with D680's change it
+becomes `new_build(level, true)`, and Seaside's survey and photo come from
+`levels::seaside`'s stash (the page then fetches the photo at boot in a
+sections run too, `loadPhoto`, and `preview::level_ready` should wait on
+`levels::inputs_ready(level, true)` as well as its own survey). A section
+builds its terrain tiles three to a job (`terrain_mesh`, sections only),
+so behind the menu no tile job holds a frame long.
+
+## D745. Measurements
+
+2026-10-04, release web build, headless Chrome on this machine's RTX 3060
+(1280 × 800), `tools/parity/e2e/sections.test.mjs`; the machine shared
+(load averages given; other runs holding GPU memory).
+- **Wasm size**: 8.12 MB (WebGPU) and 8.50 MB (WebGL2) after gzip, +0.03
+  MB over b367862 (D675's 8.09 / 8.47).
+- **Time to the menu** (navigation to the menu up, every pipeline
+  compiled): 4.59 and 4.65 s at load 1.8 to 8.5 (first frame 1.9 s, the
+  Sierra section built in 1.3 s and spawned in 0.1 s); the JS game reaches
+  its menu in 3.2 s here (BASELINE), so within SPEC 6.6's 5 s; nothing is
+  downloaded but the client and the survey. All six sections are up 4.8 s
+  after the first began.
+- **Tab switch**: the section shows in the frame after the click (the
+  harness's click itself waits two frames: 78 to 84 ms from the click to
+  the report); natively `show` takes 0.1 to 0.3 ms. No frame over 50 ms
+  in the 60 frames after any switch.
+- **Memory with all six held** (wasm high-water): 202 to 217 MB with
+  this branch's sections (Sierra's whole, the others terrain and road),
+  against 488 MB for the boot that downloaded Sierra's export (D492). With
+  every level's scenery (a measurement build linking all of
+  `mr_worldgen`'s scenery, what the client will hold once every level is
+  generated): 160 MB at the menu, **508 to 565 MB** once all six are up
+  (load 7 to 21). That is over SPEC 6.6's 512 MB, and it comes from one
+  build, not from what is held: Streets' downtown module peaks at 448 MB of
+  heap while it builds (23 MB in use before it, 164 MB after; the whole
+  level's build peaks at 451 MB), Cruise's city at 278 MB; the other
+  sections peak at 28 to 112 MB (`section_cost`, natively). The sections
+  held cost little (the GPU holds their meshes and images), and the
+  heaviest are built right after the first, while little else is held. A
+  race on a client-built Streets reaches the same peak.
+- **Frames behind the menu** while the other five build: with this
+  branch's sections p50 16.7 ms, 11 frames over 50 ms, the longest 100
+  ms; with every level's scenery, 17 to 43 frames over 50 ms, the longest
+  1.2 s (2.2 s at load 21): a scenery module's `build()` is one job
+  (Streets' downtown, Cruise's city, Desert's, 1 to 1.5 s each in wasm
+  here).
+- Race from the menu (Coast, its terrain-road-sky export through the
+  harness): racing 1.5 s after the click; then Main menu, the sections
+  again, Coast freed for Desert's section, and a race on Seaside.
+
+## D746. Open, for the owner
+
+2026-10-04. (1) **Memory**: with every level generated, the menu's
+high-water reaches about 510 to 565 MB because Streets' world build
+peaks at about 450 MB of heap (D745); a Streets race would too. Either
+the Streets module's build gets leaner (its agent is told), or the menu
+builds Streets' section only when its tab is first chosen (that tab then
+waits about 2 s on a desktop, longer on a phone), or the budget is
+looked at again. Not decided here; the sections stay eager. (2)
+**Hitches behind the menu**: a scenery module's build cannot be split, so
+the first seconds of the menu stutter while the others build (frames up
+to 1.2 s here, more on a phone); the alternatives are building them all
+behind the loading screen (about 11 s here instead of under 5, against
+the JS's 3.2 s) or a worker (a second wasm instance and its memory). (3)
+The camera's 500 m run and the radii (D741) are a first choice; phone
+checks of the time to the menu and of memory are owed.
