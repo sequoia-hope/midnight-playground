@@ -18,6 +18,7 @@ pub mod harbor;
 pub mod material;
 pub mod mountain;
 pub mod object;
+pub mod raceway;
 pub mod road;
 pub mod scenery;
 pub mod sea;

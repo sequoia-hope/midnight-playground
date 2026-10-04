@@ -32,7 +32,9 @@
 //! [`Build`]: on the web a few jobs per frame, natively all at once.
 
 use std::collections::VecDeque;
+use std::sync::Arc;
 
+use mr_levels::SeasideData;
 use mr_levels::world::WorldData;
 use mr_scene::{NightParam, Scene};
 use mr_track::{Level, Track};
@@ -159,6 +161,12 @@ impl<F: FnMut(&UpdateCtx, &mut Vec<Edit>) + Send + Sync> Animator for F {
     }
 }
 
+/// `world.onCountdown(cd)`: scenery that follows the start (Seaside
+/// Raceway's start lights). The race calls it every frame with the seconds
+/// of the countdown left (3.999 to 0), or -1 once racing; it writes its
+/// changes as [`Edit`]s.
+pub type CountdownFn = Box<dyn FnMut(f64, &mut Vec<Edit>) + Send + Sync>;
+
 /// An animator built in a [`Part`], its handles moved by the merge.
 struct Rebased {
     inner: Box<dyn Animator>,
@@ -210,6 +218,12 @@ pub struct World {
     pub sky: Option<Sky>,
     /// `world.sea`, on levels with a sea.
     pub sea: Option<Sea>,
+    /// `world.level.data`: the survey a level built from data files reads
+    /// (Seaside Raceway's), which the caller loads with the level (D54) and
+    /// sets with [`World::with_level_data`]. Its scenery needs it to build.
+    pub level_data: Option<Arc<SeasideData>>,
+    /// `world.onCountdown`, where scenery sets one.
+    pub on_countdown: Option<CountdownFn>,
 }
 
 impl World {
@@ -236,7 +250,16 @@ impl World {
             road: None,
             sky: None,
             sea: None,
+            level_data: None,
+            on_countdown: None,
         }
+    }
+
+    /// The world of a level built from survey data (Seaside Raceway):
+    /// `world.level.data`.
+    pub fn with_level_data(mut self, data: Arc<SeasideData>) -> World {
+        self.level_data = Some(data);
+        self
     }
 
     /// The track (surveyed by the first job).
@@ -286,6 +309,7 @@ impl World {
             handles,
             log: self.graph.log,
             sky: self.sky,
+            on_countdown: self.on_countdown,
         }
     }
 }
@@ -311,6 +335,8 @@ pub struct WorldBuild {
     /// The sky (`world.sky`): the time of day along the route and the
     /// handles of the dome and the lights.
     pub sky: Option<Sky>,
+    /// `world.onCountdown`, where the scenery set one ([`WorldBuild::countdown`]).
+    pub on_countdown: Option<CountdownFn>,
 }
 
 /// A night parameter's value at night factor n: `day + (night - day) * n`.
@@ -354,6 +380,17 @@ impl WorldBuild {
                 })
             })
             .collect()
+    }
+
+    /// `world.onCountdown?.(cd)`: what the race calls every frame (`cd` the
+    /// seconds of the countdown left, or -1 once racing), its edits
+    /// resolved to the scene; nothing on a level without one.
+    pub fn countdown(&mut self, cd: f64) -> Vec<SceneEdit> {
+        let mut edits = Vec::new();
+        if let Some(f) = &mut self.on_countdown {
+            f(cd, &mut edits);
+        }
+        self.resolve(edits)
     }
 
     /// One frame of `world.update` after the sky: every animator in order,

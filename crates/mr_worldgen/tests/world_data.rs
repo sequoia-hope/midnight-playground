@@ -20,7 +20,7 @@ mod common;
 use mr_levels::world::{level_world_data, world_data};
 use mr_worldgen::scenery::{plan_only_factory, scenery_factory};
 use mr_worldgen::terrain_mesh::terrain_stages;
-use mr_worldgen::world::{Build, Stages, World, level_jobs};
+use mr_worldgen::world::{Build, Stages, level_jobs};
 use serde_json::Value;
 
 const GOLDEN: &str = include_str!("../../../parity/golden/sim/world-data.json");
@@ -45,7 +45,7 @@ fn world_data_equals_the_js_world() {
         } else {
             level_jobs(stages, scenery_factory(rec))
         };
-        let mut b = Build::new(World::new(common::level(id)), jobs);
+        let mut b = Build::new(common::world(id), jobs);
         while !b.is_done() {
             b.step().expect("the level builds");
         }
