@@ -431,6 +431,7 @@ a phone, as G1 asks.
 | Device | Build | Level | fps median / 5th | Frame ms p50 / p95 / p99 / max | > 50 ms (30 s / all) | First frame | Ready | wasm MB after load → reload 10 | Notes |
 |---|---|---|---:|---:|---:|---:|---:|---:|---|
 | iPhone | WebGPU | sierra | | | | | | | |
+| iPhone (Safari 26.6.1, which reports itself as a Mac; 1320×2388 @ dpr 3, portrait) | WebGPU (Apple adapter) | seaside, quick look, hq off | 60 / 59.9 | 17 / 17 / 17 / 72 | 2 / 2 | 1.05 s | 10.47 s (37.5 MB scene downloaded in 3.7 s over the tailnet; 14 warm-up pipelines) | 168 → 168 (no reloads) | 2026-10-04, build 9b573da. Slow frames 72 ms at s 648 and 51 ms at s 1458, nothing else over 21 ms; no stall near s 3100 to 3300, unlike both Firefox runs |
 | iPhone | WebGPU | coast | | | | | | | |
 | iPhone | WebGL2 | sierra | | | | | | | |
 | Owner's Linux desktop, Firefox 154 | WebGL2 (picked by itself: no WebGPU) | seaside, quick look, hq on, 3373×1323 @ dpr 1 | 60 / 52 (vsync) | 17.1 / 17.1 / 33.1 / 532.8 | 1 / 2 | 0.34 s | 1.37 s (37.5 MB scene in 0.2 s; 14 warm-up pipelines) | 159 → 159 (no reloads) | 2026-10-04, build 9b573da. The 50.2 ms frame is at 0.2 s, just after ready; the 532.8 ms one at 53.6 s, s 3272, with no pipeline compiled after warm-up |
