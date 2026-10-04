@@ -23,7 +23,7 @@ pub const LIGHT_SLOTS: usize = 512;
 pub const G_BLOCKS: usize = G_LIGHTS + LIGHT_SLOTS / 4;
 /// Texels per animation block.
 pub const BLOCK_TEXELS: usize = 5;
-/// Animation blocks (materials an animator touches; Sierra: 16).
+/// Animation blocks (materials an animator touches; Sierra: 15 at the start).
 pub const MAX_BLOCKS: usize = 128;
 /// The first texel of the block map: per scene material (its index in
 /// `ThreeParams::slots.z`, less one), the first texel of its block, 0 for
