@@ -5,24 +5,28 @@
 //!
 //! Transforms are the export's world matrices (`matrix_world`), so the node
 //! tree is flattened: nothing in a scene moves yet (animators arrive with
-//! world generation). An `InstancedMesh` becomes one entity per instance,
-//! which Bevy batches back into instanced draws.
+//! world generation). An `InstancedMesh` becomes one entity (per material
+//! group) with its instances in a vertex buffer, drawn as three draws it:
+//! one instanced draw (`render::instancing`, DECISIONS D450).
 
 use crate::convert::{self, Draw, MeshKey, StandIn};
+use crate::render::instancing::{self, InstanceStream, Instances};
 use crate::render::lighting::{Lighting, Point, Spot};
 use crate::render::material::{ThreeKey, three_material};
 use crate::render::pmrem::EnvRequest;
 use crate::render::{SharedImages, SkyMaterial, ThreeMaterial};
 use crate::status::Status;
 use crate::warmup::{Combos, Layout};
-use bevy::camera::visibility::NoFrustumCulling;
+use bevy::camera::primitives::{Aabb, MeshAabb};
+use bevy::camera::visibility::{NoAutoAabb, NoFrustumCulling};
 use bevy::light::{NotShadowCaster, NotShadowReceiver};
-use bevy::math::{DVec3, Mat4, Vec3, Vec4};
-use bevy::mesh::MeshTag;
+use bevy::math::{DMat4, DVec3, Mat4, Vec3, Vec3A, Vec4};
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
+use bevy::render::batching::NoAutomaticBatching;
 use mr_scene::{MaterialKind, NodeType, Scene};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Everything spawned from a scene, for teardown.
 #[derive(Component)]
@@ -31,55 +35,6 @@ pub struct SceneEntity;
 /// The sky dome, which follows the focus as `Sky.update` moves it.
 #[derive(Component)]
 pub struct SkyDome;
-
-/// `world.nightMaterials` (`World.js` `addNight`): material properties that
-/// follow nightfall, `value = day + (night - day) × n`. Every one in the
-/// exports is an `emissiveIntensity`.
-#[derive(Resource, Default)]
-pub struct NightMaterials {
-    pub entries: Vec<NightEntry>,
-    /// The night factor last applied.
-    pub last: Option<f64>,
-}
-
-pub struct NightEntry {
-    pub materials: Vec<Handle<ThreeMaterial>>,
-    /// The material's `emissive` colour (three's uniform is colour ×
-    /// intensity).
-    pub emissive: [f64; 3],
-    pub day: f64,
-    pub night: f64,
-}
-
-/// Sets the night-following properties for the sky's night factor (`World
-/// .update`), when it has changed.
-pub fn apply_night(
-    sky: Res<crate::SkyRes>,
-    mut night: ResMut<NightMaterials>,
-    mut assets: ResMut<Assets<ThreeMaterial>>,
-) {
-    let Some(n) = sky.sky.as_ref().map(|s| s.night) else {
-        return;
-    };
-    if night.last == Some(n) {
-        return;
-    }
-    night.last = Some(n);
-    for e in &night.entries {
-        let k = e.day + (e.night - e.day) * n;
-        for h in &e.materials {
-            if let Some(mut m) = assets.get_mut(h) {
-                let w = m.params.emissive.w;
-                m.params.emissive = Vec4::new(
-                    (e.emissive[0] * k) as f32,
-                    (e.emissive[1] * k) as f32,
-                    (e.emissive[2] * k) as f32,
-                    w,
-                );
-            }
-        }
-    }
-}
 
 /// What a finished build leaves behind for the camera and the HUD.
 #[derive(Resource, Default, Clone, Debug)]
@@ -134,8 +89,12 @@ pub struct Build {
     meshes: HashMap<MeshKey, Option<Handle<Mesh>>>,
     /// Each mesh's vertex layout, for the warm-up.
     layouts: HashMap<AssetId<Mesh>, Layout>,
-    /// Per JS material and whether its instances carry colours.
-    materials: HashMap<(u32, bool), Option<Handle<ThreeMaterial>>>,
+    /// Each mesh's bounding-box centre as Bevy computes it (the point
+    /// Bevy sorts a transparent mesh by).
+    centres: HashMap<AssetId<Mesh>, Vec3>,
+    /// Per JS material, whether its instances carry colours, and whether
+    /// it draws an InstancedMesh.
+    materials: HashMap<(u32, bool, bool), Option<Handle<ThreeMaterial>>>,
     /// Each material's pipeline key, for the warm-up.
     keys: HashMap<AssetId<ThreeMaterial>, ThreeKey>,
     /// The material × mesh-layout combinations drawn (SPEC 6.3).
@@ -172,6 +131,7 @@ impl Build {
             images: Vec::new(),
             meshes: HashMap::new(),
             layouts: HashMap::new(),
+            centres: HashMap::new(),
             materials: HashMap::new(),
             keys: HashMap::new(),
             combos: Combos::default(),
@@ -216,8 +176,10 @@ impl Build {
         }
         let h = convert::build_mesh(&self.scene, key).map(|m| {
             let layout = Layout::of(&m);
+            let centre = m.compute_aabb().map_or(Vec3::ZERO, |b| b.center.into());
             let h = assets.add(m);
             self.layouts.insert(h.id(), layout);
+            self.centres.insert(h.id(), centre);
             h
         });
         self.meshes.insert(key, h.clone());
@@ -228,20 +190,41 @@ impl Build {
         &mut self,
         index: u32,
         instance_color: bool,
+        instanced: bool,
         assets: &mut Assets<ThreeMaterial>,
     ) -> Option<Handle<ThreeMaterial>> {
-        if let Some(h) = self.materials.get(&(index, instance_color)) {
+        let cache_key = (index, instance_color, instanced);
+        if let Some(h) = self.materials.get(&cache_key) {
             return h.clone();
         }
         let (scene, images, shared) = (&self.scene, &self.images, &self.shared);
         let m = &scene.materials[index as usize];
-        let h = three_material(scene, m, images, shared, instance_color).map(|m| {
+        // `world.nightMaterials` (`World.js` `addNight`): every one in the
+        // exports is an `emissiveIntensity`, `day + (night - day) × n`;
+        // the shader follows the sky's night factor (D455).
+        let night = scene
+            .night_params
+            .iter()
+            .find(|p| p.material == index && p.prop == "emissiveIntensity");
+        let emissive = m.color("emissive").unwrap_or([0.0; 3]);
+        let h = three_material(scene, m, images, shared, instance_color).map(|mut m| {
+            m.key.instanced = instanced;
+            if let Some(p) = night {
+                let w = m.params.emissive.w;
+                m.params.emissive = Vec4::new(
+                    emissive[0] as f32,
+                    emissive[1] as f32,
+                    emissive[2] as f32,
+                    w,
+                );
+                m.params.night = Vec4::new(p.day as f32, p.night as f32, 1.0, 0.0);
+            }
             let key = m.key;
             let h = assets.add(m);
             self.keys.insert(h.id(), key);
             h
         });
-        self.materials.insert((index, instance_color), h.clone());
+        self.materials.insert(cache_key, h.clone());
         h
     }
 
@@ -359,6 +342,9 @@ fn spawn_node(
     let instances = node
         .instances
         .map(|k| b.scene.instances[k as usize].clone());
+    // An InstancedMesh's stream and world bounding sphere, made at its first
+    // drawn part and shared by its material groups.
+    let mut stream: Option<Option<Stream>> = None;
     let mut spawned = 0;
     for (mi, (start, count)) in parts {
         let mdesc = &b.scene.materials[mi as usize];
@@ -414,7 +400,7 @@ fn spawn_node(
         };
         match &instances {
             None => {
-                let Some(mat) = b.material(mi, false, materials.0) else {
+                let Some(mat) = b.material(mi, false, false, materials.0) else {
                     continue;
                 };
                 b.note_combo(&mesh_h, &mat, node.cast_shadow);
@@ -428,54 +414,105 @@ fn spawn_node(
                 spawned += 1;
             }
             Some(inst) => {
-                // Gather first (the scene is borrowed), then spawn.
-                let list: Vec<(Mat4, Option<[f32; 3]>)> = {
-                    let scene = &b.scene;
-                    let Some(mats) = scene.buffers[inst.matrices as usize].data.as_f32() else {
-                        continue;
-                    };
-                    let colors = inst.colors.map(|c| &scene.buffers[c as usize].data);
-                    (0..inst.count as usize)
-                        .filter_map(|k| {
-                            let local = Mat4::from_cols_slice(mats.get(k * 16..k * 16 + 16)?);
-                            // Zero-scale instances (tumbleweeds not yet
-                            // launched) draw nothing and have no rotation.
-                            if local.determinant().abs() < 1e-12 {
-                                return None;
-                            }
-                            let tint = colors.map(|c| {
-                                let v = |j: usize| c.get(k * 3 + j) as f32;
-                                [v(0), v(1), v(2)]
-                            });
-                            Some((world * local, tint))
-                        })
-                        .collect()
-                };
-                let tinted = inst.colors.is_some();
-                let Some(mat) = b.material(mi, tinted, materials.0) else {
+                let made = stream.get_or_insert_with(|| {
+                    instance_stream(
+                        &b.scene,
+                        inst,
+                        b.offset[i],
+                        &node.matrix_world,
+                        node.receive_shadow,
+                    )
+                });
+                let Some((stream, sphere)) = made.clone() else {
                     continue;
                 };
-                if !list.is_empty() {
-                    b.note_combo(&mesh_h, &mat, node.cast_shadow);
-                }
-                for (m, tint) in list {
-                    let t = Transform::from_matrix(m);
-                    let mut e = commands.spawn((
-                        Mesh3d(mesh_h.clone()),
-                        MeshMaterial3d(mat.clone()),
-                        t,
-                        SceneEntity,
-                    ));
-                    if let Some(c) = tint {
-                        e.insert(MeshTag(pack_tint(c)));
+                let Some(mat) = b.material(mi, inst.colors.is_some(), true, materials.0) else {
+                    continue;
+                };
+                b.note_combo(&mesh_h, &mat, node.cast_shadow);
+                let mut e = commands.spawn((
+                    Mesh3d(mesh_h.clone()),
+                    MeshMaterial3d(mat),
+                    stream,
+                    NoAutomaticBatching,
+                    SceneEntity,
+                ));
+                match sphere {
+                    // three culls the InstancedMesh as a whole by its
+                    // bounding sphere (`Frustum.intersectsObject`). The
+                    // instanced shader ignores the entity's transform, so it
+                    // places the box around that sphere, centred where Bevy
+                    // takes the mesh's centre for the transparent sort.
+                    Some((centre, radius)) if node.frustum_culled => {
+                        let c = b.centres.get(&mesh_h.id()).copied().unwrap_or(Vec3::ZERO);
+                        e.insert((
+                            Transform::from_translation(centre - c),
+                            Aabb {
+                                center: c.into(),
+                                half_extents: Vec3A::splat(radius),
+                            },
+                            NoAutoAabb,
+                        ));
                     }
-                    shadows(&mut e);
-                    spawned += 1;
+                    _ => {
+                        e.insert((Transform::IDENTITY, NoFrustumCulling));
+                    }
                 }
+                shadows(&mut e);
+                spawned += 1;
             }
         }
     }
     spawned
+}
+
+/// An InstancedMesh's stream, and its bounding sphere in world space (centre,
+/// radius) when the export has one.
+type Stream = (Instances, Option<(Vec3, f32)>);
+
+/// An InstancedMesh's instance stream: each instance's world matrix (the
+/// node's, with the models' grid offset, × `instanceMatrix`, in f64), its
+/// `instanceColor` (white without) and the node's `receiveShadow`; and
+/// three's bounding sphere over all the instances, in world space. Zero-scale
+/// instances (the tumbleweeds not yet launched) draw nothing in three and
+/// are left out. None when no instance is drawn.
+fn instance_stream(
+    scene: &Scene,
+    inst: &mr_scene::InstanceDesc,
+    offset: Vec3,
+    matrix_world: &[f64; 16],
+    receive: bool,
+) -> Option<Stream> {
+    let world = DMat4::from_translation(offset.as_dvec3()) * DMat4::from_cols_array(matrix_world);
+    let mats = scene.buffers[inst.matrices as usize].data.as_f32()?;
+    let colors = inst.colors.map(|c| &scene.buffers[c as usize].data);
+    let mut data = Vec::with_capacity(inst.count as usize * instancing::INSTANCE_FLOATS);
+    for k in 0..inst.count as usize {
+        let Some(cols) = mats.get(k * 16..k * 16 + 16) else {
+            break;
+        };
+        if Mat4::from_cols_slice(cols).determinant().abs() < 1e-12 {
+            continue;
+        }
+        let local = DMat4::from_cols_array(&std::array::from_fn(|j| f64::from(cols[j])));
+        let tint = colors.map_or([1.0; 3], |c| {
+            let v = |j: usize| c.get(k * 3 + j) as f32;
+            [v(0), v(1), v(2)]
+        });
+        instancing::push_instance(&mut data, &(world * local), tint, receive);
+    }
+    if data.is_empty() {
+        return None;
+    }
+    let sphere = inst
+        .bounding_sphere
+        .as_ref()
+        .filter(|s| s.len() >= 4)
+        .map(|s| {
+            let (c, r) = instancing::sphere_to_world(&world, DVec3::new(s[0], s[1], s[2]), s[3]);
+            (c.as_vec3(), r as f32)
+        });
+    Some((Instances(Arc::new(InstanceStream::new(&data))), sphere))
 }
 
 /// The scene's local lights: its first spot light (the desert train's) and
@@ -624,27 +661,6 @@ pub fn build_step(
         );
         status.counts = Some(loaded.counts.clone());
         commands.insert_resource(loaded);
-        let entries = b
-            .scene
-            .night_params
-            .iter()
-            .filter(|p| p.prop == "emissiveIntensity")
-            .map(|p| NightEntry {
-                materials: [false, true]
-                    .iter()
-                    .filter_map(|&t| b.materials.get(&(p.material, t)).cloned().flatten())
-                    .collect(),
-                emissive: b.scene.materials[p.material as usize]
-                    .color("emissive")
-                    .unwrap_or([0.0; 3]),
-                day: p.day,
-                night: p.night,
-            })
-            .collect();
-        commands.insert_resource(NightMaterials {
-            entries,
-            last: None,
-        });
         // The warm-up (SPEC 6.3): one off-screen stand-in per material ×
         // mesh-layout combination, until every pipeline has compiled.
         let n = b.combos.spawn(&mut commands, &mut meshes);

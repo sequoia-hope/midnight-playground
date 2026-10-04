@@ -31,6 +31,7 @@ mod web;
 use crate::loader::{AppState, SkyDome};
 use crate::render::Lighting;
 use crate::render::SharedImages;
+use crate::render::lighting::MaterialLights;
 use crate::render::material::ThreeMaterial;
 use crate::render::pmrem::EnvRequest;
 use crate::status::Status;
@@ -166,8 +167,7 @@ pub fn plugin(app: &mut App) {
         Update,
         (start, read_input, step, draw)
             .chain()
-            .run_if(in_state(AppState::Running))
-            .before(crate::loader::apply_night),
+            .run_if(in_state(AppState::Running)),
     )
     .add_systems(
         Update,
@@ -193,10 +193,13 @@ fn start(
     mut images: ResMut<Assets<Image>>,
     mut mats: ResMut<Assets<ThreeMaterial>>,
     windows: Query<&Window, With<PrimaryWindow>>,
+    mut lights: ResMut<MaterialLights>,
 ) {
     if play.race.is_some() {
         return;
     }
+    // The new field's light setters take their slots afresh (D456).
+    lights.values.clear();
     let Some(level) = &tr.level else { return };
     let lr = match LevelRuntime::new(level.clone()) {
         Ok(lr) => lr,
@@ -429,7 +432,7 @@ fn draw(
     mut cam: Query<(&mut Transform, &mut Projection), CamFilter>,
     mut sky: Query<&mut Transform, SkyFilter>,
     mut node_vis: Query<&mut Visibility, Without<RaceCar>>,
-    mut mats: ResMut<Assets<ThreeMaterial>>,
+    (mut mats, mut lights): (ResMut<Assets<ThreeMaterial>>, ResMut<MaterialLights>),
     windows: Query<&Window, With<PrimaryWindow>>,
     opts: Res<Opts>,
     mut cs: ResMut<CameraState>,
@@ -486,7 +489,7 @@ fn draw(
             models.sync_parts(i, sp, p.speed, p.steer_angle, dt, &mut bodies);
         }
         let e = models.cars[i].model.set_brake(v.brake_light);
-        models.apply(e, &mut node_vis, &mut mats);
+        models.apply(e, &mut node_vis, &mut mats, &mut lights);
     }
 
     // The camera.
@@ -546,7 +549,7 @@ fn draw(
             let lim = if m.is_far() { FAR_IN } else { FAR_OUT };
             e.extend(m.set_far(dx * dx + dz * dz > lim * lim));
         }
-        models.apply(e, &mut node_vis, &mut mats);
+        models.apply(e, &mut node_vis, &mut mats, &mut lights);
     }
 
     // The world around the player (`world.update(dt, s, focus)`).

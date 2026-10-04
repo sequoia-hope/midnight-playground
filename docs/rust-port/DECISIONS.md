@@ -657,6 +657,10 @@ render world's pipeline cache has nothing waiting (natively pipelines
 compile in the background and a mesh draws only once its pipeline is
 ready); `--screenshot` waits for that.
 
+Note (2026-10-04): the sentence on `InstancedMesh` is superseded by D450.
+An `InstancedMesh` is now one entity per material group with its instances
+in a vertex buffer, drawn with one instanced draw as three draws it.
+
 ## D102. How the client finds a scene in development
 
 2026-10-03, WP 2.2. `?level=<id>` (`--level` natively) names a level, or
@@ -2965,3 +2969,199 @@ uniforms, kind options, program keys and GLSL (the per-group gates
 compare those). What is left of WP 3.9 is the client's: drawing the kinds
 the renderer still stands in for or hides, applying the animators each
 frame, and building Level 1 from mr_worldgen.
+
+## Renderer instancing decisions
+
+## D450. An `InstancedMesh` is one entity and one instanced draw
+
+2026-10-04, after WP 2.6 (D396's lasting fix; owner: "go ahead with the
+renderer fix"). D101 made every instance of an `InstancedMesh` its own
+entity (Sierra 63,670, Coast 28,673), and Bevy's per-entity work (GPU
+preprocessing uploads, visibility, extraction, batching) was most of the
+WebGPU frame. Now an `InstancedMesh` is one entity per material group,
+drawn as three draws it: one draw call with the instance count
+(`renderBufferDirect` → `renderInstances`). Entities after the change:
+Sierra 508, Coast 436, Seaside 220, Desert 363, Streets 433, Cruise 432.
+
+How (`crates/mr_game/src/render/instancing.rs`):
+
+- **Data.** The entity carries `Instances`, an `Arc` of its stream shared
+  by its material groups: per instance 20 floats (80 bytes), the world
+  matrix's columns, the colour and `receiveShadow`. It goes to the GPU the
+  first frame it is extracted (a `VERTEX` buffer) and the CPU copy is
+  dropped, as for meshes (D101).
+- **Pipeline.** `ThreeKey` gains `instanced` (a separate material asset
+  from the same JS material). `ThreeMaterial::specialize` then appends a
+  second vertex buffer layout, stepped per instance, at shader locations 9
+  to 13 (Bevy's attributes use 0 to 7, the patch attribute 8; WebGL2's 16
+  attributes are enough: 12 at most), and the def `MR_INSTANCED`. The
+  shadow pass's vertex shader becomes `three_prepass_instanced.wgsl` (Bevy's
+  prepass vertex shader for what the shadow pass reads, with the
+  instance's matrix), set in `specialize` through a fixed shader handle;
+  non-instanced materials keep Bevy's prepass shader untouched.
+- **Draw.** `DrawThreeMesh` is Bevy's `DrawMesh` except that, for an
+  entity with a stream, it binds the stream at vertex slot 1 and draws the
+  mesh once with `0..count` instances, directly (not through the GPU
+  preprocessing's indirect parameters, which describe one instance).
+  `InstancingPlugin::finish` re-points the ids of Bevy's `DrawMaterial`
+  (Opaque3d, AlphaMask3d, Transparent3d), `DrawPrepass` and
+  `DrawDepthOnlyPrepass` (Shadow, and the prepass phases) to the same
+  command tuples with `DrawThreeMesh` in place of `DrawMesh`
+  (`DrawFunctions::add_with::<DrawMaterial, _>`), so every material Bevy's
+  `MaterialPlugin` prepares draws with it, and every entity without a
+  stream goes to `DrawMesh` as before. The streams reach the render world
+  as a map by main-world entity, rebuilt each frame (a few hundred
+  entries). The entities are `NoAutomaticBatching`, so each is its own
+  phase item.
+
+Considered and not taken: Bevy's per-entity instancing with the matrices
+in a storage buffer indexed by `instance_index` (WebGL2 has no storage
+buffers, and Bevy's `instance_index` is the mesh-uniform slot); merging
+the instances into one mesh at load (memory times the instance count, and
+the vertices pre-transformed on the CPU); our own phase items and queue
+systems for the main, transparent and shadow passes (a copy of Bevy's
+queueing for four phases); a second material type with its draw
+functions swapped per frame (two handles for every material, the night
+materials and the warm-up twice). The tuples copy Bevy 0.19.1's
+`DrawMaterial`, `DrawPrepass` and `DrawDepthOnlyPrepass`; a Bevy upgrade
+(0.20, D100) must check them.
+
+## D451. The instanced shaders: the same functions, the matrix from the stream
+
+2026-10-04. `three_material.wgsl` under `MR_INSTANCED` reads the world
+matrix from the stream instead of Bevy's mesh uniform; everything after it
+(view and clip position, the shadow coordinate, the points' sizing, every
+fragment function) is the same code. The matrix is the InstancedMesh's
+`matrixWorld` × `instanceMatrix`, multiplied on the CPU in f64 and rounded
+to f32 (three multiplies `modelViewMatrix` × `instanceMatrix` in f32 on the
+GPU; before, each instance's product was decomposed into a Bevy
+`Transform` and recomposed). The normal goes through the matrix's inverse
+transpose, computed in the shader from its cofactors with the
+determinant's sign (what Bevy's per-entity `local_from_world_transpose`
+holds; for the rotation-and-scale instances of the exports it is the
+direction three's `objectNormal /= (dot(im[0], im[0]), …); im *
+objectNormal` gives). `receiveShadow` comes from the stream (the mesh
+uniform's flag is the one slot the shader no longer reads). Over every
+screenshot station of the six levels (398, native, the JS stations'
+cameras), the client before and after differ by at most 2 levels of 255
+except where D452 applies and in a handful of edge pixels per station
+(at most 140 pixels of 717,824 over 8 levels: Desert's small fires and
+lamps at night, a few thin edges on Coast).
+
+## D452. `instanceColor` at full precision
+
+2026-10-04. Instance colours rode in Bevy's `MeshTag`, 10 bits a channel
+over 0 to 2 (D103, D170). In the stream they are three's f32 values. Two
+InstancedMeshes have colours above 2: Streets' 671 lamp globes (`MeshBasic
+Material`, up to 2.8) and a pair in Coast (up to 2.52); they were clamped
+to 2 and now draw at their value, which is what three draws. Streets'
+stations brighten through the bloom (up to 10 of 255 in red, mean over the
+picture); with the old clamp put back in the stream the stations match the
+client before the change to 1 level, so that is the whole difference. The
+tag stays for the material test scenes, which tint single meshes.
+
+## D453. Culling, sorting and zero-scale instances as three does them
+
+2026-10-04. three culls an `InstancedMesh` as a whole by its bounding
+sphere over all instances (`InstancedMesh.computeBoundingSphere`,
+`Frustum.intersectsObject` with `matrixWorld`; not at all with
+`frustumCulled = false`), in the camera and the shadow camera. Every
+instanced node of the six exports carries that sphere
+(`InstanceDesc.bounding_sphere`); the loader moves it to world space as
+`Sphere.applyMatrix4` does (centre transformed, radius × the largest axis
+scale) and gives the entity an `Aabb` of half-size r around it: Bevy culls
+boxes, and the box holds the sphere, so everything three draws is drawn
+(and a little more). Without a sphere, or with `frustumCulled = false`,
+the entity is `NoFrustumCulling`. Bevy sorts a transparent mesh by its
+transform applied to the mesh's bounding-box centre; the instanced shader
+ignores the entity's transform, so the loader sets it to the translation
+that puts that point at the sphere's centre, which is the point three's
+`projectObject` sorts an InstancedMesh by. Within the entity, instances
+draw in buffer order, as in three (before, each instance was sorted on its
+own). Zero-scale instances (Desert's 7 tumbleweeds not yet launched) are
+left out of the stream, as before: three draws them as triangles of no
+size.
+
+Other large per-entity counts were looked for and do not matter: after the
+change the levels have 220 to 508 entities. `Points` are one entity per
+object already (D294: Sierra 3, Cruise 4); one multi-material node exists
+(Coast, without groups); the flora is `InstancedMesh` and is covered here.
+
+## D454. The warm-up covers the instanced pipelines
+
+2026-10-04. An instanced material's key differs (`instanced`), so its
+combinations are their own (Sierra 45 → 52, Coast 43 → 49, Seaside
+14 → 15, Desert 30 → 33, Streets 26 → 27, Cruise 27 → 30), and each
+stand-in of such a combination is an instanced entity with a stream of
+one instance 10,000 km below the origin, `NoAutomaticBatching`, drawn by
+`DrawThreeMesh` as the real ones are, in the main and shadow passes. In the
+web runs of BASELINE.md's instancing section no pipeline was compiled after
+`ready` (`__mr.lateFrames` 0). (The native client reports one pipeline
+compiled after the warm-up at the first station on every level, before and
+after this change alike; it is not one of the scene's.)
+
+## D455. The night materials follow the sky in the shader, not by editing materials
+
+2026-10-04. With the entities gone, the WebGPU frames over 50 ms that were
+left (Coast's first 4 km, Sierra's dusk from 3 to 7 km) came at 16, 33 and
+50 ms, only while the time of day moved: pinning it (`?t=`) brought Coast's
+first 40 s from 16 ms to 2.7 ms a frame. A Chrome trace there had Chrome's
+GPU process main thread busy all the time decoding the page's Dawn
+commands (`WebGPUDecoderImpl::HandleDawnCommands`) and the page waiting for
+room to send more (`DawnClientSerializer::GetCmdSpace` →
+`CommandBufferProxyImpl::WaitForToken`, 80 % of the flight). The cause was
+`loader::apply_night` (D173's `world.nightMaterials`): whenever the night
+factor changed it rewrote `emissive` on every night-following material
+(Coast 25, Sierra 22), and Bevy re-prepares a modified material (a new
+uniform buffer and bind group) and re-specialises everything drawn with
+it, every frame at dusk. Turning the edits off took Coast's first 40 s to
+2.6 ms a frame.
+
+So, as D293 does for the updaters' uniforms, the night factor is
+scene-wide state the shader reads: `ThreeParams` gains `night` (the
+`emissiveIntensity` day and night values, and a flag), set at build from
+the export's `night_params`, with `emissive` holding the colour alone;
+`three_material.wgsl` scales the emissive radiance by `day + (night − day)
+× n` with n from the globals (`G_SKY_PARAMS.x`, the same sky state). A
+material without the flag keeps its emissive exactly as before. The JS
+computes the product in f64 and stores f32; here it is f32 in the shader
+(a relative difference of order 1e-7). The 398 native stations are
+identical to the client before this change but for one pixel of Desert's
+flickering lights. `apply_night` and `NightMaterials` are gone.
+
+Still per frame as before: the race's car light setters (D440) edit the
+racers' and traffic's materials when a value changes, which at dusk is
+every frame for the headlights (`max(0.15, smoothstep(0.25, 0.6, night))`)
+of a few materials per car; the fly camera's stand-in cars (D295) have
+no light setters, so the measurements do not cover it. If the race shows the same signature at
+dusk, the same treatment applies there (play/ is not changed here).
+
+## D456. The race's car lights in the globals, not in their materials
+
+2026-10-04, owner: "apply the headlight fix to the race too". The race's
+light setters (D440: `setHeadlights` every frame with `max(0.15,
+smoothstep(0.25, 0.6, night))`, `setBrake` with the car's `brakeLight`,
+`setReverse`, `setBoost`, `setSiren`'s lens intensities) return
+`emissiveIntensity` edits, and `play::models::Cars::apply` wrote each into
+the drawn materials when the value changed: at dusk, and whenever a car
+brakes, a Bevy material re-prepared every frame (D455's cost). Now the
+globals texture has a second part, `LIGHT_SLOTS` (512) values four to a
+texel from texel 32 (`lighting::G_LIGHTS`, `MaterialLights`): the first
+time a setter touches a scene material, `apply` gives it a slot and
+changes the material once (`emissive` to the colour alone, `night` to
+(0, 0, 2, slot)); from then on an edit only stores the value in its slot,
+and `three_material.wgsl` multiplies the emissive colour by
+`globals[G_LIGHTS + slot / 4][slot % 4]`. Each scene material keeps its own
+slot, and each car its own materials as CarModel builds them, so brake and
+reverse stay per car. The values and their timing are the edits' (the
+slot is written in the same `draw` system that applied the edit, and the
+globals go to the GPU in the same frame); the product colour × value is
+taken in f32 in the shader instead of f64 on the CPU. `start` clears the
+slots for a new field. If the slots ran out, `apply` falls back to editing
+the material as before. `mr_worldgen`'s setters are unchanged.
+
+Pictures: race screenshots at night (Cruise, autopilot, seed 1, WebGPU)
+at race time 3 and 8 s are the same before and after (mean 0.06 and 0.22
+of 255, the differences at the moving cars' edges from frame timing); the
+headlights and tail lights match. Measurements: BASELINE.md, "Races at
+dusk".
