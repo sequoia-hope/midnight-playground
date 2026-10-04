@@ -3835,6 +3835,42 @@ counted as before (`Counts::invisible`); the animators' visibility edits
 combine each node's own flag with its ancestors' as three does. Sierra has
 none; Cruise's export has 52 (486 entities instead of 432).
 
+## D499. Coast Highway's kinds, drawn from its export
+
+2026-10-04, after WP 7.1 (the coordinator's plan: the drawing side of the
+other levels, linking no scenery; Coast's to-do from WP 7.1). Blocks of
+`three_material.wgsl` as before: **Surf** (`foamMaterial`, a
+ShaderMaterial: value noise, swell bands, contact foam and ragged rings;
+the rings' phase from the instance's translation, the InstancedMesh being
+at the origin; three's FogExp2 on it), **LighthouseBeam** (additive, its
+`vV` carried interpolated as three does, its own fog fade), **Stucco**
+(`tGrain` in the detail slot, a triplanar grain and a broad mottle after
+`color_fragment`) and **ContainerAtlas** (the mask atlas's row by the
+instance's `aVar`, the body colour from the instance colour). `aVar` is an
+instance-rate attribute, and the instance stream has no free float, so it
+rides with `receiveShadow` in the stream's last float as receive + 2 ×
+aVar (`loader::instance_var`; the instanced vertex shader splits them for
+every material, and a stream without `aVar` is unchanged). TriplanarRock
+(coast/kit.js) and the lighthouse's glow Sprite were drawn already (D494).
+Without the level's animators (D498), the animated uniforms follow the
+scene-wide state as the updaters set them (D293's rule: Surf's `uTime` the
+clock and `uBright` lerp(1, 0.32, night), the beam's `uStrength` 0.03 +
+0.32 × smoothstep(0.2, 0.8, night)); colours an updater moves on plain
+materials (the bulbs, the glow's opacity and scale) and the beam's turn
+stay as exported.
+
+Gate, the web build at 1280 × 800 through the registered server
+(`rust-web-stations.mjs --server`; Coast's export is over D106's
+interception limit): 67 stations, 3 over the limits (13 before), median
+0.26 / 0.62. The three are the beach at sunrise from the chase camera
+(04000, 04250, 04500: worst 5.1 / 30.2): the asphalt in the low sun
+reflects brighter than in the JS. They were the same before these kinds
+(5.2 / 30.2) and involve none of them; not resolved here. The material
+scenes for Surf, LighthouseBeam and Stucco pass (0.06 / 0.13 at worst)
+and join `all`; ContainerAtlas's scene is over (3.5 / 18.1) because the
+material tool draws it without the instance stream (no `aVar`), so it
+stays out of `all`; its stations (the harbour) pass.
+
 ## WP 7.4 Seaside decisions
 
 ## D590. The shape of `mr_worldgen::raceway`; `world.level.data` and `world.onCountdown`
