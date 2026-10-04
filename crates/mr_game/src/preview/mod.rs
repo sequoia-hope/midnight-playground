@@ -32,6 +32,8 @@
 //! and prepares the sections again behind the menu; the whole level is
 //! freed when another level is shown.
 
+mod hints;
+
 use crate::animate::{self, AnimBlocks, NodeRef, SceneIndex, WorldGen};
 use crate::loader::{self, AppState, Loaded, SceneEntity, SectionScene};
 use crate::render::lighting::{Lighting, Point, Spot};
@@ -57,9 +59,9 @@ pub const CAMERA_RUN: f64 = 500.0;
 /// to past where it looks at its end (D741).
 const BEHIND: f64 = 40.0;
 const AHEAD: f64 = 100.0;
-/// Terrain tiles within this of the stretch are meshed; scenery and road
-/// within this are kept (D741).
-pub const TERRAIN_RADIUS: f64 = 2500.0;
+/// Terrain tiles within this of the stretch are meshed; road (and what
+/// else the build draws) within this is kept (D741, D748).
+pub const TERRAIN_RADIUS: f64 = 1500.0;
 pub const SCENERY_RADIUS: f64 = 600.0;
 
 /// Web: world-build time per frame while the loading screen is up, and
@@ -71,11 +73,6 @@ const BUDGET_MENU_MS: u128 = 8;
 /// Spawning a built section's entities, per frame.
 const SPAWN_LOADING_MS: u128 = 40;
 const SPAWN_MENU_MS: u128 = 6;
-
-/// The order the sections are built in after the selected level's: the
-/// largest build peaks first (D745), while little else is held, since the
-/// wasm memory's high-water mark is what the budget counts (SPEC 6.6).
-const HEAVY_FIRST: [&str; 6] = ["streets", "cruise", "desert", "coast", "sierra", "seaside"];
 
 /// The menu draws sections (no whole level behind it unless one was raced).
 static ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -281,16 +278,9 @@ impl Previews {
         {
             return Some(k);
         }
-        (0..self.secs.len()).filter(queued).min_by_key(|&k| {
-            let id = self.secs[k].id;
-            (
-                self.has_full(id),
-                HEAVY_FIRST
-                    .iter()
-                    .position(|h| *h == id)
-                    .unwrap_or(HEAVY_FIRST.len()),
-            )
-        })
+        (0..self.secs.len())
+            .filter(queued)
+            .min_by_key(|&k| self.has_full(self.secs[k].id))
     }
 
     fn building(&self) -> bool {
@@ -313,6 +303,8 @@ pub fn section_of(track: &Track) -> Section {
         s1: a + CAMERA_RUN + AHEAD,
         terrain_radius: TERRAIN_RADIUS,
         scenery_radius: SCENERY_RADIUS,
+        // A simplified view: no scenery module builds (D748).
+        scenery: false,
     }
 }
 
@@ -340,7 +332,9 @@ fn new_build(level: &Level, section: Section) -> Build {
     use mr_worldgen::terrain_mesh::{TerrainSetup, seaside_ground_color};
     use mr_worldgen::world::{World, level_jobs};
     if animate::generated(level.id) {
-        return animate::section_build(level.id, section);
+        let mut b = animate::section_build(level.id, section);
+        b.push_job(hints::job());
+        return b;
     }
     let mut world = World::new(level.clone());
     let mut terrain = TerrainSetup {
@@ -358,20 +352,9 @@ fn new_build(level: &Level, section: Section) -> Build {
         terrain,
         road: None,
     };
-    // Natively, `MR_SECTION_SCENERY=1` builds every level's scenery (all
-    // of it is in mr_worldgen; the client links Level 1's only): a look at
-    // the sections as they will be once each level is built in the client.
-    #[cfg(not(target_arch = "wasm32"))]
-    if std::env::var("MR_SECTION_SCENERY").is_ok_and(|v| v == "1") {
-        return Build::new(
-            world,
-            level_jobs(
-                level_stages(setup),
-                mr_worldgen::scenery::scenery_factory(None),
-            ),
-        );
-    }
-    Build::new(world, level_jobs(level_stages(setup), |_| None))
+    let mut b = Build::new(world, level_jobs(level_stages(setup), |_| None));
+    b.push_job(hints::job());
+    b
 }
 
 /// Runs a section's world build to the end.

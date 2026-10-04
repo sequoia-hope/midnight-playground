@@ -72,6 +72,7 @@ fn main() {
                 s1: s0 + len,
                 terrain_radius: env("RT").unwrap_or(3000.0),
                 scenery_radius: env("RS").unwrap_or(1500.0),
+                scenery: env("SCENERY").is_none_or(|v| v != 0.0),
             });
         }
         let base = NOW.load(Ordering::Relaxed);
