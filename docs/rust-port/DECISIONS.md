@@ -5641,3 +5641,72 @@ the 210 MB download and keeps the wasm memory at 512 MB on reloads rather
 than 663; the pictures are within the limits both ways. Until decided,
 the default still downloads the export, and now also builds the level for
 its animators.
+
+## D760. The race's headlight spot, and three's spot lights as a list
+
+2026-10-04, WP 4.4 (the headlight spot; D440 left it open), on the owner's
+report that night races in the Rust build were too dark (the start of
+Coast Highway, the end of Sierra). `Race.js` gives the player's car "one
+real spotlight": `new THREE.SpotLight(0xfff2d6, 0, 140, 0.55, 0.55, 1.2)`,
+no shadow, on `pModel.headlightAnchor` at its origin, its target at
+(0, -2.2, 30) in the anchor's frame, `intensity = lightsOn × 140` each
+frame (`lightsOn = smoothstep(0.25, 0.6, night)`), removed by
+`dispose()`. Ported as `play::headlight`: `draw` sets the intensity, and a
+`PostUpdate` system after the transforms propagate (three reads
+`matrixWorld` when it renders) and before the globals are packed places
+the spot from the anchor entity's `GlobalTransform` (WP 4.1's
+`headlight_anchor`, which `play::models` now keeps per car). Without a race
+(`race.dispose()`, the menu) it is gone; a restart keeps the cars and so
+the spot, as the JS's new `Race` makes a new one.
+
+`Lighting` holds it as `headlight`, beside the scene's `spot` (the desert
+train's beam, which follows its animator, D720/D721). three keeps every
+spot light of the scene in `spotLights[]`, in render-list order (the
+world's lights before the race group's; neither casts a shadow, so the
+sort that puts shadow casters first keeps that order), and the shader
+loops over `NUM_SPOT_LIGHTS`. The globals carry two spot slots: the first
+at texels 19 to 22 as before, the second at 27 to 30 (`G_SPOT1_POS`), and
+`pack` fills them in three's order with no gap (the headlight is slot 0
+where the level has no spot). The material shader loops over the slots and
+stops at the first empty one. A light at intensity 0 stays in the loop
+(the train's beam by day, the headlight before dusk), as in three, where it
+costs the same and adds nothing. Physically correct units as before:
+colour × intensity, distance cut-off, decay, cone and penumbra cosines.
+
+## D761. The headlight checked against the JS in races at night
+
+2026-10-04. The same race on both sides (seed 1, the sports car, the
+autopilot, pursuit off), stopped at the same race time: the JS with
+`?parity=1&ticks=16`, stopped exactly at the tick through `__parity.onTick`
+and pictured three times from the frozen frame (as drawn; with WP 4.4's
+effects hidden, which are not ported: the fake headlight pools, smoke,
+sparks, skids; and then also with the spot at 0); the Rust web build
+through the registered server, the page itself asking for the screenshot
+the first frame the race time reaches it (tick for tick with the JS). The
+scripts and pictures are in `parity/report/headlight/` (not in git).
+Mean linear luminance (Rec. 709) of boxes on the road ahead:
+
+| Where | JS no spot | JS spot | Rust before | Rust after |
+|---|---|---|---|---|
+| Coast 20 s, desktop hq, beside the rival ahead (left, right) | 0.0026, 0.0012 | 0.0038, 0.0023 | 0.0026, 0.0013 | 0.0040, 0.0024 |
+| Coast 20 s, desktop hq, the lit cliff | 0.0057 | 0.0181 | 0.0058 | 0.0187 |
+| Coast 20 s, iPhone portrait hq off, road ahead; car ahead | 0.0156; 0.0140 | 0.0194; 0.2615 | 0.0166; 0.0169 | 0.0203; 0.2683 |
+| Sierra 170 s (city freeway), desktop hq, band round the rival | 0.0022 | 0.0038 | 0.0021 | 0.0038 |
+| Sierra 170 s, iPhone portrait hq off, band round the rival | 0.0040 | 0.0060 | 0.0058 | 0.0082 |
+| Desert 110 s (dry lake, train beam in the scene), desktop | 0.0339 | 0.0594 | | 0.0608 |
+
+The spot matches: the pool's shape and place, the rivals and the
+roadside it lights. The WebGL2 build gives the same (Coast desktop
+0.0041, 0.0025, 0.0188; phone 0.0204), and the native client draws the
+same pool. Frame cost (Coast at 15 to 20 s, 1280 × 800, uncapped, WebGPU,
+four alternating runs each on a loaded machine): median 3.35 ms with the
+spot, 3.13 ms without, within the runs' spread (2.9 to 4.0 ms).
+
+What still differs on the road ahead is not the spot: drawn as the player
+sees it, the JS road round the car ahead is several times brighter again
+(Coast 0.0164 and 0.0138 in the boxes above, Sierra 0.0194, against 0.0038
+without the effects) because of `Effects.js`'s fake headlight pools (an
+additive glow quad on the road ahead of each car, 9 × 16 m for the player
+and 7 × 12 m for the others, its opacity rising with night), WP 4.4's
+effects, still to port.
+Those, not the spot, are most of the "too dark" the owner sees.
