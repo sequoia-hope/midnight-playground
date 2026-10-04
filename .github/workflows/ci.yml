@@ -32,6 +32,12 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy -p mr_game --target wasm32-unknown-unknown -- -D warnings
+      # The WebGL2 build of the client (roadmap WP 2.7; DECISIONS D391): the
+      # same crate with the `mr_webgl2` cfg, in its own target directory.
+      - name: Clippy, the WebGL2 client
+        env:
+          RUSTFLAGS: -D warnings --cfg mr_webgl2
+        run: cargo clippy -p mr_game --target wasm32-unknown-unknown --target-dir target/webgl2 -- -D warnings
       - run: cargo test --workspace
       - run: cargo xtask check-deps
       # mr_audio's backends are features (SPEC 3.2, 7.1): the native one
@@ -70,6 +76,7 @@ jobs:
         run: cargo test --target wasm32-unknown-unknown -p mr_audio
       - name: Kernel in wasm is bit-identical to native
         run: cargo xtask kernel --check
+      # Both clients: WebGPU and the WebGL2 fallback (roadmap WP 2.7).
       - run: cargo xtask web --release
       - run: cargo xtask size --budget
 

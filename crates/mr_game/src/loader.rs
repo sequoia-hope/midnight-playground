@@ -10,10 +10,11 @@
 
 use crate::convert::{self, Draw, MeshKey, StandIn};
 use crate::render::lighting::{Lighting, Point, Spot};
-use crate::render::material::three_material;
+use crate::render::material::{ThreeKey, three_material};
 use crate::render::pmrem::EnvRequest;
 use crate::render::{SharedImages, SkyMaterial, ThreeMaterial};
 use crate::status::Status;
+use crate::warmup::{Combos, Layout};
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::light::{NotShadowCaster, NotShadowReceiver};
 use bevy::math::{DVec3, Mat4, Vec3, Vec4};
@@ -131,8 +132,14 @@ pub struct Build {
     cursor: usize,
     images: Vec<Option<Handle<Image>>>,
     meshes: HashMap<MeshKey, Option<Handle<Mesh>>>,
+    /// Each mesh's vertex layout, for the warm-up.
+    layouts: HashMap<AssetId<Mesh>, Layout>,
     /// Per JS material and whether its instances carry colours.
     materials: HashMap<(u32, bool), Option<Handle<ThreeMaterial>>>,
+    /// Each material's pipeline key, for the warm-up.
+    keys: HashMap<AssetId<ThreeMaterial>, ThreeKey>,
+    /// The material × mesh-layout combinations drawn (SPEC 6.3).
+    combos: Combos,
     shared: SharedImages,
     visible: Vec<bool>,
     /// Per node, a translation added to its world matrix: zero for a level;
@@ -164,7 +171,10 @@ impl Build {
             offset,
             images: Vec::new(),
             meshes: HashMap::new(),
+            layouts: HashMap::new(),
             materials: HashMap::new(),
+            keys: HashMap::new(),
+            combos: Combos::default(),
             shared,
             visible,
             out: if grid {
@@ -201,11 +211,17 @@ impl Build {
     }
 
     fn mesh(&mut self, key: MeshKey, assets: &mut Assets<Mesh>) -> Option<Handle<Mesh>> {
-        let scene = &self.scene;
-        self.meshes
-            .entry(key)
-            .or_insert_with(|| convert::build_mesh(scene, key).map(|m| assets.add(m)))
-            .clone()
+        if let Some(h) = self.meshes.get(&key) {
+            return h.clone();
+        }
+        let h = convert::build_mesh(&self.scene, key).map(|m| {
+            let layout = Layout::of(&m);
+            let h = assets.add(m);
+            self.layouts.insert(h.id(), layout);
+            h
+        });
+        self.meshes.insert(key, h.clone());
+        h
     }
 
     fn material(
@@ -214,14 +230,28 @@ impl Build {
         instance_color: bool,
         assets: &mut Assets<ThreeMaterial>,
     ) -> Option<Handle<ThreeMaterial>> {
+        if let Some(h) = self.materials.get(&(index, instance_color)) {
+            return h.clone();
+        }
         let (scene, images, shared) = (&self.scene, &self.images, &self.shared);
-        self.materials
-            .entry((index, instance_color))
-            .or_insert_with(|| {
-                let m = &scene.materials[index as usize];
-                three_material(scene, m, images, shared, instance_color).map(|m| assets.add(m))
-            })
-            .clone()
+        let m = &scene.materials[index as usize];
+        let h = three_material(scene, m, images, shared, instance_color).map(|m| {
+            let key = m.key;
+            let h = assets.add(m);
+            self.keys.insert(h.id(), key);
+            h
+        });
+        self.materials.insert((index, instance_color), h.clone());
+        h
+    }
+
+    /// Notes a material drawn on a mesh, for the warm-up.
+    fn note_combo(&mut self, mesh: &Handle<Mesh>, material: &Handle<ThreeMaterial>, casts: bool) {
+        if let (Some(layout), Some(key)) =
+            (self.layouts.get(&mesh.id()), self.keys.get(&material.id()))
+        {
+            self.combos.note(*key, material, layout, casts);
+        }
     }
 
     fn note_hidden(&mut self, kind: MaterialKind) {
@@ -387,6 +417,7 @@ fn spawn_node(
                 let Some(mat) = b.material(mi, false, materials.0) else {
                     continue;
                 };
+                b.note_combo(&mesh_h, &mat, node.cast_shadow);
                 let t = Transform::from_matrix(world);
                 if !b.out.fixed_bounds {
                     b.out.min = b.out.min.min(t.translation);
@@ -424,6 +455,9 @@ fn spawn_node(
                 let Some(mat) = b.material(mi, tinted, materials.0) else {
                     continue;
                 };
+                if !list.is_empty() {
+                    b.note_combo(&mesh_h, &mat, node.cast_shadow);
+                }
                 for (m, tint) in list {
                     let t = Transform::from_matrix(m);
                     let mut e = commands.spawn((
@@ -611,6 +645,11 @@ pub fn build_step(
             entries,
             last: None,
         });
+        // The warm-up (SPEC 6.3): one off-screen stand-in per material ×
+        // mesh-layout combination, until every pipeline has compiled.
+        let n = b.combos.spawn(&mut commands, &mut meshes);
+        info!("warm-up: {n} material × mesh-layout combinations");
+        status.warm_up = n;
         // Dropping the build drops the Scene: the CPU copies go here.
         commands.remove_resource::<Build>();
         next.set(AppState::Running);

@@ -69,9 +69,23 @@ bevy = { version = "=0.19.1", default-features = false, features = [
     "wayland",
 ] }
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-# WebGPU only; the WebGL2 build is roadmap WP 2.7.
+# The web backend is chosen at compile time (SPEC 2), one wasm file each,
+# picked by the page (roadmap WP 2.7; DECISIONS D391): WebGPU by default,
+# WebGL2 when built with `RUSTFLAGS="--cfg mr_webgl2"` (`cargo xtask web`
+# builds both, the WebGL2 one in its own target directory). A cfg rather
+# than a Cargo feature, so the native build's Bevy features (and every
+# build cache of it) stay as they are.
+[target.'cfg(all(target_arch = "wasm32", not(mr_webgl2)))'.dependencies]
 bevy = { version = "=0.19.1", default-features = false, features = ["web", "webgpu"] }
+
+[target.'cfg(all(target_arch = "wasm32", mr_webgl2))'.dependencies]
+bevy = { version = "=0.19.1", default-features = false, features = ["web", "webgl2"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen.workspace = true
 js-sys.workspace = true
 web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Navigator", "Location", "Performance"] }
+
+# `mr_webgl2` is the WebGL2 build's cfg (see the wasm dependency tables).
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(mr_webgl2)"] }

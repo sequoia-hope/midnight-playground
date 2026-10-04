@@ -288,3 +288,148 @@ numbers were taken; the phone model and iOS version are not recorded yet.
 The rest of G1 (frame time against the JS fly-camera baseline, ten minutes
 and ten reloads without a tab kill, no frame over 50 ms after warm-up) waits
 for WP 2.6's warm-up and the measurement pages.
+
+## The Rust client at WP 2.6 and 2.7 (warm-up, frame time, memory, reloads, WebGL2)
+
+2026-10-03, desktop: RTX 3060 shared with other work (other agents' headless
+Chrome runs and a resident speech-to-text process; load average 3 to 19 on
+24 cores, given per run), Chrome 151 headless on Linux, release builds,
+1280 × 800 at device pixel ratio 1, high quality on, frame rate uncapped
+(no vsync, no frame-rate limit) as `tools/parity/perf-baseline.mjs`
+measures the JS game. Flights are the fly camera at 60 m/s from s = 80 for
+the JS baseline's length (Sierra 170 s, Coast 138 s). Rust numbers are the
+measurement page's (`index.html?perf=1`, DECISIONS D395) driven by
+`node tools/parity/rust-perf.mjs`; the JS rows are the JS game flown the
+same way with the same requestAnimationFrame recorder (`--game js`), in
+between the Rust runs. Frame times are ms; fps is per half-second window
+(median and 5th percentile, as the JS baseline); "> 50 ms" counts frames
+after the warm-up, in the first 30 s and in the whole flight.
+
+| Build | Level | Load avg | fps median / 5th | Frame ms p50 / p95 / p99 / max | > 50 ms (30 s / all) | Ready | First frame |
+|---|---|---:|---:|---:|---:|---:|---:|
+| JS (three.js, WebGL2) | sierra | 18.5 | 720.7 / 423.2 | 0.6 / 2.5 / 18.3 / 173.2 | 4 / 256 | 3.6 s (menu 3.2 s) | |
+| JS | sierra | 14.8 | 632.0 / 357.4 | 0.6 / 4.2 / 18.4 / 331.2 | 4 / 239 | 6.1 s | |
+| JS | coast | 3.0 | 581.4 / 316.9 | 0.8 / 6.6 / 17.0 / 121.3 | 4 / 36 | 3.5 s | |
+| Rust, WebGPU | sierra | 11.0 | 55.1 / 17.0 | 7.4 / 33.9 / 78.2 / 194.2 | 7 / 281 | 3.0 s | 1.13 s |
+| Rust, WebGPU | sierra | 10.7 | 69.8 / 39.3 | 6.0 / 25.0 / 34.3 / 93.5 | 3 / 29 | 2.9 s | 1.07 s |
+| Rust, WebGPU, hq off | sierra | 5.1 | 129.1 / 30.3 | 5.8 / 22.8 / 36.2 / 102.2 | 9 / 78 | 2.8 s | 1.05 s |
+| Rust, WebGPU | coast | 4.2 | 64.1 / 47.8 | 4.5 / 32.1 / 34.1 / 188.0 | 42 / 96 | 2.9 s | 0.97 s |
+| Rust, WebGPU | coast | 19.1 | 54.7 / 31.9 | 4.4 / 23.6 / 34.0 / 246.4 | 33 / 64 | 5.5 s | 1.84 s |
+| Rust, WebGL2 | sierra | 6.5 | 97.5 / 46.6 | 6.2 / 20.3 / 22.9 / 39.6 | 0 / 0 | 3.8 s | 1.66 s |
+| Rust, WebGL2 | coast | 3.9 | 91.7 / 72.4 | 6.0 / 13.9 / 16.1 / 38.9 | 0 / 0 | 3.5 s | 1.64 s |
+
+The WP 0.8 desktop baseline above (fps median / 5th: Sierra 507 / 230,
+Coast 459 / 300) was taken the same way at load average about 20.
+
+**Warm-up (SPEC 6.3; D390).** Sierra draws 45 material × mesh-layout
+combinations, Coast 43, Seaside 14, the models 11; they compile behind
+the loading screen, and in every run above no pipeline was compiled after
+it (`__mr.lateFrames` 0). Before the GPU fence the first flight frames had
+one frame of about 1.07 s just after "ready" (the browser finishing the
+pipelines in its GPU process); with it, none. The JS game's own worst
+frames include its shader compiles (the "> 50 ms" frames in its first
+seconds and its 121 to 331 ms maxima).
+
+**Gate "no frame over 50 ms after warm-up in the first thirty seconds":
+not met on WebGPU, met on WebGL2.** The WebGPU frames over 50 ms are not
+pipeline compiles. They come back at the same places on every run (Sierra
+s ≈ 955 to 975 and ≈ 1,470 to 1,490, the hairpins; Coast s ≈ 355 to 400,
+600 to 615, 1,015, and its first 4 km run at 20 ms a frame against 4 ms
+after), with or without the stand-in cars, the shadows, or the time of day
+moving. A CPU profile across Coast s 350 to 405 puts 60 % of the main
+thread in Chrome's `writeBuffer`, called from Bevy's GPU-preprocessing
+uploads (`write_batched_instance_buffers`, `write_mesh_culling_data_buffer`),
+whose size follows the entity count; across Sierra's hairpin the time is
+spread over Bevy's per-entity work (visibility, extraction, sorting,
+uploads). The client makes one entity per instance of an `InstancedMesh`
+(DECISIONS D101): Sierra 63,670 entities, Coast 28,673, where the JS game
+issues about 800 draw calls (SPEC 6.6: 833 at peak on Sierra). WebGL2, where Bevy has no GPU preprocessing,
+shows none of these frames but a higher median. Turning GPU preprocessing
+off on WebGPU (`?gpupre=0`, D396) lowers the worst frames and raises the
+median (Coast, first 40 s, alternating runs at load 5 to 10: on, p50 18 ms,
+max 260 to 408 ms, 31 to 33 frames over 50 ms; off, p50 31 to 32 ms, max
+96 to 128 ms, 48 to 165 over 50 ms). **Frame time against the JS game:
+the Rust client is about ten times slower per frame on this desktop**
+(median 4.4 to 7.4 ms against 0.6 to 0.8 ms). It is CPU-bound on
+per-entity work. The fix this points to is a renderer change: one entity
+per `InstancedMesh` with a per-instance buffer, as three draws it (a few
+hundred entities instead of tens of thousands). That is the main finding
+for gate G1: measure on the phones before deciding (below).
+
+**Memory, ten reloads (SPEC 6.6; D394).** The wasm memory's size, which is
+its high-water mark, in MB, after the first load and after each reload
+(`__mr.reload`, the scene torn down and loaded again in place):
+
+| Run | After load | Reloads 1 to 10 |
+|---|---:|---|
+| Sierra, ten times Sierra (two runs, the same) | 299 | 500, 509, 641, 641, 641, 641, 641, 641, 641, 641 |
+| Coast, then Coast and Sierra in turn | 436 | 636, 636, 656, 788, 788, 788, 988, 988, 988, 988 |
+| the same, second run | 436 | 528, 528, 728, 728, 928, 928, 928, 928, 928, 928 |
+| WebGL2: Sierra, then Sierra twice | 338 | 494, 625 |
+
+No leak: Sierra reloading Sierra stops growing at the third reload, and the
+level switches stop at the fifth to seventh. But the high-water mark is
+above SPEC 6.6's 512 MB phone budget after one Coast load plus a switch,
+and after Sierra's third reload: each load copies the whole export into
+the wasm (131 MB for Sierra, 200 MB for Coast), parses it, then builds
+the scene, and the allocator does not find the old space contiguous. The
+JS heap holds up to 400 MB of downloaded scene buffers between garbage
+collections. Loading a multi-hundred-megabyte export is not how the
+finished game gets its world (G1 says so), but the phone may still kill
+the tab here: the owner's reload run will tell. Reload times: 1.1 to 3.1 s
+(Sierra), 1.3 to 2.0 s (Coast) from the request to running again, the
+pipelines already compiled; worst frame in the 3 s after each reload 9 to
+97 ms.
+
+**Load (G1: first rendered frame within 5 s of the JS game's time to its
+menu).** First frame 0.97 to 1.84 s after navigation (WebGPU), 1.64 to
+1.66 s (WebGL2); ready, with the scene downloaded from this machine,
+built and warmed up, 2.8 to 5.5 s. The JS game reaches its menu in 3.2 s.
+Met with room.
+
+**Size.** `cargo xtask web --release`: `mr_game_bg.wasm` 19.58 MB, 6.09 MB
+after gzip (WebGPU); `mr_game_webgl2_bg.wasm` 20.81 MB, 6.56 MB after gzip
+(WebGL2). G1's limit is 10 MB.
+
+**WebGL2 (WP 2.7).** The page loads the WebGL2 build when the browser
+gives no WebGPU adapter (`tools/parity/rust-web.mjs --backend webgl2`
+starts Chrome with WebGPU turned off). It renders the same pictures:
+against the WebGPU build, Seaside at three views (one under the start
+bridge's shadow, one from above) and the models scene differ by 0.001
+ΔE00 mean at most, and WP 2.4's five gate stations of Sierra's base export
+by 0.000; against the JS game those five stations are at 0.13 to 0.17
+mean, 0.22 to 0.32 block 95 % on both builds, the same as the native
+client at WP 2.4. Shadows, bloom, the environment map, fog and the
+patched kinds all draw. Two shader changes were needed (D393). The WP 2.3
+material scenes are unchanged natively (all eighteen within the limits,
+largest 0.150 mean).
+
+**How to run.** `cargo xtask web --release`, then (registered server up)
+`node tools/parity/rust-perf.mjs --level sierra` (WebGPU, ten reloads),
+`--level coast --reload-levels coast,sierra`, `--backend webgl2`,
+`--hq 0`, `--secs N`, `--query "gpupre=0"`; `--game js` for the JS game.
+Results print, and land in `parity/report/perf/`.
+
+### Phones (the owner runs these)
+
+Tailnet https address of the dev server plus the path below, after
+`cargo xtask web --release` in the checkout the server serves. The page
+flies Sierra or Coast at 60 m/s, then reloads ten times, and shows the
+numbers on the screen (about 5 minutes; keep the screen on; "Copy
+results" puts them on the clipboard). High quality is off by default on
+a phone, as G1 asks.
+
+| What | Path |
+|---|---|
+| Sierra, WebGPU | `dist/next/?level=sierra&perf=1` |
+| Coast, WebGPU | `dist/next/?level=coast&perf=1` |
+| Sierra, level switches (memory) | `dist/next/?level=sierra&perf=1&reloadLevels=sierra,coast` |
+| Sierra, WebGL2 build | `dist/next/?level=sierra&perf=1&backend=webgl2` |
+| Sierra, GPU preprocessing off | `dist/next/?level=sierra&perf=1&gpupre=0` |
+| Quick look (flight only) | `dist/next/?level=sierra&perf=1&reloads=0&secs=60` |
+
+| Device | Build | Level | fps median / 5th | Frame ms p50 / p95 / p99 / max | > 50 ms (30 s / all) | First frame | Ready | wasm MB after load → reload 10 | Notes |
+|---|---|---|---:|---:|---:|---:|---:|---:|---|
+| iPhone | WebGPU | sierra | | | | | | | |
+| iPhone | WebGPU | coast | | | | | | | |
+| iPhone | WebGL2 | sierra | | | | | | | |

@@ -3,7 +3,9 @@
 //! Roadmap M2 so far: the Bevy app shell (WP 2.1), the scene loader with
 //! the fly camera (WP 2.2), three.js's shading, sky, environment, shadows,
 //! fog and post chain (WP 2.3), and the terrain, road, sea and points kinds
-//! with stand-in cars from the simulation (WP 2.4). The client loads a level's scene
+//! with stand-in cars from the simulation (WP 2.4), the pipeline warm-up,
+//! scene reloads and the measurement page (WP 2.6), and the WebGL2 build
+//! (WP 2.7). The client loads a level's scene
 //! export (or the car models), draws it as the JS game does for the kinds
 //! ported so far and flies the JS game's debug camera along the route, the
 //! sky following the route's time of day.
@@ -17,7 +19,12 @@
 //! - [`fly`]: the fly and attract cameras of `src/main.js`.
 //! - [`cars`]: stand-in cars driven by the simulation (WP 2.4).
 //! - [`play`]: a playable race (M4): session, input, camera, flow, HUD.
+//! - [`warmup`]: every pipeline the scene needs, compiled behind the
+//!   loading screen (WP 2.6).
 //! - [`status`]: what the page and the window title show.
+//!
+//! The web build comes in two backends, WebGPU and WebGL2 (the `mr_webgl2`
+//! cfg), one wasm file each; the page picks (WP 2.7).
 
 pub mod cars;
 pub mod convert;
@@ -29,6 +36,7 @@ pub mod play;
 pub mod render;
 pub mod stations;
 pub mod status;
+pub mod warmup;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
@@ -62,11 +70,15 @@ pub fn banner() -> String {
 pub struct Inbox {
     pub scene: Option<Result<Scene, String>>,
     pub survey: Option<Result<Vec<u8>, String>>,
+    /// Tear the scene down and wait for the next one, of this level (the
+    /// measurement page's reloads, WP 2.6).
+    pub unload: Option<String>,
 }
 
 pub static INBOX: Mutex<Inbox> = Mutex::new(Inbox {
     scene: None,
     survey: None,
+    unload: None,
 });
 
 fn inbox() -> std::sync::MutexGuard<'static, Inbox> {
@@ -218,9 +230,60 @@ fn receive_scene(
     }
 }
 
+/// The scene is up; its pipelines compile behind the loading screen (the
+/// warm-up, `warmup`) until the status turns `ready` and `running`.
 fn enter_running(mut status: ResMut<Status>) {
-    status.state = "running";
+    status.state = "warming";
     status.progress = 1.0;
+    status.scenes += 1;
+}
+
+/// Tears the scene down when asked (`Inbox::unload`) and waits for the next
+/// one: every scene entity (the warm-up's and the stand-in cars too), the
+/// build in progress, the cars' race and the night materials go, so their
+/// meshes, materials and images are freed; a different level gets its own
+/// Track and sky. The measurement page's reloads (WP 2.6) use it.
+#[allow(clippy::too_many_arguments)]
+fn unload_scene(
+    mut commands: Commands,
+    scene: Query<Entity, With<loader::SceneEntity>>,
+    mut status: ResMut<Status>,
+    mut opts: ResMut<Opts>,
+    mut tr: ResMut<TrackRes>,
+    mut sky: ResMut<SkyRes>,
+    mut cs: ResMut<CameraState>,
+    mut next: ResMut<NextState<AppState>>,
+) {
+    let Some(level) = inbox().unload.take() else {
+        return;
+    };
+    for e in &scene {
+        commands.entity(e).despawn();
+    }
+    commands.remove_resource::<Build>();
+    commands.remove_resource::<cars::Cars>();
+    commands.remove_resource::<loader::NightMaterials>();
+    commands.remove_resource::<Loaded>();
+    inbox().scene = None;
+    if level != opts.o.level {
+        opts.o.level = level;
+        *tr = TrackRes::default();
+        *sky = SkyRes::default();
+        inbox().survey = None;
+    }
+    sky.env_at = None;
+    cs.fly = opts.o.fly;
+    cs.attract = fly::Attract::default();
+    *status = Status {
+        state: "waiting",
+        frames: status.frames,
+        frame_ms: status.frame_ms,
+        gestures: status.gestures,
+        scenes: status.scenes,
+        ..default()
+    };
+    next.set(AppState::Waiting);
+    info!("scene unloaded; waiting for {}", opts.o.level);
 }
 
 /// Where the camera starts once the scene is up: the export's camera, or for
@@ -265,8 +328,14 @@ pub fn fly_system(
     if opts.o.race_on() {
         return; // the race drives the camera and the sky (`play`)
     }
-    // `Math.min(frameDt, 1 / 20)` (main.js tick).
-    let dt = f64::from(time.delta_secs()).min(1.0 / 20.0);
+    // `Math.min(frameDt, 1 / 20)` (main.js tick). The camera holds still
+    // while the warm-up compiles behind the loading screen, as the JS game
+    // starts flying only once it is loaded.
+    let dt = if status.ready {
+        f64::from(time.delta_secs()).min(1.0 / 20.0)
+    } else {
+        0.0
+    };
     let pixel_ratio = windows
         .single()
         .map_or(1.0, |w| f64::from(w.scale_factor()));
@@ -286,6 +355,9 @@ pub fn fly_system(
         }
         return;
     };
+    if status.route.is_none() {
+        status.route = Some((track.length, track.road_end(), track.is_loop));
+    }
     let Ok(mut t) = cam.single_mut() else { return };
     let cs = &mut *cs;
     if let Some(f) = cs.fly.as_mut() {
@@ -363,6 +435,8 @@ pub fn app(o: Options, hq: bool) -> App {
     let mut app = App::new();
     let title = format!("{} — {}", banner(), o.level);
     let materials = o.materials.clone();
+    // DECISIONS D396.
+    let gpu_preprocessing = o.gpu_preprocessing.unwrap_or(true);
     #[cfg(not(target_arch = "wasm32"))]
     let window = {
         // The material test scenes are 512 × 512 (scenes.json).
@@ -390,10 +464,17 @@ pub fn app(o: Options, hq: bool) -> App {
         fit_canvas_to_parent: true,
         ..default()
     };
-    app.add_plugins(DefaultPlugins.set(WindowPlugin {
-        primary_window: Some(window),
-        ..default()
-    }))
+    app.add_plugins(
+        DefaultPlugins
+            .set(WindowPlugin {
+                primary_window: Some(window),
+                ..default()
+            })
+            .set(bevy::pbr::PbrPlugin {
+                use_gpu_instance_buffer_builder: gpu_preprocessing,
+                ..default()
+            }),
+    )
     // The JS shadow map is 2048² (Sky.js).
     .insert_resource(DirectionalLightShadowMap { size: 2048 })
     // three's default clear colour; the sky dome covers it.
@@ -414,7 +495,9 @@ pub fn app(o: Options, hq: bool) -> App {
     .add_systems(Startup, spawn_camera)
     .add_systems(First, status::tick)
     .add_systems(Update, make_track)
+    .add_systems(Update, unload_scene.before(receive_scene))
     .add_systems(Update, receive_scene.run_if(in_state(AppState::Waiting)))
+    .add_systems(Update, warmup::end_warm_up)
     .add_systems(
         Update,
         loader::build_step.run_if(in_state(AppState::Building)),
@@ -438,7 +521,7 @@ pub fn app(o: Options, hq: bool) -> App {
     );
     app.sub_app_mut(bevy::render::RenderApp).add_systems(
         bevy::render::Render,
-        status::count_pipelines.in_set(bevy::render::RenderSystems::Cleanup),
+        (status::count_pipelines, status::gpu_fence).in_set(bevy::render::RenderSystems::Cleanup),
     );
     app.add_plugins(render::ThreeRenderPlugin);
     if let Some(which) = &materials {
