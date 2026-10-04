@@ -21,6 +21,10 @@ serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 png = "0.18"
 sha2 = "0.10"
+# The car models' dimensions are checked against the simulation's table
+# (tests/car_model.rs; DECISIONS D412). A dev-dependency only: mr_worldgen
+# itself does not depend on mr_sim (SPEC 3.2).
+mr_sim.workspace = true
 
 [features]
 # Native only: run the pieces of a parallel build job on threads (SPEC 5.5;
