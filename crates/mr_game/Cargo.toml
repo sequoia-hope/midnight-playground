@@ -65,11 +65,17 @@ bevy = { version = "=0.19.1", default-features = false, features = [
 ] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# The race's sound natively: web-audio-api with an output device (cpal;
+# ALSA on Linux). DECISIONS D513.
+mr_audio = { workspace = true, features = ["native-device"] }
 bevy = { version = "=0.19.1", default-features = false, features = [
     "multi_threaded",
     "x11",
     "wayland",
 ] }
+# The world build's parallel jobs on threads natively (SPEC 5.5; the client
+# builds Level 1 for its animators, `animate`).
+mr_worldgen = { workspace = true, features = ["parallel"] }
 
 # The web backend is chosen at compile time (SPEC 2), one wasm file each,
 # picked by the page (roadmap WP 2.7; DECISIONS D391): WebGPU by default,
@@ -84,6 +90,8 @@ bevy = { version = "=0.19.1", default-features = false, features = ["web", "webg
 bevy = { version = "=0.19.1", default-features = false, features = ["web", "webgl2"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+# The race's sound on the web: the browser's Web Audio (DECISIONS D513).
+mr_audio = { workspace = true, features = ["web"] }
 wasm-bindgen.workspace = true
 js-sys.workspace = true
 web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Navigator", "Location", "Performance", "Storage"] }
@@ -91,3 +99,7 @@ web-sys = { workspace = true, features = ["Window", "Document", "Element", "Html
 # `mr_webgl2` is the WebGL2 build's cfg (see the wasm dependency tables).
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(mr_webgl2)"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+# The scripted race's audio calls (parity/golden/audio/drive-race.jsonl.gz).
+flate2 = "1"

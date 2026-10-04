@@ -234,24 +234,37 @@ pub struct NativeBackend<C: NativeContext> {
     detached: HashMap<NodeId, NativeNode>,
 }
 
+/// A live context's options: the latency hint, and the default device
+/// (`native-device`) or none.
+fn live_options(latency_hint: Option<&str>) -> AudioContextOptions {
+    AudioContextOptions {
+        latency_hint: match latency_hint {
+            Some("playback") => AudioContextLatencyCategory::Playback,
+            Some("interactive") => AudioContextLatencyCategory::Interactive,
+            _ => AudioContextLatencyCategory::Balanced,
+        },
+        sink_id: if cfg!(feature = "native-device") {
+            String::new()
+        } else {
+            "none".into()
+        },
+        ..AudioContextOptions::default()
+    }
+}
+
 impl NativeBackend<WaContext> {
     /// A live context. Without the `native-device` feature it processes the
     /// graph without an output device (the `"none"` sink).
     pub fn live(latency_hint: Option<&str>) -> Self {
-        let opts = AudioContextOptions {
-            latency_hint: match latency_hint {
-                Some("playback") => AudioContextLatencyCategory::Playback,
-                Some("interactive") => AudioContextLatencyCategory::Interactive,
-                _ => AudioContextLatencyCategory::Balanced,
-            },
-            sink_id: if cfg!(feature = "native-device") {
-                String::new()
-            } else {
-                "none".into()
-            },
-            ..AudioContextOptions::default()
-        };
-        Self::with(WaContext::new(opts))
+        Self::with(WaContext::new(live_options(latency_hint)))
+    }
+
+    /// [`NativeBackend::live`], or `None` where the output stream cannot be
+    /// made (no audio device): a game without sound rather than a panic.
+    pub fn try_live(latency_hint: Option<&str>) -> Option<Self> {
+        WaContext::try_new(live_options(latency_hint))
+            .ok()
+            .map(Self::with)
     }
 }
 
@@ -395,6 +408,46 @@ impl<C: NativeContext> NativeBackend<C> {
         }
     }
 
+    /// An event just went into a param's timeline at `t`, before a target
+    /// curve already sent to the crate: that curve's anchor (D254) holds
+    /// the value the param had before this event, so the crate's events
+    /// from `t` on are sent again from the mirror, each target anchored
+    /// anew (`buzz.frequency.value = f0` after the burble's syllables are
+    /// scheduled; D511).
+    fn reanchor(&mut self, param: ParamId, t: f64) {
+        let Some(tl) = self.timelines.get(&param) else {
+            return;
+        };
+        let later_target = tl
+            .events
+            .iter()
+            .any(|e| e.t > t && matches!(e.kind, EventKind::Target { .. }));
+        if !later_target {
+            return;
+        }
+        let Some(p) = self.param(param) else {
+            return;
+        };
+        p.cancel_scheduled_values(t);
+        for e in tl.events.iter().filter(|e| e.t >= t) {
+            match e.kind {
+                EventKind::Set => {
+                    p.set_value_at_time(e.v as f32, e.t);
+                }
+                EventKind::Lin => {
+                    p.linear_ramp_to_value_at_time(e.v as f32, e.t);
+                }
+                EventKind::Exp => {
+                    p.exponential_ramp_to_value_at_time(e.v as f32, e.t);
+                }
+                EventKind::Target { tc } => {
+                    p.set_value_at_time(tl.at(e.t) as f32, e.t);
+                    p.set_target_at_time(e.v as f32, e.t, tc);
+                }
+            }
+        }
+    }
+
     /// `start(args)` on a source.
     fn start(&mut self, node: NodeId, args: &[f64]) {
         // Chrome starts a buffer at the frame nearest the offset (its read
@@ -526,6 +579,7 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                 if let Some(p) = self.param(param) {
                     p.set_value(v as f32);
                 }
+                self.reanchor(param, now);
             }
             Op::SetValue { param, v, t } => {
                 self.mirror(param, |tl| {
@@ -538,6 +592,7 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                 if let Some(p) = self.param(param) {
                     p.set_value_at_time(v as f32, t);
                 }
+                self.reanchor(param, t);
             }
             Op::LinRamp { param, v, t } => {
                 self.mirror(param, |tl| {
@@ -550,6 +605,7 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                 if let Some(p) = self.param(param) {
                     p.linear_ramp_to_value_at_time(v as f32, t);
                 }
+                self.reanchor(param, t);
             }
             Op::ExpRamp { param, v, t } => {
                 self.mirror(param, |tl| {
@@ -562,6 +618,7 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                 if let Some(p) = self.param(param) {
                     p.exponential_ramp_to_value_at_time(v as f32, t);
                 }
+                self.reanchor(param, t);
             }
             Op::SetTarget { param, v, t, tc } => {
                 // web-audio-api 1.7.0 evaluates a target curve that becomes
@@ -585,6 +642,7 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                     }
                     p.set_target_at_time(v as f32, t, tc);
                 }
+                self.reanchor(param, t);
             }
             Op::Cancel { param, t } => {
                 self.mirror(param, |tl| tl.cancel(t));
@@ -804,6 +862,18 @@ pub fn context(latency_hint: Option<&str>) -> super::AudioContext {
             latency_hint: latency_hint.map(str::to_owned),
         },
     )
+}
+
+/// A live native context, or `None` without an output device.
+pub fn try_context(latency_hint: Option<&str>) -> Option<super::AudioContext> {
+    NativeBackend::try_live(latency_hint).map(|b| {
+        super::AudioContext::new(
+            Box::new(b),
+            super::ContextOptions {
+                latency_hint: latency_hint.map(str::to_owned),
+            },
+        )
+    })
 }
 
 /// An offline native context; render it with

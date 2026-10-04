@@ -8,6 +8,11 @@
 //! Fetching is the platform's ([`Fetch`]): the browser's `fetch`, a file
 //! read natively, `audio/radio/` on disk in the call-log playback. Its
 //! results are [`Pending`]s, chained as the JS chains its promises.
+//!
+//! [`lines`] is `radioLines.js`: the lines dispatch says and the clips
+//! that speak them.
+
+pub mod lines;
 
 use crate::wa::{AudioBuffer, AudioContext, Pending};
 use mr_math::Rng;
@@ -215,6 +220,61 @@ impl RadioVoice {
             });
         });
         out
+    }
+}
+
+/// `audio/radio/` read from a directory on disk: the native client's
+/// [`Fetch`] (the clips stay files, SPEC 7.3).
+#[cfg(not(target_arch = "wasm32"))]
+pub struct DirFetch(pub std::path::PathBuf);
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Fetch for DirFetch {
+    fn fetch(&self, file: &str) -> Pending<Bytes> {
+        let p = Pending::new();
+        p.resolve(Ok(std::fs::read(self.0.join(file)).ok().map(Rc::new)));
+        p
+    }
+}
+
+/// `audio/radio/` fetched by the browser: `fetch(base + file)`, the bytes
+/// when `r.ok`, `None` when it fails or throws (`RadioVoice.js`'s
+/// `_fetch`). `base` is relative to the page, as every URL the client uses
+/// is (the game is served under a sub-path).
+#[cfg(all(feature = "web", target_arch = "wasm32"))]
+pub mod web {
+    use super::{Bytes, Fetch};
+    use crate::wa::Pending;
+    use std::rc::Rc;
+    use wasm_bindgen::{JsCast, JsValue};
+    use wasm_bindgen_futures::JsFuture;
+
+    pub struct WebFetch {
+        pub base: String,
+    }
+
+    async fn get(url: String) -> Result<Vec<u8>, JsValue> {
+        let window: web_sys::Window = js_sys::global().unchecked_into();
+        let r: web_sys::Response = JsFuture::from(window.fetch_with_str(&url))
+            .await?
+            .dyn_into()?;
+        if !r.ok() {
+            return Err(JsValue::NULL);
+        }
+        let buf = JsFuture::from(r.array_buffer()?).await?;
+        Ok(js_sys::Uint8Array::new(&buf).to_vec())
+    }
+
+    impl Fetch for WebFetch {
+        fn fetch(&self, file: &str) -> Pending<Bytes> {
+            let p = Pending::new();
+            let out = p.clone();
+            let url = format!("{}{file}", self.base);
+            wasm_bindgen_futures::spawn_local(async move {
+                out.resolve(Ok(get(url).await.ok().map(Rc::new)));
+            });
+            p
+        }
     }
 }
 

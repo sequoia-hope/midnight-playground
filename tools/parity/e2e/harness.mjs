@@ -113,6 +113,7 @@ export class Game {
       screen: window.__mr?.screen,
       mode: window.__mr?.mode,
       race: window.__mr?.race ? window.__mr.race.state : null,
+      audio: window.__mr?.audio?.context ?? 'none',
       state: window.__mr?.state,
       fullscreen: !!document.fullscreenElement,
       touchUI: !!window.__mr?.touchUi,

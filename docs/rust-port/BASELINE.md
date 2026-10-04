@@ -570,3 +570,85 @@ on both backends, and from s 1,500 on both, every frame 16.7 to 16.8 ms.
 No frame over 50 ms anywhere, and no periodic slow frames: Chrome does not
 show the stall or the 9-second frames the Firefox runs had (nor did the
 iPhone). The Firefox investigation follows separately.
+
+## Firefox (the owner's browser): headless runs on the dev machine
+
+2026-10-04, Firefox 156.0.1 (snap) headless, driven by puppeteer over
+WebDriver BiDi (`browser: 'firefox'`; the profile under `~/snap/firefox/
+common/` because the snap cannot see `/tmp`), WebGPU with
+`dom.webgpu.enabled` and `gfx.webgpu.ignore-blocklist`, through the
+registered server, 1280 × 800, high quality, the measurement page's quick
+look on Seaside (s 80, 60 m/s), vsync on as Firefox runs it. "Base" is the
+build before the instancing change (9b573da), "after" the instancing
+change. The machine was shared (load 3 to 9; one later stretch at 26 to
+31, marked).
+
+| Build | Backend | Flight | > 33 / > 50 ms | p95 | Worst |
+|---|---|---|---:|---:|---:|
+| base | WebGL2 | 60 s, twice | 0, 15 / 0, 0 | 17.1 | 17.6, 34.2 |
+| after | WebGL2 | 60 s, twice | 0, 0 / 0, 0 | 17.1 | 17.5, 17.5 |
+| base | WebGPU | 60 s, twice | 61, 125 / 11, 15 | 32.6, 33.3 | 116.4, 100.7 |
+| after | WebGPU | 60 s, twice (load 8.6, 8.9) | 8, 445 / 4, 75 | 17.1, 34.3 | 183.3, 233.8 |
+| after | WebGPU | 30 s, nine runs at load 2.7 to 4.1 | 0 to 4 / 0 to 2 | 17.1 | 33 to 83 |
+
+**The stall near s 3,100 to 3,300 was not reproduced**: no WebGL2 run had a
+frame over 34 ms over the whole route (s 80 to 3,680), and no WebGPU run
+had one over 233 ms. In one profiled WebGPU run at load 26 a major GC took
+471 ms of wall time across its slices: a stall of that size fits a GC
+under load, but that is not shown for the owner's runs.
+
+**The 33 and 50 ms frames on WebGPU follow time, not the route.** A frame
+of 50.2 ms comes back at s 1,362 to 1,378 from s 80 and at s 1,803 to 1,812
+from s 500: both about 21.5 to 22 s into the flight. A Gecko profile
+(`MOZ_PROFILER_STARTUP`) shows the page's own work short (the
+`requestAnimationFrame` callback p50 3.0 ms, p99 7.1, worst 13.8) and the
+long frames are waits: one comes right after a major GC in the content
+process (reason TOO_MUCH_MALLOC, 16.8 ms across four slices, at 23 s), the
+others with the compositor presenting the previous WebGPU frame late
+(`CONTENT_FRAME_TIME` 88 ms against 30 ms usually) and no GC. Minor GCs run
+17 times a second (0.1 to 0.4 ms each, harmless). The major GC is driven
+by the native memory behind the WebGPU objects the page creates every
+frame: per frame on Seaside, 41 bind groups, 6 buffers (5 mapped at
+creation), 8 command encoders, 18 render passes and one buffer mapped for
+reading (counted in Chrome by wrapping the `GPU*` prototypes; `writeBuffer`
+traffic 717 KB a frame before the instancing change, 34 KB after). D457
+removes the post chain's share (13 bind groups and a buffer); in the one
+profiled run since, the next TOO_MUCH_MALLOC GC came at 42 s instead of 23
+(that run was at load 26, so its frame times are not comparable). The
+rest is Bevy's per-frame bind groups and buffers.
+
+**Prefs.** `dom.webgpu.allow-present-without-readback` (it exists in this
+build): false, true and the default gave the same results, three 30 s
+runs each (frames over 50 ms 2, 1, 1 / 0, 1, 1 / 1, 0, 1; p95 17.1 in all).
+No pref tested here changed the results measurably. The first frame on
+WebGPU here was 1.5 and 2.0 s (at load 28; WebGL2 0.5 s at load 3); the
+owner's 3.5 s was a cold first run (his repeat: 0.61 s).
+
+**How to run.** The scripts are in the session's scratchpad, not the repo:
+`ff.mjs` (one flight: dist, backend, level, seconds, s0, prefs JSON),
+`ffprof.sh` (the same under the Gecko profiler), `gcstat.py` and `gap.py`
+(frames, GCs and markers from the profile), `calls.mjs` (WebGPU calls per
+frame in Chrome).
+
+**Race starts (D458, D459).** Races with the autopilot (seed 1,
+`timescale=2`, high quality, 10 s from the start of racing, three rounds,
+uncapped; load 10 to 26, the machine busy with other work): late
+pipelines 0 in every run on Coast and Sierra and both backends (were 1 and
+3). On WebGPU no frame over 50 ms in the start (s 42 to 50) in any of the
+six runs (before D459: 50 to 132 ms frames there in four of six); single
+stalls of 730 to 880 ms elsewhere in three runs at load 18 to 26 (s 108,
+678, 376), not seen at lower load. On WebGL2, Sierra none; Coast is
+GPU-bound from the start (56 to 77 ms intervals uncapped, as in the
+flights above), and with vsync on (`CAPPED=1`) holds 30 to 60 frames a
+second with no frame over 33.5 ms; WebGPU on Coast with vsync on holds 60
+with no frame over 16.8 ms.
+
+At lower load afterwards (30 s races, `timescale=2`, uncapped): WebGPU,
+Coast at load 4.7 and 8.9: 0 frames over 50 ms, worst 32.5 and 49.1 ms;
+Sierra at 8.7: 0, worst 24.8 ms; Sierra at 14.6: 2 (54 ms at s 67, 60 ms
+at s 1,899), worst 60.1 ms. No stall of the 730 to 880 ms kind in these
+four runs: they look like the busy machine, but that is not confirmed.
+WebGL2 at load 8.2 and 7.0: Coast 259 frames over 50 ms (73 to 76 ms
+intervals from the start, worst 123.6), Sierra 12 (54 to 57 ms, one of
+106 ms at s 708); both are the GPU-bound uncapped pacing described above
+(p50 6.6 and 6.0 ms), and late pipelines are 0 in all six runs.
