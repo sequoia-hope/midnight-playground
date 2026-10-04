@@ -205,7 +205,7 @@ type ThreadOut = (u64, usize, Result<Box<WorldBuild>, String>);
 static THREAD_OUT: Mutex<Vec<ThreadOut>> = Mutex::new(Vec::new());
 
 impl Previews {
-    fn new() -> Previews {
+    fn new(level: &str) -> Previews {
         Previews {
             secs: mr_levels::levels()
                 .iter()
@@ -221,7 +221,8 @@ impl Previews {
                 })
                 .collect(),
             shown: None,
-            want: None,
+            // The saved level's first (`ui::prepare` put it in the options).
+            want: Some(level.to_owned()),
             full: None,
             free: false,
             generation: 0,
@@ -401,8 +402,10 @@ fn drive(
     }
     let pv = &mut *pv;
     let loading = pv.shown.is_none() && pv.full.is_none();
-    // Start the next one.
+    // Start the next one: the first behind the loading screen, the others
+    // once the menu is up (its warm-up done), not while it is compiling.
     if !pv.building()
+        && (loading || status.ready)
         && let Some(k) = pv.next()
     {
         let id = pv.secs[k].id;
@@ -1010,7 +1013,10 @@ impl Previews {
 }
 
 pub fn plugin(app: &mut App) {
-    let on = wanted(&app.world().resource::<Opts>().o);
+    let (on, level) = {
+        let o = &app.world().resource::<Opts>().o;
+        (wanted(o), o.level.clone())
+    };
     ACTIVE.store(on, Ordering::Relaxed);
     #[cfg(not(target_arch = "wasm32"))]
     if on {
@@ -1023,7 +1029,7 @@ pub fn plugin(app: &mut App) {
             }
         }
     }
-    app.insert_resource(Previews::new())
+    app.insert_resource(Previews::new(&level))
         .add_systems(Update, (drive, switch).chain())
         .add_systems(Update, end_section_warm_up)
         .add_systems(Update, wrap_attract.before(crate::fly_system))

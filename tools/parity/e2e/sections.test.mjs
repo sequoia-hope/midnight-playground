@@ -46,7 +46,8 @@ test('sections: instant tabs, Race loads the level, Main menu builds them again'
     await game.waitFor(() => window.__mr.sections?.allMs != null, { timeout: 180000, interval: 250, what: 'every section' });
     await game.frames(10);
     const all = await game.eval(() => ({ sec: window.__mr.sections, mem: window.__mr.wasmMemoryBytes(), t: performance.now() }));
-    console.log(`# ${boot.backend}, load average ${load}: menu ready ${(boot.ready / 1000).toFixed(2)} s (first frame ${(boot.first / 1000).toFixed(2)} s), `
+    console.log(`# ${boot.backend}, load average ${load}: menu ready ${(boot.ready / 1000).toFixed(2)} s (first frame ${(boot.first / 1000).toFixed(2)} s, `
+      + `first section shown ${(boot.sec.firstMs / 1000).toFixed(2)} s after its build began), `
       + `wasm ${MB(boot.mem)} MB; all sections ${(all.sec.allMs / 1000).toFixed(2)} s after the first was asked for, wasm ${MB(all.mem)} MB`);
     for (const s of all.sec.list) console.log(`#   ${s.id}: ${s.state}, build ${s.buildMs} ms, spawn ${s.spawnMs} ms, ${s.nodes} nodes, ${s.entities} entities${s.generated ? '' : ' (terrain and road only)'}`);
     for (const s of all.sec.list) assert.equal(s.state, 'up', s.id);
