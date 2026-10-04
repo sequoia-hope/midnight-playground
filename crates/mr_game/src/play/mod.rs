@@ -16,6 +16,7 @@
 //!
 //! Cars are `CarModel.js`'s models, ported in WP 4.1 ([`models`]).
 
+pub mod audio;
 pub mod camera;
 pub mod flow;
 mod hud;
@@ -175,6 +176,7 @@ pub fn plugin(app: &mut App) {
             .after(draw)
             .run_if(in_state(AppState::Running)),
     );
+    audio::plugin(app);
     #[cfg(target_arch = "wasm32")]
     web::plugin(app);
     #[cfg(not(target_arch = "wasm32"))]

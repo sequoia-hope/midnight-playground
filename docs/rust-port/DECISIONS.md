@@ -3980,3 +3980,195 @@ warm-up ends, and the atlas keeps the glyphs. The sizes are copied from
 `play::hud`; a new HUD size must be added there too. After it, no atlas
 upload happens at the start, and the first frames of racing take 5 to 17
 ms (load 27).
+
+## WP 5.6–5.7 and race audio decisions
+
+## D510. The songs' L4 renders: all seven within 0.4 dB, and the songs join the default run
+
+2026-10-04, WP 5.6. The last gate of WP 5.6 is SPEC 7.5's offline renders
+of each song's first thirty seconds (`song-<id>` in `renders.json`, music
+at 0.7 through the music bus, SFX silent). They render on the native
+backend through `examples/render_scenarios.rs` as the other scenarios do
+(D253: `music.play(track)`, `setMusic(true)`, `pumpUntil(t + 1)` every 64
+control frames) and compare with Chrome's band levels in
+`tools/parity/audio-bands.mjs`. Nothing needed fixing: the worst band per
+song is midnight-run 0.36 dB (1259 Hz), neon-rush 0.36 dB (1259 Hz),
+mirage 0.17, seabright 0.13, afterburner 0.07, interstate 0.02 and
+chrome-heart 0.01 dB, against SPEC 7.5's 1.5 dB and Chrome's own run-to-run
+jitter; the RMS levels agree to 0.03 dB. The sequencer's call log was
+already exact (D251), so these renders check the instruments' DSP (the
+hall convolver, the delays, the drum kit's buffers, the pulse waves) on the
+native backend. `audio-bands.mjs` now renders and compares every scenario
+by default, the songs included (111), instead of leaving the songs to an
+explicit prefix.
+
+## D511. A param event scheduled before a target curve re-anchors the curve (the burble)
+
+2026-10-04, WP 5.7. `shot-radio-burble` was 6.4 dB off at 158 Hz (D259).
+The burble schedules every syllable's `setTargetAtTime` on the buzz's
+frequency first and sets `buzz.frequency.value = f0` after: a set event
+at the present, before all of them. D254's workaround had already sent
+each target to the crate behind a `setValueAtTime` holding the value the
+param had when the target arrived, the oscillator's default 440 Hz, so
+the first syllable swept down from 440 Hz where Chrome's starts at f0
+(the first 0.3 s carried 15 dB more at 316 Hz). The native backend now
+re-sends a param's events from the new event's time on (cancel, then the
+mirrored timeline with every target anchored anew) whenever a value, set,
+ramp or target lands before a target curve already sent. The burble now
+matches Chrome to 0.01 dB in every band, and the full L4 run is 110 of
+111 within 1.5 dB; the one left is `engine-rally-6500-1`'s 25 Hz band
+(D259), 60 dB under the signal.
+
+## D512. Radio lines in `mr_audio::radio::lines`; `CALLSIGNS` in `mr_sim::pursuit`
+
+2026-10-04, WP 5.7. `radioLines.js` is `mr_audio::radio::lines`, per SPEC
+7.3's port map: `DIRS`, `TAKES`, `place_name`, a `Line { text, parts }`
+per `RADIO` entry as a function of the same name (`unit_down`,
+`rival_busted`), `radio_clips` and `levels_radio_clips` in the JS's order
+(a `Vec` stands in for the `Map` by id, first entry wins). The JS takes
+`CALLSIGNS` from `Pursuit.js` as `radioClips`' default units; `mr_audio`
+may depend on `mr_math` only (SPEC 3.2), so the units are an argument and
+the callers pass `mr_sim::pursuit::CALLSIGNS`, a new export computed from
+the chase pool as the JS computes it (10 to 30). `levels_radio_clips`
+takes a `LevelRadio` (police or not, zone names, rival names) per level
+for the same reason. The whole clip list (192 clips) was compared once
+with the JS's `levelsRadioClips(LEVELS)`, id, text and takes, and is
+identical. `test/unit/radio.test.js` and `pursuit-audio.test.js` are
+`tests/radio.rs` and `tests/pursuit_audio.rs`; they read the levels and
+the callsigns through dev-dependencies on `mr_track`, `mr_levels` and
+`mr_sim` (check-deps looks at normal dependencies only), and the check of
+`audio/radio/` against `index.json` runs natively, the rest in wasm too.
+The fake `fetch` and decoder are a `Fetch` that serves names as bytes and
+the null backend's decoder, which tells the files apart by the length it
+decodes them to. The sirens, the radio bus, the burble and the pursuit
+calls were already ported with `GameAudio` (D251); the stingers and the
+radio are exercised by the pursuit drive's call log, which stays exact.
+
+## D513. The race's audio: `play::audio`, one `GameAudio` shared with the gesture bridge
+
+2026-10-04, race audio. `crates/mr_game/src/play/audio.rs` drives
+`mr_audio`'s `GameAudio` the way `main.js` and `Race.update` drive the
+JS one. `GameAudio` holds `Rc` handles, so it lives in a non-`Send` Bevy
+resource (`Shared`, an `Rc<RefCell<RaceAudio>>`) whose system runs after
+`draw` on the main thread; on the web the same `Rc` is in a thread-local
+that the page's gesture handlers reach through `web::gesture`. The
+backends are the facade's: the browser's Web Audio on wasm (`mr_audio`'s
+`web` feature), natively web-audio-api with an output device
+(`native-device`: cpal, so ALSA headers on Linux; CI installs
+`libasound2-dev`). `native::try_context` returns `None` where no output
+stream can be made, and the game is then silent instead of panicking.
+The radio clips are fetched through the `Fetch` trait: `../../audio/radio/`
+relative to the page on the web (as Seaside's survey is fetched, so it
+works under any sub-path), `audio/radio/` under the repository natively;
+the files are untouched. `play/mod.rs` gains `pub mod audio` and one
+`audio::plugin(app)` line; `flow.rs` and `session.rs` gain the per-tick
+observer (D515); `web.rs` gains one call in `gesture`.
+
+## D514. The graph is built behind the loading screen; the first gesture starts it
+
+2026-10-04, race audio. `GameAudio::init` builds every buffer, wave and
+node of the graph: 0.19 s natively in release on the null backend, 0.48 s
+on the native backend, 0.31 to 0.57 s in the browser (the WebGPU release
+build in headless Chrome on the dev machine, under load). In the JS game it runs inside the tap on
+Start, before the race. The Rust client has no menu yet (M6) and starts
+the race on its own, so the first gesture is a touch or key during the
+race; building there would stall the race for a third of a second or
+more on a phone. So the client calls `setCar(car)` then `init()` once the
+race is made and before it starts, behind the loading screen: the context
+is created suspended (outside a gesture a browser does not start it), and
+nothing plays, since a suspended context's clock stands still and
+`GameAudio` does not steer before it runs. `init` is documented in the
+JS to work this way ("the graph builds fine on a suspended context;
+unlock() starts it from a gesture"). Every gesture then runs the JS's
+`wakeAudio` (`init(); unlock()`) inside the page's handler: pointer-down,
+pointer-up, touch-end, click and key-down, the JS's five (the page gains
+`pointerdown`; on an iPhone the tap's pointer-up and touch-end are the
+gestures, and WP 5.3's `audioSession` "playback" is set in `init` before
+the context is made, so the Silent switch does not mute it). When the
+race starts, the client makes `startRace`'s calls in its order:
+`setPaused(false)`, `init()`, `unlock()`, `playTrack` (`pickMusic`, only
+when the level or the choice changed), `setVolume`, `setMusic` and
+`setCar`. Natively there is no autoplay rule and the context runs from the
+start. On a phone the sound starts when a finger first lifts (a touch's
+start is not a gesture to a browser): a player who holds the stick and
+the pedal from the countdown on hears nothing until then. The JS game's
+players tap Start first; the client gets its start button in M6.
+
+## D515. The audio hears every tick, and the camera as the JS's audio reads it
+
+2026-10-04, race audio. `Race.update` calls the audio once per update,
+and the parity drives update once per 1/120 s tick. The client's session
+now calls an observer after each tick with the state, the tick's events
+and its input (`Session::advance_observed`), and `flow::Race` keeps a
+`TickAudio` per tick of the frame: the one-shots from the `SimEvent`s
+(countdown and GO beeps, the player's car contacts and wall impacts,
+shifts, landings, near-miss and passing whooshes, the finish fanfare),
+`update`'s state (with the off-road amount computed as `Race.update` does:
+the road type's edge, the loose ground), the nitro, the rivals relative to
+the player, the tunnel spans, the car for the camera and the camera bumps.
+The audio system replays them in order after the frame. `update`'s
+throttle is the input's during the countdown and `ctrl.throttle` after it;
+when the controls are not the input (the cool-down driver after the
+finish, the hold of a bust) the simulation now says so with a new event,
+`SimEvent::Controls { player, throttle }` (state, hash and traces
+unchanged).
+
+The pans the JS takes from `camera.matrixWorld` (a contact's, the
+rivals') are not the drawn camera's. `Object3D.lookAt` brings the world
+matrix up to date before it sets the new orientation, so the matrix holds
+the orientation of the `lookAt` before: during the countdown the rivals
+hear the chase camera of that tick (`cam.update`'s `lookAt`), not the
+intro swing that is drawn (`introCamera`'s), and after it the previous
+tick's camera; a contact, read earlier in the update, hears the camera of
+one or two ticks before, depending on whether a render came between.
+With the drawn camera the countdown's pans were up to 1.85 off (the
+swing goes the other way round). So the audio driver steps its own
+`CameraRig` per tick on the tick's car, with the drawn rig's mode and the
+frame's look-back and the same bumps, and keeps the two orientations the
+JS keeps: the last `lookAt`'s and the matrix's, which takes the former at
+each `lookAt` and at the end of each rendered frame. Over the scripted
+race the 16,326 pans then agree with the JS's to 8e-16.
+
+## D516. The call-log gate for the race in the client
+
+2026-10-04, race audio. Two checks against `drive-race.jsonl.gz` (the JS
+game's calls on its audio over the 5400 ticks of the scripted race:
+Sierra, the sports car, seed 1, the autopilot). `play::audio::tests::
+the_scripted_race_makes_the_js_calls` runs the client's frame loop
+headless at 60 frames a second (two ticks a frame, as the drive) and
+requires all 10,962 calls, line for line, every argument bit for bit
+but the 16,326 pans, which agree to 8e-16 (three's quaternion round
+trip). `node tools/parity/rust-audio-race.mjs` runs the web release build
+in headless Chrome with a phone's autoplay rule, reading the page without
+user activation, and `?audiolog=1` (the client records its calls as the
+JS facade recorder writes them): before any gesture the graph is built
+and the context stays suspended with its clock at 0 for two seconds of
+countdown; a key press starts it; the race's 10,962 calls then match the
+JS drive's, method, tick and every argument but the pans exactly, the
+rivals' pans to 8e-16, and the car contacts' pans to 0.014 (74 to 89 of
+the 126 impacts differ beyond 1e-9: a contact hears the camera of the tick before or the
+one before that depending on whether a render came between, and the
+browser's frames are not the drive's two ticks long). The gesture's own
+`init`/`unlock` and the build behind the loading screen (`setCar`,
+`init`) are reported and left out. Since the Rust `GameAudio` turns the
+JS drive log into the JS Web Audio call log exactly (D251,
+`tests/game_calllog.rs`), the client's Web Audio calls are the JS game's
+but for those contact pans. What the audio costs the main thread is on
+`window.__mr.audio`: 0.35 ms a frame on average in that run, 11 ms on the
+race's first frame (`startRace`'s calls), and nothing in the measurement
+page (`?perf=1` flies the camera with no race, so no audio is made).
+
+## D517. Settings, keys and what is left to the menus and to Hot Pursuit
+
+2026-10-04, race audio. The music and SFX volumes and the track choice
+are read from the JS game's store keys (`mr.musicVol`, `mr.sfxVol`,
+`mr.track` in `localStorage`, JSON), so a player who set them in the JS
+game hears the same; natively the JS defaults (0.7, 0.85, the level's
+own). The music key (M) toggles the music between 0 and 0.7 and stores
+`mr.musicVol`, as `main.js` does; T plays the next track. Pause and resume
+call `setPaused`; the results' race again calls `uiClick('start')` before
+`startRace`, as the JS button does. Not done here: the volume sliders, the
+track picker and the now-playing toast (M6's menus and HUD), and Hot
+Pursuit's audio hook-up (sirens, mood, damage, spiked tyres, the radio
+lines and their prefetch, the stingers), which is WP 8.4; the client's
+pursuit races get the race's sounds only.
