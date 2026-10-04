@@ -433,3 +433,124 @@ a phone, as G1 asks.
 | iPhone | WebGPU | sierra | | | | | | | |
 | iPhone | WebGPU | coast | | | | | | | |
 | iPhone | WebGL2 | sierra | | | | | | | |
+
+## The Rust client after the instancing fix (DECISIONS D450 to D456)
+
+2026-10-04, the same desktop and method as the WP 2.6 section above (RTX
+3060 shared with other work, Chrome headless, release builds, 1280 × 800,
+dpr 1, high quality, uncapped, `node tools/parity/rust-perf.mjs`; the JS
+rows flown the same way between the Rust runs). Load average is the
+1-minute figure at the start of each run.
+
+**Entities** (`scene built: … entities`): an `InstancedMesh` is now one
+entity per material group, drawn with one instanced draw (D450).
+
+| Level | Before (WP 2.6) | After |
+|---|---:|---:|
+| Sierra | 63,670 | 508 |
+| Coast | 28,673 | 436 |
+| Seaside | 24,316 | 220 |
+| Desert | 19,117 | 363 |
+| Streets | 15,217 | 433 |
+| Cruise | 25,270 | 432 |
+
+**Flights** (WP 2.6's rows for comparison are in the table above). "Inst."
+is the instancing alone (D450 to D454); "final" adds D455 (the night
+materials in the shader).
+
+| Build | Level | Load avg | fps median / 5th | Frame ms p50 / p95 / p99 / max | > 50 ms (30 s / all) | Ready | First frame |
+|---|---|---:|---:|---:|---:|---:|---:|
+| JS (three.js, WebGL2) | sierra | 2.7 | 729.5 / 458.1 | 0.5 / 1.9 / 18.3 / 154.7 | 2 / 275 | 4.2 s (menu 3.2 s) | |
+| JS | coast | 2.1 | 595.6 / 455.6 | 0.7 / 6.9 / 17.5 / 121.0 | 6 / 39 | 2.8 s | |
+| Rust, WebGPU, inst. | sierra | 1.9 | 211.8 / 61.6 | 5.0 / 15.3 / 24.5 / 46.6 | 0 / 0 | 3.0 s | 1.09 s |
+| Rust, WebGPU, inst. | coast | 2.5 | 66.7 / 55.7 | 4.4 / 19.9 / 33.4 / 64.8 | 10 / 14 | 4.1 s | 2.15 s |
+| Rust, WebGPU, final | sierra | 7.3 | 251.6 / 212.7 | 2.6 / 9.4 / 11.4 / 27.5 | 0 / 0 | 3.5 s | 1.11 s |
+| Rust, WebGPU, final | coast | 3.4 | 265.5 / 209.7 | 3.2 / 8.3 / 10.3 / 29.9 | 0 / 0 | 4.7 s | 2.62 s |
+| Rust, WebGL2, final | sierra | 2.0 | 265.6 / 143.4 | 1.3 / 18.5 / 19.1 / 21.3 | 0 / 0 | 3.4 s | 1.68 s |
+| Rust, WebGL2, final | coast | 2.3 | 99.5 / 89.9 | 1.8 / 36.2 / 53.1 / 54.1 | 10 / 643 | 3.4 s | 1.66 s |
+
+**Gate "no frame over 50 ms after warm-up in the first thirty seconds":
+met on WebGPU** (Sierra and Coast, 0 in the first 30 s and 0 in the whole
+flight; worst frames 27.5 and 29.9 ms against 194 to 408 ms at WP 2.6).
+No pipeline was compiled after the warm-up in any run. The median frame on
+WebGPU went from 4.4 to 7.4 ms to 2.6 to 3.2 ms; the JS game's is 0.5 to
+0.7 ms, so the Rust client is still about 4 to 5 times the JS per frame by
+this clock (the JS figure is its main thread's time, as before).
+
+What the instancing alone left (the "inst." rows): Coast's first 4 km and
+Sierra's 3 to 7 km ran at 15 to 16 ms a frame with 33 and 50 ms frames,
+only while the time of day moved (pinned with `?t=`, Coast's first 40 s:
+2.7 ms median, 22 ms worst). A Chrome trace there showed Chrome's GPU
+process decoding the page's WebGPU commands all the time and the page
+waiting on it 80 % of the flight; the cause was the night-following
+materials being edited every frame (Bevy re-prepares an edited material).
+D455 moves that into the shader: Coast's first 40 s went to 2.6 ms median.
+
+**WebGL2 on Coast** is limited by the GPU side at about 100 frames a second
+on this desktop (the WP 2.6 build ran at 92). With the CPU work now short,
+the uncapped page queues frames in bursts of 1 to 4 ms and then waits
+36 or 53 ms for the GPU (two or three of Chrome's 17.7 ms intervals),
+hence the 643 frames over 50 ms; throughput is the same as before. With
+vsync on (`--capped`, as a browser runs it), Coast's first 60 s on WebGL2
+hold 60 frames a second with no frame over 16.8 ms. Sierra on WebGL2 has
+none of this (265 fps).
+
+**Memory, ten reloads** (wasm memory size, its high-water mark, MB):
+
+| Run | After load | Reloads 1 to 10 | WP 2.6 |
+|---|---:|---|---|
+| Sierra, ten times Sierra (WebGPU) | 303 | 312, 443 × 9 | 299 → 641 |
+| Coast, then Coast and Sierra in turn (WebGPU) | 440 | 448, 579 × 9 | 436 → 928 to 988 |
+| Sierra, ten times Sierra (WebGL2) | 294 | 425 × 10 | 338 → 625 (2 reloads) |
+| Coast, ten times Coast (WebGL2) | 431 | 630 × 10 | |
+
+No growth after the second reload in any run. The high-water mark is 200
+to 400 MB lower; Sierra stays under SPEC 6.6's 512 MB phone budget, Coast's
+switches (579 MB) and Coast reloading itself on WebGL2 (630 MB) do not.
+What is left is the scene file copied into the wasm whole (131 MB Sierra,
+200 MB Coast) and parsed beside the old one's freed space; how scenes are
+delivered is the open question of DECISIONS D439, not changed here.
+
+**Pictures.** `cargo xtask parity materials`: 18 stations, 0 over the
+limits, worst 0.150 mean (unchanged). WP 2.4's five Sierra gate stations
+through the web build at 1280 × 800 (`tools/parity/rust-web.mjs`, base
+export): WebGPU and WebGL2 alike attract 0.171 / 0.294, 02000-chase
+0.158 / 0.321, 04500-high 0.143 / 0.258, 07000-chase 0.133 / 0.282,
+09500-high 0.131 / 0.219 (mean / block 95 %), the same as WP 2.4 or a
+little better. Seaside's full export through the web build (all 29
+stations, 1280 × 800): 29 within the limits, median 0.194 / 0.486, worst
+0.418 / 0.851 (WP 2.4 native: median 0.21, worst 0.42), WebGL2 against
+WebGPU 0.001. The 398 full-scene stations natively (1024 × 701, the X
+display's size) before and after: the same to 2 levels of 255 except the
+stations of D452 (Streets' lamp globes, whose instance colours above 2
+are no longer clamped) and a few edge pixels (D451).
+
+**Size.** `mr_game_bg.wasm` 27.59 MB, 8.77 MB after gzip;
+`mr_game_webgl2_bg.wasm` 28.83 MB, 9.24 MB after gzip (budget 10 MB). The
+growth since WP 2.6 (6.09 / 6.56 MB) is M3's and M4's code (world
+generation and the car models in the client), not this change.
+
+**Races at dusk (D456).** The race with the autopilot (seed 1, high
+quality, uncapped, 60 s from the start of racing; Coast at `timescale=2`
+over s 40 to 6,100 on WebGPU and to 4,500 on WebGL2, its dusk; Sierra at
+`timescale=3` over s 40 to 8,100, through its dusk at 3 to 7 km), the
+build before D456 (instancing and D455) and after it, run alternately,
+two rounds (load average 2.7 to 5.8). Frames over 50 ms, then p95 and the
+worst frame in ms:
+
+| Level, backend | Before D456 | After D456 |
+|---|---|---|
+| Coast, WebGPU | 3, 16; p95 15.3, 16.3; max 82.8, 80.7 | 1, 0; p95 9.0, 9.1; max 52.6, 48.8 |
+| Sierra, WebGPU | 1, 4; p95 11.5, 12.1; max 117.9, 208.2 | 1, 0; p95 10.2, 8.1; max 50.2, 37.8 |
+| Coast, WebGL2 | 8, 0; p95 39.1, 37.4; max 55.8, 40.0 | 47, 12; p95 37.4, 37.6; max 56.6, 55.3 |
+| Sierra, WebGL2 | 0, 0; p95 19.8, 19.7; max 43.5, 37.7 | 0, 0; p95 19.7, 19.7; max 37.0, 38.4 |
+
+On WebGPU the light setters' per-frame material edits were the slow
+frames at dusk; after D456 the one frame over 50 ms left is at the start
+of the race (s 43, 52.6 ms) or at Sierra s 5,137 (50.2 ms), where the race
+compiles pipelines the warm-up does not cover: every race run, before and
+after, reports `__mr.lateFrames` 1 (Coast) or 3 (Sierra). The race's car
+models (D440) are spawned when the race starts and are not part of the
+warm-up's combinations (D390), which is the next thing to fix for SPEC
+6.3's gate in a race (play/ is not changed here beyond D456). WebGL2 on
+Coast is the GPU-bound pacing described above, in both builds alike.

@@ -10,6 +10,7 @@
 use crate::convert::{self, Draw, MeshKey, StandIn};
 use crate::loader::SceneEntity;
 use crate::render::SharedImages;
+use crate::render::lighting::MaterialLights;
 use crate::render::material::{ThreeMaterial, three_material};
 use bevy::light::{NotShadowCaster, NotShadowReceiver};
 use bevy::math::{DQuat, EulerRot, Vec4};
@@ -61,6 +62,9 @@ pub struct Cars {
     materials: Vec<(Vec<Handle<ThreeMaterial>>, [f64; 3])>,
     /// The last emissive intensity set per scene material.
     last: HashMap<u32, f64>,
+    /// Scene material index → its slot in the globals' material lights
+    /// (D456), once a setter has touched it.
+    slots: HashMap<u32, usize>,
 }
 
 /// Builds the field's models and spawns them, hidden until placed.
@@ -161,6 +165,7 @@ pub fn spawn(
         nodes: s.nodes,
         handles,
         last: HashMap::new(),
+        slots: HashMap::new(),
     }
 }
 
@@ -333,6 +338,7 @@ impl Cars {
         edits: Vec<Edit>,
         vis: &mut Query<&mut Visibility, Without<super::RaceCar>>,
         assets: &mut Assets<ThreeMaterial>,
+        lights: &mut MaterialLights,
     ) {
         for e in edits {
             match (e.target, e.change) {
@@ -366,7 +372,27 @@ impl Cars {
                         continue;
                     }
                     self.last.insert(i, value);
+                    // The value goes to the material's light slot, which
+                    // the shader multiplies the emissive colour by (D456):
+                    // the material itself changes once, when it gets its
+                    // slot, not every frame the value moves.
+                    if let Some(&k) = self.slots.get(&i) {
+                        lights.values[k] = value as f32;
+                        continue;
+                    }
                     let (hs, c) = &self.materials[i as usize];
+                    if let Some(k) = lights.slot(value as f32) {
+                        self.slots.insert(i, k);
+                        for h in hs {
+                            if let Some(mut mat) = assets.get_mut(h) {
+                                let w = mat.params.emissive.w;
+                                mat.params.emissive =
+                                    Vec4::new(c[0] as f32, c[1] as f32, c[2] as f32, w);
+                                mat.params.night = Vec4::new(0.0, 0.0, 2.0, k as f32);
+                            }
+                        }
+                        continue;
+                    }
                     for h in hs {
                         if let Some(mut mat) = assets.get_mut(h) {
                             let w = mat.params.emissive.w;

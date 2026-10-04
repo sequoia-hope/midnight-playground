@@ -114,8 +114,12 @@ pub struct ThreeKey {
     pub alpha_test: bool,
     /// `transparent: false` with normal blending: alpha written as 1.
     pub opaque: bool,
-    /// three's instanceColor, carried in the instance's tag.
+    /// three's instanceColor: in the instance stream when `instanced`,
+    /// else in the entity's tag (the material test scenes).
     pub instance_color: bool,
+    /// An `InstancedMesh`: one entity, its instances in a vertex buffer
+    /// stepped per instance (`render::instancing`, D450).
+    pub instanced: bool,
     /// `side`: FrontSide, BackSide or DoubleSide.
     pub side: u32,
     /// `shadowSide` (three's default: the opposite of `side`, double stays
@@ -155,6 +159,13 @@ pub struct ThreeParams {
     pub kind0: Vec4,
     /// Points: the flicker's blink rate.
     pub kind1: Vec4,
+    /// `world.nightMaterials` (D455): `emissiveIntensity` day and night
+    /// values, and 1 in z when the material follows nightfall; the shader
+    /// scales `emissive` by `day + (night - day) × n` with the sky's night
+    /// factor from the globals. 2 in z: by light slot w of the globals
+    /// (`lighting::MaterialLights`, D456). Zero (the default) leaves
+    /// `emissive` as it is.
+    pub night: Vec4,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
@@ -204,6 +215,12 @@ impl From<&ThreeMaterial> for ThreeKey {
 
 const SHADER: &str = "embedded://mr_game/render/three_material.wgsl";
 
+/// The shadow pass's vertex shader for an InstancedMesh
+/// (`three_prepass_instanced.wgsl`), set in `specialize`, which has no
+/// asset server: hence a fixed handle (`render::ThreeRenderPlugin` loads it).
+pub const INSTANCED_PREPASS_SHADER: Handle<Shader> =
+    bevy::asset::uuid_handle!("6b1f0a52-3c1e-4d47-9b0e-2f6c8e1d4a90");
+
 fn face(side: u32) -> Option<Face> {
     match side {
         three::BACK_SIDE => Some(Face::Front),
@@ -251,6 +268,14 @@ impl Material for ThreeMaterial {
             // The shadow pass: three draws the shadow side, and keeps the
             // alpha test (`three_prepass.wgsl`).
             descriptor.primitive.cull_mode = face(k.shadow_side);
+            if k.instanced {
+                // Bevy's prepass vertex shader, with the instance's matrix.
+                descriptor.vertex.shader = INSTANCED_PREPASS_SHADER;
+                descriptor
+                    .vertex
+                    .buffers
+                    .push(super::instancing::instance_layout(false));
+            }
             if let Some(f) = descriptor.fragment.as_mut() {
                 for (on, name) in [(k.map, "USE_MAP"), (k.alpha_test, "ALPHA_TEST")] {
                     if on {
@@ -279,6 +304,13 @@ impl Material for ThreeMaterial {
             attrs.push(crate::convert::ATTRIBUTE_EXTRA.at_shader_location(8));
             descriptor.vertex.buffers = vec![layout.0.get_layout(&attrs)?];
             defs.push("VERTEX_EXTRA".into());
+        }
+        if k.instanced {
+            descriptor
+                .vertex
+                .buffers
+                .push(super::instancing::instance_layout(true));
+            defs.push("MR_INSTANCED".into());
         }
         match k.patch {
             Patch::None => {}
@@ -615,6 +647,7 @@ pub fn three_material(
         alpha_test: alpha_test > 0.0,
         opaque: !transparent && given_blending == three::NORMAL_BLENDING,
         instance_color,
+        instanced: false,
         side,
         shadow_side,
         blending,

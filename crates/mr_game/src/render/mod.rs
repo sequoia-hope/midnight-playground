@@ -13,7 +13,10 @@
 //! - [`sky`]: `Sky.js`'s time of day ([`SkyState`]) and the SkyDome kind.
 //! - [`pmrem`]: the environment map, three's PMREM of the sky.
 //! - [`post`]: UnrealBloomPass and OutputPass.
+//! - [`instancing`]: an `InstancedMesh` as one entity and one instanced
+//!   draw, as three draws it.
 
+pub mod instancing;
 pub mod lighting;
 pub mod material;
 pub mod pmrem;
@@ -111,6 +114,12 @@ impl Plugin for ThreeRenderPlugin {
         bevy::asset::embedded_asset!(app, "sky_dome.wgsl");
         bevy::asset::embedded_asset!(app, "pmrem.wgsl");
         bevy::asset::embedded_asset!(app, "post.wgsl");
+        bevy::asset::load_internal_asset!(
+            app,
+            material::INSTANCED_PREPASS_SHADER,
+            "three_prepass_instanced.wgsl",
+            Shader::from_wgsl
+        );
 
         let shared = {
             let mut images = app.world_mut().resource_mut::<Assets<Image>>();
@@ -121,6 +130,7 @@ impl Plugin for ThreeRenderPlugin {
         };
         app.insert_resource(shared)
             .init_resource::<Lighting>()
+            .init_resource::<lighting::MaterialLights>()
             .init_resource::<pmrem::EnvRequest>()
             .insert_resource(Globals([[0.0; 4]; GLOBALS_WIDTH]))
             .add_plugins((
@@ -130,6 +140,7 @@ impl Plugin for ThreeRenderPlugin {
                 ExtractResourcePlugin::<SharedImages>::default(),
                 ExtractResourcePlugin::<pmrem::EnvRequest>::default(),
                 ExtractComponentPlugin::<post::ThreePost>::default(),
+                instancing::InstancingPlugin,
             ))
             .add_systems(Startup, lighting::spawn_sun)
             .add_systems(
