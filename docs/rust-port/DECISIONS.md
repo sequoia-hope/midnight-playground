@@ -5959,8 +5959,9 @@ the camera's run; `--query sectionshots=<dir>&menu=0` takes the views).
   diagnostic build, not committed): the five views after the first hold
   about 13 MB of heap between them (96 → 109 MB in use); each peaks about
   15 to 35 MB above that while it builds.
-- **Race after the menu** (Coast, built): wasm high-water 515 MB on WebGPU,
-  516 to 564 MB on WebGL2 (564 twice, 516 once), against Coast raced
+- **Race after the menu** (Coast, built): wasm high-water 515 to 563 MB on WebGPU,
+  516 to 564 MB on WebGL2 (564 twice, 516 once; both vary run to
+  run), against Coast raced
   straight from the address here: 466 to 498 MB (WebGPU), 473 to 507 MB
   (WebGL2), and 512 MB on reload (D678). The heap in use when Race is
   tapped is about 98 MB after the views are freed (11 MB go with them),
@@ -5969,7 +5970,7 @@ the camera's run; `--query sectionshots=<dir>&menu=0` takes the views).
   build's own peak (about 410 MB of heap) lands on top. So the race peak
   is about 10 to 50 MB above the level's own, from the menu rather than
   from the views. Not met strictly; raised (D750).
-- **Time to the menu**: 4.77 s (WebGPU, load 23), 3.74 to 4.40 s (WebGL2,
+- **Time to the menu**: 3.75 to 4.77 s (WebGPU, load 23 to 34), 3.74 to 4.40 s (WebGL2,
   load 14 to 20); the JS's is 3.2 s here. Views build in 0.3 to 1.3 s each
   in wasm (Sierra's first, 1.3 s); all six up 5.8 to 7.3 s after the first
   began.
