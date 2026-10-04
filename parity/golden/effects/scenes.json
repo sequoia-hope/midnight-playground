@@ -1,0 +1,66 @@
+{
+  "note": "Staged effect scenes (roadmap WP 4.4, L4; DECISIONS D804). Each is drawn by the JS game's own Effects.js in a fly-camera station of the level and by the Rust client's play::fx with ?fx=<name>, from the same data: tools/parity/effects-scenes.mjs. Cars sit on the road at s + speed x frame x dt, lat across, heading along the road plus yaw; a body at the last pose carries the flames. Each frame the bursts due run (sparksAt, smokeAt), then effects.update(dt, night, extras). Math.random is mulberry32(seed) for the frames on both sides.",
+  "scenes": [
+    {
+      "name": "pools",
+      "what": "Headlight pools at blue hour: the player's (9 x 16 m, 10 m ahead), a rival's and an oncoming car's (7 x 12 m, 7.5 m ahead), all at the shared opacity 0.3 x night",
+      "level": "coast", "cam": { "s": 520, "h": 2.4, "back": 9, "lat": 0, "yaw": 0, "pitch": -0.06 },
+      "night": 0.72, "seed": 11, "dt": 0.016666666666666666, "frames": 1,
+      "cars": [
+        { "s": 520, "lat": -1.8, "player": true, "exhausts": [[0.4, 0.3, -2.3], [-0.4, 0.3, -2.3]], "wheelBase": 2.6, "track": 1.6 },
+        { "s": 545, "lat": 1.6, "exhausts": [[0.62, 0.27, -2.45], [-0.62, 0.27, -2.45]], "wheelBase": 2.8, "track": 1.65 },
+        { "s": 575, "lat": 2.2, "yaw": 3.141592653589793, "exhausts": [], "wheelBase": 2.7, "track": 1.6 }
+      ],
+      "bursts": []
+    },
+    {
+      "name": "skid-smoke",
+      "what": "A second and a half of a hard skid at 12 m/s: rear-wheel marks and tyre smoke (dark at night), the pool ahead",
+      "level": "coast", "cam": { "s": 690, "h": 3.2, "back": 12, "lat": 2, "yaw": 0, "pitch": -0.1 },
+      "night": 0.72, "seed": 23, "dt": 0.016666666666666666, "frames": 90,
+      "cars": [
+        { "s": 672, "speed": 12, "lat": -0.6, "yaw": 0.35, "player": true, "skid": 0.9, "exhausts": [[0.4, 0.3, -2.3], [-0.4, 0.3, -2.3]], "wheelBase": 2.6, "track": 1.6 }
+      ],
+      "bursts": []
+    },
+    {
+      "name": "skid-day",
+      "what": "The same skid by day on Sierra's first zone, seen from above: the marks on grey asphalt, the smoke light (night 0, no pools)",
+      "level": "sierra", "cam": { "s": 425, "h": 7, "back": 27, "lat": 2, "yaw": 0, "pitch": -0.22 },
+      "night": 0, "seed": 29, "dt": 0.016666666666666666, "frames": 90,
+      "cars": [
+        { "s": 404, "speed": 10, "lat": -1.0, "yaw": 0.3, "player": true, "skid": 0.9, "exhausts": [[0.4, 0.3, -2.3], [-0.4, 0.3, -2.3]], "wheelBase": 2.6, "track": 1.6 }
+      ],
+      "bursts": []
+    },
+    {
+      "name": "sparks-flames",
+      "what": "Nitro flames on the player and a rival, and three bursts of sparks (a wall scrape and two contacts) in flight",
+      "level": "coast", "cam": { "s": 860, "h": 2.2, "back": 8, "lat": -1, "yaw": 0, "pitch": -0.04 },
+      "night": 0.72, "seed": 37, "dt": 0.016666666666666666, "frames": 18,
+      "cars": [
+        { "s": 860, "lat": -1.6, "player": true, "nitro": true, "exhausts": [[0.4, 0.3, -2.3], [-0.4, 0.3, -2.3]], "wheelBase": 2.6, "track": 1.6 },
+        { "s": 872, "lat": 1.7, "nitro": true, "exhausts": [[0.62, 0.27, -2.45], [-0.62, 0.27, -2.45]], "wheelBase": 2.8, "track": 1.65 }
+      ],
+      "bursts": [
+        { "frame": 0, "kind": "sparks", "s": 866, "lat": 3.6, "h": 0.5, "n": 30, "vx": 0, "vz": 0 },
+        { "frame": 6, "kind": "sparks", "s": 869, "lat": 0.2, "h": 0.6, "n": 23, "vx": 4, "vz": 0 },
+        { "frame": 12, "kind": "sparks", "s": 864, "lat": -3.4, "h": 0.4, "n": 16, "vx": 0, "vz": 3 }
+      ]
+    },
+    {
+      "name": "launch",
+      "what": "A second of launch puffs behind the player on the grid, and smoke bursts by a crashed car",
+      "level": "coast", "cam": { "s": 1010, "h": 2.6, "back": 9, "lat": 1.5, "yaw": 0, "pitch": -0.06 },
+      "night": 0.72, "seed": 41, "dt": 0.016666666666666666, "frames": 60,
+      "cars": [
+        { "s": 1008, "lat": -1.2, "player": true, "launch": true, "exhausts": [[0.4, 0.3, -2.3], [-0.4, 0.3, -2.3]], "wheelBase": 2.6, "track": 1.6 }
+      ],
+      "bursts": [
+        { "frame": 10, "kind": "smoke", "s": 1022, "lat": 2.4, "h": 0.6, "amount": 1.4, "vx": 0, "vz": 0 },
+        { "frame": 20, "kind": "smoke", "s": 1022, "lat": 2.4, "h": 0.6, "amount": 1.4, "vx": 0, "vz": 0 },
+        { "frame": 30, "kind": "smoke", "s": 1022, "lat": 2.4, "h": 0.6, "amount": 1.4, "vx": 0, "vz": 0 }
+      ]
+    }
+  ]
+}

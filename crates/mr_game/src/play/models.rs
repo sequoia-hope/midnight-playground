@@ -319,6 +319,13 @@ impl Spawner<'_> {
     }
 }
 
+impl Car {
+    /// The body node's entity (the flames hang on it, `Effects.addCar`).
+    pub fn body_entity(&self) -> Option<Entity> {
+        self.body.map(|(e, _)| e)
+    }
+}
+
 impl Cars {
     /// The body's pitch and roll (`body.rotation.x/z`), the wheels' spin
     /// (`rotation.x += speed / radius × dt`) and the steer pivots

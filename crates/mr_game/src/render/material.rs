@@ -92,6 +92,13 @@ pub enum Patch {
     /// `streets/props.js` `buildSteam`: a `ShaderMaterial` on points, puffs
     /// rising from the vents.
     Steam,
+    /// `game/Effects.js` `Particles`: a `ShaderMaterial` on points, the
+    /// tyre smoke and the sparks: per point size, alpha and colour, the
+    /// texture, fog (WP 4.4).
+    Particles,
+    /// `game/Effects.js` `SkidMarks`: a `ShaderMaterial`, dark quads with a
+    /// per-vertex alpha (WP 4.4).
+    Skid,
 }
 
 /// `surfaceDetail`'s `mode` (`kind_opts.mode`).
@@ -174,6 +181,8 @@ impl Patch {
             MaterialKind::AmbientProp => Patch::Ambient,
             MaterialKind::Neon => Patch::Neon,
             MaterialKind::Steam => Patch::Steam,
+            MaterialKind::Particles => Patch::Particles,
+            MaterialKind::SkidMarks => Patch::Skid,
             _ if m.ty == "PointsMaterial" => points(PointsMode::Plain),
             _ => Patch::None,
         }
@@ -224,6 +233,10 @@ pub struct ThreeKey {
     pub depth_test: bool,
     /// `polygonOffset` as a constant depth bias.
     pub depth_bias: i32,
+    /// `polygonOffsetFactor` as a slope-scaled depth bias (positive toward
+    /// the camera; the race's effects, D803). Other materials keep the
+    /// constant alone (D103).
+    pub depth_slope: i32,
     /// The JS patch (WP 2.4), or points.
     pub patch: Patch,
     /// A tangent-space normal map (the sea's), with three's derivative
@@ -255,7 +268,8 @@ pub struct ThreeParams {
     /// Per patch: Terrain `uPhotoBox`; Sea `normalScale` (xy); Points
     /// `size`, `uMinPx`, and the flicker's rate and depth; City `uGround`
     /// (x); Traffic `uTime`, `uNight`, `uFogK`, `uHalfH` as exported;
-    /// SkyGlow `uK`, `uGround`, `uH`; Sprite `rotation` (x).
+    /// SkyGlow `uK`, `uGround`, `uH`; Sprite `rotation` (x); Particles
+    /// `uScale` (x).
     pub kind0: Vec4,
     /// Points: the flicker's blink rate.
     pub kind1: Vec4,
@@ -264,7 +278,8 @@ pub struct ThreeParams {
     /// scales `emissive` by `day + (night - day) × n` with the sky's night
     /// factor from the globals. 2 in z: by light slot w of the globals
     /// (`lighting::MaterialLights`, D456). Zero (the default) leaves
-    /// `emissive` as it is.
+    /// `emissive` as it is. 3 in z (three's own unlit materials): the
+    /// opacity is light slot w instead (the race's headlight pools, D803).
     pub night: Vec4,
     /// The alpha map's uv transform rows.
     pub alpha_t0: Vec4,
@@ -501,6 +516,8 @@ impl Material for ThreeMaterial {
             Patch::Ambient => defs.push("PATCH_AMBIENT".into()),
             Patch::Neon => defs.push("PATCH_NEON".into()),
             Patch::Steam => defs.push("PATCH_STEAM".into()),
+            Patch::Particles => defs.push("PATCH_PARTICLES".into()),
+            Patch::Skid => defs.push("PATCH_SKID".into()),
         }
         if k.normal_map {
             defs.push("USE_NORMALMAP".into());
@@ -598,6 +615,7 @@ impl Material for ThreeMaterial {
                 CompareFunction::Always
             });
             ds.bias.constant = k.depth_bias;
+            ds.bias.slope_scale = k.depth_slope as f32;
         }
         Ok(())
     }
@@ -657,7 +675,9 @@ pub fn model_of_material(m: &MaterialDesc) -> Option<Model> {
         | MaterialKind::Steam
         | MaterialKind::SkyGlow
         | MaterialKind::Surf
-        | MaterialKind::LighthouseBeam => Some(Model::Basic),
+        | MaterialKind::LighthouseBeam
+        | MaterialKind::Particles
+        | MaterialKind::SkidMarks => Some(Model::Basic),
         _ => None,
     })
 }
@@ -891,7 +911,12 @@ pub fn three_material(
                 );
             }
         }
+        Patch::Particles => {
+            let u = |n: &str, d: f64| m.number(n).unwrap_or(d) as f32;
+            p.kind0 = Vec4::new(u("uScale", 400.0), 0.0, 0.0, 0.0);
+        }
         Patch::Shoulder
+        | Patch::Skid
         | Patch::Reflector
         | Patch::Siding(_)
         | Patch::Container
@@ -962,6 +987,7 @@ pub fn three_material(
         depth_write: flag("depthWrite", true),
         depth_test: flag("depthTest", true),
         depth_bias,
+        depth_slope: 0,
         patch,
         normal_map,
         alpha_map,
