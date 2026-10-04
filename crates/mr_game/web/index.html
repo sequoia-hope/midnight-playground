@@ -322,7 +322,32 @@
     };
 
     poll();
-    await loadScene(level, true);
+    // A menu-first run opens on the menu's sections, which the client builds
+    // itself (D742): no level is downloaded until Race (`__mr.reload`), and
+    // Seaside's view needs its survey and its ground photo.
+    if (glue.menu_sections && glue.menu_sections()) {
+      show(0.3, 'Preparing the menu…');
+      download('../../assets/seaside/survey.bin', () => {})
+        .then((b) => glue.section_survey(b))
+        .catch((e) => glue.section_survey_failed(String(e.message || e)));
+      // Its view's photo at a quarter of the size (D748); the race fetches
+      // the whole one when Seaside is raced.
+      (async () => {
+        const img = new Image();
+        img.src = '../../src/levels/seaside/photo.jpg';
+        await img.decode();
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth / 4); c.height = Math.round(img.naturalHeight / 4);
+        const g = c.getContext('2d', { willReadFrequently: true });
+        g.drawImage(img, 0, 0, c.width, c.height);
+        const { width, height, data } = g.getImageData(0, 0, c.width, c.height);
+        c.width = c.height = 0;
+        glue.section_photo(width, height, new Uint8Array(data.buffer));
+      })().catch((e) => glue.section_photo_failed(String(e.message || e)));
+      level = '';
+    } else {
+      await loadScene(level, true);
+    }
     if (params.has('stats') || params.has('perf')) statsPanel();
     if (params.has('perf')) (await import('./perf.js')).runPerf(mr, new URLSearchParams(location.search));
   }

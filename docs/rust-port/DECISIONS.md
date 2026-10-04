@@ -5866,3 +5866,335 @@ additive glow quad on the road ahead of each car, 9 × 16 m for the player
 and 7 × 12 m for the others, its opacity rising with night), WP 4.4's
 effects, still to port.
 Those, not the spot, are most of the "too dark" the owner sees.
+
+## Menu section decisions
+
+D676's package: the menu switches levels at once, over a short section of
+each level built in the client (`crates/mr_game/src/preview.rs`,
+`crates/mr_worldgen/src/section.rs`). The deviation is in DEVIATIONS.md.
+
+## D740. The menu flies over sections, prepared for every level
+
+2026-10-04 (D676). A menu-first run (`ui::menu_first`, not a test scene,
+station run, fly camera or given scene file; `?sections=0` keeps the old
+boot) downloads no level. The client builds a **section** of every level
+with `mr_worldgen` (D741), spawns each once under a root entity of its own
+(hidden unless shown) and shows the selected one behind the menu. A level
+tab or card only selects (it saves `mr.level` and plays the level's music,
+as before): if that level's section is up it is shown in the same frame,
+else as soon as it is. Showing one swaps what the client's single-scene
+systems read (D742), so the attract camera, sky and time of day, fog,
+environment map, local lights and the scenery's animators run on the
+section as on the level. Race frees the sections and builds or downloads
+the level whole behind the loading screen (D743). Generated in the client
+rather than cut from the exports: nothing to download (the exports are 39
+to 210 MB, D439), and the section is the level's own build, so it draws
+what the level draws there.
+
+## D741. What a section is: the level's build near the attract camera's run
+
+2026-10-04. The attract camera starts at `startS + 60` (`toMenu`) and
+flies **500 m** (31 s at 16 m/s), then starts over (`preview::wrap_attract`;
+the JS's runs the whole first zone, 2 to 14 km, which a section does not
+have). The stretch built is `startS + 20` to `startS + 660` (the eye is
+22 m behind, the camera looks 20 m ahead, and 100 m of road beyond the
+run's end). `mr_worldgen::section::Section` restricts a level's build,
+with `World::section` set (a new field, `None` for a level, which changes
+nothing):
+- **Terrain**: only tiles within **2,500 m** of the stretch are meshed
+  (`section::keep_tiles` in the terrain's mesh stage), at the steps and
+  seams the whole grid gives them; the far ridges stay, the rest of the
+  route's land is not built.
+- **Scenery**: every module's `plan()` runs (its flattens and carves shape
+  the land everywhere, so heights are the level's), but its `build()` only
+  when one of the zones naming it passes within 600 m of the stretch
+  (`section::builds_module`): Sierra builds Mountain only.
+- **The cut**: after the last job, every drawable whose bounds (an
+  InstancedMesh's: all its drawn instances') lie wholly beyond **600 m**
+  of the stretch leaves the tree, and geometry nothing drawn uses is
+  dropped before the scene is assembled (`section::cut`,
+  `section::finish`). Animators addressing what was cut find nothing
+  (`WorldBuild::resolve` already drops such edits).
+
+Seeds and the order of draws are the level's, so what is kept is what the
+level draws: natively, 200 m into the run, the section and the whole
+level (`?world=gen` for Sierra, the exports for the others; the other
+sections built with all of `mr_worldgen`'s scenery for the comparison,
+`MR_SECTION_SCENERY=1`) give the same pictures for all six levels, the
+only differences beyond 600 m (a far hill on Seaside, a distant lorry on
+Desert). The radii and length are `preview::{CAMERA_RUN, TERRAIN_RADIUS,
+SCENERY_RADIUS}`; at 600 m the city skylines the sections look at stay
+(Cruise's towers are within it). `cargo run --release -p mr_worldgen
+--example section_cost -- <levels>` (`LEN=640 RS=600 RT=2500` for a
+section, `JOBS=1` per job) times each job and counts the heap. Natively
+(load 7): sections build in 0.25 s (Seaside) to 1.1 s (Streets, Cruise),
+the whole levels in 0.25 to 1.6 s.
+
+## D742. How sections are held and shown
+
+2026-10-04. `preview::Previews` holds one entry per level, built one at a
+time: natively on a thread, on the web a few jobs a frame (30 ms while the
+loading screen is up, 8 ms behind the menu), then spawned by the loader a
+slice a frame (`loader::step_section`, `loader::finish_section`: the level
+path's code, with every entity under the section's root, `Build::under`).
+Its CPU copy goes as a level's does; what stays is its world (animators,
+sky), its animators' index (`animate::SceneIndex`, entities set per node
+from the root's children), its Track, lights and sky noise. Showing one
+(`preview::show`, an exclusive system, under 0.4 ms) hides the root shown
+before, makes the new one visible, and puts its Track and level in
+`TrackRes`, a new `SkyState` in `SkyRes` (the environment map rebuilds),
+its spot and point light in `Lighting`, its noise in `EnvRequest`, its
+world in `animate::WorldGen` (`install_world`) and its index as the
+`SceneIndex` resource, clears the animation blocks (material numbers are
+per scene), sets `opts.o.level` and the attract camera. Nothing else
+changes; `animate::wants_world` is false while sections are drawn, so no
+level world is built for animators behind them. The first section goes
+through `AppState::Running` and the warm-up (D390) behind the loading
+screen; later ones get their own stand-ins (`SectionWarm`), despawned once
+nothing compiles, so a tab never compiles a pipeline (no frame over 50 ms
+in the 60 after each switch). The page skips its boot download when
+`menu_sections()` says so and fetches Seaside's survey (0.6 MB) for its
+section (`section_survey`). Order: the saved level's first; the others
+once the menu is ready (not during its warm-up), the largest build peaks
+first (Streets, Cruise, Desert, Coast, Sierra, Seaside: D745), a tapped
+tab's level moving to the front. Natively `--query
+sectionshots=<dir>[&shot_s=200&menu=0]` saves each level's section and
+exits; `menu=0` draws no screens.
+
+## D743. Race, Main menu and the level drawn whole
+
+2026-10-04. Race (`ui` Act::Start) frees the sections (roots despawned,
+worlds and indexes dropped, any build in flight abandoned) and, unless
+that level is drawn whole already, asks for it as a tab did before
+(`__mr.reload` on the web, a thread natively): downloaded, or built by the
+client with `?world=gen`, behind the loading screen; the countdown arms
+once the level drawn whole is that level (`Previews::full`) and ready.
+Main menu after a race keeps the raced level drawn whole for its tab, as
+the JS's `toMenu` does (attract camera at `startS + 60`, its own run), and
+prepares the six sections again behind the menu, that level's last. The
+first time another level is shown the whole level is freed (its entities
+despawned, its world dropped); Race on the level still drawn whole starts
+at once, as Race again does. `unload_scene` despawns with `try_despawn`
+(a section's entities go with their root). The level-switch suite
+(`tools/parity/e2e/level-switch.test.mjs`) now checks that a tab loads no
+scene and Race loads one; `tools/parity/e2e/sections.test.mjs` checks the
+whole flow and prints the measurements of D745.
+
+## D744. Levels the client does not build yet: terrain, road, sky and sea
+
+2026-10-04. A section of a level that `animate::generated` does not name
+is built from the same stages with no scenery (terrain, road, sky, sea;
+Seaside with its survey and ground colours), the modules' `plan()` not
+run: a stand-in until that level's client build lands. On this branch
+that is every level but Sierra; the agents adding Seaside and Cruise
+(D680+), Coast (D700+) and Desert and Streets (D720+) make
+`animate::generated` true for theirs, and their sections then come from
+`animate::section_build` (their `new_build`, with the section set). When
+merging: `section_build` calls `new_build(level)`; with D680's change it
+becomes `new_build(level, true)`, and Seaside's survey and photo come from
+`levels::seaside`'s stash (the page then fetches the photo at boot in a
+sections run too, `loadPhoto`, and `preview::level_ready` should wait on
+`levels::inputs_ready(level, true)` as well as its own survey). A section
+builds its terrain tiles three to a job (`terrain_mesh`, sections only),
+so behind the menu no tile job holds a frame long.
+
+## D745. Measurements
+
+2026-10-04, release web build, headless Chrome on this machine's RTX 3060
+(1280 × 800), `tools/parity/e2e/sections.test.mjs`; the machine shared
+(load averages given; other runs holding GPU memory).
+- **Wasm size**: 8.12 MB (WebGPU) and 8.50 MB (WebGL2) after gzip, +0.03
+  MB over b367862 (D675's 8.09 / 8.47).
+- **Time to the menu** (navigation to the menu up, every pipeline
+  compiled): 4.59 and 4.65 s at load 1.8 to 8.5 (first frame 1.9 s, the
+  Sierra section built in 1.3 s and spawned in 0.1 s); the JS game reaches
+  its menu in 3.2 s here (BASELINE), so within SPEC 6.6's 5 s; nothing is
+  downloaded but the client and the survey. All six sections are up 4.8 s
+  after the first began.
+- **Tab switch**: the section shows in the frame after the click (the
+  harness's click itself waits two frames: 78 to 84 ms from the click to
+  the report); natively `show` takes 0.1 to 0.3 ms. No frame over 50 ms
+  in the 60 frames after any switch.
+- **Memory with all six held** (wasm high-water): 202 to 217 MB with
+  this branch's sections (Sierra's whole, the others terrain and road),
+  against 488 MB for the boot that downloaded Sierra's export (D492). With
+  every level's scenery (a measurement build linking all of
+  `mr_worldgen`'s scenery, what the client will hold once every level is
+  generated): 160 MB at the menu, **508 to 565 MB** once all six are up
+  (load 7 to 21). That is over SPEC 6.6's 512 MB, and it comes from one
+  build, not from what is held: Streets' downtown module peaks at 448 MB of
+  heap while it builds (23 MB in use before it, 164 MB after; the whole
+  level's build peaks at 451 MB), Cruise's city at 278 MB; the other
+  sections peak at 28 to 112 MB (`section_cost`, natively). The sections
+  held cost little (the GPU holds their meshes and images), and the
+  heaviest are built right after the first, while little else is held. A
+  race on a client-built Streets reaches the same peak.
+- **Frames behind the menu** while the other five build: with this
+  branch's sections p50 16.7 ms, 11 frames over 50 ms, the longest 100
+  ms; with every level's scenery, 17 to 43 frames over 50 ms, the longest
+  1.2 s (2.2 s at load 21): a scenery module's `build()` is one job
+  (Streets' downtown, Cruise's city, Desert's, 1 to 1.5 s each in wasm
+  here).
+- Race from the menu (Coast, its terrain-road-sky export through the
+  harness): racing 1.5 s after the click; then Main menu, the sections
+  again, Coast freed for Desert's section, and a race on Seaside.
+- **WebGL2**, the same suite at load 140 (timings not comparable): passes;
+  wasm 155 MB at the menu, 213 MB with all six held, 290 MB after the two
+  races; tabs show within 115 to 362 ms of the click under that load.
+  Also passing: `level-switch.test.mjs` (both forms, WebGPU, load 165) and
+  the phone menu-to-race check (`phone-menu.mjs`, iPhone emulation: a tap
+  on Seaside's tab, Race, racing with the throttle, the sound running).
+
+## D746. Open, for the owner
+
+2026-10-04. (1) **Memory**: with every level generated, the menu's
+high-water reaches about 510 to 565 MB because Streets' world build
+peaks at about 450 MB of heap (D745); a Streets race would too. Either
+the Streets module's build gets leaner (its agent is told), or the menu
+builds Streets' section only when its tab is first chosen (that tab then
+waits about 2 s on a desktop, longer on a phone), or the budget is
+looked at again. Not decided here; the sections stay eager. (2)
+**Hitches behind the menu**: a scenery module's build cannot be split, so
+the first seconds of the menu stutter while the others build (frames up
+to 1.2 s here, more on a phone); the alternatives are building them all
+behind the loading screen (about 11 s here instead of under 5, against
+the JS's 3.2 s) or a worker (a second wasm instance and its memory). (3)
+The camera's 500 m run and the radii (D741) are a first choice; phone
+checks of the time to the menu and of memory are owed.
+
+## D747. With every level built in the client (main 01e660c)
+
+2026-10-04, after merging main, where `animate::generated` names all six
+levels. D744's notes are done: `section_build` calls `new_build(level,
+true)`; the menu's survey also goes to `levels::seaside`'s stash, a
+section waits on `levels::inputs_ready(level, true)`, and a sections run's
+page fetches Seaside's photo at boot (kept, shared with the race's build).
+D744's terrain-and-road stand-in is now only a fallback. Natively the six
+sections at 200 m into the run match the whole levels as in D741, Seaside
+now with its draped photo. Measured with `sections.test.mjs` on the real
+builds (release, 1280 × 800; the machine heavily shared, load averages
+given):
+
+| | WebGPU, load 20 | WebGPU, load 95 | WebGL2, load 65 |
+|---|---|---|---|
+| Menu ready (nothing downloaded) | 5.01 s | 5.99 s | 5.68 s |
+| First section (Sierra) built, spawned | 1.54, 0.12 s | 1.44, 0.12 s | 1.88, 0.13 s |
+| Wasm at the menu | 176 MB | 176 MB | 169 MB |
+| All six up after the first began | 12.8 s | 14.0 s | 17.0 s |
+| Wasm high-water, all six held | 553 MB | 537 MB | 496 MB |
+| Frames behind the menu over 50 ms (of 157); longest | 35; 1.32 s | 31; 1.28 s | 41; 1.65 s |
+| Tab shown after the click (harness's two frames included) | 81 to 131 ms | 81 to 131 ms | 77 to 115 ms |
+| Frames over 50 ms in the 60 after a switch | 0 | 0 | 0 |
+
+Section builds in wasm here: Seaside 0.4 s, Coast 1.3, Sierra 1.5, Streets
+1.7, Desert and Cruise 1.9 (spawns 0.12 to 0.5 s). The memory is D745's
+finding on real builds: over SPEC 6.6's 512 MB on WebGPU because of
+Streets' build peak, not what the sections hold; the long frames are the
+scenery modules' one-job builds. Both stay the owner's (D746); nothing
+chosen here. `level-switch.test.mjs` (both forms) passes on WebGPU and on
+WebGL2 (`MR_BACKEND=webgl2`, new), as does `sections.test.mjs` on both.
+Wasm 8.42 MB (WebGPU) and 8.80 MB (WebGL2) after gzip with every level's
+world generation linked.
+
+With D678 merged (main 7bcdb89: the client builds every level by default),
+Race from the menu builds the level in the client, nothing downloaded.
+The same suite then (load 45 to 49, so the times are long):
+
+| | WebGPU | WebGL2 |
+|---|---|---|
+| Menu ready | 6.11 s | 5.16 s |
+| Wasm at the menu; all six held | 176; 505 MB | 169; 503 MB |
+| Frames behind the menu over 50 ms (of 165 to 173); longest | 38; 1.67 s | 48; 1.92 s |
+| Tab shown after the click | 76 to 132 ms | 105 to 171 ms |
+| Race on Coast: racing after the click; wasm high-water | 6.4 s; 596 MB | 5.6 s; 609 MB |
+
+A Coast build alone reloads at 512 MB (D678); after the menu's sections
+the race reaches 596 to 609 MB, the sections' peak and the race's build
+not sharing all their memory (the wasm memory never shrinks, D745). Part
+of D746 (1). `level-switch.test.mjs` (built and `world=export`) passes on
+both backends.
+
+## D748. The menu shows simplified views, not cut-down levels
+
+2026-10-04, the owner on D746: "let's build simplified views for the
+menu. loading every level for the menu is not really what i intended";
+the stutter behind the menu is accepted for now. A level's menu **view**
+replaces D741's section of its full build:
+- **The level's land, road, sky, time of day and sea** from its own world
+  build, with `Section::scenery` false: every scenery module's `plan()`
+  runs (so the land and road are the level's), none builds. Terrain tiles
+  within **1,500 m** of the stretch (2,500 before; the radius changes
+  little: the textures dominate), the road cut at 600 m as before, and the
+  sea over the view's land only (`Sea::new_in` / `sea_geometry_in` with
+  `section::bounds`; a level's sea is unchanged): Coast's view 29 → 16 MB
+  of scene data.
+- **Stand-ins for its scenery** (`preview/hints.rs`, a job added after
+  the build with `Build::push_job`), chosen from what the attract camera
+  sees on each level and built from `mr_worldgen`'s flora templates and
+  boxes, with a fixed seed per level: Sierra a few spruce and fir up the
+  slopes and boulders by the road; Coast telegraph poles on the inland side
+  and scrub; Streets blocks of tinted walls with a generated window texture
+  lit after dark (`add_night`), lit shopfronts and street lamps; Desert
+  red hoodoos (stretched rocks under a cap) and scrub on the canyon floor;
+  Seaside the red, white and blue barrier, catch-fence posts and oaks on
+  the hills; the Cruise a skyline of lit towers and freeway lamps. These
+  are invented, not the JS's scenery (DEVIATIONS.md).
+- **Seaside's photo**: on the web the view drapes a quarter-size copy
+  (461 × 540, 1 MB) that the page scales on a canvas and hands in
+  (`section_photo`); the race's build fetches the whole photo as before.
+  Natively the view uses the level's own setup and photo.
+
+Everything else is D742 and D743: one view per level, built when the menu
+opens (the saved level's first), held under hidden roots, shown in the
+frame after a tab; Race frees them and builds the level whole (D678's
+default); Main menu keeps the raced level for its tab. The heaviest-first
+order (D745) is gone (views are light); they are built in menu order after
+the selected one. Pictures of every view beside its whole level from the
+same camera: `parity/report/menu-views/index.html` (natively, 200 m into
+the camera's run; `--query sectionshots=<dir>&menu=0` takes the views).
+
+## D749. What the views cost
+
+2026-10-04, release web build, headless Chrome, RTX 3060; load averages
+14 to 25 unless said.
+- **Memory at the menu** (wasm high-water): 81 MB before the first view is
+  built; 137 to 151 MB once Sierra's view and the menu's warm-up field are
+  up; **169 to 172 MB with all six views** (WebGPU and WebGL2), so the six
+  views and the warm-up field add about 91 MB, against 505 to 553 MB for
+  D747's cut-down sections. Counted with a heap-counting allocator (a
+  diagnostic build, not committed): the five views after the first hold
+  about 13 MB of heap between them (96 → 109 MB in use); each peaks about
+  15 to 35 MB above that while it builds.
+- **Race after the menu** (Coast, built): wasm high-water 515 to 564 MB on WebGPU,
+  516 to 564 MB on WebGL2 (most runs 548 to 564; they vary run to
+  run), against Coast raced
+  straight from the address here: 466 to 498 MB (WebGPU), 473 to 507 MB
+  (WebGL2), and 512 MB on reload (D678). The heap in use when Race is
+  tapped is about 98 MB after the views are freed (11 MB go with them),
+  against about 50 MB when a race from the address starts its build: the
+  menu, its warm-up field and the sound are live during the build, and the
+  build's own peak (about 410 MB of heap) lands on top. So the race peak
+  is about 10 to 100 MB above the level's own (most runs 50 to 90),
+  from the menu rather than
+  from the views. Not met strictly; raised (D750).
+- **Time to the menu**: 3.75 to 4.77 s (WebGPU, load 23 to 34), 3.74 to 4.40 s (WebGL2,
+  load 14 to 20); the JS's is 3.2 s here. Views build in 0.3 to 1.3 s each
+  in wasm (Sierra's first, 1.3 s); all six up 5.8 to 7.3 s after the first
+  began.
+- **Frames behind the menu** while the other five build: 16 to 19 of
+  about 90 over 50 ms, the longest 200 ms (D747: up to 1.9 s).
+- **Tab switch**: shown the frame after the click (77 to 182 ms including
+  the harness's two frames), no frame over 50 ms after any switch.
+- **Wasm size**: 8.43 MB (WebGPU), 8.81 MB (WebGL2) after gzip (+0.01 MB
+  for the stand-ins).
+`sections.test.mjs` and `level-switch.test.mjs` pass on both backends.
+
+## D750. Open: the race after the menu
+
+2026-10-04. A race started from the menu reaches 515 to 564 MB of wasm
+memory where the same level raced from the address reaches 466 to 507
+(D749), because what the menu holds (its warm-up field, the sound, the
+screens; the views are freed) is live while the level builds. Ways to close
+it, none taken here: drop the menu's warm-up field earlier or not build it
+(D574 made it to warm the cars' pipelines), build the level before the
+race's field and sound come up, or accept the menu's share. For the owner.

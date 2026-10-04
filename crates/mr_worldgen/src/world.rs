@@ -224,6 +224,9 @@ pub struct World {
     pub level_data: Option<Arc<SeasideData>>,
     /// `world.onCountdown`, where scenery sets one.
     pub on_countdown: Option<CountdownFn>,
+    /// Build only a section of the level (the menu's flyover, D740):
+    /// `None` builds it whole, as the JS does ([`crate::section`]).
+    pub section: Option<crate::section::Section>,
 }
 
 impl World {
@@ -252,6 +255,7 @@ impl World {
             sea: None,
             level_data: None,
             on_countdown: None,
+            section: None,
         }
     }
 
@@ -523,6 +527,12 @@ impl Build {
         self.queue.is_empty()
     }
 
+    /// Adds a job after the others (the menu's view of a level adds its
+    /// stand-ins at the end, D748).
+    pub fn push_job(&mut self, job: Job) {
+        self.queue.push_back(job);
+    }
+
     /// Runs the next job. Jobs it returns run next, before the rest.
     pub fn step(&mut self) -> Result<(), String> {
         let Some(job) = self.queue.pop_front() else {
@@ -718,6 +728,10 @@ pub fn level_jobs(
             let label = s.label().unwrap_or("Building scenery").to_string();
             let frac = 0.72 + (k as f64 / n as f64) * 0.26;
             out.push(Job::serial(&label, frac, move |w| {
+                // A section builds only the modules near it (D741).
+                if !crate::section::builds_module(w, s.name()) {
+                    return Ok(Vec::new());
+                }
                 if let Err(e) = s.build(w) {
                     w.graph.log.push(format!("{}.build failed {e}", s.name()));
                 }

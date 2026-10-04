@@ -479,6 +479,9 @@ pub struct TerrainSetup {
 
 /// Tiles per job: the JS yields to the browser every 24 tiles.
 const YIELD_EVERY: usize = 24;
+/// A menu section's tiles go a few per job: it is built behind the menu,
+/// whose frames wait on each job (D744).
+const SECTION_YIELD_EVERY: usize = 3;
 
 /// The terrain's three stages of `World.build` (`Stages::terrain`,
 /// `fields`, `terrain_meshes`): `new Terrain` (with the recorded plan, if
@@ -510,13 +513,19 @@ pub fn terrain_stages(setup: TerrainSetup) -> (StageFn, StageFn, StageFn) {
     });
     let meshes: StageFn = Box::new(move |w: &mut World| {
         let t = w.terrain.as_ref().ok_or("no terrain")?;
-        let tiles = Arc::new(t.tile_list());
+        // A section meshes only the tiles near it (D741).
+        let tiles = Arc::new(crate::section::keep_tiles(w, t.tile_list()));
         let built: Arc<Mutex<Vec<BufferGeometry>>> = Arc::new(Mutex::new(Vec::new()));
         let mut jobs = Vec::new();
         let total = tiles.len();
         let mut done = 0;
         while done < total {
-            let (from, to) = (done, (done + YIELD_EVERY).min(total));
+            let per = if w.section.is_some() {
+                SECTION_YIELD_EVERY
+            } else {
+                YIELD_EVERY
+            };
+            let (from, to) = (done, (done + per).min(total));
             let (tiles, built) = (tiles.clone(), built.clone());
             let run = move |w: &mut World| -> Result<Vec<Job>, String> {
                 let t = w.terrain.as_ref().ok_or("no terrain")?;
