@@ -1555,11 +1555,17 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
         light.visible = any(light.color != vec3<f32>(0.0));
         re_direct(light, geometry_normal, geometry_view_dir, m, &r);
     }
-    let spot_color = globals_at(g::G_SPOT_COLOR);
-    if (spot_color.w > 0.0) {
-        let spot_pos = globals_at(g::G_SPOT_POS);
-        let spot_dir = globals_at(g::G_SPOT_DIR);
-        let cone = globals_at(g::G_SPOT_CONE);
+    // The spot lights (three's `for ( int i = 0; i < NUM_SPOT_LIGHTS; i ++ )`):
+    // the scene's, then the race's headlight, packed in that order (D760).
+    for (var k = 0; k < g::NUM_SPOT_SLOTS; k++) {
+        let b = select(g::G_SPOT_POS, g::G_SPOT1_POS, k == 1);
+        let spot_color = globals_at(b + 2);
+        if (spot_color.w <= 0.0) {
+            break;
+        }
+        let spot_pos = globals_at(b);
+        let spot_dir = globals_at(b + 1);
+        let cone = globals_at(b + 3);
         let l_vector = (view.view_from_world * vec4<f32>(spot_pos.xyz, 1.0)).xyz - geometry_position;
         var light: Incident;
         light.direction = normalize(l_vector);
