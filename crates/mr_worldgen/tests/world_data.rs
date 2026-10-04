@@ -6,9 +6,11 @@
 //!
 //! Each level runs `World.build`'s plan stage with its scenery (the ported
 //! modules' own `plan()`, the others' stand-ins), which settles the runout,
-//! then each module's `build()` where that is cheap: the stand-ins (Harbor's
-//! sets Coast's carriageway by Harbor's rule). City's `build()`, which sets
-//! Sierra's and the cruise loop's, is held to the same in `tests/city.rs`.
+//! then each module's `build()` where that is cheap: the stand-ins. A
+//! ported module builds after the road, so the levels with one stop after
+//! the plans: City's `build()`, which sets Sierra's and the cruise loop's
+//! carriageway, is held to the same in `tests/city.rs`, and Level 2's
+//! (Harbor's) in `tests/coast.rs`.
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::wasm_bindgen_test as test;
@@ -28,8 +30,9 @@ fn world_data_equals_the_js_world() {
     let g: Value = serde_json::from_str(GOLDEN).expect("world data golden parses");
     for id in common::LEVELS {
         let want = &g["levels"][id];
-        // City's build is the heavy one; its levels stop after the plans.
-        let city = id == "sierra" || id == "cruise";
+        // A ported module's build needs the road; its levels stop after the
+        // plans.
+        let city = id == "sierra" || id == "cruise" || id == "coast";
         let (terrain, fields, _) = terrain_stages(common::terrain_setup(id));
         let stages = Stages {
             terrain: Some(terrain),
@@ -75,7 +78,7 @@ fn world_data_equals_the_js_world() {
 
         let oc = &want["oppositeCarriageway"];
         if city {
-            assert!(!oc.is_null(), "{id}: City sets a carriageway");
+            assert!(!oc.is_null(), "{id}: City or Harbor sets a carriageway");
             continue;
         }
         assert_eq!(
