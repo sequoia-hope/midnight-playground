@@ -5321,3 +5321,50 @@ followed from the menus' settings (`rumbleOn`, and the 0.5/0.7/300 ms
 buzz when it is switched), the maps load from `mr.padMaps` and are saved
 there when a capture binds or Defaults resets. The stuck hint names the
 pad's reset button while one is connected (`PRESS BACK TO RESET`).
+
+## D783. The menus with a gamepad
+
+2026-10-04, WP 6.4. `ui::nav` ports `MenuNav.js` over the screens'
+controls: a control's box is its laid-out rectangle in CSS px (what
+`getBoundingClientRect` gave), the focusable ones are the screen's
+controls that take an action (the open drop-down's list left out), and
+the highlight is the screens' focus ring (`UiState::focus`, which Tab
+moves too, D573), drawn in #ffcf4d while a slider or drop-down is being
+adjusted (`.pad-edit`). The repeat timing (380 ms, then every 110 ms),
+the scoring (along + 3 × off-axis), the first push only showing where you
+are, the per-screen memory, A to press or to adjust, ◂ ▸ by five steps of
+a slider or one option of a select (its `change`: `Act::Choose`), B and
+Start per screen (`main.js`: B resumes from pause, goes to the menu from
+the results and closes the Controller screen; Start races from the menu
+and races again from the results), and the mouse or a finger hiding the
+highlight are the JS's. What the DOM gave by markup is named per screen:
+the first control of a screen is the Controller screen's first row
+(`data-nav-first`), else the primary button (Race, Resume, Race again).
+`scrollIntoView({block: 'nearest'})` scrolls only a control not wholly in
+view, to the middle (the `reveal` the screens already had), once the
+screen rebuilt with the highlight is laid out; `after_layout` now leaves a
+screen rebuilt that frame alone (it has no layout yet, and clamping its
+offset to an empty content had sent every rebuilt screen back to the
+top). A new
+screen's highlight waits for that screen's controls to be built (a frame
+later than the DOM, which had them all along). `body.pad` is
+`UiState::pads`, set from the pads each frame, which shows Controller
+setup on the menu and Controller on the pause screen.
+
+## D784. The Controller screen
+
+2026-10-04, WP 6.4. `ui::pad_setup` ports `PadSetup.js`: the pad's
+name (its id less the browser's "(STANDARD GAMEPAD Vendor: …)", with
+"· remapped" or the not-standard warning), each action's bindings as
+labels joined with " / ", rows lit while held (`.on`, not while
+listening), the listening row in gold, the hints, a row picked to listen
+(again to stop), Defaults and Done, and the Rumble switch (saved, D782).
+The screen (`screens::padsetup`) is rebuilt when what it shows changes.
+Esc, P and Start leave it or stop listening, before the race can take
+them as un-pause (`main.js`'s `padSetup.escape()` on `consume('pause')`):
+with a race (opened from pause) it consumes the race's pending pause in
+the race's frame, after the pads reach the input layer and before the
+ticks; from the menu (no race) it reads Esc and P itself and the pad's
+Start press. The Controller screen left any other way stops listening.
+`window.__mr.padsetup` (`name`, `binds`, `on`, `listening`, `hint`) is the
+screen for the tests, which read its DOM in the JS suite.
