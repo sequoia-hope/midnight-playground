@@ -5836,3 +5836,37 @@ behind the loading screen (about 11 s here instead of under 5, against
 the JS's 3.2 s) or a worker (a second wasm instance and its memory). (3)
 The camera's 500 m run and the radii (D741) are a first choice; phone
 checks of the time to the menu and of memory are owed.
+
+## D747. With every level built in the client (main 01e660c)
+
+2026-10-04, after merging main, where `animate::generated` names all six
+levels. D744's notes are done: `section_build` calls `new_build(level,
+true)`; the menu's survey also goes to `levels::seaside`'s stash, a
+section waits on `levels::inputs_ready(level, true)`, and a sections run's
+page fetches Seaside's photo at boot (kept, shared with the race's build).
+D744's terrain-and-road stand-in is now only a fallback. Natively the six
+sections at 200 m into the run match the whole levels as in D741, Seaside
+now with its draped photo. Measured with `sections.test.mjs` on the real
+builds (release, 1280 × 800; the machine heavily shared, load averages
+given):
+
+| | WebGPU, load 20 | WebGPU, load 95 | WebGL2, load 65 |
+|---|---|---|---|
+| Menu ready (nothing downloaded) | 5.01 s | 5.99 s | 5.68 s |
+| First section (Sierra) built, spawned | 1.54, 0.12 s | 1.44, 0.12 s | 1.88, 0.13 s |
+| Wasm at the menu | 176 MB | 176 MB | 169 MB |
+| All six up after the first began | 12.8 s | 14.0 s | 17.0 s |
+| Wasm high-water, all six held | 553 MB | 537 MB | 496 MB |
+| Frames behind the menu over 50 ms (of 157); longest | 35; 1.32 s | 31; 1.28 s | 41; 1.65 s |
+| Tab shown after the click (harness's two frames included) | 81 to 131 ms | 81 to 131 ms | 77 to 115 ms |
+| Frames over 50 ms in the 60 after a switch | 0 | 0 | 0 |
+
+Section builds in wasm here: Seaside 0.4 s, Coast 1.3, Sierra 1.5, Streets
+1.7, Desert and Cruise 1.9 (spawns 0.12 to 0.5 s). The memory is D745's
+finding on real builds: over SPEC 6.6's 512 MB on WebGPU because of
+Streets' build peak, not what the sections hold; the long frames are the
+scenery modules' one-job builds. Both stay the owner's (D746); nothing
+chosen here. `level-switch.test.mjs` (both forms) passes on WebGPU and on
+WebGL2 (`MR_BACKEND=webgl2`, new), as does `sections.test.mjs` on both.
+Wasm 8.42 MB (WebGPU) and 8.80 MB (WebGL2) after gzip with every level's
+world generation linked.
