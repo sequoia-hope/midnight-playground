@@ -70,6 +70,10 @@ pub struct Options {
     /// default on for a level, off with `freeze=1` (parity captures), the
     /// material scenes and the stations.
     pub cars: Option<bool>,
+    /// `?gpupre=0|1`: Bevy's GPU preprocessing (mesh uniforms built and
+    /// culled by compute, indirect draws) where the device has compute.
+    /// Default off (DECISIONS D396).
+    pub gpu_preprocessing: Option<bool>,
     /// Natively, with `materials` or `stations`: the directory the PNGs go to (one
     /// directory per group, as `tools/parity/materials.mjs` writes them).
     pub out: Option<String>,
@@ -97,6 +101,7 @@ impl Default for Options {
             materials: None,
             stations: None,
             cars: None,
+            gpu_preprocessing: None,
             out: None,
             smoke_race: false,
             query: Vec::new(),
@@ -180,6 +185,7 @@ impl Options {
         o.materials = get("mat").map(str::to_owned);
         o.cars = get("cars").map(|v| v == "1" || v == "true");
         o.query = pairs.clone();
+        o.gpu_preprocessing = get("gpupre").map(|v| v == "1" || v == "true");
         o
     }
 
@@ -290,7 +296,8 @@ pub fn usage() -> &'static str {
      \n\
      levels: sierra coast streets desert seaside cruise, or models\n\
      query:  the JS game's names: level, s, h, back, lat, v, yaw, pitch, t, freeze=1; hq=0|1;\n\
-     \x20       scene=<file>; mat=<names> (the material test scenes); cars=0|1 (stand-in cars)\n\
+     \x20       scene=<file>; mat=<names> (the material test scenes); cars=0|1 (stand-in cars);\n\
+     \x20       gpupre=0|1 (Bevy's GPU preprocessing)\n\
      race:   a level without s= is a race (race=0: the attract camera); car=<kind>, seed=N,\n\
      \x20       autodrive=1 (or --autodrive), timescale=N, pursuit=1, heat=N, touch=0|1,\n\
      \x20       shots=<dir> (save countdown, race and results PNGs, then exit)"

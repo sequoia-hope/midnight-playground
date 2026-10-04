@@ -31,7 +31,10 @@
     mesh_functions,
     mesh_bindings::mesh,
     mesh_types::MESH_FLAGS_SHADOW_RECEIVER_BIT,
-    mesh_view_bindings::{view, lights, directional_shadow_textures},
+    mesh_view_bindings::{
+        view, lights, directional_shadow_textures,
+        directional_shadow_textures_comparison_sampler,
+    },
 }
 #import mr::three_std as t
 #import mr::three_globals as g
@@ -85,7 +88,9 @@ struct ThreeParams {
 @group(#{MATERIAL_BIND_GROUP}) @binding(11) var env_texture: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(12) var env_sampler: sampler;
 
-fn gl(i: i32) -> vec4<f32> {
+// (Not `gl`: naga's GLSL writer turns it into `gl_1`, a name GLSL reserves,
+// and the WebGL2 build's shaders fail to compile.)
+fn globals_at(i: i32) -> vec4<f32> {
     return textureLoad(globals_texture, vec2<i32>(i, 0), 0);
 }
 
@@ -180,9 +185,9 @@ fn vertex(v: Vertex) -> VOut {
     out.color = color;
     // shadowmap_vertex: the world position pushed out along the (normalised)
     // world normal by the normal bias, through three's shadowMatrix.
-    let shadow = gl(g::G_SHADOW);
+    let shadow = globals_at(g::G_SHADOW);
     let shadow_world = vec4<f32>(world.xyz + normalize(n) * shadow.y, 1.0);
-    let m = mat4x4<f32>(gl(g::G_SHADOW_M), gl(g::G_SHADOW_M + 1), gl(g::G_SHADOW_M + 2), gl(g::G_SHADOW_M + 3));
+    let m = mat4x4<f32>(globals_at(g::G_SHADOW_M), globals_at(g::G_SHADOW_M + 1), globals_at(g::G_SHADOW_M + 2), globals_at(g::G_SHADOW_M + 3));
     out.shadow_coord = m * shadow_world;
 #ifdef POINTS
     points_vertex(&out, extra);
@@ -197,7 +202,7 @@ fn vertex(v: Vertex) -> VOut {
 // map_particle_fragment flips it back: uv = (pc.x, 1 - pc.y)).
 fn points_vertex(out: ptr<function, VOut>, extra: vec4<f32>) {
     let mv_z = (*out).view_pos.z;
-    let pixel_ratio = gl(g::G_ANIM2).w;
+    let pixel_ratio = globals_at(g::G_ANIM2).w;
     // refreshUniformsPoints: size × pixelRatio; scale = height × 0.5 (CSS).
     var point_size = material.kind0.x * pixel_ratio;
     var aux = 1.0;
@@ -214,12 +219,12 @@ fn points_vertex(out: ptr<function, VOut>, extra: vec4<f32>) {
     // a gentler fog (uFogK = fog density × 0.4, City.js's updater).
     let g_raw = point_size;
     point_size = max(g_raw, material.kind0.y);
-    let fog_k = gl(g::G_FOG).w * 0.4;
+    let fog_k = globals_at(g::G_FOG).w * 0.4;
     aux = sqrt(g_raw / point_size) * exp(-max(-mv_z, 0.0) * fog_k);
 #endif
 #ifdef POINTS_FLICKER
     // At fog_vertex.
-    let u_time = gl(g::G_ANIM2).z;
+    let u_time = globals_at(g::G_ANIM2).z;
     let ph = extra.x;
 #ifdef FLICKER_BLINK
     aux = step(0.5, fract(u_time * material.kind1.w + ph * 0.3333));
@@ -256,17 +261,27 @@ fn texture2DCompare(uv: vec2<f32>, compare: f32, size: f32, layer: i32) -> f32 {
     let ix = clamp(i32(floor(uv.x * size)), 0, n - 1);
     let iy = clamp(i32(floor(uv.y * size)), 0, n - 1);
 #ifdef NO_ARRAY_TEXTURES_SUPPORT
-    let stored = textureLoad(directional_shadow_textures, vec2<i32>(ix, n - 1 - iy), 0);
+    // WebGL2 (GLSL ES 3.0) cannot texelFetch a depth texture, so the same
+    // texel is read through Bevy's comparison sampler (GreaterEqual) at its
+    // centre, where the bilinear weights are (1, 0, 0, 0): it answers
+    // `1 - compare >= stored`, which is `compare <= depth`, three's step.
+    let centre = (vec2<f32>(f32(ix), f32(n - 1 - iy)) + 0.5) / size;
+    return textureSampleCompareLevel(
+        directional_shadow_textures,
+        directional_shadow_textures_comparison_sampler,
+        centre,
+        1.0 - compare,
+    );
 #else
     let stored = textureLoad(directional_shadow_textures, vec2<i32>(ix, n - 1 - iy), layer, 0);
-#endif
     let depth = 1.0 - stored;
     return step(compare, depth);
+#endif
 }
 
 // getShadow with SHADOWMAP_TYPE_PCF_SOFT.
 fn getShadow(shadow_coord_in: vec4<f32>) -> f32 {
-    let params = gl(g::G_SHADOW);
+    let params = globals_at(g::G_SHADOW);
     let shadow_map_size = params.z;
     let layer = i32(lights.directional_lights[0].depth_texture_base_index);
     var shadow = 1.0;
@@ -503,7 +518,7 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
 #ifdef USE_NORMALMAP
     // getTangentFrame( - vViewPosition, normal, vNormalMapUv ); the sea's
     // normal map scrolls (Sea.js), which `G_ANIM2.xy` adds to its offset.
-    let normal_uv = vec2<f32>(dot(material.normal_t0.xyz, vec3<f32>(in.uv, 1.0)), dot(material.normal_t1.xyz, vec3<f32>(in.uv, 1.0))) + gl(g::G_ANIM2).xy;
+    let normal_uv = vec2<f32>(dot(material.normal_t0.xyz, vec3<f32>(in.uv, 1.0)), dot(material.normal_t1.xyz, vec3<f32>(in.uv, 1.0))) + globals_at(g::G_ANIM2).xy;
     // GLSL's dFdy runs up the window, WGSL's dpdy down the framebuffer: the
     // frame is built from GL's (it is not invariant under that flip; the
     // terrain's bump is).
@@ -530,7 +545,7 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     var diffuse_color = material.diffuse;
 #ifdef POINTS_GLOW
     // City.js's updater: m.color.setScalar(1.6 * smoothstep(0.2, 0.7, night)).
-    diffuse_color = vec4<f32>(vec3<f32>(1.6 * t::smooth_step(0.2, 0.7, gl(g::G_SKY_PARAMS).x)), diffuse_color.a);
+    diffuse_color = vec4<f32>(vec3<f32>(1.6 * t::smooth_step(0.2, 0.7, globals_at(g::G_SKY_PARAMS).x)), diffuse_color.a);
 #endif
     // roughnessmap_fragment's roughnessFactor (the patches change it).
     var roughness_factor = material.pbr.x;
@@ -579,7 +594,7 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     let tone = (0.86 + 0.28 * big.a) * (0.93 + 0.14 * mid.r);
     var road_rgb = diffuse_color.rgb * (tone * (1.0 - wheel * 0.1 - oil * 0.12) * mix(1.0, 0.7, patch_a));
     road_rgb = mix(road_rgb, road_rgb * vec3<f32>(1.25, 1.2, 1.12), edge * 0.6);
-    let damp = gl(g::G_ANIM).x * (0.55 + 0.45 * t::smooth_step(0.35, 0.7, big.r)) * (1.0 - edge * 0.7);
+    let damp = globals_at(g::G_ANIM).x * (0.55 + 0.45 * t::smooth_step(0.35, 0.7, big.r)) * (1.0 - edge * 0.7);
     road_rgb *= 1.0 - damp * 0.25;
     diffuse_color = vec4<f32>(road_rgb, diffuse_color.a);
     let mr_rough = -wheel * 0.08 - patch_a * 0.06 - damp * 0.36 * (0.7 + 0.3 * wheel);
@@ -606,7 +621,7 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     // After color_fragment: surf lines rolling up the beach where the water
     // is shallow (vDepth), foam where it meets the ground.
     let sea_dist = length(in.world_pos - view.world_position);
-    let u_time = gl(g::G_ANIM).y;
+    let u_time = globals_at(g::G_ANIM).y;
     let fn_ = textureSample(detail_texture, detail_sampler, in.world_pos.xz / 9.0 + vec2<f32>(u_time * 0.012, u_time * 0.004));
     let v_depth = in.extra.x;
     let surf_zone = 1.0 - t::smooth_step(0.1, 2.4, v_depth);
@@ -618,7 +633,7 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     // The two counter-scrolling normal scales, sampled here (uniform
     // control flow) for normal_fragment_maps below.
     let sea_n1 = textureSample(aux_texture, aux_sampler, normal_uv).xyz * 2.0 - 1.0;
-    let sea_n2 = textureSample(aux_texture, aux_sampler, normal_uv * 3.3 + gl(g::G_ANIM).zw).xyz * 2.0 - 1.0;
+    let sea_n2 = textureSample(aux_texture, aux_sampler, normal_uv * 3.3 + globals_at(g::G_ANIM).zw).xyz * 2.0 - 1.0;
 #endif
 #ifdef POINTS_FLICKER
     // At alphatest_fragment: diffuseColor.rgb *= vFl.
@@ -726,9 +741,9 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
 
     // The point light (three loops point lights first, then spots, then
     // directional lights).
-    let point_color = gl(g::G_POINT_COLOR);
+    let point_color = globals_at(g::G_POINT_COLOR);
     if (any(point_color.rgb != vec3<f32>(0.0))) {
-        let point_pos = gl(g::G_POINT_POS);
+        let point_pos = globals_at(g::G_POINT_POS);
         let l_vector = (view.view_from_world * vec4<f32>(point_pos.xyz, 1.0)).xyz - geometry_position;
         var light: Incident;
         light.direction = normalize(l_vector);
@@ -736,11 +751,11 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
         light.visible = any(light.color != vec3<f32>(0.0));
         re_direct(light, geometry_normal, geometry_view_dir, m, &r);
     }
-    let spot_color = gl(g::G_SPOT_COLOR);
+    let spot_color = globals_at(g::G_SPOT_COLOR);
     if (spot_color.w > 0.0) {
-        let spot_pos = gl(g::G_SPOT_POS);
-        let spot_dir = gl(g::G_SPOT_DIR);
-        let cone = gl(g::G_SPOT_CONE);
+        let spot_pos = globals_at(g::G_SPOT_POS);
+        let spot_dir = globals_at(g::G_SPOT_DIR);
+        let cone = globals_at(g::G_SPOT_CONE);
         let l_vector = (view.view_from_world * vec4<f32>(spot_pos.xyz, 1.0)).xyz - geometry_position;
         var light: Incident;
         light.direction = normalize(l_vector);
@@ -754,8 +769,8 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
         }
         re_direct(light, geometry_normal, geometry_view_dir, m, &r);
     }
-    let sun_dir = gl(g::G_SUN_DIR);
-    let sun_color = gl(g::G_SUN_COLOR);
+    let sun_dir = globals_at(g::G_SUN_DIR);
+    let sun_color = globals_at(g::G_SUN_COLOR);
     if (sun_dir.w > 0.0) {
         var light: Incident;
         light.color = sun_color.rgb;
@@ -767,11 +782,11 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
         }
         re_direct(light, geometry_normal, geometry_view_dir, m, &r);
     }
-    var irradiance = gl(g::G_AMBIENT).rgb;
-    let hemi_sky = gl(g::G_HEMI_SKY);
-    let hemi_dir = gl(g::G_HEMI_DIR);
+    var irradiance = globals_at(g::G_AMBIENT).rgb;
+    let hemi_sky = globals_at(g::G_HEMI_SKY);
+    let hemi_dir = globals_at(g::G_HEMI_DIR);
     if (hemi_sky.w > 0.0) {
-        irradiance += t::getHemisphereLightIrradiance(hemi_sky.rgb, gl(g::G_HEMI_GROUND).rgb, view_dir_of(hemi_dir.xyz), geometry_normal);
+        irradiance += t::getHemisphereLightIrradiance(hemi_sky.rgb, globals_at(g::G_HEMI_GROUND).rgb, view_dir_of(hemi_dir.xyz), geometry_normal);
     }
 
 #ifdef LIT_PHYSICAL
@@ -843,12 +858,12 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
         sea_f *= sea_f;
         sea_f *= sea_f;
         diffuse_color.a = mix(diffuse_color.a, 1.0, sea_f * 0.8);
-        let sun_dir_g = gl(g::G_SUN_DIR);
+        let sun_dir_g = globals_at(g::G_SUN_DIR);
         if (sun_dir_g.w > 0.0) {
             var glit = clamp(dot(reflect(-sea_v, normal), view_dir_of(sun_dir_g.xyz)), 0.0, 1.0);
             glit *= glit; glit *= glit; glit *= glit; glit *= glit;
             glit *= glit; glit *= glit; glit *= glit; glit *= glit;
-            outgoing_light += min(gl(g::G_SUN_COLOR).rgb, vec3<f32>(4.0)) * glit * 3.0 * (1.0 - foam) * t::smooth_step(1500.0, 200.0, sea_dist);
+            outgoing_light += min(globals_at(g::G_SUN_COLOR).rgb, vec3<f32>(4.0)) * glit * 3.0 * (1.0 - foam) * t::smooth_step(1500.0, 200.0, sea_dist);
         }
     }
 #endif
@@ -860,7 +875,7 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
 
     // fog_fragment, with the game's sun tint (Sky.js) in lit shaders.
 #ifdef USE_FOG
-    let fog = gl(g::G_FOG);
+    let fog = globals_at(g::G_FOG);
     let fog_depth = -in.view_pos.z;
     let fog_factor = 1.0 - exp(-fog.w * fog.w * fog_depth * fog_depth);
     var fog_tint = fog.rgb;

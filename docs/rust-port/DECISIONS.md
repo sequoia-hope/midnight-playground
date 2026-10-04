@@ -2711,3 +2711,151 @@ changes) and node visibility. The headlight spot, the siren glow and the
 effects are WP 4.4 and M8. The same race, seed and autopilot give the
 same results natively and in the browser (Sierra, seed 1, through the
 client's frame loop on both).
+
+## WP 2.6–2.7 decisions
+
+## D390. The warm-up: one degenerate stand-in per pipeline, behind the loading screen, until the GPU is done
+
+2026-10-03, WP 2.6, SPEC 6.3. While a scene is built, the loader notes
+every combination it draws of a material's `ThreeKey` (shader defs,
+blending, culling, depth state), the mesh's vertex layout (attributes,
+formats, topology) and whether it casts a shadow: these are what pick a
+render pipeline, so materials that share a key share a stand-in. When the
+build ends it spawns one stand-in per combination (`crate::warmup`): a mesh
+of six zero vertices with the same attributes (two triangles of no size,
+which rasterise nothing), the material, `NoFrustumCulling` so it is
+specialised for the main view and the shadow view whatever the camera
+does, 10,000 km below the origin. The stand-in cars' material joins in
+the same way when the race starts. Sierra has 45 combinations, Coast
+43, Seaside 14, the models 11.
+
+The state is `warming` from the end of the build until `ready`, and the
+page keeps the loading screen up ("Preparing the shaders…") until then;
+the fly and attract cameras hold still meanwhile (the JS game flies only
+once it has loaded). `ready` used to mean "ten frames in and no pipeline
+waiting"; it now also waits for a GPU fence (`Queue::on_submitted_work_done`
+asked after the queue drains), because a browser creates the pipeline in
+its GPU process after the call returns and the first draw with it waits
+there: in Chrome on WebGPU the first flight frames after "ready" had a
+one-second frame before the fence and none after. Then the stand-ins are
+despawned. Pipelines compiled after `ready` are counted
+(`__mr.lateFrames`, a warning in the log) so a missed combination shows;
+none in the runs recorded in BASELINE.md.
+
+Render pipelines only are counted as waiting: on WebGL2 Bevy 0.19 queues
+its "sparse buffer update" compute pipeline although the device has no
+compute, and that pipeline waits for ever for a shader that is never
+loaded (the client has no compute pipelines of its own).
+
+## D391. The WebGL2 build is the `mr_webgl2` cfg in its own target directory
+
+2026-10-03, WP 2.7, SPEC 2. Bevy picks its backend with a Cargo feature
+(`webgpu` overrides `webgl2`), so the two web builds need different Bevy
+features. Cargo features of `mr_game` would have to name `bevy/webgpu`,
+which also reaches the native build's `bevy` (one dependency, unified):
+every native build cache in every worktree would be rebuilt for a feature
+that does nothing natively; and Cargo refuses the same crate twice under
+two names, so a wasm-only alias cannot carry them. Instead the wasm
+dependency tables are split on a cfg: `cfg(all(target_arch = "wasm32",
+not(mr_webgl2)))` asks for `webgpu`, `cfg(all(target_arch = "wasm32",
+mr_webgl2))` for `webgl2`, and the WebGL2 build sets `RUSTFLAGS="--cfg
+mr_webgl2"` (added to whatever flags the caller has; CI's `-D warnings`
+stays). Because changing RUSTFLAGS invalidates a build, the WebGL2 build
+has its own target directory, `target/webgl2/`, and neither build throws
+the other's cache away. The native build is unchanged.
+
+`cargo xtask web [--release]` builds both into `dist/next/`:
+`mr_game.js` and `mr_game_bg.wasm` (WebGPU), `mr_game_webgl2.js` and
+`mr_game_webgl2_bg.wasm` (WebGL2), each gzipped for a release; `--only
+webgpu|webgl2` rebuilds one and keeps the other's files. `build.json`
+lists the backends present. `cargo xtask size` checks the larger of the
+two against the 10 MB budget (a browser downloads one). CI lints the
+WebGL2 build (`RUSTFLAGS="-D warnings --cfg mr_webgl2" cargo clippy -p
+mr_game --target wasm32-unknown-unknown --target-dir target/webgl2`) and
+builds it in `cargo xtask web --release`. The client publishes which one
+it is (`__mr.backend`).
+
+## D392. How the page picks, and the fallback when WebGPU fails
+
+2026-10-03, WP 2.7. `index.html` asks for a WebGPU adapter as before; with
+one it loads the WebGPU build, without one it loads the WebGL2 build if a
+throwaway canvas gives a `webgl2` context, and only if neither shows the
+"no WebGPU or WebGL2" page. If the WebGPU build fails before its first
+frame (an error or unhandled rejection while Bevy asks for the device, or
+a shader the browser rejects at start), the page reloads itself with
+`?backend=webgl2&fallback=webgpu-failed`. `?backend=webgpu` or
+`?backend=webgl2` forces one (no fallback from a forced WebGPU). The
+WebGL2 build also works on plain http, where browsers offer no WebGPU.
+
+## D393. What WebGL2 needed in the shaders
+
+2026-10-03, WP 2.7. Two changes, both in `three_material.wgsl`, neither
+changing the WebGPU output: (1) D171's note came true: GLSL ES cannot
+`texelFetch` a depth texture (naga: "textureLoad from depth textures is
+not supported in GLSL"), so under `NO_ARRAY_TEXTURES_SUPPORT` (Bevy's
+WebGL2 define) `texture2DCompare` reads the same texel through Bevy's
+directional comparison sampler (GreaterEqual, linear) at the texel's
+centre, where the bilinear weights are (1, 0, 0, 0), with reference
+`1 - compare`: `1 - compare >= stored` is three's `compare <= depth`.
+(2) The globals lookup was a function called `gl`, which naga's GLSL
+writer renames `gl_1`, a name GLSL reserves; it is `globals_at`. The
+sampler count was not a problem: the material binds eight textures plus
+the globals and the environment, within WebGL2's sixteen (D290's note).
+Bloom, the PMREM passes and the half-float targets work unchanged. On the
+dev machine the WebGL2 pictures match the WebGPU ones to 0.001 ΔE00 mean
+(BASELINE.md); Bevy on WebGL2 turns off what the client does not use
+(SSAO, OIT, GPU preprocessing and clustering, compute environment maps).
+
+## D394. Scene reloads tear down and rebuild in place
+
+2026-10-03, WP 2.6. `unload_scene(level)` (wasm) asks the client to
+despawn every scene entity (the warm-up stand-ins and the stand-in cars
+included), drop the build in progress, the cars' race, the night
+materials and `Loaded`, reset the status and the cameras, and wait for the
+next scene; a different level also drops its Track and sky. The page's
+`__mr.reload(level)` calls it, waits for `waiting`, downloads and hands
+in the scene as at the start, and resolves when it is `running` again.
+This is how SPEC 6.6's "no growth across ten level switches" is measured;
+it is not yet a menu feature.
+
+## D395. The measurement page and its numbers
+
+2026-10-03, WP 2.6, gate G1. `index.html?perf=1` (`web/perf.js`) is the
+page the owner opens on the phone: it defaults to the JS baseline's fly
+camera (s = 80, v = 60), waits for `ready`, records every frame's time
+from `requestAnimationFrame` (the JS stats panel's clock) for the route's
+length at that speed (`tools/parity/perf-baseline.mjs`'s rule: the route
+or the road end less 100 m, at most 240 s; `secs=` overrides), then
+reloads the scene ten times (`reloads=`, `reloadLevels=`), and shows the
+results on the screen with a Copy button. Reported: time from navigation
+to the first frame and to `ready`; frames per second over half-second
+windows (median and 5th percentile, the JS baseline's figures); frame
+time percentiles (50, 90, 95, 99, 99.9, max); frames over 50 ms in the
+first 30 s and in all; the slow frames with their place on the route;
+frame time per kilometre; pipelines compiled after the warm-up; the wasm
+memory's size after load, after the flight and after each reload (wasm
+memory never shrinks, so its size is its high-water mark); the JS heap
+where the browser reports it. `tools/parity/rust-perf.mjs` runs the same
+page headless (and the JS game with the same recorder, `--game js`)
+through the registered server, uncapped (no vsync, no frame-rate limit,
+as perf-baseline.mjs), and writes the results to `parity/report/perf/`.
+
+## D396. Bevy's GPU preprocessing stays on; `?gpupre=0` turns it off
+
+2026-10-03, WP 2.6. On WebGPU, Bevy builds the mesh uniforms and culls
+with compute shaders and draws indirectly ("GPU preprocessing"); on WebGL2
+it cannot and does that work on the CPU. Profiling the WebGPU build in
+Chrome where it hitches (Coast s 350 to 400, Sierra's hairpins at
+s 955 and 1,470) puts about 60 % of the main thread in `writeBuffer`
+calls from Bevy's `write_batched_instance_buffers` and
+`write_mesh_culling_data_buffer`: per-entity buffers, large because every
+instance of an `InstancedMesh` is an entity (D101; Sierra 63,670, Coast
+28,673). Turning GPU preprocessing off on WebGPU
+(`PbrPlugin::use_gpu_instance_buffer_builder = false`) lowered the worst
+frames (96 to 128 ms against 260 to 408 ms over Coast's first 40 s) but
+nearly doubled the median (31 against 18 ms) and gave more frames over
+50 ms, so the default stays Bevy's (on), and `?gpupre=0` is there to try
+it on a phone. The lasting fix is fewer entities: one entity per
+`InstancedMesh` drawn with a per-instance buffer, as three draws it; that
+is a renderer change for a later package, recorded in BASELINE.md's WP 2.6
+section.

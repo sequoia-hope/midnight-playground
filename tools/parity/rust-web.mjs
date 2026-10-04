@@ -7,6 +7,11 @@
 //
 //   cargo xtask web && node tools/parity/rust-web.mjs --level seaside \
 //       [--query "s=300&h=2.2&back=7&pitch=-0.04&freeze=1"] [--out <dir>] [--name shot]
+//       [--backend webgl2]
+//
+// --backend webgl2 starts Chrome with WebGPU turned off, so the page must
+// pick the WebGL2 build by itself (roadmap WP 2.7); the run fails if it did
+// not.
 //
 // Prints the page's errors (a WGSL error Chrome's compiler finds, a failed
 // scene) and fails on any. Scenes over about 100 MB do not pass through the
@@ -25,6 +30,7 @@ const query = opt('--query', 's=300&h=2.2&back=7&pitch=-0.04&freeze=1');
 const out = path.resolve(opt('--out', path.join(ROOT, 'parity/report/rust-web')));
 const name = opt('--name', `${level}.png`);
 const timeoutMs = Number(opt('--timeout', 240000));
+const backend = opt('--backend', 'webgpu');
 
 const ORIGIN = 'https://midnight-racer.test';
 const TYPES = {
@@ -36,7 +42,9 @@ fs.mkdirSync(out, { recursive: true });
 const browser = await puppeteer.launch({
   executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
   headless: 'new',
-  args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist'],
+  args: backend === 'webgl2'
+    ? ['--disable-blink-features=WebGPU', '--disable-features=WebGPU', '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist']
+    : ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist'],
   dumpio: !!process.env.MR_DUMPIO,
 });
 const errors = [];
@@ -75,8 +83,9 @@ try {
   fs.rmSync(file, { force: true });
   await page.evaluate((n) => window.__mr.screenshot(n), name);
   for (let i = 0; i < 100 && !fs.existsSync(file); i++) await new Promise((r) => setTimeout(r, 100));
-  const info = await page.evaluate(() => ({ readyMs: window.__mr.readyMs, frames: window.__mr.frames, counts: window.__mr.counts }));
-  console.log(`${level}: ${fs.existsSync(file) ? file : 'no screenshot'}; ready at ${Math.round(info.readyMs)} ms, ${info.frames} frames`);
+  const info = await page.evaluate(() => ({ readyMs: window.__mr.readyMs, frames: window.__mr.frames, counts: window.__mr.counts, backend: window.__mr.backend, webgpu: window.__mr.webgpu, warmUp: window.__mr.warmUp }));
+  console.log(`${level}: ${fs.existsSync(file) ? file : 'no screenshot'}; ${info.backend} (WebGPU adapter: ${info.webgpu ? 'yes' : 'no'}), ready at ${Math.round(info.readyMs)} ms, ${info.frames} frames, ${info.warmUp} warm-up pipelines`);
+  if (info.backend !== backend) errors.push(`the page picked ${info.backend}, expected ${backend}`);
 } catch (e) {
   errors.push(String(e.message || e));
 } finally {
