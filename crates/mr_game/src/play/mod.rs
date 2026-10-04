@@ -14,13 +14,13 @@
 //! `pursuit=1`, `heat`, `touch=0|1`; natively also `shots=<dir>`, which
 //! saves the countdown, the race and the results as PNGs and exits.
 //!
-//! Cars are boxes of their kind's dimensions in their colour, with a cabin
-//! to show which way they face, until the car models (WP 4.1) are in.
+//! Cars are `CarModel.js`'s models, ported in WP 4.1 ([`models`]).
 
 pub mod camera;
 pub mod flow;
 mod hud;
 pub mod input;
+mod models;
 pub mod pose;
 pub mod session;
 pub mod touch;
@@ -28,12 +28,11 @@ mod touch_ui;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
-use crate::loader::{AppState, SceneEntity, SkyDome};
+use crate::loader::{AppState, SkyDome};
 use crate::render::Lighting;
 use crate::render::SharedImages;
-use crate::render::material::{Model, ThreeKey, ThreeMaterial, ThreeParams};
+use crate::render::material::ThreeMaterial;
 use crate::render::pmrem::EnvRequest;
-use crate::render::sky::hex_color;
 use crate::status::Status;
 use crate::{CameraState, Opts, SkyRes, TrackRes};
 use bevy::camera::Projection;
@@ -41,12 +40,12 @@ use bevy::input::ButtonState;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::input::mouse::MouseButtonInput;
 use bevy::input::touch::{TouchInput, TouchPhase};
-use bevy::math::{DVec3, Vec4};
+use bevy::math::DVec3;
 use bevy::prelude::*;
 use bevy::window::{CursorMoved, PrimaryWindow, WindowFocused};
 use flow::{Mode, Race, Setup};
-use mr_scene::three;
 use mr_sim::race::{LevelRuntime, RaceOpts, RaceStateKind};
+use mr_worldgen::car_model::Lod;
 use touch::{Insets, Layout, TouchControls};
 
 /// The race's options from the query string.
@@ -124,8 +123,8 @@ fn clock_seed() -> u32 {
 pub struct Play {
     pub params: Params,
     pub race: Option<Race>,
-    /// Per car slot: its root (the pose) and its body (pitch and roll).
-    cars: Vec<(Entity, Entity)>,
+    /// The cars, per slot (players, rivals, the traffic pool).
+    models: Option<models::Cars>,
     /// The touch controls are shown (a touch device, or `?touch=1`).
     pub touch_ui: bool,
     pub insets: Insets,
@@ -141,7 +140,7 @@ pub struct Play {
 
 /// A car's root entity.
 #[derive(Component)]
-struct RaceCar;
+pub(super) struct RaceCar;
 
 pub fn plugin(app: &mut App) {
     let (on, params) = {
@@ -155,7 +154,7 @@ pub fn plugin(app: &mut App) {
     app.insert_resource(Play {
         params,
         race: None,
-        cars: Vec::new(),
+        models: None,
         touch_ui,
         insets: Insets::default(),
         started: false,
@@ -191,6 +190,7 @@ fn start(
     tr: Res<TrackRes>,
     shared: Res<SharedImages>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut images: ResMut<Assets<Image>>,
     mut mats: ResMut<Assets<ThreeMaterial>>,
     windows: Query<&Window, With<PrimaryWindow>>,
 ) {
@@ -227,83 +227,56 @@ fn start(
         if setup.autodrive { ", autodrive" } else { "" }
     );
     let race = Race::new(lr, setup, tc);
-    let cabin = mats.add(plain_material([0.05, 0.06, 0.08], 0.2, &shared));
-    let mut cars = Vec::new();
-    for (v, _) in flow::slots(&race.session.curr) {
-        let d = &v.dims;
-        let (w, h, l) = (d.width as f32, d.height as f32, d.length as f32);
-        // The body sits on the ground (its origin at the road) and pivots
-        // there for pitch and roll; a dark cabin over the back two thirds
-        // shows which way it faces.
-        let lower = meshes.add(
-            Mesh::from(Cuboid::new(w, h * 0.55, l))
-                .translated_by(Vec3::Y * h * 0.275 + Vec3::Y * 0.12),
-        );
-        let upper = meshes.add(
-            Mesh::from(Cuboid::new(w * 0.84, h * 0.4, l * 0.5)).translated_by(Vec3::new(
-                0.0,
-                h * 0.55 + h * 0.2 + 0.1,
-                -l * 0.08,
-            )),
-        );
-        let paint = mats.add(plain_material(hex_color(v.color), 0.45, &shared));
-        let body = commands
-            .spawn((
-                Transform::default(),
-                Visibility::Inherited,
-                children![
-                    (Mesh3d(lower), MeshMaterial3d(paint)),
-                    (Mesh3d(upper), MeshMaterial3d(cabin.clone())),
-                ],
-            ))
-            .id();
-        let root = commands
-            .spawn((
-                Transform::default(),
-                Visibility::Hidden,
-                RaceCar,
-                SceneEntity,
-                Name::new(format!("car {} {}", v.kind, v.name)),
-            ))
-            .add_child(body)
-            .id();
-        cars.push((root, body));
+    let st = &race.session.curr;
+    let mut wants = Vec::new();
+    for p in &st.players {
+        // Race.js: `buildVehicle(carKind, { color, lod: 'high', seed: 1 })`.
+        wants.push(models::Want {
+            kind: p.v.kind,
+            color: p.spec.color,
+            seed: 1,
+            lod: Lod::High,
+            far: false,
+            racer: true,
+        });
     }
-    play.cars = cars;
+    for (i, r) in st.rivals.iter().enumerate() {
+        wants.push(models::Want {
+            kind: r.k.v.kind,
+            color: r.color,
+            seed: 10 + i as u32,
+            lod: Lod::High,
+            far: false,
+            racer: true,
+        });
+    }
+    for (i, c) in st.traffic.cars.iter().enumerate() {
+        // Traffic.js: `buildVehicle(k, { color, seed: i * 17 + k.length,
+        // lod: 'low', far: true })`.
+        wants.push(models::Want {
+            kind: c.kind_name,
+            color: c.k.v.color,
+            seed: (i * 17 + c.kind_name.len()) as u32,
+            lod: Lod::Low,
+            far: true,
+            racer: false,
+        });
+    }
+    let cars = models::spawn(
+        &wants,
+        &mut commands,
+        &mut meshes,
+        &mut images,
+        &mut mats,
+        &shared,
+    );
+    for (c, w) in cars.cars.iter().zip(&wants) {
+        commands
+            .entity(c.root)
+            .insert((RaceCar, Name::new(format!("car {}", w.kind))));
+    }
+    play.models = Some(cars);
     play.race = Some(race);
-}
-
-/// A plain MeshStandardMaterial of a colour (metalness 0.3).
-fn plain_material(c: [f64; 3], roughness: f32, shared: &SharedImages) -> ThreeMaterial {
-    ThreeMaterial {
-        params: ThreeParams {
-            diffuse: Vec4::new(c[0] as f32, c[1] as f32, c[2] as f32, 1.0),
-            pbr: Vec4::new(roughness, 0.3, 0.0, 0.0),
-            physical: Vec4::new(1.5, 1.0, 0.0, 0.0),
-            specular: Vec4::new(1.0, 1.0, 1.0, 1.0),
-            sheen: Vec4::new(0.0, 0.0, 0.0, 1.0),
-            ..ThreeParams::default()
-        },
-        map: None,
-        emissive_map: None,
-        detail: None,
-        aux: None,
-        photo: None,
-        loose: None,
-        globals: shared.globals.clone(),
-        env: shared.env.clone(),
-        key: ThreeKey {
-            model: Model::Physical,
-            fog: true,
-            opaque: true,
-            side: three::FRONT_SIDE,
-            shadow_side: three::BACK_SIDE,
-            blending: three::NO_BLENDING,
-            depth_write: true,
-            depth_test: true,
-            ..ThreeKey::default()
-        },
-    }
 }
 
 /// Keys, focus, touches (and the mouse as a finger when the touch controls
@@ -418,6 +391,11 @@ fn read_input(
     }
 }
 
+/// `Traffic.js`: past FAR_OUT metres from the camera a car switches to its
+/// far model, and back inside FAR_IN.
+const FAR_OUT: f64 = 95.0;
+const FAR_IN: f64 = 85.0;
+
 /// The pointer id the mouse uses as a finger.
 const MOUSE_ID: u64 = u64::MAX;
 
@@ -436,7 +414,7 @@ fn step(time: Res<Time>, mut play: ResMut<Play>, status: Res<Status>) {
 }
 
 type CarFilter = (With<RaceCar>, Without<Camera3d>);
-type BodyFilter = (Without<RaceCar>, Without<Camera3d>, Without<SkyDome>);
+pub(super) type BodyFilter = (Without<RaceCar>, Without<Camera3d>, Without<SkyDome>);
 type CamFilter = (With<Camera3d>, Without<RaceCar>, Without<SkyDome>);
 type SkyFilter = (With<SkyDome>, Without<RaceCar>, Without<Camera3d>);
 
@@ -450,6 +428,8 @@ fn draw(
     mut bodies: Query<&mut Transform, BodyFilter>,
     mut cam: Query<(&mut Transform, &mut Projection), CamFilter>,
     mut sky: Query<&mut Transform, SkyFilter>,
+    mut node_vis: Query<&mut Visibility, Without<RaceCar>>,
+    mut mats: ResMut<Assets<ThreeMaterial>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     opts: Res<Opts>,
     mut cs: ResMut<CameraState>,
@@ -472,9 +452,11 @@ fn draw(
     let track = s.lr.track.clone();
     let alpha = s.alpha();
     let prev: Vec<_> = flow::slots(&s.prev).collect();
-    for (i, ((v, active), &(root_e, body_e))) in
-        flow::slots(&s.curr).zip(play.cars.iter()).enumerate()
-    {
+    let Some(models) = play.models.as_mut() else {
+        return;
+    };
+    let roots: Vec<Entity> = models.cars.iter().map(|c| c.root).collect();
+    for (i, ((v, active), &root_e)) in flow::slots(&s.curr).zip(roots.iter()).enumerate() {
         let Ok((mut t, mut vis)) = cars.get_mut(root_e) else {
             continue;
         };
@@ -501,10 +483,10 @@ fn draw(
             if dt > 0.0 {
                 sp.step(v.accel_long, v.accel_lat, dt);
             }
-            if let Ok(mut bt) = bodies.get_mut(body_e) {
-                bt.rotation = sp.rotation().as_quat();
-            }
+            models.sync_parts(i, sp, p.speed, p.steer_angle, dt, &mut bodies);
         }
+        let e = models.cars[i].model.set_brake(v.brake_light);
+        models.apply(e, &mut node_vis, &mut mats);
     }
 
     // The camera.
@@ -536,6 +518,37 @@ fn draw(
             }
         }
     }
+    // Lights (Race.update's visual sync): headlights after dusk, reverse
+    // and boost on the player, boost on the rivals; the traffic's far
+    // models past 95 m from the camera, back inside 85 (`Traffic.farLod`).
+    let night = sky_res.sky.as_ref().map_or(0.0, |k| k.night);
+    let lights_on = mr_math::smoothstep(0.25, 0.6, night);
+    let n_racers = st.players.len() + st.rivals.len();
+    for (i, (v, active)) in flow::slots(st).enumerate() {
+        let racer = i < n_racers;
+        if !active && !racer {
+            continue;
+        }
+        let m = &mut models.cars[i].model;
+        let mut e = m.set_headlights(lights_on.max(if racer { 0.15 } else { 0.1 }));
+        if i < st.players.len() {
+            e.extend(m.set_reverse(st.players[i].phys.gear == -1));
+            e.extend(m.set_boost(if st.players[i].phys.nitro_active {
+                1.0
+            } else {
+                0.0
+            }));
+        } else if racer {
+            let r = &st.rivals[i - st.players.len()];
+            e.extend(m.set_boost(if r.nitro_active { 1.0 } else { 0.0 }));
+        } else {
+            let (dx, dz) = (v.x - view.eye.x, v.z - view.eye.z);
+            let lim = if m.is_far() { FAR_IN } else { FAR_OUT };
+            e.extend(m.set_far(dx * dx + dz * dz > lim * lim));
+        }
+        models.apply(e, &mut node_vis, &mut mats);
+    }
+
     // The world around the player (`world.update(dt, s, focus)`).
     cs.focus = DVec3::new(car.x, car.y, car.z);
     status.s = car.s;
