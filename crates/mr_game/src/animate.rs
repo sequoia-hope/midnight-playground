@@ -408,6 +408,9 @@ fn uniform_slot(kind: MaterialKind, prop: &str) -> Option<usize> {
         (GroundPool, "uTime") => 0,
         (GroundPool, "opacity") => 1,
         (FloodBeam, "opacity") => 0,
+        (Neon, "uNTime") => 0,
+        (Steam, "uTime") => 0,
+        (Steam, "uScale") => 1,
         _ => return None,
     })
 }
@@ -432,7 +435,7 @@ pub fn fix_uniforms(mat: &mut ThreeMaterial, kind: MaterialKind, overrides: &ser
 }
 
 /// Every animated uniform of [`uniform_slot`].
-const UNIFORMS: [&str; 9] = [
+const UNIFORMS: [&str; 11] = [
     "uTime",
     "uNight",
     "uFogK",
@@ -442,6 +445,8 @@ const UNIFORMS: [&str; 9] = [
     "uBright",
     "uStrength",
     "opacity",
+    "uNTime",
+    "uScale",
 ];
 
 impl SceneIndex {

@@ -3898,6 +3898,37 @@ Desert stations within the limits**, median 0.16 / 0.39, worst 0.681 mean
 (02250-high) and 1.564 block 95 % (07250-chase). The material scenes for
 the three pass (0.083 / 0.170 at worst) and join `all`.
 
+## D501. Downtown Streets' kinds, drawn from its export; flat shading
+
+2026-10-04 (D614's list). **StreetFacade** (the 4 × 4 façade atlas by
+`cell`, its building's seed in the sixteens, with the raw uv's gradients;
+`windowLight` per window and the street bounce from `fdata`: `cell` and
+`fdata` share the patch attribute, `cell` in x and `fdata` in yzw),
+**StreetAtlas** (the 4 × 3 shop-front atlas, `windowLight` × 1.4 or the
+flat glow of a kind-0 cell, the faint bounce), **AmbientProp** (emissive +=
+albedo × `kind_opts.rgb`, rounded to four places as the JS writes it into
+its GLSL), **Neon** (`ndata`'s seed and mode: hum, buzz, switching, a
+dying tube, on `uNTime`) and **Steam** (a ShaderMaterial on points: each
+puff's life, rise and drift in the vertex stage, `aSeed` in the patch
+attribute, a lumpy premultiplied puff in the fragment stage, from
+`gl_PointCoord` with three's y; drawn with three's `CustomBlending` One,
+OneMinusSrcAlpha, the one custom blending the exports use). `uNTime`,
+Steam's `uTime` follow the clock and Steam's `uScale` the viewport and the
+projection without the animators, as their updaters set them (D293). The
+helpers `fHash`, `fHue` and `windowLight` are shared by the two atlases
+(`STREET_WINDOWS`). Colours above 2 were already drawn unclamped (D452).
+
+`flatShading` (one material on Streets, the trees; one on Sierra; three on
+Coast) was ignored: the normal is now three's FLAT_SHADED one, the cross
+product of the view position's derivatives (with WGSL's `dpdy` turned to
+GLSL's `dFdy`). Sierra's, Coast's and Desert's stations are unchanged by it.
+
+Gate, the web build at 1280 × 800 through the registered server: **all 43
+Streets stations within the limits**, median 0.22 / 0.51, worst 0.489 mean
+and 1.812 block 95 % (02500-chase). The material scenes for StreetFacade,
+StreetAtlas, AmbientProp and Neon pass (0.108 / 0.312 at worst) and join
+`all`; Steam's (points) is not in the material tool's set the client draws.
+
 ## WP 7.4 Seaside decisions
 
 ## D590. The shape of `mr_worldgen::raceway`; `world.level.data` and `world.onCountdown`
