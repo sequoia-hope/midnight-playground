@@ -40,6 +40,7 @@ fn a_section_is_the_level_near_its_stretch() {
         s1: track.start_s + 660.0,
         terrain_radius: 1000.0,
         scenery_radius: 300.0,
+        scenery: true,
     };
     let whole = build(None);
     let part = build(Some(sec.clone()));

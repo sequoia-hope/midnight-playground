@@ -527,6 +527,12 @@ impl Build {
         self.queue.is_empty()
     }
 
+    /// Adds a job after the others (the menu's view of a level adds its
+    /// stand-ins at the end, D748).
+    pub fn push_job(&mut self, job: Job) {
+        self.queue.push_back(job);
+    }
+
     /// Runs the next job. Jobs it returns run next, before the rest.
     pub fn step(&mut self) -> Result<(), String> {
         let Some(job) = self.queue.pop_front() else {

@@ -38,6 +38,10 @@ pub struct Section {
     pub terrain_radius: f64,
     /// Scenery and road closer than this are kept.
     pub scenery_radius: f64,
+    /// Whether the scenery modules near it build at all. False for the
+    /// menu's simplified views (D748): their `plan()` still runs, so the
+    /// land and the road are the level's, but nothing of theirs is built.
+    pub scenery: bool,
 }
 
 /// Points of the stretch every this many metres.
@@ -119,6 +123,9 @@ pub fn builds_module(w: &World, name: &str) -> bool {
     let (Some(sec), Some(track)) = (&w.section, &w.track) else {
         return true;
     };
+    if !sec.scenery {
+        return false;
+    }
     let zones: Vec<usize> = w
         .level
         .zones
