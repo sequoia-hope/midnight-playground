@@ -2540,3 +2540,148 @@ The export's effects (a sports car with smoke, sparks, skids, a headlight
 pool and flames) and pursuit props (sawhorse, spike strip) are WP 4.4's
 and M8's. The roadmap's L4 gate against `tools/car-test.html` views is a
 rendering gate for the client and is not part of this package.
+
+## M4 playable decisions
+
+## D430. The loopback session lives in the client until `mr_net` has one
+
+2026-10-03, WP 4.2. SPEC 3.3's `session.advance(frame_dt, input)` is
+`mr_game::play::session::Session`: it owns the `LevelRuntime`, the state
+before the last tick (`prev`) and after it (`curr`), and the time not yet
+stepped. A frame adds its time, clamped to 1/20 s as the JS frame loop
+does, and runs every tick that has come due, at most six (SPEC 4.1; with a
+1e-9 s tolerance so 1/20 s is six ticks whatever the rounding); beyond
+that the race slows down. Before each tick it asks for that tick's
+quantised `InputFrame`, so the input layer runs at the tick rate (SPEC
+8.2), and it copies `curr` into `prev` (`clone_from`, a few kilobytes) so
+the client draws `prev`→`curr` at `alpha = acc / DT`. The events of the
+frame's ticks are kept in order for the client. `mr_net` is still empty;
+when multiplayer (M10) gives it a session type the loopback becomes one
+of its transports and this module goes there. A test steps a session with
+ragged frame times (60, 144, 30 Hz, zero, a stall) beside a direct
+`mr_sim` loop with the same autopilot and requires the same tick count
+every frame and the same final hash: no drift.
+
+## D431. Bevy UI for the plain HUD and the touch controls
+
+2026-10-03, WP 4.6. The race's text (countdown, GO!, toasts, position,
+clock, lap, speed and gear, the pause card and the results list) and the
+touch controls are Bevy UI nodes, as SPEC 8.1 says the UI will be.
+`mr_game` turns on Bevy's `bevy_ui`, `bevy_ui_render`, `bevy_text` and
+`default_font`; the text is in Bevy's bundled FiraMono subset, so it is
+plain ASCII (N2O for N₂O, R, C and II on the reset, camera and pause
+buttons, `>` for the stick's arrows). The JS HUD's look (Rajdhani, the
+dials, the minimap, the CSS animations) is M6's.
+
+## D432. A level without fly parameters is a race
+
+2026-10-03, WP 4.6. `Options::race_on`: a known level is raced unless the
+fly camera (`s=`), `freeze=1`, the material scenes or the stations are
+asked for; `race=1` or `race=0` decides outright (`race=0` gives back the
+attract camera and WP 2.4's stand-in cars, which never run beside a race).
+So `?level=…&s=…&v=…` and every parity capture behave as before. The
+race starts itself (no menu until M6): the field is on the grid as soon as
+the level's Track is built, and the countdown starts when the client is
+ready (the scene up and every pipeline compiled), so it does not tick away
+behind the loading screen. Parameters, with the JS names where it has
+them: `car=<kind>` or `autostart=<kind>`, `seed=N` (otherwise a new seed
+each race, as `Math.random` varies the JS rivals' nitro timing),
+`autodrive=1` (natively also `--autodrive`), `timescale=N`, `pursuit=1`
+and `heat=N`, `touch=0|1`, and natively `shots=<dir>`, which saves
+`countdown.png`, `race.png` (twenty seconds in, chase view) and
+`results.png`, then exits. Enter or a tap on the results races again;
+Esc, P or the pause button pause, Esc or a tap resume; a hidden page pauses
+the race (the JS `visibilitychange`). Natively, losing focus lets go of the
+keys but does not pause yet: an invisible screenshot window would pause
+itself.
+
+## D433. The input layer: keyboard and touch now, the gamepad in M6
+
+2026-10-03, WP 4.5. `play::input::Input` ports `Input.js` without the
+gamepad: keys by their DOM `code` (the Bevy glue maps its key codes), the
+held keymap and the one-shot actions (`camera`, `reset`, `pause`,
+`music`; KeyT is the music's and waits for M5), repeats ignored, focus loss
+lets go, the steering ramp (3.6/s in, 7/s back, 9/s counter-steer), the
+touch merge through a `TouchSource` trait (the JS's `input.touch` object),
+`analog` for the stick, and `enabled`. `update` runs once per tick with
+the tick's dt, where the JS ran it once per frame; the ramp's rates are per
+second, so the ramp is the same. The reset key reaches the simulation as
+`InputFrame`'s reset flag on the first tick of the frame it was pressed
+in (the JS consumed it once per `Race.update`). Every `input.test.js` case
+that does not need a gamepad is ported (keymap, kept keys, one-shot
+actions, ramp, blur, touch merge, analogue flag, `enabled`); the gamepad
+cases move to M6 with `Gamepad.js`.
+
+## D434. The camera rig per rendered frame; the road is its floor for now
+
+2026-10-03, WP 4.3. `play::camera` ports `CameraRig.js` (chase, far and
+bumper, C cycles; look back on B; the trailing direction, the speed and
+nitro field of view, the portrait widening, the shake and the speed
+rumble) and `Race.introCamera`, run once per rendered frame on the
+interpolated car with the frame's dt, as the JS ran them once per frame.
+The JS keeps the camera above `max(terrain.heightAt, track.surfaceY)`; the
+client draws the JS export and has no terrain heights, so only
+`surfaceY` is the floor until the client builds the world itself.
+Camera bumps come from the tick events: car hits involving the player
+(1.2 × strength), wall impacts and landings (0.8 ×).
+
+## D435. Drawing a car between two ticks
+
+2026-10-03, WP 4.2. `play::pose::Pose::lerp` interpolates what
+`Vehicle.sync` reads (position with `visY`, heading with `visualYaw` the
+short way round, s along a loop, velocity, speed, steer angle; `onGround`
+switches halfway) and returns the previous tick's pose at alpha 0 and the
+current one at 1 exactly, which a test checks through `sync`'s placement
+too. A traffic car that came onto the road this tick is drawn at its
+current pose. `pose::root` is `sync`'s orientation from the road frame,
+and `Springs` its pitch and roll springs, stepped once per rendered frame
+with the frame's dt from the tick's accelerations and kicked by
+`PhysEvent::Touchdown`; the body pivots at the road. Wheels, steer
+pivots, brake lights and headlights need the car models (D441).
+
+## D436. Touch controls: the thumb stick and the pedal slider
+
+2026-10-03, owner request for the phone. `play::touch` ports the core of
+`TouchControls.js`: the 'stick' steering and the 'slider' pedals (BRAKE,
+the coasting gap, GAS, N2O, DRIFT past the slider's right edge, a thumb
+that starts on the slider keeps it), and the reset, camera and pause taps.
+The DOM measured its boxes; `touch::Layout` computes the same boxes from
+`hud.css`'s rules (`--b`, `--pedal-h`, `--stick-r`, the insets), in CSS
+pixels. The page decides `isTouchDevice` (`?touch=`, else a coarse
+pointer with touch points) into `__mr.touch` and measures
+`env(safe-area-inset-*)` into `__mr.insets`; the controls show only while
+driving. Natively `touch=1` shows them and the mouse acts as one finger,
+as pointer events make it in the JS. The ◂ ▸ pads, pedal buttons, tilt
+and auto gas wait for M6. `touch.test.js` is ported whole (stick curve,
+range, slider bands), plus a test driving the input layer with thumbs.
+
+## D437. The pixel ratio on the web follows `applyQuality`
+
+2026-10-03, for the phone. The JS renders at `min(devicePixelRatio, 1.5)`
+with high quality and at 1 without (the default on touch devices). The
+client overrides the window's scale factor the same way at start, so a
+3× phone draws a third as many pixels in each direction. Touch positions
+then arrive scaled by the override, not the device's ratio; the client
+measures the canvas's CSS width against the window's logical width for
+the UI and corrects touch positions by override ÷ device ratio.
+
+## D438. `--smoke-race`, and the race in CI
+
+2026-10-03, WP 4.6. `play::flow::smoke_race` runs a race from the grid to
+the results headless through the client's own frame loop (input layer
+with the autopilot, session, events, HUD state) at 60 frames a second.
+`cargo test` runs it on Sierra and requires the countdown 3, 2, 1, GO!,
+a finish text, six results, and the final hash and the results equal to
+a direct `mr_sim` run of the same ticks. `midnight-racer --level <id>
+--smoke-race` does the same for any level (Seaside reads its survey),
+seed 1 unless `seed=` is given, and prints the results; it needs no
+window or GPU, so CI can run it.
+
+## D439. Open: scene delivery size and compression
+
+2026-10-03, deferred by the owner's choice. The client downloads the JS
+scene export as it is from `parity/cache/` (Sierra 138 MB, Seaside 39 MB,
+Coast 210 MB raw; gzip roughly halves Seaside). Nothing is compressed or
+copied into `dist/next/` for now. How scenes reach phones (their size,
+compression, the world built in the client instead) is to be planned
+explicitly later.

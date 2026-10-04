@@ -73,6 +73,12 @@ pub struct Options {
     /// Natively, with `materials` or `stations`: the directory the PNGs go to (one
     /// directory per group, as `tools/parity/materials.mjs` writes them).
     pub out: Option<String>,
+    /// Natively (`--smoke-race`): race the level headless with the
+    /// autopilot, print the results, exit (no window, no GPU).
+    pub smoke_race: bool,
+    /// Every query pair as given, in order (for the parameters the
+    /// modules read themselves: `play`'s `car`, `seed`, `autodrive`, …).
+    pub query: Vec<(String, String)>,
 }
 
 impl Default for Options {
@@ -92,6 +98,8 @@ impl Default for Options {
             stations: None,
             cars: None,
             out: None,
+            smoke_race: false,
+            query: Vec::new(),
         }
     }
 }
@@ -171,13 +179,42 @@ impl Options {
         o.t = get("t").map(number).filter(|t| t.is_finite());
         o.materials = get("mat").map(str::to_owned);
         o.cars = get("cars").map(|v| v == "1" || v == "true");
+        o.query = pairs.clone();
         o
     }
 
-    /// Whether the stand-in cars run (`cars`, else the default above).
+    /// A query parameter (the first of that name).
+    pub fn param(&self, k: &str) -> Option<&str> {
+        self.query
+            .iter()
+            .find(|(n, _)| n == k)
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// Whether the stand-in cars run (`cars`, else the default above). Never
+    /// beside a race, which draws its own.
     pub fn cars_on(&self) -> bool {
-        self.cars
-            .unwrap_or(!self.freeze && self.materials.is_none() && self.stations.is_none())
+        !self.race_on()
+            && self
+                .cars
+                .unwrap_or(!self.freeze && self.materials.is_none() && self.stations.is_none())
+    }
+
+    /// Whether this is a race (`play`, roadmap M4): `?race=1|0`, else a
+    /// race for a level when no fly camera, `freeze`, material scenes or
+    /// stations are asked for (DECISIONS D432).
+    pub fn race_on(&self) -> bool {
+        let level = mr_levels::levels().iter().any(|l| l.id == self.level);
+        level
+            && match self.param("race") {
+                Some(v) => v == "1",
+                None => {
+                    self.fly.is_none()
+                        && !self.freeze
+                        && self.materials.is_none()
+                        && self.stations.is_none()
+                }
+            }
     }
 
     /// Native command line: `--query "level=sierra&s=300"`, `--level`,
@@ -192,6 +229,7 @@ impl Options {
         let mut materials = None;
         let mut out = None;
         let mut stations = None;
+        let mut smoke_race = false;
         let mut it = args.iter();
         while let Some(a) = it.next() {
             let mut val = |name: &str| {
@@ -217,6 +255,8 @@ impl Options {
                     size = Some((w, h));
                 }
                 "--smoke-test" => smoke = true,
+                "--smoke-race" => smoke_race = true,
+                "--autodrive" => query.push("autodrive=1".into()),
                 "--materials" => materials = Some(val("--materials")?),
                 "--out" => out = Some(val("--out")?),
                 "--stations" => stations = Some(val("--stations")?),
@@ -236,6 +276,7 @@ impl Options {
         }
         o.out = out;
         o.stations = stations;
+        o.smoke_race = smoke_race;
         Ok(o)
     }
 }
@@ -245,10 +286,14 @@ pub fn usage() -> &'static str {
      \x20                     [--screenshot <out.png> [--after <frames>]] [--smoke-test] [--size WxH]\n\
      \x20      midnight-racer --materials all|<name,...> --out <dir>\n\
      \x20      midnight-racer --level <id> --stations <stations.json> --out <dir> [--query freeze=1]\n\
+     \x20      midnight-racer --level <id> --smoke-race [--query \"car=super&seed=2\"]\n\
      \n\
      levels: sierra coast streets desert seaside cruise, or models\n\
      query:  the JS game's names: level, s, h, back, lat, v, yaw, pitch, t, freeze=1; hq=0|1;\n\
-     \x20       scene=<file>; mat=<names> (the material test scenes); cars=0|1 (stand-in cars)"
+     \x20       scene=<file>; mat=<names> (the material test scenes); cars=0|1 (stand-in cars)\n\
+     race:   a level without s= is a race (race=0: the attract camera); car=<kind>, seed=N,\n\
+     \x20       autodrive=1 (or --autodrive), timescale=N, pursuit=1, heat=N, touch=0|1,\n\
+     \x20       shots=<dir> (save countdown, race and results PNGs, then exit)"
 }
 
 #[cfg(test)]
