@@ -131,7 +131,7 @@ fly-camera baseline from WP 0.8:
   the exits of M3 and M7);
 - no tab kill, no strobing or corrupt frames, in ten minutes and ten scene
   reloads;
-- the wasm under 10 MB after gzip;
+- the wasm under 16 MB after gzip (10 MB when G1 was passed; D675);
 - time from navigation to the client's first rendered frame within 5 s of
   the JS game's time to its menu;
 - no frame over 50 ms after warm-up;

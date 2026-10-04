@@ -816,9 +816,10 @@ measured in M0):
 - Level load: no slower than JS on the web; at least twice as fast native.
 - Wasm memory high-water mark: under 512 MB on phones, and no growth across
   ten level switches.
-- Download: the wasm file under 10 MB after gzip, measured by `cargo xtask
-  size` and tracked in CI. The dev server sends precompressed files from
-  `dist/` with `Content-Encoding`, so load times on phones are realistic.
+- Download: the wasm file under 16 MB after gzip (raised from 10 MB,
+  D675), measured by `cargo xtask size` and tracked in CI. The dev server
+  sends precompressed files from `dist/` with `Content-Encoding`, so load
+  times on phones are realistic.
 - Time from navigation to the menu on a phone over Wi-Fi: within 5 s of the
   JS game's. (At G1 there is no menu yet; the gate there uses time to the
   client's first rendered frame, before any scene loads.)

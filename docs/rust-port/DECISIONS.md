@@ -5130,6 +5130,8 @@ level` "s" or "z", `simd128`) are the owner's to choose, D674.
 
 ## D674. Open: further size options, for the owner
 
+(Item 1 decided in D675: `"s"`, and the budget raised to 16 MB.)
+
 2026-10-04, not decided: each is a choice the owner asked to make (D439)
 or costs something. Sizes are after gzip on the merged build (WebGPU 9.29
 MB, WebGL2 9.76 MB, under SPEC 6.6's 10 MB) unless said otherwise;
@@ -5181,3 +5183,38 @@ details and frame times in `BASELINE.md`.
    untaken, would bring WebGPU to about 9.7 MB and WebGL2 to about 10.2.
 8. **The material test scenes on the web** (`?mat=`, `matscene`, used
    natively only by `cargo xtask parity materials`): about 0.02 MB.
+
+## D675. `opt-level = "s"` for the web, and a 16 MB budget
+
+2026-10-04, the owner's answer to D674's first option ("opt s sounds
+fine but i also dont care if we raise it. seems tight if we do bigger
+levels"). The web-release profile takes `opt-level = "s"`; native release
+builds keep `opt-level = 3`. Measured on b68d5ad with the change, gzip -9:
+WebGPU 9.29 → 8.09 MB, WebGL2 9.76 → 8.47 MB (raw 24.36 and 25.30 MB). The
+costs are D674's: Sierra ready 0.5 to 0.6 s later, median frames 0.1 to
+0.2 ms longer where they are CPU-bound, pictures identical.
+
+SPEC 6.6's download budget goes from 10 to 16 MB after gzip
+(`xtask/src/size.rs`, which CI enforces). 10 MB was a figure set when the
+spec was written, not a measured limit, and every level's client world
+generation (+0.44 MB, D674 item 7) plus the screens still to come would
+have kept the build at its edge. Level content is not in the wasm (it
+is scene data or generated in the client), so bigger levels grow it only
+by their generation code. D674's other options (`"z"`, `simd128`,
+brotli, one font stack, a patched Bevy, fonts or world generation outside
+the wasm) stay open and are not needed for the budget.
+
+## D676. The menu switches levels instantly
+
+2026-10-04, the owner on D579 ("i dont like loading a full level on menu
+select. menu should allow instant switching, maybe we load small flyover
+sections for all levels at once"). A deviation from the JS, whose level
+tab rebuilds the whole world: in the Rust client a level tab or card only
+selects, and the menu's attract camera shows a short section of that
+level's route, prepared for every level when the menu opens, so switching
+is immediate. The whole level is built or downloaded when Race is
+pressed, behind the loading screen. How the sections are made (generated
+in the client from each level's world generation, which now fits the
+budget, D675, or cut from the exports), their length, and the memory they
+may hold on a phone are for the package that does it; recorded in
+DEVIATIONS.md when it lands.

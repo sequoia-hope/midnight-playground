@@ -1,5 +1,5 @@
 //! `cargo xtask size [--budget]`: the size of the built wasm, raw and after
-//! gzip (SPEC 6.6: under 10 MB after gzip). Reads `dist/next/`, so run
+//! gzip (SPEC 6.6: under 16 MB after gzip). Reads `dist/next/`, so run
 //! `cargo xtask web --release` first. In GitHub Actions the table is also
 //! written to the job summary.
 
@@ -8,7 +8,7 @@ use flate2::Compression;
 use flate2::write::GzEncoder;
 use std::io::Write;
 
-const BUDGET_GZIP: u64 = 10 * 1024 * 1024;
+const BUDGET_GZIP: u64 = 16 * 1024 * 1024;
 
 pub fn run(args: &[String]) -> Result {
     let enforce = args.iter().any(|a| a == "--budget");

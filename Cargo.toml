@@ -35,6 +35,9 @@ opt-level = 3
 # Release web builds (SPEC 11): `cargo xtask web --release`, then wasm-opt.
 [profile.web-release]
 inherits = "release"
+# Size over speed: about 1.3 MB less wasm after gzip for 0.1 to 0.2 ms more
+# per CPU-bound frame, pictures identical (D675).
+opt-level = "s"
 lto = "fat"
 codegen-units = 1
 panic = "abort"
