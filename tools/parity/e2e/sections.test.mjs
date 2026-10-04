@@ -76,8 +76,9 @@ test('sections: instant tabs, Race loads the level, Main menu builds them again'
     await startFromMenu(game, { timeout: 240000 });
     const t2 = await game.eval(() => performance.now());
     await waitRacing(game, 60000);
-    const race = await game.eval(() => ({ level: window.__mr.level, sec: window.__mr.sections, mem: window.__mr.wasmMemoryBytes(), url: window.__mr.sceneUrl }));
-    console.log(`#   Race on coast: racing (countdown) ${((t2 - t1) / 1000).toFixed(2)} s after the click, scene ${race.url}, wasm ${MB(race.mem)} MB`);
+    const race = await game.eval(() => ({ level: window.__mr.level, sec: window.__mr.sections, mem: window.__mr.wasmMemoryBytes(), mb: window.__mr.sceneMB ?? null }));
+    console.log(`#   Race on coast: racing (countdown) ${((t2 - t1) / 1000).toFixed(2)} s after the click, `
+      + `${race.mb == null ? 'built in the client' : 'a ' + race.mb + ' MB export downloaded'}, wasm ${MB(race.mem)} MB`);
     assert.equal(race.level, 'coast');
     assert.equal(race.sec.active, false);
     assert.equal(race.sec.full, 'coast');
