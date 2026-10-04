@@ -2636,8 +2636,10 @@ too. A traffic car that came onto the road this tick is drawn at its
 current pose. `pose::root` is `sync`'s orientation from the road frame,
 and `Springs` its pitch and roll springs, stepped once per rendered frame
 with the frame's dt from the tick's accelerations and kicked by
-`PhysEvent::Touchdown`; the body pivots at the road. Wheels, steer
-pivots, brake lights and headlights need the car models (D441).
+`PhysEvent::Touchdown`. With the car models (D440) the root takes the
+pose, the body node the springs (its own y rotation kept), the wheels
+spin by `speed / radius × dt` on top of their rest rotation, and the
+steer pivots turn by `−steerAngle`.
 
 ## D436. Touch controls: the thumb stick and the pedal slider
 
@@ -2685,3 +2687,27 @@ Coast 210 MB raw; gzip roughly halves Seaside). Nothing is compressed or
 copied into `dist/next/` for now. How scenes reach phones (their size,
 compression, the world built in the client instead) is to be planned
 explicitly later.
+
+## D440. The race draws WP 4.1's car models
+
+2026-10-03, WP 4.2 and 4.6. At the start of a race every car of the
+field is built with `car_model::build_vehicle` into one `SceneGraph`, with
+the JS's options (the player `{ color, lod: 'high', seed: 1 }`, rival i
+`{ color, lod: 'high', seed: 10 + i }`, traffic car i `{ color, seed:
+i × 17 + kind.length, lod: 'low', far: true }`), so they share the kit's
+materials and geometry as the JS page does; `finish()` assembles a
+`Scene`, and `play::models` spawns each car as an entity tree with the
+nodes' local transforms (not flattened as the level loader does), meshes
+and materials converted as the loader converts them (`convert`,
+`three_material`), hidden kinds left out as there. Racers cast shadows
+from every mesh (Race.js); traffic keeps the model's flags. Each frame
+the light setters run as `Race.update` calls them (headlights at
+`max(0.15, smoothstep(0.25, 0.6, night))`, 0.1 for traffic, brake lights
+from `brakeLight`, the player's reverse and boost, the rivals' boost) and
+`Traffic.farLod` swaps traffic to the far model past 95 m from the camera
+and back inside 85; their edits are applied to the drawn materials
+(`emissiveIntensity` × the material's emissive colour, only when it
+changes) and node visibility. The headlight spot, the siren glow and the
+effects are WP 4.4 and M8. The same race, seed and autopilot give the
+same results natively and in the browser (Sierra, seed 1, through the
+client's frame loop on both).
