@@ -279,7 +279,7 @@ pub fn merged_mesh(
 
 /// `root.updateMatrixWorld(true)` for a hierarchy not in the scene: each
 /// node's world matrix, in traversal order (pre-order, children in order).
-fn world_matrices(graph: &mut SceneGraph, root: NodeId) -> Vec<(NodeId, Matrix4)> {
+pub fn world_matrices(graph: &mut SceneGraph, root: NodeId) -> Vec<(NodeId, Matrix4)> {
     let mut out = Vec::new();
     let mut stack = vec![(root, None::<Matrix4>)];
     while let Some((id, parent)) = stack.pop() {
