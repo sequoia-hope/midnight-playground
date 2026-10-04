@@ -4495,3 +4495,72 @@ animated, on `main` today:
   throughout. The cruise scoring HUD (score, multiplier and its bar,
   distance, best; the simulation's side is `mr_sim::race`'s cruise
   fields, WP 1.5) is the client's, roadmap WP 7.5's third item.
+
+## Wasm size decisions
+
+Part of roadmap WP 9.1's wasm size work, brought forward because main went
+over SPEC 6.6's 10 MB budget (after gzip) once the client linked Level 1's
+world generation (D491), race audio and the menus. Measurements and the
+attribution are in `BASELINE.md`, "Wasm size: where the bytes go".
+
+## D670. No `bevy_post_process`
+
+2026-10-04. `mr_game` asked Bevy for `bevy_post_process` (D100's list),
+but the client's post chain is three's, ported in `render::post`, and no
+camera ever carries Bevy's `Bloom`, `DepthOfField`, `MotionBlur`,
+`AutoExposure` or effect-stack components. The feature only made
+`DefaultPlugins` add `PostProcessPlugin`: render-graph systems, pipelines
+and WGSL that did nothing (and `MsaaWritebackPlugin`, which only acts when
+a second camera draws into the same target; the client has one camera).
+Without it the gzipped wasm is 0.15 MB smaller (WebGPU 10.00 to 9.85 MB,
+WebGL2 10.48 to 10.33 MB). Seaside's 29 stations on both backends and
+Sierra's 06250 to 07500 stations through the web build are the same
+pixels as before (the one difference, 06250-high, is there between two
+runs of the same build too).
+
+## D671. Debug and trace logging compiled out of release wasm
+
+2026-10-04. On the web, Bevy's `LogPlugin` filters at `info` (plus its
+default `wgpu=error,naga=warn`), and the `RUST_LOG` override it reads is
+an environment variable the browser does not have, so no `debug!` or
+`trace!` from Bevy, wgpu, naga or the client can print there. The wasm
+target of `mr_game` now depends on `tracing` and `log` only to turn on
+their `release_max_level_info` features, which compile those calls and
+their strings out of builds without debug assertions. 0.04 to 0.05 MB
+after gzip (WebGPU 9.85 to 9.81 MB, WebGL2 10.33 to 10.28 MB). Native
+builds keep every level and `RUST_LOG`. Turning `info` off as well
+(`release_max_level_warn`) would remove messages the console shows today
+(adapter, window, warm-up), so it is not done.
+
+## D672. The client's plugins: `DefaultPlugins` less Bevy's 2D sprites
+
+2026-10-04. `bevy_ui_render` forces `bevy_sprite` and `bevy_sprite_render`
+on, and `DefaultPlugins` then adds `SpritePlugin` and `SpriteRenderPlugin`
+(sprites, 2D meshes, colour materials, tilemaps, 2D text and their
+pipelines and shaders), none of which the client draws. Disabling them in
+the group does not take their code out: a plugin group holds every plugin
+as a `Box<dyn Plugin>`, so the plugin's `build` and all it registers stay
+linked. `mr_game::plugins::ClientPlugins` is therefore `DefaultPlugins`
+for exactly the features `mr_game` turns on, in its order, natively and
+on the web (the native build keeps `TerminalCtrlCHandlerPlugin` and
+`PipelinedRenderingPlugin`), with the two sprite plugins replaced by
+`UiSpriteSupport`, the two things `UiRenderPlugin` reads from them:
+`TextureAtlasPlugin` (the `Assets<TextureAtlasLayout>` resource) and, in
+the render world, `SpriteAssetEvents` filled by `extract_sprite_events`
+(with which the UI drops the bind groups of images that changed). The
+gzipped wasm is 0.25 MB smaller (WebGPU 9.81 to 9.56 MB, WebGL2 10.28 to
+10.01 MB). Checked: Seaside's stations on both backends and Sierra's
+stretch the same as before (one WebGL2 pixel one level apart, inside that
+backend's run-to-run noise); the phone harness (touch driving, drift,
+brake, pause and resume, and the autopilot race to the results) passes,
+its HUD, touch controls and results screen as before; `cargo xtask parity
+materials` (native) 23 stations, 0 over the limits, worst mean 0.150 as
+before; the workspace tests pass.
+
+The cost is a rule: **a Bevy feature that brings a plugin now needs that
+plugin added to `ClientPlugins`** at its place in `bevy_internal`'s
+`default_plugins.rs`, since `DefaultPlugins` no longer adds it; the
+module's header says so. The menus (WP 6.1 and 6.2) and WP 3.9's client
+work turn on no Bevy feature and add no Bevy plugin (both agents
+confirmed). At the move to Bevy 0.20 (D100) the list is redone from that
+version's `default_plugins.rs`.
