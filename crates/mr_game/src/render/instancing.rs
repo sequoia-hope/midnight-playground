@@ -55,17 +55,22 @@ use bevy::render::{Extract, ExtractSchedule, RenderApp};
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// Floats per instance: the matrix's four columns, then the colour (rgb)
-/// and `receiveShadow` (1 or 0).
-pub const INSTANCE_FLOATS: usize = 20;
+/// and `receiveShadow` (1 or 0), then the geometry's instance-rate
+/// attributes, one float each in their order (the harbour containers'
+/// `aVar`, the desert pools' `ph` and `fl`; zeros without; D499).
+pub const INSTANCE_FLOATS: usize = 24;
+/// The shader location of the instance-rate attributes (after the stream's
+/// 9 to 13; 14 is the traffic streams' second attribute).
+pub const INSTANCE_EXTRA_LOCATION: u32 = 15;
 /// The first shader location of the instance stream (Bevy's standard
 /// attributes use 0 to 7, the patch attribute 8).
 pub const INSTANCE_LOCATION: u32 = 9;
 
 /// The instance stream's vertex layout: the matrix columns at locations 9
-/// to 12, the colour and shadow flag at 13. The shadow pass reads only the
-/// matrix (`with_color` false).
+/// to 12, the colour and shadow flag at 13, the instance-rate attributes at
+/// 15. The shadow pass reads only the matrix (`with_color` false).
 pub fn instance_layout(with_color: bool) -> VertexBufferLayout {
-    let n = if with_color { 5 } else { 4 };
+    let n = if with_color { 6 } else { 4 };
     VertexBufferLayout {
         array_stride: (INSTANCE_FLOATS * 4) as u64,
         step_mode: VertexStepMode::Instance,
@@ -73,7 +78,11 @@ pub fn instance_layout(with_color: bool) -> VertexBufferLayout {
             .map(|i| VertexAttribute {
                 format: VertexFormat::Float32x4,
                 offset: u64::from(i) * 16,
-                shader_location: INSTANCE_LOCATION + i,
+                shader_location: if i == 5 {
+                    INSTANCE_EXTRA_LOCATION
+                } else {
+                    INSTANCE_LOCATION + i
+                },
             })
             .collect(),
     }
@@ -179,6 +188,16 @@ pub fn push_instance(out: &mut Vec<f32>, m: &DMat4, color: [f32; 3], receive: bo
     out.extend(m.to_cols_array().iter().map(|&x| x as f32));
     out.extend_from_slice(&color);
     out.push(if receive { 1.0 } else { 0.0 });
+    out.extend_from_slice(&[0.0; 4]);
+}
+
+/// Sets the instance-rate attributes of the instance [`push_instance`]
+/// appended last.
+pub fn set_instance_extra(out: &mut [f32], extra: [f32; 4]) {
+    let n = out.len();
+    if n >= 4 {
+        out[n - 4..].copy_from_slice(&extra);
+    }
 }
 
 /// three's `Sphere.applyMatrix4`: the centre transformed, the radius

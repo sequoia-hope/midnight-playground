@@ -73,6 +73,13 @@ pub enum Patch {
     Surf,
     /// `Coast.js`'s lighthouse beam: a `ShaderMaterial`, additive.
     Beam,
+    /// `desert/parts.js` `sandstoneMaterial`: triplanar strata and varnish.
+    Sandstone,
+    /// `desert/glow.js` `flickerPools`: additive pools flickering by the
+    /// instance's `ph` and `fl`.
+    Pool,
+    /// `Desert.js`'s flood-light cones: fading where edge-on.
+    FloodBeam,
 }
 
 /// `surfaceDetail`'s `mode` (`kind_opts.mode`).
@@ -147,6 +154,9 @@ impl Patch {
             MaterialKind::Stucco => Patch::Stucco,
             MaterialKind::Surf => Patch::Surf,
             MaterialKind::LighthouseBeam => Patch::Beam,
+            MaterialKind::Sandstone => Patch::Sandstone,
+            MaterialKind::GroundPool => Patch::Pool,
+            MaterialKind::FloodBeam => Patch::FloodBeam,
             _ if m.ty == "PointsMaterial" => points(PointsMode::Plain),
             _ => Patch::None,
         }
@@ -451,6 +461,9 @@ impl Material for ThreeMaterial {
             Patch::Stucco => defs.push("PATCH_STUCCO".into()),
             Patch::Surf => defs.push("PATCH_SURF".into()),
             Patch::Beam => defs.push("PATCH_BEAM".into()),
+            Patch::Sandstone => defs.push("PATCH_SANDSTONE".into()),
+            Patch::Pool => defs.push("PATCH_POOL".into()),
+            Patch::FloodBeam => defs.push("PATCH_FLOODBEAM".into()),
         }
         if k.normal_map {
             defs.push("USE_NORMALMAP".into());
@@ -757,6 +770,21 @@ pub fn three_material(
         }
         Patch::Stucco => {
             detail = tex("tGrain").map(|(h, _)| h);
+        }
+        Patch::Sandstone => {
+            aux = tex("tRock").map(|(h, _)| h);
+            detail = tex("tDetail").map(|(h, _)| h);
+        }
+        Patch::Pool => {
+            p.kind0 = Vec4::new(
+                m.number("uTime").unwrap_or(0.0) as f32,
+                num("opacity", 1.0) as f32,
+                0.0,
+                0.0,
+            );
+        }
+        Patch::FloodBeam => {
+            p.kind0 = Vec4::new(num("opacity", 1.0) as f32, 0.0, 0.0, 0.0);
         }
         Patch::Surf | Patch::Beam => {
             let u = |n: &str, d: f64| m.number(n).unwrap_or(d) as f32;

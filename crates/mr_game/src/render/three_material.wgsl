@@ -164,6 +164,13 @@ fn kind_uniforms() -> vec4<f32> {
 #else ifdef PATCH_BEAM
     // uStrength = 0.03 + 0.32 × smoothstep(0.2, 0.8, night).
     return vec4<f32>(0.03 + 0.32 * t::smooth_step(0.2, 0.8, n), 0.0, 0.0, 0.0);
+#else ifdef PATCH_POOL
+    // Desert.js animate: glowTime = T; poolMat.opacity = smoothstep(0.15,
+    // 0.7, night).
+    return vec4<f32>(globals_at(g::G_ANIM2).z, t::smooth_step(0.15, 0.7, n), 0.0, 0.0);
+#else ifdef PATCH_FLOODBEAM
+    // beamMat.opacity = 0.13 × smoothstep(0.3, 0.8, night).
+    return vec4<f32>(0.13 * t::smooth_step(0.3, 0.8, n), 0.0, 0.0, 0.0);
 #else
     // GlowPoints' uFogK: world.scene's fog, which it has not.
     return vec4<f32>(0.0);
@@ -197,6 +204,8 @@ struct Vertex {
     @location(11) i_col2: vec4<f32>,
     @location(12) i_col3: vec4<f32>,
     @location(13) i_color: vec4<f32>,
+    // The geometry's instance-rate attributes (D499).
+    @location(15) i_extra: vec4<f32>,
 #endif
 };
 
@@ -270,10 +279,7 @@ fn vertex(v: Vertex) -> VOut {
 #ifdef MR_INSTANCED
     let world_from_local = mat4x4<f32>(v.i_col0, v.i_col1, v.i_col2, v.i_col3);
     let world = world_from_local * vec4<f32>(local_pos, 1.0);
-    // receiveShadow, and an instance-rate aVar packed with it as
-    // receive + 2 × aVar (`loader::instance_stream`, D499).
-    let i_var = floor(v.i_color.w * 0.5);
-    out.receive = v.i_color.w - 2.0 * i_var;
+    out.receive = v.i_color.w;
 #else
     let world_from_local = mesh_functions::get_world_from_local(v.instance_index);
     let world = mesh_functions::mesh_position_local_to_world(world_from_local, vec4<f32>(local_pos, 1.0));
@@ -290,7 +296,7 @@ fn vertex(v: Vertex) -> VOut {
 #ifdef PATCH_CONTAINER
 #ifdef MR_INSTANCED
     // containerMaterial: the instance's atlas row (aVar).
-    out.extra.x = i_var;
+    out.extra.x = v.i_extra.x;
 #endif
 #endif
 #ifdef PATCH_SURF
@@ -344,6 +350,27 @@ fn vertex(v: Vertex) -> VOut {
 #endif
 #ifdef PATCH_TRAFFIC
     traffic_vertex(&out, extra, a_par, traffic_t, tu);
+#endif
+#ifdef PATCH_POOL
+    // flickerPools at fog_vertex: vFl from the instance's ph and fl.
+#ifdef MR_INSTANCED
+    {
+        let pu = kind_uniforms().x;
+        let ph = v.i_extra.x;
+        let fl = v.i_extra.y;
+        let f_ = sin(pu * 13.0 + ph * 6.3) * sin(pu * 4.7 + ph * 2.1) + 0.4 * sin(pu * 29.0 + ph * 3.7);
+        out.extra.x = 1.0 - fl + fl * clamp(0.5 + 0.5 * f_, 0.0, 1.0);
+    }
+#else
+    // Drawn without the instance stream (the material test scene): no
+    // flicker (fl 0).
+    out.extra.x = 1.0;
+#endif
+#endif
+#ifdef PATCH_FLOODBEAM
+    // Desert.js's beam cones at fog_vertex: vFace = |dot(normalize(
+    // normalMatrix · mat3(instanceMatrix) · normal), normalize(-mvPosition))|.
+    out.extra.x = abs(dot(normalize((view.view_from_world * vec4<f32>(out.world_normal, 0.0)).xyz), normalize(-out.view_pos)));
 #endif
 #ifdef PATCH_BEAM
     // beamVert: vAlong = 1 - uv.y; vV = normalize(-mvPosition), carried as
@@ -867,6 +894,14 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     let geometry_roughness = max(max(dxy.x, dxy.y), dxy.z);
 
     var diffuse_color = material.diffuse;
+#ifdef PATCH_POOL
+    // The pools' and the flood beams' opacity follows the night (their
+    // updater's, or the animators').
+    diffuse_color.a = kind_uniforms().y;
+#endif
+#ifdef PATCH_FLOODBEAM
+    diffuse_color.a = kind_uniforms().x;
+#endif
 #ifdef POINTS_GLOW
     // City.js's updater: m.color.setScalar(1.6 * smoothstep(0.2, 0.7, night)).
     diffuse_color = vec4<f32>(vec3<f32>(1.6 * t::smooth_step(0.2, 0.7, globals_at(g::G_SKY_PARAMS).x)), diffuse_color.a);
@@ -947,6 +982,22 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     sampled_diffuse_color = vec4<f32>(mix(sampled_diffuse_color.rgb, vec3<f32>(0.22, 0.2, 0.17), t::smooth_step(0.55, 0.95, map_uv.x) * 0.8), sampled_diffuse_color.a);
 #endif
     diffuse_color *= sampled_diffuse_color;
+#endif
+#ifdef PATCH_SANDSTONE
+    // desert/parts.js sandstoneMaterial, replacing map_fragment: strata
+    // from tRock and the desert varnish streaks down steep faces.
+    {
+        let rn = normalize(in.world_normal);
+        var w_ = pow(abs(rn), vec3<f32>(3.0));
+        w_ /= (w_.x + w_.y + w_.z);
+        let rp = in.world_pos;
+        let a_ = textureSample(aux_texture, aux_sampler, vec2<f32>(rp.z * 0.07, rp.y * 0.16)).rgb;
+        let b_ = textureSample(aux_texture, aux_sampler, vec2<f32>(rp.x * 0.07, rp.y * 0.16)).rgb;
+        let c_ = textureSample(aux_texture, aux_sampler, rp.xz * 0.09).rgb;
+        let st_ = textureSample(detail_texture, detail_sampler, vec2<f32>((rp.x + rp.z) * 0.11, rp.y * 0.006)).r;
+        let stp_ = 1.0 - abs(rn.y);
+        diffuse_color = vec4<f32>(diffuse_color.rgb * (a_ * w_.x + b_ * w_.z + c_ * w_.y) * 1.35 * (1.0 - 0.45 * t::smooth_step(0.7, 0.86, st_) * stp_ * stp_), diffuse_color.a);
+    }
 #endif
 #ifdef PATCH_ROCK
     // Mountain.js rockMaterial, replacing map_fragment: triplanar strata
@@ -1087,6 +1138,16 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     // control flow) for normal_fragment_maps below.
     let sea_n1 = textureSample(aux_texture, aux_sampler, normal_uv).xyz * 2.0 - 1.0;
     let sea_n2 = textureSample(aux_texture, aux_sampler, normal_uv * 3.3 + globals_at(g::G_ANIM).zw).xyz * 2.0 - 1.0;
+#endif
+#ifdef PATCH_POOL
+    // Before alphatest_fragment: diffuseColor.rgb *= vFl; the opacity
+    // follows the night (the updater's).
+    diffuse_color = vec4<f32>(diffuse_color.rgb * in.extra.x, diffuse_color.a);
+#endif
+#ifdef PATCH_FLOODBEAM
+    // Before alphatest_fragment: diffuseColor.rgb *= vFace²; the opacity
+    // follows the night.
+    diffuse_color = vec4<f32>(diffuse_color.rgb * in.extra.x * in.extra.x, diffuse_color.a);
 #endif
 #ifdef POINTS_FLICKER
     // At alphatest_fragment: diffuseColor.rgb *= vFl.
