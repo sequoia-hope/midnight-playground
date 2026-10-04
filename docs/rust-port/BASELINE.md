@@ -699,3 +699,40 @@ After merging main (race audio, the race warm-up, the other levels'
 world generation) and building Level 1's scenery by name (D498): 9.60 and
 10.08 MB, the WebGL2 build 0.08 MB over the budget; the budget question is
 the owner's (D498).
+
+**Races under vsync, and the WebGL2 Sierra question (2026-10-04).** The
+uncapped WebGL2 Sierra race above (12 frames over 50 ms) was run on a
+build of 5350be2, before the WP 3.9 client animators and the race audio
+were merged, so those could not have caused it. Run as browsers run it
+(vsync on, `CAPPED=1`, 30 s races, `timescale=2`), four builds alternating:
+1bb2dd6 (before the animators, and before the car-model warm-up of D458),
+ba1f5f1 (with the animators), d2550fe (with the race audio) and ecae56e
+(the 24-float instance stream), on Sierra and Coast, WebGL2 and WebGPU, two
+rounds (load 7 to 32, other GPU users at 0 to 61 % between runs):
+
+- Frames over 50 ms under vsync: 0 to 1 per run in every build and on both
+  backends, except one 850 ms stall (d2550fe, Coast, WebGL2, s 1,867, at
+  load 7; not seen again).
+- Frames over 33 ms on WebGL2: 0 to 16 on Sierra and 0 to 36 on Coast,
+  with no order by build (1bb2dd6: 0, 0, 4, 1; ba1f5f1: 0, 7, 0, 11;
+  d2550fe: 11, 0, 33, 36; ecae56e: 16, 0, 26, 4). WebGPU: 0 to 6 in every
+  build.
+- `lateFrames` 1 and 3 on 1bb2dd6 and ba1f5f1 (no D458), 0 from d2550fe on.
+
+To tell the client's work from the machine, a second alternating series
+timed every `requestAnimationFrame` callback (the client's frame work, on
+WebGL2 where Bevy batches on the CPU). In the quiet runs (Coast at load
+3.8 to 4.8, all four builds; Sierra at 8.0 to 13.3 for ba1f5f1, d2550fe
+and ecae56e) the callback is 3.9 to 5.7 ms at the median and at most 7.4
+to 20.9 ms, and no frame misses a vsync. Long callbacks come in whole runs
+and in every build, the oldest included: 1bb2dd6 had 60 and 79 over 16.7
+ms on Sierra and 64 on Coast, ba1f5f1 159 on Sierra, d2550fe and ecae56e
+778 and 755 on Sierra (median 17 ms, load 13.5 and 29.7), and those are
+the runs with frames over 33 ms. d2550fe and ecae56e were clean on Sierra
+in the next round, so it is not a commit. The load average does not catch
+every busy spell (ba1f5f1's bad run started at 7.3), but the slow frames
+on WebGL2 follow the machine, not the code. The one
+difference between builds at low load is the median callback on Coast:
+3.9 and 4.0 ms (1bb2dd6, ba1f5f1), 4.5 (d2550fe), 5.0 (ecae56e). That is
+about 1 ms of frame work added with the audio and the new kinds, well
+inside the 16.7 ms.
