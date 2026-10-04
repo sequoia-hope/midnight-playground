@@ -1,16 +1,17 @@
-//! The menu's flyover sections (DECISIONS D676, D740 to D749): a short
-//! stretch of every level, prepared when the menu opens, so a level tab
-//! switches what the attract camera flies over at once. A deviation from
-//! the JS game, whose level tab rebuilds the whole world behind the loading
-//! screen.
+//! The menu's views (DECISIONS D676, D740 to D750): a simplified view of
+//! a short stretch of every level, prepared when the menu opens, so a level
+//! tab switches what the attract camera flies over at once. A deviation
+//! from the JS game, whose level tab rebuilds the whole world behind the
+//! loading screen. (The code calls each one a section, after
+//! `mr_worldgen::section`.)
 //!
-//! **What a section is.** The level's own world build (`mr_worldgen`)
-//! restricted to the attract camera's stretch (`mr_worldgen::section`):
-//! the terrain tiles near it, the scenery modules whose zones reach it, and
-//! of what they build only the drawables near it. Its animators and sky run
-//! as on the level. A level the client cannot build whole yet
-//! (`animate::generated` false) gets terrain, road, sky and sea only, from
-//! the same stages, with no scenery.
+//! **What a view is** (D748). The level's own world build restricted to
+//! the attract camera's stretch (`mr_worldgen::section`, `scenery: false`):
+//! the terrain tiles near it, the road, the sky and time of day, the sea
+//! over its land; every scenery module plans (the land and road are the
+//! level's) but none builds. Then a few stand-ins for the level's scenery
+//! (`hints`). Its sky and the road's and sea's animators run as on the
+//! level.
 //!
 //! **How they are held.** Each section is spawned once, under a root
 //! entity of its own, hidden unless shown; its GPU copies stay, its CPU
