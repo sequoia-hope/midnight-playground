@@ -225,6 +225,7 @@ pub fn plugin(app: &mut App) {
             .before(crate::render::lighting::pack_globals),
     );
     audio::plugin(app);
+    hud::plugin(app);
     gamepad_io::plugin(app);
     #[cfg(target_arch = "wasm32")]
     web::plugin(app);
