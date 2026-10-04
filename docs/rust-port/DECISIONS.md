@@ -3201,8 +3201,10 @@ baseline, advances unchanged) into a copy of Rajdhani Bold (27 KB), named
 "Rajdhani Oblique" so the text engine picks it by family. The M4 HUD and
 the touch controls (D431) switch from Bevy's FiraMono to Rajdhani Bold by
 putting that face at Bevy's default font handle; nothing else in them
-changes. If the owner wants Roboto for the screens after all, it is
-`widgets::FAMILY`.
+changes. Characters Rajdhani lacks (the arrows, ●) are drawn from
+Arimo's symbols, the fallback face of D372, as Chrome falls back for
+them (`widgets::text` cuts a string into runs). If the owner wants Roboto
+for the screens after all, it is `widgets::FAMILY`.
 
 ## D572. The store: `localStorage`'s keys and strings, a file natively
 
@@ -3229,8 +3231,14 @@ into Bevy UI px by the page's measured scale; the media queries are
 two-column phone menu is a Bevy UI grid. A screen is a scrolling column
 over the radial gradient, centred while it fits (`safe center`, as auto
 margins). What Bevy UI has no equivalent for:
-- Gradient text (the logo) is drawn with mr_canvas as the CSS paints it,
-  glow included, and shown as an image at the device's resolution.
+- Gradient text (the logo): MIDNIGHT takes the colour its glyphs mostly
+  show (the white top of its gradient), each letter of RACER the colour
+  of the accent-to-orange gradient where it stands, and the pink glow is
+  left out. Drawing the logo with mr_canvas's text, as the CSS paints it,
+  was tried and looked right, but it linked a second copy of the font
+  stack (harfrust, read-fonts, skrifa: 1.1 MB raw, about 0.3 MB gzip), so
+  the results table is laid out by Bevy's grid for the same reason (no
+  text measured outside Bevy).
 - The selected tab or car keeps its accent border and 1 px ring (an
   outline); its 24 px glow is left out, because Bevy draws a box shadow
   under the whole node and these nodes are translucent (it tints them).
@@ -3241,9 +3249,10 @@ margins). What Bevy UI has no equivalent for:
   which opens a list under it (Chrome on a desktop) rather than Android's
   picker. No hover states; the keyboard focus ring is the gamepad's
   (`.pad-focus`), Tab and Shift+Tab move it, Enter or Space activates.
-- Characters no bundled face has are drawn: ★ (results), ⏭ (Next track),
-  ♪ (the music link) and the tick; ◂ ▸ in the Steering choice and the
-  touch help become ← → (the faces have the arrows); N₂O is N2O (D431).
+- Characters no bundled face has are drawn with mr_canvas's paths: ★
+  (results), ⏭ (Next track), ♪ (the music link) and the tick; ◂ ▸ in the
+  Steering choice and the touch help become ← → (Arimo has them); N₂O is
+  N2O (D431).
 - The music player link opens the JS page (`../../music.html`) until
   M5's player screen; natively there is no link.
 Every control carries its DOM id (`btn-start`, `opt-hq`, …); level tabs,
@@ -3267,15 +3276,18 @@ menu disposes the race and its cars and puts the attract camera back at
 `startS + 60`. The HUD and the touch controls hide while there is no race
 or it is held.
 
-## D575. The canvas draws the screens at up to twice the CSS resolution
+## D575. The canvas draws the menu at up to twice the CSS resolution
 
 2026-10-04, WP 6.2. The screens are drawn into the game's canvas, which
 D437 renders at 1× on a phone without High quality: the menu's text would
 be a third of the iPhone's resolution, where the DOM's was always sharp.
-While a screen shows (menu, loading, pause, results, controller) the
-canvas is drawn at `max(JS ratio, min(devicePixelRatio, 2))`; while
-driving, at the JS's ratio as before. The attract camera behind the menu
-costs up to four times the pixels on a phone; the race is unchanged.
+While there is no race (the menu, the loading screen, the controller
+screen opened from the menu) the canvas is drawn at `max(JS ratio,
+min(devicePixelRatio, 2))`; with a race (driving, pause, results) at the
+JS's ratio as before. Pause and results stay at the race's ratio because
+the race's HUD text, laid out at it, came out at the wrong size when the
+ratio changed under it. The attract camera behind the menu costs up to
+four times the pixels on a phone; the race is unchanged.
 
 ## D576. The loading screens
 
@@ -3301,8 +3313,46 @@ score) and `padsetup`. `test/` is frozen, so the suites are adapted in
 `tools/parity/e2e/` (`harness.mjs` is the JS harness's API over `__mr`:
 `center` reveals a control and fails if another one is on top of it, as
 `elementFromPoint` did). Request interception cannot carry Sierra's full
-export (D106), so the harness answers a level's scene with its
-terrain-road-sky export. The page's gesture handlers now pass the
+export (D106), so the harness answers a request for a full export over
+90 MB with that level's terrain-road-sky export (Seaside's full one
+passes). The page's gesture handlers now pass the
 pointer's position (`gesture_at`): a tap on Race, Race again or Restart
 on a touch screen goes fullscreen and asks for landscape inside the tap,
 as `enterFullscreen` does. The suites' sound checks wait for M5.
+
+## D578. Pause, results and the controller screen
+
+2026-10-04, WP 6.2 (`#pause`, `#results`, `#padsetup`, `showResults`).
+They replace the M4 card (D432): pause has Resume, End run (a cruise
+only), Restart, Main menu, the volume sliders and Next track; results
+have the title, the table (place, swatch, name, time, `~` for an
+estimate), the stat tiles (Hot Pursuit's busts, wrecks, takedowns,
+penalty and top heat; a circuit's laps with ★ on the best and the lap
+record), the best line and Race again / Main menu. `showResults`' saving
+is ported as it is: a winning time under `best.<id>` (`.pursuit` for Hot
+Pursuit) when first and better, a cruise's score under
+`bestScore.<id>`, a circuit's best lap under `bestLap.<id>`. Restart and
+Race again restart the race in place (`flow::Race::restart`, a new seed
+unless `seed=`), as M4 did, rather than building the field again. Esc and
+P still pause and resume, Enter still races again or resumes (D432). The
+M4 card's "tap anywhere" stays only on the pause screen, for a tap on no
+control (the owner's phone flow from M4); on the results a tap does
+nothing but on a button, as in the JS. The phone harness of M4 tapped
+the middle of the screen to resume, which is now Main menu; its copy in
+this package's checks taps Resume. The Controller screen is the JS's,
+reached from the menu or pause when a gamepad is connected (`ui.pads`,
+never until WP 6.4 reads pads; `__mr.stage({cmd: 'padsetup'})` opens it
+for the tests): it lists the actions with the standard layout's labels,
+the Rumble option (saved), Defaults and Done; picking a binding waits for
+6.4. Esc there leaves it and keeps the race paused.
+
+## D579. Size, and an open question on scene sizes
+
+2026-10-04, WP 6.1–6.2. Release build, gzip: WebGPU 8.77 → 8.92 MB,
+WebGL2 9.24 → 9.40 MB (+0.15 and +0.16 MB) of the 10 MB budget. The fonts add
+nothing (the wasm already carried mr_canvas's bundled files; the oblique
+face is 27 KB). Not decided here (D439): a level tab downloads that
+level's whole export behind the loading screen, as the JS rebuilds the
+world, and on a phone Coast is 210 MB; the menu could show each level's
+download size on its tab or card, or a tab could only select and Race
+load. Raised with the owner.

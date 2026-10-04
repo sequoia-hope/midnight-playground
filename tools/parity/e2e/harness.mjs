@@ -13,7 +13,9 @@
 // Scenes: the full exports of Sierra (138 MB), Coast and the city levels
 // are too big for request interception (DECISIONS D106), so by default a
 // level's scene request is answered with its terrain-road-sky export
-// (`<level>.base.mrscene`); `{ scenes: 'full' }` serves the full ones.
+// (`<level>.base.mrscene`) when the full one is over 90 MB (Seaside's
+// full export, 39 MB, passes); `{ scenes: 'base' }` always serves the
+// base ones, `'full'` never.
 // WP 6.7 turns this into the JS harness's `target: 'rust'` option.
 
 import puppeteer from 'puppeteer-core';
@@ -185,6 +187,8 @@ export class Game {
       if (m?.state === 'failed') throw new Error('client failed: ' + m.error);
       return m?.ready === true && m.screen !== 'loading' && !!m.uiNodes;
     }, { timeout, interval: 250, what: 'the client to load' });
+    // The screen's first layouts (the pixel ratio changes with it, D575).
+    await this.frames(6);
   }
 
   async shot(name, dir) {
@@ -202,9 +206,9 @@ export class Game {
 
 // Open the Rust build in a fresh profile. storage: localStorage entries
 // seeded before boot ({ 'mr.level': 'seaside' }, JSON-encoded here);
-// scenes: 'base' (default) or 'full'; downloads: a directory for
+// scenes: 'auto' (default), 'base' or 'full'; downloads: a directory for
 // __mr.screenshot().
-export async function openGame(browser, { device = 'desktop', query = '', storage = {}, scenes = 'base', downloads = null, wait = true } = {}) {
+export async function openGame(browser, { device = 'desktop', query = '', storage = {}, scenes = 'auto', downloads = null, wait = true } = {}) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
   const cdp = await page.createCDPSession();
@@ -224,7 +228,11 @@ export async function openGame(browser, { device = 'desktop', query = '', storag
     if (u.origin !== ORIGIN) return req.abort('blockedbyclient');
     let rel = decodeURIComponent(u.pathname).replace(/^\/+/, '') || 'index.html';
     if (rel.endsWith('/')) rel += 'index.html';
-    if (scenes === 'base') rel = rel.replace(/\/([a-z]+)\.mrscene$/, '/$1.base.mrscene');
+    // A full export over 90 MB is answered with its terrain-road-sky one.
+    if (/\/[a-z]+\.mrscene$/.test(rel) && scenes !== 'full') {
+      const big = await fs.stat(path.resolve(ROOT, rel)).then((st) => st.size > 90e6).catch(() => false);
+      if (scenes === 'base' || big) rel = rel.replace(/\/([a-z]+)\.mrscene$/, '/$1.base.mrscene');
+    }
     const file = path.resolve(ROOT, rel);
     try {
       const body = await fs.readFile(file);

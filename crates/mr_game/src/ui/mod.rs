@@ -181,8 +181,6 @@ pub struct UiState {
     press: Option<Press>,
     /// Races started (the test bridge's count).
     pub races: u32,
-    /// The logo picture for the current size.
-    logo: Option<(f32, Handle<Image>, widgets::Logo)>,
     /// `__mr.reveal(id)`: scroll that control to the middle.
     pub reveal: Option<String>,
     /// Gamepads connected (`body.pad`): none until WP 6.4 reads them.
@@ -277,7 +275,6 @@ pub fn plugin(app: &mut App) {
             results: None,
             press: None,
             races: 0,
-            logo: None,
             reveal: None,
             pads: false,
             inset_top: 0.0,
@@ -403,8 +400,11 @@ fn flow(
     let mut screen = if !status.ready || ui.starting == Some(Starting::Level) {
         Screen::Loading
     } else if racing {
-        // Pause and results: the M4 placeholders still.
-        Screen::None
+        match play.race.as_ref().map(|r| r.mode) {
+            Some(Mode::Paused) => Screen::Pause,
+            Some(Mode::Results) => Screen::Results,
+            _ => Screen::None,
+        }
     } else {
         Screen::Menu
     };
@@ -763,6 +763,14 @@ fn pointer(
                 if pr.id != id || pr.scrolling || pr.slider.is_some() {
                     continue;
                 }
+                // A tap on no control of the pause screen resumes, as the
+                // M4 pause card did (the owner's phone flow; D578).
+                if pr.target.is_none() && ui.screen == Screen::Pause {
+                    if hit(&controls, css, p).is_none() {
+                        activate(&mut ui, &mut ctx, &controls, Act::Resume);
+                    }
+                    continue;
+                }
                 // A tap: released on the control it pressed.
                 let Some((_, cid, Some(act))) = pr.target else {
                     continue;
@@ -1005,6 +1013,12 @@ fn keys(
                 ui.focus = Some(order[next].clone());
                 ui.dirty = true;
             }
+            // Esc on the Controller screen leaves it (from pause, the race
+            // takes the Esc and `flow` keeps the pause).
+            KeyCode::Escape if ui.screen == Screen::PadSetup && ui.pad_return == Screen::Menu => {
+                ui.screen = Screen::Menu;
+                ui.dirty = true;
+            }
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                 let Some(f) = ui.focus.clone() else { continue };
                 let act = controls
@@ -1030,7 +1044,6 @@ fn build(
     opts: Res<Opts>,
     status: Res<Status>,
     icons: Option<Res<Icons>>,
-    mut images: ResMut<Assets<Image>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     roots: Query<Entity, With<UiRoot>>,
     scroller: Query<&ScrollPosition, With<Scroller>>,
@@ -1073,20 +1086,11 @@ fn build(
         ui.focus_order.clear();
         return;
     }
-    // The logo for this size (`.logo`'s font-size at this breakpoint).
-    let logo_px = screens::logo_px(&bp);
-    let dpr = w.scale_factor() / css;
-    if ui.logo.as_ref().is_none_or(|(px, ..)| *px != logo_px * dpr) {
-        let l = widgets::draw_logo(logo_px, dpr);
-        let h = images.add(l.image.clone());
-        ui.logo = Some((logo_px * dpr, h, l));
-    }
     let mut cx = screens::Cx {
         bp,
         icons: &icons,
         focus: ui.focus.clone(),
         order: Vec::new(),
-        logo: ui.logo.as_ref().map(|(_, h, l)| (h.clone(), l)),
     };
     let root = commands
         .spawn((
@@ -1109,7 +1113,10 @@ fn build(
         screen_node = Some(match screen {
             Screen::Loading => screens::loading(p, &mut cx, &status),
             Screen::Menu => menu::menu(p, &mut cx, &ui, &store, &play, &opts),
-            Screen::Pause | Screen::Results | Screen::PadSetup | Screen::None => return,
+            Screen::Pause => screens::pause(p, &mut cx, &ui, &play),
+            Screen::Results => screens::results(p, &mut cx, &ui),
+            Screen::PadSetup => screens::padsetup(p, &mut cx, &ui),
+            Screen::None => return,
         });
         if screen == Screen::Menu && bp.touch && bp.portrait {
             menu::rotate_hint(p, &cx.bp);

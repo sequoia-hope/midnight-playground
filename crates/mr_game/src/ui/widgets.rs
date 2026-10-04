@@ -11,6 +11,7 @@
 
 use super::Act;
 use bevy::asset::{AssetId, RenderAssetUsages};
+use bevy::ecs::spawn::SpawnIter;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::text::{
@@ -144,6 +145,9 @@ pub fn load_fonts(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
     let book = mr_canvas::FontBook::bundled();
     let mut bold: Option<Arc<[u8]>> = None;
     let mut keep = Vec::new();
+    for f in book.faces.iter().filter(|f| f.family == "arimo") {
+        keep.push(fonts.add(Font::from_bytes(f.data.to_vec())));
+    }
     for f in book.faces.iter().filter(|f| f.family == "rajdhani") {
         keep.push(fonts.add(Font::from_bytes(f.data.to_vec())));
         if f.weight.0 == 700.0 {
@@ -239,26 +243,86 @@ impl T {
     }
 }
 
-/// A text node.
-pub fn text(s: impl Into<String>, t: T, k: f32) -> impl Bundle {
+/// Characters Rajdhani lacks, drawn from the fallback face (`fonts.json`'s
+/// `fallback`, Arimo's symbols: D372), as Chrome falls back for them.
+fn needs_fallback(c: char) -> bool {
+    matches!(c, '\u{2190}'..='\u{2193}' | '\u{25cf}')
+}
+
+/// `s` cut into runs of the main face and of the fallback face.
+fn runs(s: &str) -> Vec<(String, bool)> {
+    let mut out: Vec<(String, bool)> = Vec::new();
+    for c in s.chars() {
+        let fb = needs_fallback(c);
+        match out.last_mut() {
+            Some((r, f)) if *f == fb => r.push(c),
+            _ => out.push((c.to_string(), fb)),
+        }
+    }
+    out
+}
+
+impl T {
+    fn font_for(&self, k: f32, fallback: bool) -> TextFont {
+        let mut f = self.font(k);
+        if fallback {
+            f.font = FontSource::Family(FALLBACK.into());
+            f.weight = FontWeight(self.face_weight().clamp(400, 700));
+        }
+        f
+    }
+}
+
+/// The fallback family.
+pub const FALLBACK: &str = "Arimo";
+
+fn span_run(s: String, t: T, k: f32, fallback: bool) -> impl Bundle {
     (
-        Text::new(s),
-        t.font(k),
+        TextSpan::new(s),
+        t.font_for(k, fallback),
         TextColor(t.color),
         t.spacing(k),
         LineHeight::RelativeToFont(t.line),
     )
 }
 
-/// A text span (a child of a text node), for runs in another style.
-pub fn span(s: impl Into<String>, t: T, k: f32) -> impl Bundle {
+/// Runs after the first, as spans.
+fn rest(rs: Vec<(String, bool)>, t: T, k: f32) -> impl Bundle {
+    Children::spawn(SpawnIter(
+        rs.into_iter()
+            .map(move |(r, fb)| span_run(r, t, k, fb))
+            .collect::<Vec<_>>()
+            .into_iter(),
+    ))
+}
+
+/// A text node.
+pub fn text(s: impl Into<String>, t: T, k: f32) -> impl Bundle {
+    let mut rs = runs(&s.into());
+    let (first, fb) = if rs.is_empty() {
+        (String::new(), false)
+    } else {
+        rs.remove(0)
+    };
     (
-        TextSpan::new(s),
-        t.font(k),
+        Text::new(first),
+        t.font_for(k, fb),
         TextColor(t.color),
         t.spacing(k),
         LineHeight::RelativeToFont(t.line),
+        rest(rs, t, k),
     )
+}
+
+/// A text span (a child of a text node), for runs in another style.
+pub fn span(s: impl Into<String>, t: T, k: f32) -> impl Bundle {
+    let mut rs = runs(&s.into());
+    let (first, fb) = if rs.is_empty() {
+        (String::new(), false)
+    } else {
+        rs.remove(0)
+    };
+    (span_run(first, t, k, fb), rest(rs, t, k))
 }
 
 /// A line of text in several styles: `[(text, style)]`.
@@ -388,7 +452,9 @@ pub fn shadow(bp: &Bp, layers: &[(f32, f32, f32, f32, Color)]) -> BoxShadow {
                 x_offset: bp.px(x),
                 y_offset: bp.px(y),
                 spread_radius: bp.px(spread),
-                blur_radius: bp.px(blur),
+                // CSS's blur radius is twice the Gaussian's deviation;
+                // Bevy's is the deviation.
+                blur_radius: bp.px(blur / 2.0),
             })
             .collect(),
     )
@@ -752,7 +818,7 @@ pub fn dropdown(
 // ── Icons (characters the bundled faces lack, drawn) ───────────────────
 
 /// Small pictures for the characters no bundled face has (★ ⏭ ♪ ✓ and the
-/// select's chevron), drawn once with `mr_canvas` at 4× and shown as
+/// select's chevron), drawn once with `mr_canvas`'s paths and shown as
 /// images.
 #[derive(Resource, Clone)]
 pub struct Icons {
@@ -779,7 +845,8 @@ pub fn image_from_canvas(c: &mr_canvas::Canvas, w: u32, h: u32) -> Image {
 
 fn icon(images: &mut Assets<Image>, draw: impl Fn(&mut mr_canvas::Canvas, f64)) -> Handle<Image> {
     let n = 64u32;
-    let mut c = mr_canvas::Canvas::new(n, n);
+    // No fonts: shapes only (the text stack stays out of the wasm).
+    let mut c = mr_canvas::Canvas::with_fonts(n, n, Arc::new(mr_canvas::FontBook::new()));
     draw(&mut c, f64::from(n));
     images.add(image_from_canvas(&c, n, n))
 }
@@ -888,126 +955,54 @@ pub fn icon_node(
 
 // ── The logo ───────────────────────────────────────────────────────────
 
-/// The logo (`.logo`): "MIDNIGHT" in white fading to #9aa4c0 down the
-/// box, "RACER" under it at half the size, spaced out, in the accent to
-/// orange; italic 900 (Rajdhani Bold, slanted); a pink glow. Gradient text
-/// has no Bevy UI equivalent, so it is drawn with `mr_canvas` as the CSS
-/// paints it (`background-clip: text`) and shown as an image; the node
-/// has the CSS box's size and the picture overflows it for the glow.
-pub struct Logo {
-    pub image: Image,
-    /// The CSS box, CSS px.
-    pub w: f32,
-    pub h: f32,
-    /// The picture's margin round the box (the glow), CSS px.
-    pub pad: f32,
-}
-
-pub fn draw_logo(font_px: f32, scale: f32) -> Logo {
-    let f = f64::from(font_px);
-    let s = f64::from(scale.max(0.5));
-    let font = |size: f64| format!("italic 900 {size}px Rajdhani");
-    let mut m = mr_canvas::Canvas::new(1, 1);
-    // Advances to the end of each prefix (kerning kept), plus the spacing
-    // after every letter, as Chrome lays out letter-spacing.
-    let widths = |m: &mut mr_canvas::Canvas, size: f64, word: &str, ls: f64| -> Vec<f64> {
-        m.set_font(&font(size));
-        let chars: Vec<char> = word.chars().collect();
-        (0..=chars.len())
-            .map(|i| {
-                let pre: String = chars[..i].iter().collect();
-                m.measure_text(&pre).width + ls * i as f64
-            })
-            .collect()
-    };
-    let top = widths(&mut m, f, "MIDNIGHT", -0.02 * f);
-    let bot = widths(&mut m, f * 0.5, "RACER", 0.225 * f);
-    let top_w = *top.last().unwrap_or(&0.0);
-    let bot_w = *bot.last().unwrap_or(&0.0) + 0.15 * f;
-    let content = top_w.max(bot_w);
-    let w = content + 0.36 * f;
-    let h = 1.35 * f;
-    let pad = 30.0;
-    let cw = ((w + 2.0 * pad) * s).ceil() as u32;
-    let ch = ((h + 2.0 * pad) * s).ceil() as u32;
-    let mut c = mr_canvas::Canvas::new(cw, ch);
-    c.scale(s, s);
-    c.translate(pad, pad);
-    let x0 = 0.18 * f;
-    // The glow: `filter: drop-shadow(0 6px 24px rgba(255,56,96,.35))`.
-    let glyphs = |c: &mut mr_canvas::Canvas, pass: u8| {
-        // MIDNIGHT, centred in the content box.
-        c.set_font(&font(f));
-        let left = x0 + (content - top_w) / 2.0;
-        let chars: Vec<char> = "MIDNIGHT".chars().collect();
-        for (i, ch) in chars.iter().enumerate() {
-            c.fill_text(&ch.to_string(), left + top[i], 0.742 * f);
-        }
-        // RACER: a block with margin-left .3em, its text centred in it.
-        c.set_font(&font(f * 0.5));
-        let block_l = x0 + 0.15 * f;
-        let block_w = content - 0.15 * f;
-        if pass == 1 {
-            let mut g = c.create_linear_gradient(block_l, 0.0, block_l + block_w, 0.0);
-            g.add_color_stop(0.0, "#ff3860");
-            g.add_color_stop(1.0, "#ff9a3c");
-            c.set_fill_style(&g);
-        }
-        let left = block_l + (block_w - *bot.last().unwrap_or(&0.0)) / 2.0;
-        let chars: Vec<char> = "RACER".chars().collect();
-        for (i, ch) in chars.iter().enumerate() {
-            c.fill_text(&ch.to_string(), left + bot[i], 0.9 * f + 0.371 * f);
-        }
-    };
-    c.save();
-    c.translate(0.0, 6.0);
-    c.set_filter(&format!("blur({}px)", 12.0 * s));
-    c.set_fill_style("rgba(255,56,96,0.35)");
-    glyphs(&mut c, 0);
-    c.restore();
-    let mut g = c.create_linear_gradient(0.0, 0.0, 0.0, h);
-    g.add_color_stop(0.3, "#ffffff");
-    g.add_color_stop(1.0, "#9aa4c0");
-    c.set_fill_style(&g);
-    glyphs(&mut c, 1);
-    Logo {
-        image: image_from_canvas(&c, cw, ch),
-        w: w as f32,
-        h: h as f32,
-        pad: pad as f32,
-    }
-}
-
-/// The logo node: the CSS box, with the picture (and its glow) over it.
-pub fn logo(p: &mut ChildSpawnerCommands, bp: &Bp, img: &Handle<Image>, l: &Logo) -> Entity {
+/// The logo (`.logo`) at font size `f` (CSS px): "MIDNIGHT", italic 900
+/// (Rajdhani Bold, slanted), letter-spacing -.02em, line-height .9; under
+/// it "RACER" at half the size, spaced .45em, set in .3em. The CSS paints
+/// both with gradients through the glyphs (`background-clip: text`) and
+/// adds a pink glow; Bevy UI has no gradient text, so MIDNIGHT takes the
+/// colour its glyphs mostly show (the white top of its gradient) and each
+/// letter of RACER the colour of the accent-to-orange gradient where it
+/// stands; the glow is left out (DECISIONS D573). (Drawing it with
+/// mr_canvas's text instead linked a second copy of the font stack, 1 MB
+/// of wasm.)
+pub fn logo(p: &mut ChildSpawnerCommands, bp: &Bp, f: f32) -> Entity {
+    let top = T::new(f).w(900).italic().ls(-0.02).lh(0.9).c(rgb(0xf6f7fa));
     p.spawn(Node {
-        width: bp.px(l.w),
-        height: bp.px(l.h),
+        flex_direction: FlexDirection::Column,
+        align_items: AlignItems::Center,
+        padding: UiRect::horizontal(bp.px(0.18 * f)),
         flex_shrink: 0.0,
         ..default()
     })
     .with_children(|p| {
+        p.spawn((text("MIDNIGHT", top, bp.k), TextLayout::no_wrap()));
+        let half = T::new(f * 0.5).w(900).italic().ls(0.45).lh(0.9);
         p.spawn((
-            ImageNode::new(img.clone()),
             Node {
-                position_type: PositionType::Absolute,
-                left: bp.px(-l.pad),
-                top: bp.px(-l.pad),
-                width: bp.px(l.w + 2.0 * l.pad),
-                height: bp.px(l.h + 2.0 * l.pad),
+                margin: UiRect::left(bp.px(0.15 * f)),
                 ..default()
             },
-        ));
+            Text::default(),
+            half.font(bp.k),
+            half.spacing(bp.k),
+            LineHeight::RelativeToFont(0.9),
+            TextLayout::no_wrap(),
+        ))
+        .with_children(|p| {
+            // Where each letter sits along the span's gradient.
+            let (a, b) = (rgb(0xff3860).to_srgba(), rgb(0xff9a3c).to_srgba());
+            for (i, ch) in "RACER".chars().enumerate() {
+                let t = 0.22 + 0.14 * i as f32;
+                let c = Color::srgb(
+                    a.red + (b.red - a.red) * t,
+                    a.green + (b.green - a.green) * t,
+                    a.blue + (b.blue - a.blue) * t,
+                );
+                p.spawn(span(ch.to_string(), half.c(c), bp.k));
+            }
+        });
     })
     .id()
-}
-
-/// Text width in CSS px, as Chrome measures it (the same font files):
-/// `font` is a CSS font shorthand.
-pub fn measure(font: &str, s: &str) -> f32 {
-    let mut c = mr_canvas::Canvas::new(1, 1);
-    c.set_font(font);
-    c.measure_text(s).width as f32
 }
 
 /// `x.toFixed(d)`: rounds half away from zero on the decimal value, as

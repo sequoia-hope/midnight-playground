@@ -72,8 +72,8 @@ pub fn apply_pixel_ratio(w: &mut Window, hq: bool) {
         .set_scale_factor_override(Some(pixel_ratio(hq, false)));
 }
 
-/// The pixel ratio the canvas draws at: the JS's for the race; on a
-/// screen, at least `min(devicePixelRatio, 2)`, because the screens' text
+/// The pixel ratio the canvas draws at: the JS's for the race; on the
+/// menu and the loading screen, at least `min(devicePixelRatio, 2)`, because the screens' text
 /// is drawn into the same canvas, where the DOM's was always sharp
 /// (DECISIONS D575).
 fn pixel_ratio(hq: bool, screen: bool) -> f32 {
@@ -85,10 +85,13 @@ fn pixel_ratio(hq: bool, screen: bool) -> f32 {
 /// Sharp text on the screens, the JS's pixel ratio while driving.
 fn screen_pixel_ratio(
     ui: Res<UiState>,
+    play: Res<Play>,
     opts: Res<crate::Opts>,
     mut windows: Query<&mut Window, With<bevy::window::PrimaryWindow>>,
 ) {
-    let want = pixel_ratio(opts.hq, ui.screen != Screen::None);
+    // Only with no race: a race's HUD text, laid out at the race's ratio,
+    // is not laid out again when the ratio changes under it (pause).
+    let want = pixel_ratio(opts.hq, ui.screen != Screen::None && play.race.is_none());
     if let Ok(mut w) = windows.single_mut()
         && (w.resolution.scale_factor() - want).abs() > 1e-3
     {
