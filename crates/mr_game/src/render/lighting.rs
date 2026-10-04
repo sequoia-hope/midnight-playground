@@ -14,8 +14,13 @@ use bevy::math::{DMat4, DVec3, DVec4};
 use bevy::prelude::*;
 use bevy::render::extract_resource::ExtractResource;
 
-/// Texels in the globals row (`three_globals.wgsl`).
-pub const GLOBALS_WIDTH: usize = 32;
+/// The first texel of the material lights ([`MaterialLights`]).
+pub const G_LIGHTS: usize = 32;
+/// Material light slots, four to a texel.
+pub const LIGHT_SLOTS: usize = 512;
+/// Texels in the globals row (`three_globals.wgsl`): the scene's state, then
+/// the material lights.
+pub const GLOBALS_WIDTH: usize = G_LIGHTS + LIGHT_SLOTS / 4;
 pub const G_SUN_DIR: usize = 0;
 pub const G_SUN_COLOR: usize = 1;
 pub const G_HEMI_SKY: usize = 2;
@@ -392,8 +397,36 @@ impl Lighting {
 #[derive(Resource, Clone, ExtractResource)]
 pub struct Globals(pub [[f32; 4]; GLOBALS_WIDTH]);
 
-pub fn pack_globals(lighting: Res<Lighting>, mut globals: ResMut<Globals>) {
+pub fn pack_globals(
+    lighting: Res<Lighting>,
+    lights: Res<MaterialLights>,
+    mut globals: ResMut<Globals>,
+) {
     globals.0 = lighting.pack();
+    for (k, v) in lights.values.iter().enumerate() {
+        globals.0[G_LIGHTS + k / 4][k % 4] = *v;
+    }
+}
+
+/// `emissiveIntensity` values that change while a scene runs (the race's
+/// car light setters, D456), one slot each, read by the shader from the
+/// globals instead of editing the material: an edited Bevy material is
+/// prepared again (a new uniform buffer and bind group) and everything
+/// drawn with it specialised again, every frame the value moves.
+#[derive(Resource, Default)]
+pub struct MaterialLights {
+    pub values: Vec<f32>,
+}
+
+impl MaterialLights {
+    /// A new slot holding `value`, if one is left.
+    pub fn slot(&mut self, value: f32) -> Option<usize> {
+        if self.values.len() >= LIGHT_SLOTS {
+            return None;
+        }
+        self.values.push(value);
+        Some(self.values.len() - 1)
+    }
 }
 
 /// The Bevy directional light that renders three's shadow map (its colour

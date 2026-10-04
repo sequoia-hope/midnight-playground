@@ -262,7 +262,6 @@ fn unload_scene(
     }
     commands.remove_resource::<Build>();
     commands.remove_resource::<cars::Cars>();
-    commands.remove_resource::<loader::NightMaterials>();
     commands.remove_resource::<Loaded>();
     inbox().scene = None;
     if level != opts.o.level {
@@ -512,12 +511,6 @@ pub fn app(o: Options, hq: bool) -> App {
         (cars::start_cars, cars::drive_cars)
             .chain()
             .run_if(in_state(AppState::Running)),
-    )
-    .add_systems(
-        Update,
-        loader::apply_night
-            .after(fly_system)
-            .run_if(resource_exists::<loader::NightMaterials>),
     );
     app.sub_app_mut(bevy::render::RenderApp).add_systems(
         bevy::render::Render,
