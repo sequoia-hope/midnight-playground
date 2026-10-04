@@ -139,88 +139,8 @@ impl Rasterizer {
 
     /// Adds every contour of a device-space path, each closed (a fill).
     pub fn add_path(&mut self, path: &Path) {
-        let ox = self.bx.x0 as f32;
-        let oy = self.bx.y0 as f32;
-        let loc = |p: Point| (p.x - ox, p.y - oy);
-        let mut start = (0.0, 0.0);
-        let mut cur = (0.0, 0.0);
-        let mut open = false;
-        for seg in path.segments() {
-            match seg {
-                PathSegment::MoveTo(p) => {
-                    if open {
-                        self.line(cur, start);
-                    }
-                    start = loc(p);
-                    cur = start;
-                    open = true;
-                }
-                PathSegment::LineTo(p) => {
-                    let p = loc(p);
-                    self.line(cur, p);
-                    cur = p;
-                }
-                PathSegment::QuadTo(c, p) => {
-                    let (c, p) = (loc(c), loc(p));
-                    self.quad(cur, c, p);
-                    cur = p;
-                }
-                PathSegment::CubicTo(c1, c2, p) => {
-                    let (c1, c2, p) = (loc(c1), loc(c2), loc(p));
-                    self.cubic(cur, c1, c2, p);
-                    cur = p;
-                }
-                PathSegment::Close => {
-                    self.line(cur, start);
-                    cur = start;
-                    open = false;
-                }
-            }
-        }
-        if open {
-            self.line(cur, start);
-        }
-    }
-
-    fn quad(&mut self, p0: (f32, f32), p1: (f32, f32), p2: (f32, f32)) {
-        let dx = p0.0 - 2.0 * p1.0 + p2.0;
-        let dy = p0.1 - 2.0 * p1.1 + p2.1;
-        let dd = (dx * dx + dy * dy).sqrt();
-        let n = ((dd / (8.0 * TOL)).sqrt().ceil() as usize).clamp(1, 512);
-        let mut prev = p0;
-        for i in 1..=n {
-            let t = i as f32 / n as f32;
-            let mt = 1.0 - t;
-            let p = (
-                mt * mt * p0.0 + 2.0 * mt * t * p1.0 + t * t * p2.0,
-                mt * mt * p0.1 + 2.0 * mt * t * p1.1 + t * t * p2.1,
-            );
-            self.line(prev, p);
-            prev = p;
-        }
-    }
-
-    fn cubic(&mut self, p0: (f32, f32), p1: (f32, f32), p2: (f32, f32), p3: (f32, f32)) {
-        let len = |x: f32, y: f32| (x * x + y * y).sqrt();
-        let d1 = len(p0.0 - 2.0 * p1.0 + p2.0, p0.1 - 2.0 * p1.1 + p2.1);
-        let d2 = len(p1.0 - 2.0 * p2.0 + p3.0, p1.1 - 2.0 * p2.1 + p3.1);
-        let dd = d1.max(d2);
-        let n = ((3.0 * dd / (4.0 * TOL)).sqrt().ceil() as usize).clamp(1, 1024);
-        let mut prev = p0;
-        for i in 1..=n {
-            let t = i as f32 / n as f32;
-            let mt = 1.0 - t;
-            let a = mt * mt * mt;
-            let b = 3.0 * mt * mt * t;
-            let c = 3.0 * mt * t * t;
-            let d = t * t * t;
-            let p = (
-                a * p0.0 + b * p1.0 + c * p2.0 + d * p3.0,
-                a * p0.1 + b * p1.1 + c * p2.1 + d * p3.1,
-            );
-            self.line(prev, p);
-            prev = p;
-        }
+        let (ox, oy) = (self.bx.x0 as f32, self.bx.y0 as f32);
+        flatten(path, ox, oy, |a, b| self.line(a, b));
     }
 
     /// A line in box coordinates: clipped to the rows, clamped to the
@@ -349,6 +269,102 @@ impl Rasterizer {
     }
 }
 
+/// Flattens every contour of a device-space path (each closed, as a fill
+/// is) to lines in coordinates relative to `(ox, oy)`, within [`TOL`].
+fn flatten(path: &Path, ox: f32, oy: f32, mut line: impl FnMut((f32, f32), (f32, f32))) {
+    let loc = |p: Point| (p.x - ox, p.y - oy);
+    let mut start = (0.0, 0.0);
+    let mut cur = (0.0, 0.0);
+    let mut open = false;
+    for seg in path.segments() {
+        match seg {
+            PathSegment::MoveTo(p) => {
+                if open {
+                    line(cur, start);
+                }
+                start = loc(p);
+                cur = start;
+                open = true;
+            }
+            PathSegment::LineTo(p) => {
+                let p = loc(p);
+                line(cur, p);
+                cur = p;
+            }
+            PathSegment::QuadTo(c, p) => {
+                let (c, p) = (loc(c), loc(p));
+                flatten_quad(cur, c, p, &mut line);
+                cur = p;
+            }
+            PathSegment::CubicTo(c1, c2, p) => {
+                let (c1, c2, p) = (loc(c1), loc(c2), loc(p));
+                flatten_cubic(cur, c1, c2, p, &mut line);
+                cur = p;
+            }
+            PathSegment::Close => {
+                line(cur, start);
+                cur = start;
+                open = false;
+            }
+        }
+    }
+    if open {
+        line(cur, start);
+    }
+}
+
+fn flatten_quad(
+    p0: (f32, f32),
+    p1: (f32, f32),
+    p2: (f32, f32),
+    line: &mut impl FnMut((f32, f32), (f32, f32)),
+) {
+    let dx = p0.0 - 2.0 * p1.0 + p2.0;
+    let dy = p0.1 - 2.0 * p1.1 + p2.1;
+    let dd = (dx * dx + dy * dy).sqrt();
+    let n = ((dd / (8.0 * TOL)).sqrt().ceil() as usize).clamp(1, 512);
+    let mut prev = p0;
+    for i in 1..=n {
+        let t = i as f32 / n as f32;
+        let mt = 1.0 - t;
+        let p = (
+            mt * mt * p0.0 + 2.0 * mt * t * p1.0 + t * t * p2.0,
+            mt * mt * p0.1 + 2.0 * mt * t * p1.1 + t * t * p2.1,
+        );
+        line(prev, p);
+        prev = p;
+    }
+}
+
+fn flatten_cubic(
+    p0: (f32, f32),
+    p1: (f32, f32),
+    p2: (f32, f32),
+    p3: (f32, f32),
+    line: &mut impl FnMut((f32, f32), (f32, f32)),
+) {
+    let len = |x: f32, y: f32| (x * x + y * y).sqrt();
+    let d1 = len(p0.0 - 2.0 * p1.0 + p2.0, p0.1 - 2.0 * p1.1 + p2.1);
+    let d2 = len(p1.0 - 2.0 * p2.0 + p3.0, p1.1 - 2.0 * p2.1 + p3.1);
+    let dd = d1.max(d2);
+    let n = ((3.0 * dd / (4.0 * TOL)).sqrt().ceil() as usize).clamp(1, 1024);
+    let mut prev = p0;
+    for i in 1..=n {
+        let t = i as f32 / n as f32;
+        let mt = 1.0 - t;
+        let a = mt * mt * mt;
+        let b = 3.0 * mt * mt * t;
+        let c = 3.0 * mt * t * t;
+        let d = t * t * t;
+        let p = (
+            a * p0.0 + b * p1.0 + c * p2.0 + d * p3.0,
+            a * p0.1 + b * p1.1 + c * p2.1 + d * p3.1,
+        );
+        line(prev, p);
+        prev = p;
+    }
+}
+
 /// Coverage of a device-space path (nonzero), limited to `limit`.
 pub fn fill_coverage(path: &Path, limit: IBox) -> Coverage {
     let b = path.bounds();
@@ -358,6 +374,237 @@ pub fn fill_coverage(path: &Path, limit: IBox) -> Coverage {
     let mut r = Rasterizer::new(bx);
     r.add_path(path);
     r.finish()
+}
+
+/// The sample positions of the standard 8× multisample pattern (Direct3D's
+/// and Vulkan's, which the reference machine's GPU uses), in pixels from
+/// the pixel's top-left corner, sorted by y: one sample on each of eight
+/// equally spaced rows, so row `k` of a pixel is at `(2k + 1)/16`.
+pub const MSAA8_X: [f32; 8] = [
+    15.0 / 16.0,
+    5.0 / 16.0,
+    9.0 / 16.0,
+    1.0 / 16.0,
+    13.0 / 16.0,
+    7.0 / 16.0,
+    3.0 / 16.0,
+    11.0 / 16.0,
+];
+
+/// Which of a pixel's eight samples a shape covers, over a box of device
+/// pixels: bit `k` of `bits[y * w + x]` for the sample on row `k` of
+/// [`MSAA8_X`].
+#[derive(Clone, Debug)]
+pub struct SampleMask {
+    pub x0: i32,
+    pub y0: i32,
+    pub w: usize,
+    pub h: usize,
+    pub bits: Vec<u8>,
+}
+
+/// The samples of [`MSAA8_X`] inside any of a set of device-space
+/// triangles (on the 1/256 px grid), as the GPU rasterises a tessellated
+/// stroke (DECISIONS D652): exactly, in integer arithmetic, with Direct3D's
+/// top-left rule for samples on an edge.
+pub fn msaa_triangles(tris: &[[(f32, f32); 3]], limit: IBox) -> SampleMask {
+    let empty = SampleMask {
+        x0: 0,
+        y0: 0,
+        w: 0,
+        h: 0,
+        bits: Vec::new(),
+    };
+    let (mut l, mut t, mut r, mut b) = (
+        f32::INFINITY,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        f32::NEG_INFINITY,
+    );
+    for tri in tris {
+        for p in tri {
+            if !(p.0.is_finite() && p.1.is_finite()) {
+                return empty;
+            }
+            l = l.min(p.0);
+            t = t.min(p.1);
+            r = r.max(p.0);
+            b = b.max(p.1);
+        }
+    }
+    if tris.is_empty() {
+        return empty;
+    }
+    let Some(bx) = IBox::around(l, t, r, b).intersect(limit) else {
+        return empty;
+    };
+    let w = (bx.x1 - bx.x0) as usize;
+    let h = (bx.y1 - bx.y0) as usize;
+    let mut bits = vec![0u8; w * h];
+    // Coordinates in 1/256 px; a sample row k of pixel row y is at
+    // 256y + 16(2k + 1), its x at 256x + 256 MSAA8_X[k].
+    let sx: [i64; 8] = MSAA8_X.map(|v| (v * 256.0) as i64);
+    for tri in tris {
+        let q = tri.map(|p| ((p.0 * 256.0).round() as i64, (p.1 * 256.0).round() as i64));
+        let area = (q[1].0 - q[0].0) * (q[2].1 - q[0].1) - (q[1].1 - q[0].1) * (q[2].0 - q[0].0);
+        if area == 0 {
+            continue;
+        }
+        let sign = area.signum();
+        // Per edge a -> b: inward normal n (n.p + c >= 0 inside) and
+        // whether it is a top or left edge.
+        let mut edges = [(0i64, 0i64, 0i64, false); 3];
+        for (i, e) in edges.iter_mut().enumerate() {
+            let (a, b) = (q[i], q[(i + 1) % 3]);
+            let (nx, ny) = (-(b.1 - a.1) * sign, (b.0 - a.0) * sign);
+            let c = -(nx * a.0 + ny * a.1);
+            *e = (nx, ny, c, nx > 0 || (nx == 0 && ny > 0));
+        }
+        let minx = q.iter().map(|p| p.0).min().unwrap_or(0);
+        let maxx = q.iter().map(|p| p.0).max().unwrap_or(0);
+        let miny = q.iter().map(|p| p.1).min().unwrap_or(0);
+        let maxy = q.iter().map(|p| p.1).max().unwrap_or(0);
+        let px0 = (minx.div_euclid(256) as i32).max(bx.x0);
+        let px1 = ((maxx.div_euclid(256) + 1) as i32).min(bx.x1);
+        let py0 = (miny.div_euclid(256) as i32).max(bx.y0);
+        let py1 = ((maxy.div_euclid(256) + 1) as i32).min(bx.y1);
+        for py in py0..py1 {
+            for (k, &kx) in sx.iter().enumerate() {
+                let y = py as i64 * 256 + 16 * (2 * k as i64 + 1);
+                if y < miny || y > maxy {
+                    continue;
+                }
+                let bit = 1u8 << k;
+                let row = (py - bx.y0) as usize * w;
+                for px in px0..px1 {
+                    let x = px as i64 * 256 + kx;
+                    let inside = edges.iter().all(|&(nx, ny, c, top_left)| {
+                        let e = nx * x + ny * y + c;
+                        e > 0 || (e == 0 && top_left)
+                    });
+                    if inside {
+                        bits[row + (px - bx.x0) as usize] |= bit;
+                    }
+                }
+            }
+        }
+    }
+    SampleMask {
+        x0: bx.x0,
+        y0: bx.y0,
+        w,
+        h,
+        bits,
+    }
+}
+
+/// The GPU's sub-pixel grid: vertex positions snap to 1/256 px (8 bits of
+/// sub-pixel precision) before rasterisation.
+const SUBPIXEL: f64 = 256.0;
+
+/// Coverage of a stroked line segment as Chrome's GPU canvas draws it
+/// (Skia's `drawStrokedLine`: a quad with analytic edge anti-aliasing,
+/// DECISIONS D650). `q` holds the quad's device-space corners in Skia's
+/// order: the start's two corners, then the end's.
+///
+/// Skia moves each edge out and in by half the pixel's width across it,
+/// `(|nx| + |ny|)/2`, making an outer and an inner quad, and the GPU
+/// interpolates coverage from 0 on the outer to 1 on the inner one: a
+/// linear ramp `|nx| + |ny|` wide centred on the edge (exact area for an
+/// axis-aligned edge, wider and straighter than it for a diagonal one).
+/// Both quads' corners snap to the GPU's sub-pixel grid first. The two
+/// sides combine as `c1 + c2 - 1` (the band's coverage when the ramps
+/// overlap), as do the two ends, and the pixel takes the smaller.
+pub fn line_quad_coverage(q: [(f64, f64); 4], limit: IBox) -> Coverage {
+    // The quad's orientation, so every normal points inwards.
+    let mut area = 0.0;
+    for i in 0..4 {
+        let (a, b) = (q[i], q[(i + 1) % 4]);
+        area += a.0 * b.1 - b.0 * a.1;
+    }
+    if area == 0.0 || !area.is_finite() {
+        return Coverage::empty();
+    }
+    let sign = area.signum();
+    // Edge i runs from corner i to corner i + 1: its inward unit normal
+    // and half its ramp's width.
+    let mut normal = [(0.0f64, 0.0f64, 0.0f64); 4];
+    for (i, n) in normal.iter_mut().enumerate() {
+        let (a, b) = (q[i], q[(i + 1) % 4]);
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let len = (dx * dx + dy * dy).sqrt();
+        if len == 0.0 {
+            return Coverage::empty();
+        }
+        let (nx, ny) = (-dy * sign / len, dx * sign / len);
+        *n = (nx, ny, 0.5 * (nx.abs() + ny.abs()));
+    }
+    // Corner j joins edges j - 1 and j: the offset o that moves both edges
+    // out by their half ramp (o.n = -h for each), snapped.
+    let snap = |v: f64| (v * SUBPIXEL).round() / SUBPIXEL;
+    let mut outer = [(0.0f64, 0.0f64); 4];
+    let mut inner = [(0.0f64, 0.0f64); 4];
+    for j in 0..4 {
+        let (ax, ay, ha) = normal[(j + 3) % 4];
+        let (bx, by, hb) = normal[j];
+        let det = ax * by - ay * bx;
+        if det == 0.0 {
+            return Coverage::empty();
+        }
+        let ox = (-ha * by + hb * ay) / det;
+        let oy = (-hb * ax + ha * bx) / det;
+        outer[j] = (snap(q[j].0 + ox), snap(q[j].1 + oy));
+        inner[j] = (snap(q[j].0 - ox), snap(q[j].1 - oy));
+    }
+    // A line through two points as (nx, ny, c), n.p + c positive inside.
+    let line = |a: (f64, f64), b: (f64, f64)| {
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let len = (dx * dx + dy * dy).sqrt();
+        let (nx, ny) = (-dy * sign / len, dx * sign / len);
+        (nx, ny, -(nx * a.0 + ny * a.1))
+    };
+    let mut ramps = [((0.0f64, 0.0f64, 0.0f64), (0.0f64, 0.0f64, 0.0f64)); 4];
+    for (i, r) in ramps.iter_mut().enumerate() {
+        let k = (i + 1) % 4;
+        *r = (line(outer[i], outer[k]), line(inner[i], inner[k]));
+    }
+    let xs = outer.map(|p| p.0);
+    let ys = outer.map(|p| p.1);
+    let min = |v: [f64; 4]| v.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = |v: [f64; 4]| v.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let around = IBox::around(
+        min(xs) as f32,
+        min(ys) as f32,
+        max(xs) as f32,
+        max(ys) as f32,
+    );
+    let Some(bx) = around.intersect(limit) else {
+        return Coverage::empty();
+    };
+    let w = (bx.x1 - bx.x0) as usize;
+    let h = (bx.y1 - bx.y0) as usize;
+    let mut data = vec![0.0f32; w * h];
+    for y in 0..h {
+        let py = (bx.y0 + y as i32) as f64 + 0.5;
+        for x in 0..w {
+            let px = (bx.x0 + x as i32) as f64 + 0.5;
+            let c = ramps.map(|(o, i)| {
+                let so = o.0 * px + o.1 * py + o.2;
+                let si = i.0 * px + i.1 * py + i.2;
+                (so / (so - si)).clamp(0.0, 1.0)
+            });
+            let ends = (c[0] + c[2] - 1.0).clamp(0.0, 1.0);
+            let sides = (c[1] + c[3] - 1.0).clamp(0.0, 1.0);
+            data[y * w + x] = ends.min(sides) as f32;
+        }
+    }
+    Coverage {
+        x0: bx.x0,
+        y0: bx.y0,
+        w,
+        h,
+        data,
+    }
 }
 
 #[cfg(test)]
