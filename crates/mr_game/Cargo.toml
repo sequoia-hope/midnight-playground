@@ -23,6 +23,8 @@ mr_audio.workspace = true
 mr_track.workspace = true
 mr_levels.workspace = true
 mr_math.workspace = true
+# The bundled fonts and the menus' drawn pictures (the logo, icons; WP 6.1).
+mr_canvas.workspace = true
 # The material test scenes' definitions (parity/golden/materials/scenes.json)
 # and the scene export's material parameters.
 serde_json = "1"
@@ -84,7 +86,7 @@ bevy = { version = "=0.19.1", default-features = false, features = ["web", "webg
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen.workspace = true
 js-sys.workspace = true
-web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Navigator", "Location", "Performance"] }
+web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Navigator", "Location", "Performance", "Storage"] }
 
 # `mr_webgl2` is the WebGL2 build's cfg (see the wasm dependency tables).
 [lints.rust]
