@@ -52,10 +52,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Whether `mr_worldgen` builds this level whole, numbered as its export
-/// (D472 holds Sierra to it; the other levels still replay recorded
-/// scenery).
+/// (D472 holds Sierra to it, D591 Seaside Raceway, D630 the Night City
+/// Cruise; the client's builds of them: `crate::levels`, D680).
 pub fn generated(level: &str) -> bool {
-    level == "sierra"
+    matches!(level, "sierra" | "seaside" | "cruise")
 }
 
 /// `?world=gen`: draw the level as the client builds it, without the
@@ -138,8 +138,12 @@ impl Default for WorldGen {
     }
 }
 
-/// The level's world jobs, as `tests/level1.rs` builds Sierra.
-fn new_build(level: &str) -> Build {
+/// The level's world jobs, as `tests/level1.rs` builds Sierra (or as
+/// `crate::levels` builds the level, when it has inputs of its own).
+fn new_build(level: &str, draws: bool) -> Build {
+    if let Some(b) = crate::levels::new_build(level, draws) {
+        return b;
+    }
     use mr_worldgen::stages::{LevelSetup, level_stages};
     use mr_worldgen::terrain_mesh::TerrainSetup;
     let setup = LevelSetup {
@@ -215,16 +219,20 @@ pub fn drive_build(mut wg: ResMut<WorldGen>, opts: Res<Opts>, state: Res<State<A
             PENDING.store(false, Ordering::Relaxed);
             return;
         }
+        if !crate::levels::inputs_ready(&o.level, draws_generated(o)) {
+            return; // Seaside's survey and photo
+        }
         wg.generation += 1;
         wg.started = Some(bevy::platform::time::Instant::now());
         PENDING.store(true, Ordering::Relaxed);
         let level = o.level.clone();
+        let draws = draws_generated(o);
         let t = o.t;
         #[cfg(not(target_arch = "wasm32"))]
         {
             let generation = wg.generation;
             std::thread::spawn(move || {
-                let mut b = new_build(&level);
+                let mut b = new_build(&level, draws);
                 let mut r = Ok(());
                 while !b.is_done() && r.is_ok() {
                     r = step(&mut b, t);
@@ -237,7 +245,7 @@ pub fn drive_build(mut wg: ResMut<WorldGen>, opts: Res<Opts>, state: Res<State<A
         #[cfg(target_arch = "wasm32")]
         {
             let _ = t;
-            wg.state = Gen::Stepping(Box::new(Mutex::new(new_build(&level))));
+            wg.state = Gen::Stepping(Box::new(Mutex::new(new_build(&level, draws))));
         }
         return;
     }
@@ -676,6 +684,7 @@ pub fn run_animators(
     mut placed: Placed,
     streams: Query<&Instances>,
     status: Res<Status>,
+    race: Res<crate::levels::RaceCountdown>,
 ) {
     let Some(frame) = sky_res.frame.take() else {
         return;
@@ -723,12 +732,16 @@ pub fn run_animators(
             .single()
             .map_or(800.0, |w| f64::from(w.physical_height())),
     });
-    let edits = wb.update(&UpdateCtx {
+    let mut edits = wb.update(&UpdateCtx {
         dt: frame.dt,
         night: sky_frame.night,
         camera: view,
         s: frame.s,
     });
+    // `Race.update`'s `world.onCountdown` (Seaside's start lights, D682).
+    if let Some(cd) = race.0 {
+        edits.extend(wb.countdown(cd));
+    }
     drop(wb);
     let blocks_before = blocks.texels.len();
     let mut moved: Vec<u32> = Vec::new();
@@ -1116,6 +1129,6 @@ mod tests {
         assert_eq!(uniform_slot(Asphalt, "uWet"), Some(0));
         assert_eq!(uniform_slot(GlowPoints, "uFogK"), Some(0));
         assert_eq!(uniform_slot(Standard, "uTime"), None);
-        assert!(generated("sierra") && !generated("coast"));
+        assert!(generated("sierra") && generated("seaside") && generated("cruise"));
     }
 }
