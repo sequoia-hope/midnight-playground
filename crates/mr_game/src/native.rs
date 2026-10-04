@@ -67,13 +67,13 @@ fn load(o: Options) {
     // `?world=gen`: the scene is the client's own world build (`animate`).
     let generated = crate::animate::draws_generated(&o);
     std::thread::spawn(move || {
-        if generated {
-            return;
-        }
         let root = repo_root();
         if o.level == "seaside" {
             let p = root.join("assets/seaside/survey.bin");
             inbox().survey = Some(std::fs::read(&p).map_err(|e| format!("{}: {e}", p.display())));
+        }
+        if generated {
+            return; // Seaside's world build needs the survey all the same
         }
         let r = scene_path(&o, &root).and_then(|p| {
             let t0 = std::time::Instant::now();
