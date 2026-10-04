@@ -595,9 +595,9 @@ pub fn stand_in(m: &MaterialDesc) -> StandIn {
         // ShaderMaterials (and sprites) whose look is all shader: additive
         // glows, beams, foam, steam, particles, skid marks. Drawn as plain
         // quads they would be white sheets, so they wait for their kinds.
-        Surf | LighthouseBeam | Steam | Particles | SkidMarks | PoliceGlow => StandIn::Hidden,
-        // Ported as blocks of three_material.wgsl (WP 3.9): unlit.
-        TrafficStreams | SkyGlow => StandIn::Unlit,
+        Steam | Particles | SkidMarks | PoliceGlow => StandIn::Hidden,
+        // Ported as blocks of three_material.wgsl (WP 3.9, Coast): unlit.
+        TrafficStreams | SkyGlow | Surf | LighthouseBeam => StandIn::Unlit,
         _ => match m.ty.as_str() {
             "MeshStandardMaterial" | "MeshPhysicalMaterial" | "MeshLambertMaterial" => StandIn::Lit,
             "MeshBasicMaterial" | "LineBasicMaterial" | "PointsMaterial" | "SpriteMaterial" => {
