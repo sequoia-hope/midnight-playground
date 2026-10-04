@@ -1,8 +1,35 @@
 //! Times each job of a level build (or, with LEN=<m> [RT=, RS=], of a menu
 //! section of it, D741) and sizes its scene: `cargo run --release -p
 //! mr_worldgen --example section_cost -- sierra coast` from the repo root.
+use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
+
+/// Heap in use and its peak (MB printed per level).
+struct Counting;
+static NOW: AtomicUsize = AtomicUsize::new(0);
+static PEAK: AtomicUsize = AtomicUsize::new(0);
+
+// SAFETY: forwards to the system allocator; only counts.
+unsafe impl GlobalAlloc for Counting {
+    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
+        let n = NOW.fetch_add(l.size(), Ordering::Relaxed) + l.size();
+        PEAK.fetch_max(n, Ordering::Relaxed);
+        unsafe { System.alloc(l) }
+    }
+    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
+        NOW.fetch_sub(l.size(), Ordering::Relaxed);
+        unsafe { System.dealloc(p, l) }
+    }
+}
+
+#[global_allocator]
+static A: Counting = Counting;
+
+fn mb(b: usize) -> f64 {
+    b as f64 / 1048576.0
+}
 
 use mr_levels::{SeasideData, level_by_id, seaside};
 use mr_worldgen::scenery::scenery_factory;
@@ -47,6 +74,9 @@ fn main() {
                 scenery_radius: env("RS").unwrap_or(1500.0),
             });
         }
+        let base = NOW.load(Ordering::Relaxed);
+        PEAK.store(base, Ordering::Relaxed);
+        let mut job_peak = base;
         let mut b = Build::new(w, level_jobs(level_stages(setup), scenery_factory(None)));
         let t0 = Instant::now();
         let mut last = String::new();
@@ -54,8 +84,19 @@ fn main() {
         while let Some((label, _)) = b.progress() {
             let label = label.to_string();
             let t = Instant::now();
+            let before = NOW.load(Ordering::Relaxed);
+            PEAK.store(before, Ordering::Relaxed);
             b.step().unwrap();
             let dt = t.elapsed().as_secs_f64();
+            let p = PEAK.load(Ordering::Relaxed);
+            job_peak = job_peak.max(p);
+            if std::env::var("JOBS").is_ok() {
+                println!(
+                    "    {label}: in use {:.0} MB, job peak {:.0} MB",
+                    mb(before - base),
+                    mb(p - base)
+                );
+            }
             if label != last && !last.is_empty() {
                 println!("  {last:<28} {acc:7.3} s");
                 acc = 0.0;
@@ -67,7 +108,14 @@ fn main() {
         let tc = Instant::now();
         let st = mr_worldgen::section::cut(&mut b.world);
         println!("  cut {:?} in {:.3} s", st, tc.elapsed().as_secs_f64());
+        let built_peak = job_peak.max(PEAK.load(Ordering::Relaxed)) - base;
         let wb = b.finish();
+        println!(
+            "  heap: build peak {:.0} MB, with the scene {:.0} MB, the scene and animators kept {:.0} MB",
+            mb(built_peak),
+            mb(PEAK.load(Ordering::Relaxed) - base),
+            mb(NOW.load(Ordering::Relaxed) - base)
+        );
         let tex: usize = wb
             .scene
             .textures

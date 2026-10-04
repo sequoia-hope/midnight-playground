@@ -72,6 +72,11 @@ const BUDGET_MENU_MS: u128 = 8;
 const SPAWN_LOADING_MS: u128 = 40;
 const SPAWN_MENU_MS: u128 = 6;
 
+/// The order the sections are built in after the selected level's: the
+/// largest build peaks first (D745), while little else is held, since the
+/// wasm memory's high-water mark is what the budget counts (SPEC 6.6).
+const HEAVY_FIRST: [&str; 6] = ["streets", "cruise", "desert", "coast", "sierra", "seaside"];
+
 /// The menu draws sections (no whole level behind it unless one was raced).
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 
@@ -273,9 +278,16 @@ impl Previews {
         {
             return Some(k);
         }
-        (0..self.secs.len())
-            .filter(queued)
-            .min_by_key(|&k| self.has_full(self.secs[k].id))
+        (0..self.secs.len()).filter(queued).min_by_key(|&k| {
+            let id = self.secs[k].id;
+            (
+                self.has_full(id),
+                HEAVY_FIRST
+                    .iter()
+                    .position(|h| *h == id)
+                    .unwrap_or(HEAVY_FIRST.len()),
+            )
+        })
     }
 
     fn building(&self) -> bool {
