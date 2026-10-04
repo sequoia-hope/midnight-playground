@@ -5,6 +5,7 @@
 // by the client itself, `animate`, with its animators).
 //
 //   cargo xtask web --release && node --test tools/parity/e2e/level-switch.test.mjs
+//   (MR_BACKEND=webgl2 for the WebGL2 build)
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,7 +26,8 @@ async function pick(game, id) {
 
 for (const query of ['', 'world=gen']) {
   test(`level tabs: Sierra → Seaside → Sierra, then a race${query ? ' (' + query + ')' : ''}`, async () => {
-    const game = await openGame(browser, { query: query ? query + '&timescale=2' : 'timescale=2', storage: { 'mr.level': 'sierra' } });
+    const backend = process.env.MR_BACKEND ? `backend=${process.env.MR_BACKEND}&` : '';
+    const game = await openGame(browser, { query: backend + (query ? query + '&timescale=2' : 'timescale=2'), storage: { 'mr.level': 'sierra' } });
     try {
       assert.equal(await game.eval('window.__mr.level'), 'sierra');
       const scenes0 = await game.eval('window.__mr.scenes');
