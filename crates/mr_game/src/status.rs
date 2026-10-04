@@ -127,7 +127,8 @@ pub fn tick(time: Res<Time>, mut status: ResMut<Status>) {
         // in its GPU process after the call returns, and the first draw
         // with it waits there (a one-second frame just after "ready" in
         // Chrome before this fence; DECISIONS D390).
-        if !status.ready && status.scene_frames > 10 {
+        // The world build for the animators blocks it too (`animate`).
+        if !status.ready && status.scene_frames > 10 && !crate::animate::pending() {
             if status.pipelines_waiting > 0 {
                 status.fence = None;
             } else {
