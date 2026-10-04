@@ -19,6 +19,8 @@
 pub mod audio;
 pub mod camera;
 pub mod flow;
+pub mod gamepad;
+pub mod gamepad_io;
 mod hud;
 pub mod input;
 mod models;
@@ -193,6 +195,7 @@ pub fn plugin(app: &mut App) {
             .run_if(in_state(AppState::Running)),
     );
     audio::plugin(app);
+    gamepad_io::plugin(app);
     #[cfg(target_arch = "wasm32")]
     web::plugin(app);
     #[cfg(not(target_arch = "wasm32"))]
