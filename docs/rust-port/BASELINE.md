@@ -529,9 +529,12 @@ stations of D452 (Streets' lamp globes, whose instance colours above 2
 are no longer clamped) and a few edge pixels (D451).
 
 **Size.** `mr_game_bg.wasm` 27.59 MB, 8.77 MB after gzip;
-`mr_game_webgl2_bg.wasm` 28.83 MB, 9.24 MB after gzip (budget 10 MB). The
-growth since WP 2.6 (6.09 / 6.56 MB) is M3's and M4's code (world
-generation and the car models in the client), not this change.
+`mr_game_webgl2_bg.wasm` 28.83 MB, 9.24 MB after gzip (budget 10 MB).
+The build this change started from (9b573da) is 27.51 / 8.74 MB and
+28.75 / 9.22 MB: this change adds 0.08 MB, 0.02 to 0.03 MB after gzip.
+The growth since the WP 2.6 figures above (6.09 / 6.56 MB after gzip) came
+with M3's and M4's code (world generation and the car models in the
+client), merged before 9b573da.
 
 **Races at dusk (D456).** The race with the autopilot (seed 1, high
 quality, uncapped, 60 s from the start of racing; Coast at `timescale=2`
