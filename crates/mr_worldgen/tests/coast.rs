@@ -749,7 +749,6 @@ fn beach_group() {
     check("beach");
 }
 
-#[cfg(feature = "harbor-wip")]
 #[test]
 fn harbor_group() {
     check("harbor");

@@ -40,7 +40,6 @@ pub const PORTED: &[(&str, MakeScenery)] = &[
     ("City", |info| Box::new(crate::city::City::new(info))),
     ("Coast", |info| Box::new(crate::coast::Coast::new(info))),
     ("Beach", |info| Box::new(crate::beach::Beach::new(info))),
-    #[cfg(feature = "harbor-wip")]
     ("Harbor", |info| Box::new(crate::harbor::Harbor::new(info))),
 ];
 
