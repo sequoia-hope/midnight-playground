@@ -19,6 +19,7 @@
 use std::ops::Range;
 use std::sync::Arc;
 
+use mr_levels::world;
 use mr_track::FenceGap;
 use serde_json::Value;
 
@@ -66,7 +67,9 @@ pub struct ModuleRecord {
     pub no_marks: Range<usize>,
     /// Whether it set the terrain's railway bed.
     pub desert_rail: bool,
-    /// `track.runout` after its `plan()`, where it changed it.
+    /// `track.runout` after its `plan()`, where it changed it. Not replayed:
+    /// the stand-in computes it by the module's rule (`mr_levels::world`),
+    /// and the road test holds that to this.
     pub runout: Option<f64>,
 }
 
@@ -277,6 +280,8 @@ impl PlanRecording {
 
 /// A scenery module that is not ported yet: its `plan()` registers what
 /// the JS module registered, in its place; its `build()` makes nothing.
+/// What the module gives the simulation (the runout, Harbor's opposite
+/// carriageway) is computed by its rules in `mr_levels::world`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RecordedScenery {
     pub record: ModuleRecord,
@@ -302,14 +307,22 @@ impl Scenery for RecordedScenery {
         self.terrain.apply(terrain);
         let track = w.track.as_mut().ok_or("the route is surveyed first")?;
         track.fence_gaps.extend(self.fence_gaps.iter().copied());
-        if let Some(r) = self.record.runout {
-            track.runout = r;
-        }
+        // The runout by the module's own rule (mr_levels::world, which the
+        // simulation reads too), not the recording's; the road test holds it
+        // to the recording.
+        track.runout = world::plan_runout(&self.record.name, track, track.runout);
+        w.sim_data.runout = track.runout;
         w.no_marks.extend(self.no_marks.iter().copied());
         Ok(())
     }
 
-    fn build(&mut self, _w: &mut World) -> Result<(), String> {
+    /// Builds nothing, but gives the simulation the opposite carriageway
+    /// the module's `build()` would set (Harbor's), by its own rule.
+    fn build(&mut self, w: &mut World) -> Result<(), String> {
+        let track = w.track.as_ref().ok_or("the route is surveyed first")?;
+        if let Some(oc) = world::built_carriageway(&self.record.name, track, self.record.zone) {
+            w.sim_data.opposite_carriageway = Some(oc);
+        }
         Ok(())
     }
 }
