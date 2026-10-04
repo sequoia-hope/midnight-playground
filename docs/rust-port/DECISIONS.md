@@ -3608,6 +3608,167 @@ attribute, base × k stored as f32), the boats (transforms from a YXZ
 Euler) and the breakwater lamps (instance colours). D537 holds them to the
 game step by step.
 
+## WP 3.9 client decisions
+
+## D490. Animated material values live in the globals, in a block per material
+
+2026-10-04, WP 3.9. The scenery's animators (`WorldBuild::update`, D470)
+set material colours (the freeway's lamp lenses and light pools, the neon,
+the aircraft lights, the glow points), an emissive colour (the valley
+creek), `emissiveIntensity`, a sprite's rotation, texture offsets (the
+waterfall, the creek's normal map) and a kind's uniforms (the traffic
+streams' four, the sky glow's `uK`, the road's `uWet`, the glow points'
+`uFogK`), many of them every frame. Writing them into Bevy materials would
+re-prepare each material every frame, the stall D455 removed. So each
+material an animator touches gets an *animation block*: five RGBA32F
+texels of the globals row from texel 160 (`lighting::G_BLOCKS`, after
+D456's light slots; 128 blocks, so the row is 800 texels): 0 the colour (w
+1 when set), 1 the emissive colour, 2 `emissiveIntensity` (x, y set) and
+the rotation (z, w set), 3 the map's (and alpha map's) offset since the
+export (xy) and the normal map's (zw), 4 the kind's uniforms. The shader
+reads a value from the block where the block has one and the material's
+parameter otherwise (`ThreeParams::slots.x` is the block's first texel, 0
+for none). The block is made the first time an animator touches the
+material, which edits the Bevy material once: `slots`, and the emissive
+colour held alone with its intensity in `night` (D455's form, day = night
+when it does not follow nightfall). On Sierra 15 materials get one in the
+first frame, behind the loading screen; an animator that only runs near
+its object (the waterfall's spray, within 800 m) touches its material
+later, once. A number or colour goes to the
+kind's uniform of that name if it has one animated, else to the parameter
+(D411's rule); the sky's edits are left out (D493).
+
+## D491. The client builds Level 1 for its animators; the default still draws the export
+
+2026-10-04, WP 3.9. Animators are code (SPEC 5.1): they come only from a
+world build. For a level `mr_worldgen` builds whole (Sierra, D472), the
+client runs `level_jobs` itself (`crate::animate`): natively on a thread
+(with `mr_worldgen`'s `parallel` feature), on the web a few jobs a frame
+(30 ms) while the page downloads the export. It keeps the animators and
+the sky and drops the build's scene, since the default still draws the
+level's `.mrscene` (the coordinator's instruction; delivery stays as D439
+left it). The two scenes number nodes, meshes, materials and textures
+alike (D472), so the edits address the export; the client checks the
+counts and leaves the animators off if they differ (`--scene` with
+another file, the base export). `ready` waits for the build
+(`status::tick`), so the loading screen and the stations cover it. A
+reload builds a new world, as the JS does. `?world=off` turns it off.
+
+On the web the page holds the downloaded export back until the build is
+done (`world_pending`), so the wasm memory's high-water mark is the larger
+of the build and the scene, not their sum: Sierra after load 348 MB,
+reloads 357 then 488 (before WP 3.9: 303, then 443; with the two
+overlapping, 391 then 522, over SPEC 6.6's 512 MB). Ready on the dev
+machine 4.5 to 8 s against 3.5 s before (the build is about 1.5 s of CPU
+natively in release, single-threaded, and several seconds in wasm on the
+main thread, beside a local download of under a second); on a phone the
+download of the export (131 MB) is the longer of the two.
+
+## D492. `?world=gen`: draw the client's own build, without the download
+
+2026-10-04, WP 3.9 (to-do item 1). Behind an option, as instructed; the
+default is unchanged. With `?world=gen` (native `--query world=gen`) the
+page does not download Sierra's 138 MB export (`generates_scene`) and the
+loader draws the client's build. On the dev machine (WebGPU, headless
+Chrome, the machine loaded): ready in 7.5 s with nothing downloaded but
+the client, wasm memory 348 MB after load and 357, then 375 on reloads,
+against the export's 488 (above). The pictures are the build's: the
+canvas textures are `mr_canvas`'s, within WP 3.2's thresholds (D312,
+D354); the L4 gate (D496) was taken this way. Not decided here (D439, the
+owner's): whether the game should build its levels in the client instead
+of downloading them. The numbers favour it for Sierra (no 131 MB
+transfer, 110 MB less memory on reloads, the same pictures); raised for
+the owner.
+
+## D493. How the edits reach the drawn scene
+
+2026-10-04, WP 3.9. Each rendered frame, after the camera and before
+transform propagation, `World.update`'s order: `update_sky(dt, s, focus)`
+(its edits are the dome's uniforms and the lights, which the client's
+`render::sky` already computes into `Lighting` from the same keys, D173,
+so they are not applied; its night factor is used), the night parameters
+(in the shader, D455, nothing per frame), `update` with the camera
+(position, fov in degrees, the drawing buffer's height), then each edit:
+a node's transform recomposes the world matrices of its subtree (the
+loader flattened them; the export's local matrices are kept per node) and
+sets the entities' `Transform`; visibility hides or shows the subtree's
+entities as three's ancestors rule does; instance matrices, colours and
+counts rebuild that InstancedMesh's stream (a new `Instances` for its
+entities, only when a value changed); a geometry attribute is written into
+the Bevy mesh, which keeps its CPU copy when it has at most 64 vertices
+(`convert::KEEP_VERTICES`; Sierra's flag has 18; normals are not
+recomputed, as in the JS); material values go to their block (D490); a
+texture offset to every material using that texture. Unchanged values are
+not written (a frozen frame changes nothing). An edit nothing applies is
+logged once at debug level. The loader tags every entity with its node
+(`animate::NodeRef`) and hands over what the edits need before it drops
+the scene (`animate::SceneIndex`: per node its parent, children, local and
+world matrices, and an InstancedMesh's instance matrices and colours, 4 MB
+on Sierra). Not covered: a node exported invisible is not spawned by the
+loader, so an animator cannot show it (none on Sierra).
+
+## D494. Level 1's remaining material kinds
+
+2026-10-04, WP 3.9. Blocks of `three_material.wgsl` as D290's, picked by
+`Patch`: **CityFacade** (`patchCityMaterial`: the atlas cell from `cell`,
+which rides in the patch attribute, sampled with the raw uv's gradients;
+`uMask` in the detail slot; shopfronts; the glass's roughness and
+metalness; the lit windows, reflections, spill and shop light replacing
+`emissivemap_fragment`; the JS's derivatives inside branches taken before
+them, D290's rule); **TrafficStreams** and **SkyGlow** (the two City
+`ShaderMaterial`s, unlit, with their own fragment code; the traffic
+lights are points, their `aDir` and `aPar.z` in a second attribute at
+location 14, `convert::ATTRIBUTE_EXTRA2`, their size from the
+projection's y scale and `uHalfH`, the GL ES point rules of D294);
+**TriplanarRock** (strata from `tRock` in world space, the instance's
+matrix included); **Reflector**, whose patch means the emissive to take
+the instance colour under `USE_INSTANCING_COLOR`, which three r180
+defines in the vertex shader only (the fragment shader gets `USE_COLOR`),
+so in the game it does nothing and the reflectors glow white: ported as
+it draws (the material scene matched at 0.135 that way, 4.6 the other);
+**Siding** in its three modes; **Sprite** (three's `sprite_vert`: the
+quad in view space around the node's origin, scaled by its scale, turned
+by `rotation`); and for the plain kinds `alphaMap` (in the photo slot,
+which only the terrain uses) and a tangent-space normal map (the creek,
+as the sea's). Where no world build runs (the other levels' exports), a
+kind's animated uniforms follow the scene-wide state as D293 does:
+`uTime` the clock, `uNight` and `uK` from the night factor, `uHalfH` the
+viewport.
+
+## D495. D293's scene-wide uniforms where the animators run
+
+2026-10-04, WP 3.9. Where a world build runs, the road's `uWet` and the
+glow points' `uFogK` come from the animators' edits (D490), and the
+traffic streams and sky glow have only that; `render::lighting::Anim`
+stays for the levels without a world build (the sea's clock on Coast,
+the desert's flicker). One correction to D293: the glow points' gentler
+fog was `fog density × 0.4`, but City.js reads `world.scene.fog`, the root
+group's, which has none (D353): `uFogK` is 0. Sierra's and Cruise's far
+lamp halos are a little brighter now, as in the JS.
+
+## D496. The L4 gate on all Sierra stations, from the web build
+
+2026-10-04, WP 3.9. The native client cannot open a 1280 × 800 window on
+this machine's 1024 × 768 display (the stations came out 1024 × 701), and
+`rust-web.mjs` cannot pass Sierra's 138 MB export through its request
+interception (D106). `tools/parity/rust-web-stations.mjs` loads the web
+build once with `?world=gen` (no download), flies to each station with a
+new test hook (`__mr.flyTo`, `__mr.flyQuiet`: three frames with no
+pipeline compiling and the environment map built) and saves
+`__mr.screenshot`; `cargo xtask parity shots` compares.
+
+Result (WebGPU, 1280 × 800, frozen): **all 81 stations within SPEC 12's
+limits**, median 0.23 mean ΔE00 and 0.53 block 95 %, worst 0.674 mean
+(07750-high) and 2.441 block 95 % (08750-high). The city's 32 stations
+(zone 2 from 06250, dusk to full night) were the priority (the owner's
+"too dark at night in the city"): all 32 within the limits, worst 0.674 /
+2.441; the native client's last run before WP 3.9 had all 32 over (worst
+14.8 / 37.2: the facades lit as plain, no sky glow, no traffic lights, the
+light pools and lamp lenses at their daytime colours). The material test
+scenes now include TriplanarRock, Reflector, Siding, CityFacade and
+SkyGlow (with the JS tool's uniform overrides, `animate::fix_uniforms`):
+23 scenes, 0 over, worst 0.150 as before.
+
 ## WP 7.4 Seaside decisions
 
 ## D590. The shape of `mr_worldgen::raceway`; `world.level.data` and `world.onCountdown`
@@ -3759,13 +3920,18 @@ colours, `instanceColor` on the oaks, `alphaTest` on the fence,
 `polygonOffset` on the kerbs, the grid and the pit lane, `DoubleSide`).
 What the client still has to do for the L4 stations and the race:
 
-- **Build Seaside from mr_worldgen** (it loads the export today):
+- **Build Seaside from mr_worldgen** (`animate::generated` lists Sierra
+  only, D491; Seaside builds whole now, numbered as its export): the level
+  prepared with the survey (`seaside::prepare`), then
   `World::new(level).with_level_data(survey)` with the same
-  `Arc<SeasideData>` that `seaside::prepare` was given; `TerrainSetup {
-  ground_color: Some(seaside_ground_color(survey)), photo:
-  Some(GroundPhoto::seaside(&survey, decoded_photo_jpg, url)), .. }`
-  (D234: the decode is the client's; the JS sets the texture sRGB,
-  `flipY` false, anisotropy 8, clamped); `scenery_factory(None)`.
+  `Arc<SeasideData>`; `TerrainSetup { ground_color:
+  Some(seaside_ground_color(survey)), photo: Some(GroundPhoto::seaside(
+  &survey, decoded_photo_jpg, url)), .. }` (D234: the decode is the
+  client's; the JS sets the texture sRGB, `flipY` false, anisotropy 8,
+  clamped; for the animators alone, which never read it, a blank picture
+  of its size does, as `tests/seaside_animators.rs` builds);
+  `scenery_factory(None)`. Without the survey Raceway's build fails and
+  the job logs it (D590).
 - **The start lights** (`Raceway.js` `buildStart`, `world.onCountdown`):
   five `MeshStandardMaterial`s (colour 0x220806, emissive 0xff2010,
   `emissiveIntensity` 0), two `CircleGeometry(0.17, 12)` lamps each, the
@@ -3774,6 +3940,7 @@ What the client still has to do for the L4 stations and the race:
   the countdown's seconds left while it runs, -1 once racing: `Race.js`
   `this.world.onCountdown?.(started ? -1 : this.countdown)`) and applies
   its `Change::Number { prop: "emissiveIntensity" }` edits to the
-  material's emissive intensity (6 lit, 0 dark). The e2e `circuit` test
+  material's emissive intensity (6 lit, 0 dark) as D493 applies
+  `WorldBuild::update`'s (D490's material block). The e2e `circuit` test
   counts the lit lamps (`__world.scenery[0].lampMats`).
 - The lap HUD and the rest of the race (not world generation).

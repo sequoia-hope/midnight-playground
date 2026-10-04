@@ -39,7 +39,12 @@ fn start_loading(opts: Res<Opts>) {
     if o.materials.is_some() {
         return; // the material test scenes load their own sources
     }
+    // `?world=gen`: the scene is the client's own world build (`animate`).
+    let generated = crate::animate::draws_generated(&o);
     std::thread::spawn(move || {
+        if generated {
+            return;
+        }
         let root = repo_root();
         if o.level == "seaside" {
             let p = root.join("assets/seaside/survey.bin");
