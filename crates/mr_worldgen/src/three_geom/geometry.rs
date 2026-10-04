@@ -37,9 +37,10 @@ pub struct BufferGeometry {
     pub bounding_sphere: Option<Sphere>,
     pub draw_range: DrawRange,
     /// The attributes that are `InstancedBufferAttribute`s (one element per
-    /// instance, `meshPerAttribute` 1), by name. Empty for every generator;
-    /// set by [`BufferGeometry::set_instanced_attribute`].
-    pub instanced: Vec<String>,
+    /// instance, `meshPerAttribute` 1), by name. `None` for every
+    /// generator; set by [`BufferGeometry::set_instanced_attribute`]. Boxed
+    /// to keep a geometry small.
+    pub instanced: Option<Box<Vec<String>>>,
 }
 
 /// three's `arrayNeedsUint32`: any value at or above 65535 (the primitive
@@ -94,15 +95,18 @@ impl BufferGeometry {
     /// itemSize))`: one element per instance (`meshPerAttribute` 1).
     pub fn set_instanced_attribute(&mut self, name: &str, attribute: BufferAttribute) {
         self.set_attribute(name, attribute);
-        if !self.instanced.iter().any(|n| n == name) {
-            self.instanced.push(name.to_string());
+        let list = self.instanced.get_or_insert_with(Box::default);
+        if !list.iter().any(|n| n == name) {
+            list.push(name.to_string());
         }
     }
 
     /// `deleteAttribute(name)`.
     pub fn delete_attribute(&mut self, name: &str) {
         self.attributes.retain(|(n, _)| n != name);
-        self.instanced.retain(|n| n != name);
+        if let Some(list) = &mut self.instanced {
+            list.retain(|n| n != name);
+        }
     }
 
     pub fn has_attribute(&self, name: &str) -> bool {
@@ -350,7 +354,10 @@ impl BufferGeometry {
             .attributes
             .iter()
             .map(|(n, a)| {
-                let instanced = self.instanced.iter().any(|x| x == n);
+                let instanced = self
+                    .instanced
+                    .as_ref()
+                    .is_some_and(|l| l.iter().any(|x| x == n));
                 AttributeRef {
                     name: n.clone(),
                     accessor: push(a),
