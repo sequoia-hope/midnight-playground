@@ -6174,7 +6174,8 @@ the camera's run; `--query sectionshots=<dir>&menu=0` takes the views).
   against about 50 MB when a race from the address starts its build: the
   menu, its warm-up field and the sound are live during the build, and the
   build's own peak (about 410 MB of heap) lands on top. So the race peak
-  is about 10 to 50 MB above the level's own, from the menu rather than
+  is about 10 to 100 MB above the level's own (most runs 50 to 90),
+  from the menu rather than
   from the views. Not met strictly; raised (D750).
 - **Time to the menu**: 3.75 to 4.77 s (WebGPU, load 23 to 34), 3.74 to 4.40 s (WebGL2,
   load 14 to 20); the JS's is 3.2 s here. Views build in 0.3 to 1.3 s each
