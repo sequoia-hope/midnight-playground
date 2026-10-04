@@ -8,8 +8,13 @@
 // points, the traffic streams, the sky glow, the road's dew) and the night
 // parameters World.update applies before them.
 //
-//   node --import=./tools/parity/kernel/register.mjs tools/parity/animators.mjs [--check]
-//   node tools/parity/animators.mjs --browser [--check]
+//   node --import=./tools/parity/kernel/register.mjs tools/parity/animators.mjs [--level coast] [--check]
+//   node tools/parity/animators.mjs --browser [--level coast] [--check]
+//
+// --level picks the level (default sierra). On the Coast Highway (WP 7.1)
+// the frames run the route from blue hour to morning with the camera by the
+// cliffs, the pier and the docks (no Coast, Beach or Harbor updater looks at
+// the camera), and the golden is parity/golden/animators/coast.json.
 //
 // By default the world is built under Node: the game's own World.build on
 // Sierra with a canvas that draws nothing (no updater reads a pixel), and a
@@ -51,11 +56,13 @@ import { seedRandom, RANDOM_SEED } from './lib/seed-random.mjs';
 
 const CHECK = process.argv.includes('--check');
 const BROWSER = process.argv.includes('--browser');
-const OUT = path.join(ROOT, 'parity/golden/animators/sierra.json');
+const LEVEL = process.argv.includes('--level') ? process.argv[process.argv.indexOf('--level') + 1] : 'sierra';
+if (!['sierra', 'coast'].includes(LEVEL)) throw new Error('animators: --level sierra or coast');
+const OUT = path.join(ROOT, `parity/golden/animators/${LEVEL}.json`);
 
 // Runs in the page (env null) or under Node, synchronously until the
 // hashing at the end.
-async function run(env) {
+async function run(env, level = 'sierra') {
   const page = !env;
   if (page) env = { THREE: window.__THREE, world: window.__world, camera: window.__camera.clone() };
   const { THREE, world, camera } = env;
@@ -167,7 +174,22 @@ async function run(env) {
 
   // Where the frames put the camera: by the lookout's flag (the flag waves
   // within 600 m), by the waterfall's pool (the foam and spray move within
-  // 800 m), in the city (neither).
+  // 800 m), in the city (neither). On the coast: by the cliffs, the pier and
+  // the docks.
+  let at, FRAMES, PLACES;
+  if (level === 'coast') {
+    const t = world.track;
+    const mid = (name) => { const g = t.tag(name)[0]; return (g.s0 + g.s1) / 2; };
+    const by = (s) => { const f = t.frame(s, {}); return [f.x, f.y + 6, f.z]; };
+    at = { cliffs: by(mid('lighthouse')), pier: by(mid('pier')), docks: by(mid('containers')) };
+    PLACES = ['cliffs', 'pier', 'docks'];
+    FRAMES = [
+      [0.0, 0, 'cliffs'], [1 / 120, 0, 'pier'], [1 / 120, 40, 'docks'], [1 / 60, 300, 'cliffs'],
+      [0.25, 1200, 'pier'], [0.5, 2000, 'docks'], [1 / 30, 2700, 'cliffs'], [2, 3300, 'pier'],
+      [0.1, 3900, 'docks'], [0.7, 4500, 'cliffs'], [1 / 120, 4865, 'pier'], [3.3, 5400, 'docks'],
+      [0.05, 6000, 'cliffs'], [1.25, 6600, 'pier'], [0.016, 7200, 'docks'], [0.333, 7665, 'cliffs'],
+    ];
+  } else {
   const mountain = world.root.getObjectByName('mountain');
   let flag = null, pool = null;
   mountain.traverse((o) => {
@@ -178,18 +200,20 @@ async function run(env) {
   if (!flag || !pool) throw new Error('animators: the flag or the pool was not found');
   const t = world.track;
   const city = t.frame(8200, {});
-  const at = {
+  at = {
     flag: [flag.position.x + 40, flag.position.y + 12, flag.position.z - 25],
     pool: [pool.position.x - 60, pool.position.y + 20, pool.position.z + 35],
     city: [city.x, city.y + 6, city.z],
   };
   // (dt, s, where): uneven steps, the route's time of day from day to night.
-  const FRAMES = [
+  FRAMES = [
     [0.0, 0, 'flag'], [1 / 120, 0, 'pool'], [1 / 120, 40, 'flag'], [1 / 60, 300, 'pool'],
     [0.25, 1500, 'city'], [0.5, 2500, 'flag'], [1 / 30, 3500, 'pool'], [2, 4500, 'city'],
     [0.1, 5200, 'pool'], [0.7, 6000, 'flag'], [1 / 120, 6419, 'city'], [3.3, 7000, 'pool'],
     [0.05, 7600, 'flag'], [1.25, 8200, 'city'], [0.016, 8800, 'pool'], [0.333, 9379, 'flag'],
   ];
+  PLACES = ['flag', 'pool', 'city'];
+  }
   // Then fixed ticks with the player moving at 60 m/s, the camera hopping.
   const TICKS = 360, TICK = 1 / 120, S0 = 4000;
   const focus = new THREE.Vector3();
@@ -203,12 +227,12 @@ async function run(env) {
   // A frozen frame first (dt 0 at the start, as the menu's, but at a fixed
   // place: the menu's own drifts with the clock), so that the first
   // snapshot is the same wherever the world was built.
-  step(0, 0, 'flag', false);
+  step(0, 0, PLACES[0], false);
   const base = snapshot(true);
   const frames = FRAMES.map(([dt, s, where]) => ({ dt, s, where, snap: step(dt, s, where) }));
   const ticks = [];
   for (let k = 0; k < TICKS; k++) {
-    const where = ['flag', 'pool', 'city'][Math.floor(k / 40) % 3];
+    const where = PLACES[Math.floor(k / 40) % 3];
     const s = S0 + k * TICK * 60;
     ticks.push({ s, where, snap: step(TICK, s, where) });
   }
@@ -245,10 +269,10 @@ async function captureBrowser() {
   const { launch, openGame } = await import('../../test/e2e/harness.js');
   const browser = await launch();
   try {
-    const game = await openGame(browser, { query: 'level=sierra&kernel=1&freeze=1&s=0', init: seedRandom, initArgs: [RANDOM_SEED] });
+    const game = await openGame(browser, { query: `level=${LEVEL}&kernel=1&freeze=1&s=0`, init: seedRandom, initArgs: [RANDOM_SEED] });
     const state = await game.eval(() => ({ id: window.__world?.level?.id, kernel: !!window.__parity?.kernel, freeze: !!window.__parity?.freeze }));
-    if (state.id !== 'sierra' || !state.kernel || !state.freeze) throw new Error(`page state ${JSON.stringify(state)}`);
-    const out = await game.eval(run, null);
+    if (state.id !== LEVEL || !state.kernel || !state.freeze) throw new Error(`page state ${JSON.stringify(state)}`);
+    const out = await game.eval(run, null, LEVEL);
     const errors = [...game.errors, ...(await game.eval('(window.__parity?.errors || []).map(String)'))];
     if (errors.length) throw new Error('page errors: ' + errors.slice(0, 3).join(' | '));
     await game.close();
@@ -283,7 +307,7 @@ async function captureNode() {
   const THREE = await import('three');
   const { LEVELS } = await import('../../test/unit/support/levels.js');
   const { World } = await import('../../src/world/World.js');
-  const level = LEVELS.find((l) => l.id === 'sierra');
+  const level = LEVELS.find((l) => l.id === LEVEL);
   const renderer = { toneMappingExposure: 1, domElement: { height: 800 } };
   const world = new World(new THREE.Scene(), renderer, level);
   const { warn, error } = console;
@@ -297,7 +321,7 @@ async function captureNode() {
   if (said.length) throw new Error('the build complained: ' + said.slice(0, 3).join(' | '));
   // main.js's camera.
   const camera = new THREE.PerspectiveCamera(62, 1280 / 800, 0.3, 9000);
-  return run({ THREE, world, camera });
+  return run({ THREE, world, camera }, LEVEL);
 }
 
 const capture = () => (BROWSER ? captureBrowser() : captureNode());
@@ -305,7 +329,9 @@ const capture = () => (BROWSER ? captureBrowser() : captureNode());
 // One frame's values per line, so the file diffs by frame.
 function text(r) {
   const head = {
-    note: 'Generated by tools/parity/animators.mjs: Sierra\'s world.update over fixed frames (kernel on), every value it changes under world.root. Numbers are hex f64 bits; arrays the SHA-256 of their bytes. Do not edit.',
+    note: LEVEL === 'sierra'
+      ? 'Generated by tools/parity/animators.mjs: Sierra\'s world.update over fixed frames (kernel on), every value it changes under world.root. Numbers are hex f64 bits; arrays the SHA-256 of their bytes. Do not edit.'
+      : `Generated by tools/parity/animators.mjs --level ${LEVEL}: the level's world.update over fixed frames (kernel on), every value it changes under world.root. Numbers are hex f64 bits; arrays the SHA-256 of their bytes. Do not edit.`,
     camera: r.camera, fov: r.fov, viewportHeight: r.viewportHeight, targets: r.targets,
   };
   const lines = [JSON.stringify(head, null, 1).slice(0, -2) + ','];
