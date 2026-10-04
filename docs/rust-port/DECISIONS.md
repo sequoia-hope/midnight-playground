@@ -3166,6 +3166,216 @@ of 255, the differences at the moving cars' edges from frame timing); the
 headlights and tail lights match. Measurements: BASELINE.md, "Races at
 dusk".
 
+## D457. The post chain keeps its buffer and bind groups between frames
+
+2026-10-04, from the Firefox investigation (BASELINE.md, "Firefox"). The
+post chain (D174) made a uniform buffer (mapped at creation) and thirteen
+bind groups every frame. Each is a JavaScript object over a native
+allocation in the browser; in Firefox the content process then runs a
+major GC for "TOO_MUCH_MALLOC" about every 20 s of flight, and the frame
+it lands in can miss its vsync. They are now kept in `post::PostCache`:
+the buffer is written (`writeBuffer`) only when its contents change (the
+exposure, the bloom sizes), and the bind groups are made once per set of
+texture views (the view's two post-process textures swap every frame, so
+two sets are in use; a resize makes new ones). The pictures are identical
+(the material scenes and 153 native stations to the pixel). Per frame on
+Seaside the page now makes 28 bind groups and 5 buffers instead of 41 and
+6; what remains is Bevy's own (view and mesh bind groups, uniform buffers
+it recreates, one buffer mapped for reading every frame).
+
+## WP 7.3 Desert decisions
+
+## D550. The shape of `mr_worldgen::desert`
+
+2026-10-04, WP 7.3. `Desert.js` is `mr_worldgen::desert` (`desert/mod.rs`),
+`desert/parts.js` is `desert::parts`, `desert/props.js` `desert::props`,
+`desert/glow.js` `desert::glow`; the canvas code of `makeSigns`, the start
+gantry's banners, the railway's ties and the lake bed's cracked mud is
+`desert::signs`, and `animate` with `updateTrain` and `updateWeeds` is
+`desert::anim`. `Desert` keeps what `plan()` decides (`this.Z`, the Oasis's
+s, the pull-out); `build()` makes a `Bld` that is the JS `this` while it
+builds (the ColorBuilder `B`, the materials `M`, the atlases' cells `sg` and
+`nn`, the occupancy list, the parked cars, the glow and pool lists, the
+rail, the train), borrowing the world's track, terrain, road, graph and
+texture cache, and runs the JS `build*` methods in the JS order; the
+`await tick()`s are not needed in one job. Names and argument order are
+the JS's; option objects are structs (`SignOpts` for `roadSign`,
+`ArchOpts`, `StrataOpts`, `PointOpts`), and an instance item is `Item`
+with `Option`s where the JS reads `??` (`sy`, `sz`, `b`) and plain numbers
+where it reads `|| 0` (`rx`, `ry`, `rz`). Where the JS draws from a
+generator inside an argument list, a member expression or an object
+literal, the port draws into locals in the same order (D350). `paint`'s
+default generator is the page's `Math.random`, passed only with no jitter,
+where the draw cannot change a colour: the port draws nothing there. The
+sign atlases, `paintedSign`, `neonSign`, `signGeometry`, `roundRect` and the
+Oasis's gas station, diner and motel are Coast's `beach::atlas` and
+`beach::parts` (WP 7.1 owns them; this branch carries its commit), as the
+JS imports them from `beach/`; `bannerTexture` is `city::textures`,
+`poleGeometry` `valley::parts`, `makeGround` `valley::ground::Ground`, the
+sprite geometry `mountain::sprite_geometry`, the parked cars
+`car_model::build_vehicle` (no `setHeadlights`: the JS calls none), baked as
+`buildCars` bakes them (paint and rust into vertex-coloured buckets, the
+rest into a `Builder` keyed by the material's signature, whose equality is
+all that matters: type, colour and emissive hex, the three numbers, the
+map's handle). Desert is registered with one line in `scenery::PORTED`
+(D330): every level build, and the terrain and road gates, run its own
+`plan()`, which registers the railway bed and the six flattens bit for bit
+and in their place, as the recording does; Desert Run now builds with
+`scenery_factory(None)`, from ported modules alone.
+
+## D551. The L3 gate for Desert Run, and what it found
+
+2026-10-04, WP 7.3. `tools/parity/desert-golden.mjs` (city-golden.mjs's
+pattern, in a file of its own) writes `parity/golden/desert/desert.json`
+from the cached export: for the groups `desert` and `road` (Desert's
+`buildLakebed` puts its cracked-mud material on the road's asphalt and
+shoulders past the lake's start), a line per node, each drawable's material
+by index into a table of canonical material views, every texture's 8×8
+block means; and each light's description in the canonical form.
+`tests/desert.rs` builds the level through `level_jobs` with
+`scenery_factory(None)`, updates the sky at the export's focus, applies the
+night parameters, runs every updater once as the frozen export ran them
+(dt 0, s 0, the export's camera; a Transform of the spot light's target
+moves the light's target, as three reads `target.matrixWorld`), and holds
+(a) both groups to the golden, compiled in, so in CI and wasm too, and (b)
+the whole scene to the export as Level 1 is held (D472): the world golden's
+counts and kinds always, the whole `mr_scene` digest with the cache.
+Result: **identical**, native and in wasm: the group `desert`, 179 nodes
+(829,961 vertices) and all 52 of its materials (Sandstone, FlickerPoints
+×9 with their kind options, GroundPool and FloodBeam with their program
+keys and uniforms); the group `road`, 62 nodes and 7 materials with the
+lake bed on the meshes past the lake; the 3 lights (the train's spot light
+among them); and the scene: 376 nodes, 287 meshes, 61 materials, 16
+textures, 132 instance sets, 367 drawables, 1,348,089 vertices, 3,301,239
+indices, every digest entry equal but the pixels of the 14 canvas
+textures. No fix to a shared module's behaviour was needed. Textures
+without lettering are within WP 3.2's threshold of the export (mean
+absolute difference at most 0.58 levels, the glow; the ties 0.27, the rock
+0.11, the lake bed 0.10, the crack decal 0.005, the detail texture 0).
+The lettered ones (the start gantry's two banners, the two painted
+atlases, the neon atlas, the finish banner) differ from the export by 8 to
+38 levels, all of it in the glyphs (the export draws text in the machine's
+fonts), and are held, as D313 and D354 hold Mountain's and City's, to a
+capture with the bundled fonts: `tools/parity/desert-textures.mjs` (the
+game on Desert Run, `?kernel=1&freeze=1&s=0`, the faces of
+`assets/fonts/fonts.json` registered before its scripts run, each canvas
+the group `desert` uses as both `map` and `emissiveMap`, six pictures) to
+`parity/cache/<key>/desert/` and `parity/golden/desert/textures.json`.
+Against it: at most 1.15 levels (the neon atlas's shadow-blurred glyphs),
+the painted atlases 0.17 and 0.08, the banners 0.19, 0.08 and 0.05. Rerun:
+`node tools/parity/desert-golden.mjs` (with the cache),
+`node tools/parity/desert-textures.mjs` when the fonts change, then
+`cargo test -p mr_worldgen --test desert` (and in wasm).
+
+## D552. The tumbleweeds' `Math.random` is a stream of their own
+
+2026-10-04, WP 7.3. `updateWeeds` spawns, aims and bounces the rolling
+tumbleweeds with the page's `Math.random`, whose position depends on the
+whole page (D332). They are cosmetic and per-frame, so the animator draws
+from a mulberry32 of its own, seeded with `Desert::random_seed`
+(`desert::anim::RANDOM_SEED`, 0x5eed, the seed the scene captures give the
+page), and the animator capture reseeds the page's `Math.random` with it
+just before its frames, so the JS and the port draw the same values. The
+frozen frame at s = 0 draws nothing (the weeds only spawn on Route 66).
+Nothing else in Desert reads `Math.random` (`paint`'s default draws are
+value-free, D550).
+
+## D553. Desert's animator holds the track and a patch of the ground
+
+2026-10-04, WP 7.3. `animate` reads the track (`railUFor`, a spawning
+weed's frame) and the rendered ground under a rolling weed every frame.
+The animator keeps a clone of the track and, of the ground, only
+`GroundPatch`: the terrain's heights at the lattice points of the tiles
+within 300 m of the road from 400 m before Route 66 to 800 m into Silver
+Lake, interpolated by `valley::ground`'s triangles (the lattice is exact:
+tiles start on whole multiples of 256 m with 4, 16 or 32 m steps); NaN
+outside. On Desert Run that is 60 tiles, 140,400 heights (1.1 MB), made
+once at the end of the build, so the scene does not keep the whole
+terrain alive in the client. The JS shares one uniform object, `glowTime`, between the flicker
+materials; the port gives each its own `uTime` and the animator writes the
+clock into all ten every frame. The train's spot light moves by Transform
+edits of the light and of its target (the next sibling, an `Object3D`),
+and its intensity by a `Light` edit.
+
+## D554. A geometry's InstancedBufferAttributes
+
+2026-10-04, WP 7.3. `flickerPools` gives its InstancedMesh's geometry two
+per-instance attributes (`ph`, `fl`) through `THREE.InstancedBufferAttribute`,
+which the export writes with `instanced: true` and `mesh_per_attribute: 1`
+(Harbor does the same). `BufferGeometry` gains `instanced` (the names of
+such attributes, boxed, `None` for every generator) and
+`set_instanced_attribute`, and `to_mesh_desc` writes the two fields from
+it. The `mr_scene` digest does not hash those flags, so this is for the
+renderer. No existing geometry or scene changes; the Sierra gates pass.
+
+## D555. Desert Run's animators are held to `world.update`, step by step
+
+2026-10-04, WP 7.3. `tools/parity/desert-animators.mjs` (animators.mjs's
+pattern, D470, in a file and golden of its own, so WP 7.1 can extend the
+other) builds Desert Run with the game's own `World.build` and runs the
+game's own `world.update` over 16 uneven frames (dt 0 to 3.3 s; s from the
+start, where the train waits, through Route 66, where it rolls and the
+tumbleweeds spawn, to the lake and back), then 360 ticks of 1/120 s at
+60 m/s on Route 66, recording every value that changes under `world.root`:
+57 values on 43 targets (the eleven car-type InstancedMeshes, the three
+headlight sprites and their material's opacity, the spot light and its
+target, the rolling tumbleweeds, the ten glow clocks and nine flicker
+colours, the flame, beam and pool opacities, the road's dew, the night
+parameters) in `parity/golden/animators/desert.json`. Under Node and in
+the game (`--browser`) the captures are byte-identical, two browser
+captures agree, and CI checks that the Node capture reproduces.
+`tests/desert_animators.rs` replays the frames on the Rust build as the
+client runs them and requires every value and tick hash. Result:
+**identical, every frame and every tick, native and in wasm**.
+
+## D556. What the client still stands in for on Desert Run
+
+2026-10-04, WP 7.3. The data side of every material kind Desert Run uses
+is complete (D551). The client's `convert::stand_in` and `render::material`
+on `main` today draw these with stand-ins or hide them; the list for the
+L4 stations:
+
+- **Sandstone** (`desert/parts.js` `sandstoneMaterial`; the rocks,
+  hoodoos, talus, buttes and the arch): drawn as a plain lit standard
+  material. A `MeshStandardMaterial` (`vertexColors`, colour white,
+  roughness 0.95, metalness 0) with uniforms `tRock` (`rockTexture`) and
+  `tDetail` (`detailTexture`), program key `desert-rock`, attributes
+  `position`, `normal`, `color`, plus instance matrices and
+  `instanceColor`. The patch: in the vertex stage the world position and
+  normal through `instanceMatrix` then `modelMatrix`; in the fragment
+  stage, replacing `map_fragment`, weights `pow(abs(n), 3)` normalised,
+  `diffuseColor.rgb *= (tRock(p.z·0.07, p.y·0.16)·w.x + tRock(p.x·0.07,
+  p.y·0.16)·w.z + tRock(p.xz·0.09)·w.y)·1.35`, then the varnish `*= 1 −
+  0.45·smoothstep(0.7, 0.86, tDetail((p.x + p.z)·0.11, p.y·0.006).r)·(1 −
+  |n.y|)²`.
+- **GroundPool** (`desert/glow.js` `flickerPools`, one InstancedMesh):
+  drawn as a plain basic material, its per-instance attributes unread. A
+  `MeshBasicMaterial` (map `glowTexture`, transparent, additive,
+  `depthWrite` false, polygon offset −4/−4; the mesh's render order 2)
+  with `instanceColor`, uniform `uTime` (the animator's clock, D553) and
+  per-instance `ph` and `fl` (`AttributeRef::instanced`, D554); its
+  `opacity` follows the night (`Change::Number`). The patch: `f =
+  sin(uTime·13 + ph·6.3)·sin(uTime·4.7 + ph·2.1) + 0.4·sin(uTime·29 +
+  ph·3.7)`, `diffuseColor.rgb *= 1 − fl + fl·clamp(0.5 + 0.5f, 0, 1)`.
+- **FloodBeam** (`Desert.js` `buildGlows`, one InstancedMesh of four
+  cones, render order 3): drawn as a plain basic material. A
+  `MeshBasicMaterial` (`vertexColors`, transparent, additive, `depthWrite`
+  false, fog) with no uniforms but `clippingPlanes`, attributes
+  `position`, `normal`, `color` and instance matrices; `opacity`
+  `0.13·smoothstep(0.3, 0.8, night)` from the animator. The patch: `vFace =
+  |dot(normalize(normalMatrix · mat3(instanceMatrix) · normal),
+  normalize(−mvPosition.xyz))|`, `diffuseColor.rgb *= vFace²`.
+- **Sprite** (built-in `SpriteMaterial`, the train's three headlight
+  glows): hidden (`stand_in`'s `Sprite => Hidden`). Map `glowTexture`,
+  colour `0xfff0c8`, transparent, additive, `depthWrite` false; the
+  animator moves and scales the sprites (`Transform`) and sets the
+  material's `opacity`.
+- **FlickerPoints** is drawn (`Patch::Points { Flicker }`); it needs the
+  animator's `uTime` each frame on all nine materials.
+- The train's **SpotLight**: the loader takes it at load; the animator
+  moves it and its target (`Transform` of the light and of the next
+  sibling `Object3D`) and sets its intensity (`Light`, 0 by day, 90 at
+  night) every frame.
 ## WP 7.1 Coast decisions
 
 ## D530. The shape of `mr_worldgen::coast`; `coast/kit.js` is Mountain's kit
