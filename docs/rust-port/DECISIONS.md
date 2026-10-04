@@ -5390,6 +5390,12 @@ so behind the menu no tile job holds a frame long.
 - Race from the menu (Coast, its terrain-road-sky export through the
   harness): racing 1.5 s after the click; then Main menu, the sections
   again, Coast freed for Desert's section, and a race on Seaside.
+- **WebGL2**, the same suite at load 140 (timings not comparable): passes;
+  wasm 155 MB at the menu, 213 MB with all six held, 290 MB after the two
+  races; tabs show within 115 to 362 ms of the click under that load.
+  Also passing: `level-switch.test.mjs` (both forms, WebGPU, load 165) and
+  the phone menu-to-race check (`phone-menu.mjs`, iPhone emulation: a tap
+  on Seaside's tab, Race, racing with the throttle, the sound running).
 
 ## D746. Open, for the owner
 
