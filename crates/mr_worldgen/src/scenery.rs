@@ -45,6 +45,9 @@ pub const PORTED: &[(&str, MakeScenery)] = &[
     ("Raceway", |info| {
         Box::new(crate::raceway::Raceway::new(info))
     }),
+    ("Streets", |info| {
+        Box::new(crate::streets::Streets::new(info))
+    }),
 ];
 
 /// The ported module of that name, made as `loadScenery` makes it.

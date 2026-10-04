@@ -24,6 +24,7 @@ pub mod scenery;
 pub mod sea;
 pub mod sky;
 pub mod stages;
+pub mod streets;
 pub mod terrain;
 pub mod terrain_mesh;
 pub mod textures;
