@@ -642,3 +642,13 @@ GPU-bound from the start (56 to 77 ms intervals uncapped, as in the
 flights above), and with vsync on (`CAPPED=1`) holds 30 to 60 frames a
 second with no frame over 33.5 ms; WebGPU on Coast with vsync on holds 60
 with no frame over 16.8 ms.
+
+At lower load afterwards (30 s races, `timescale=2`, uncapped): WebGPU,
+Coast at load 4.7 and 8.9: 0 frames over 50 ms, worst 32.5 and 49.1 ms;
+Sierra at 8.7: 0, worst 24.8 ms; Sierra at 14.6: 2 (54 ms at s 67, 60 ms
+at s 1,899), worst 60.1 ms. No stall of the 730 to 880 ms kind in these
+four runs: they look like the busy machine, but that is not confirmed.
+WebGL2 at load 8.2 and 7.0: Coast 259 frames over 50 ms (73 to 76 ms
+intervals from the start, worst 123.6), Sierra 12 (54 to 57 ms, one of
+106 ms at s 708); both are the GPU-bound uncapped pacing described above
+(p50 6.6 and 6.0 ms), and late pipelines are 0 in all six runs.
