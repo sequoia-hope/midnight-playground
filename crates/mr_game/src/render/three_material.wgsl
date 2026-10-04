@@ -178,6 +178,9 @@ fn kind_uniforms() -> vec4<f32> {
 #else ifdef PATCH_FLOODBEAM
     // beamMat.opacity = 0.13 × smoothstep(0.3, 0.8, night).
     return vec4<f32>(0.13 * t::smooth_step(0.3, 0.8, n), 0.0, 0.0, 0.0);
+#else ifdef POINTS_FLICKER
+    // Desert.js animate: glowTime = T (the uTime it shares; D553).
+    return vec4<f32>(globals_at(g::G_ANIM2).z, 0.0, 0.0, 0.0);
 #else
     // GlowPoints' uFogK: world.scene's fog, which it has not.
     return vec4<f32>(0.0);
@@ -493,7 +496,7 @@ fn points_vertex(out: ptr<function, VOut>, extra: vec4<f32>) {
 #endif
 #ifdef POINTS_FLICKER
     // At fog_vertex.
-    let u_time = globals_at(g::G_ANIM2).z;
+    let u_time = kind_uniforms().x;
     let ph = extra.x;
 #ifdef FLICKER_BLINK
     aux = step(0.5, fract(u_time * material.kind1.w + ph * 0.3333));

@@ -55,7 +55,7 @@ use std::sync::{Arc, Mutex};
 /// (D472 holds Sierra to it; the other levels still replay recorded
 /// scenery).
 pub fn generated(level: &str) -> bool {
-    level == "sierra"
+    matches!(level, "sierra" | "desert" | "streets")
 }
 
 /// `?world=gen`: draw the level as the client builds it, without the
@@ -151,7 +151,11 @@ fn new_build(level: &str) -> Build {
     };
     Build::new(
         World::new(mr_levels::level_by_id(level)),
-        level_jobs(level_stages(setup), level1_scenery),
+        match level {
+            "desert" => level_jobs(level_stages(setup), crate::levels::desert::scenery),
+            "streets" => level_jobs(level_stages(setup), crate::levels::streets::scenery),
+            _ => level_jobs(level_stages(setup), level1_scenery),
+        },
     )
 }
 
@@ -389,6 +393,9 @@ pub struct SceneIndex {
     entities: Option<Vec<Vec<Entity>>>,
     /// Edits of kinds nothing here applies, reported once each.
     unknown: Vec<String>,
+    /// The spot light the loader takes into `Lighting` (the first in the
+    /// scene) and its target, the next sibling (Desert's train, D720).
+    spot: Option<(u32, Option<u32>)>,
 }
 
 /// The uniform slot (block texel 4) of a kind's animated uniform.
@@ -406,6 +413,7 @@ fn uniform_slot(kind: MaterialKind, prop: &str) -> Option<usize> {
         (Surf, "uBright") => 1,
         (LighthouseBeam, "uStrength") => 0,
         (GroundPool, "uTime") => 0,
+        (FlickerPoints, "uTime") => 0,
         (GroundPool, "opacity") => 1,
         (FloodBeam, "opacity") => 0,
         (Neon, "uNTime") => 0,
@@ -546,6 +554,20 @@ impl SceneIndex {
                 v.push(h.clone());
             }
         }
+        let spot = scene
+            .lights
+            .iter()
+            .find(|l| l.ty == mr_scene::NodeType::SpotLight)
+            .map(|l| {
+                let sib = scene.nodes[l.node as usize]
+                    .parent
+                    .map_or(&[][..], |p| scene.nodes[p as usize].children.as_slice());
+                let next = sib
+                    .iter()
+                    .position(|&c| c == l.node)
+                    .and_then(|k| sib.get(k + 1).copied());
+                (l.node, next)
+            });
         SceneIndex {
             shape: Shape::of(scene),
             nodes,
@@ -554,6 +576,7 @@ impl SceneIndex {
             meshes: by_mesh,
             entities: None,
             unknown: Vec::new(),
+            spot,
         }
     }
 
@@ -676,6 +699,7 @@ pub fn run_animators(
     mut placed: Placed,
     streams: Query<&Instances>,
     status: Res<Status>,
+    mut lighting: ResMut<crate::render::lighting::Lighting>,
 ) {
     let Some(frame) = sky_res.frame.take() else {
         return;
@@ -733,6 +757,7 @@ pub fn run_animators(
     let blocks_before = blocks.texels.len();
     let mut moved: Vec<u32> = Vec::new();
     let mut shown: Vec<u32> = Vec::new();
+    let mut light: Option<crate::levels::desert::LightEdit> = None;
     for SceneEdit { target, change } in edits {
         match (target, change) {
             (
@@ -802,9 +827,17 @@ pub fn run_animators(
                     inst.dirty = true;
                 }
             }
-            (SceneRef::Node(_), Change::Light { .. }) => {
-                // The scene's own lights are the sky's (`Lighting`), the
-                // spot and point lights static.
+            (
+                SceneRef::Node(n),
+                Change::Light {
+                    color, intensity, ..
+                },
+            ) => {
+                // The sun and hemisphere light are the sky's (`Lighting`);
+                // the spot light follows its animator (Desert's train).
+                if index.spot.is_some_and(|(l, _)| l == n) {
+                    light = Some((color, intensity));
+                }
             }
             (
                 SceneRef::Mesh(m),
@@ -877,6 +910,18 @@ pub fn run_animators(
             if !dirty_world.contains(&k) {
                 dirty_world.push(k);
             }
+        }
+    }
+    if let Some((l, t)) = index.spot {
+        let at = |n: u32| {
+            dirty_world.contains(&n).then(|| {
+                let info = &index.nodes[n as usize];
+                info.world.w_axis.truncate() + info.offset.as_dvec3()
+            })
+        };
+        let (p, t) = (at(l), t.and_then(at));
+        if light.is_some() || p.is_some() || t.is_some() {
+            crate::levels::desert::follow_spot(&mut lighting, light, p, t);
         }
     }
     let entities = index.entities.take().unwrap_or_default();
