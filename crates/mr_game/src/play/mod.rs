@@ -410,13 +410,16 @@ fn read_input(
             tapped = true;
         }
     }
+    // The screens' buttons take taps (`crate::ui`); Enter still races
+    // again or resumes.
+    let _ = tapped;
     match race.mode {
-        Mode::Results if again || tapped => {
+        Mode::Results if again => {
             let mut opts = race.setup.opts;
             opts.seed = opts_for_restart.seed.unwrap_or_else(clock_seed);
             race.restart(opts);
         }
-        Mode::Paused if tapped || again => race.pause(false),
+        Mode::Paused if again => race.pause(false),
         _ => {}
     }
 }

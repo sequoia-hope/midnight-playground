@@ -172,16 +172,18 @@ pub(super) fn update(
     mut texts: Query<(&HudText, &mut Text, &mut TextColor, Option<&mut Node>)>,
     mut panel: Query<&mut Visibility, With<Panel>>,
 ) {
+    // The pause card and the results list are `crate::ui`'s screens now
+    // (WP 6.2): the placeholder panel stays hidden.
+    if let Ok(mut v) = panel.single_mut()
+        && *v != Visibility::Hidden
+    {
+        *v = Visibility::Hidden;
+    }
     // No race (the menu), or one waiting for its pipelines behind it: no
     // HUD.
     let Some(race) = play.race.as_ref().filter(|_| !play.hold) else {
         for (_, mut t, _, _) in &mut texts {
             set(&mut t, String::new());
-        }
-        if let Ok(mut v) = panel.single_mut()
-            && *v != Visibility::Hidden
-        {
-            *v = Visibility::Hidden;
         }
         return;
     };
@@ -318,16 +320,6 @@ pub(super) fn update(
                     _ => String::new(),
                 },
             ),
-        }
-    }
-    if let Ok(mut v) = panel.single_mut() {
-        let want = if mode == Mode::Race {
-            Visibility::Hidden
-        } else {
-            Visibility::Inherited
-        };
-        if *v != want {
-            *v = want;
         }
     }
 }
