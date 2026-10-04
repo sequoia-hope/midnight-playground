@@ -168,7 +168,7 @@
     mr.wasmMemoryBytes = () => wasm.memory.buffer.byteLength;
 
     // 3. The gesture bridge: inside the handler, into the wasm (SPEC 8.4).
-    for (const type of ['pointerup', 'touchend', 'click', 'keydown']) {
+    for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
       window.addEventListener(type, () => glue.gesture(type), { capture: true, passive: true });
     }
 

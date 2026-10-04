@@ -3405,6 +3405,7 @@ name = "mr_game"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "flate2",
  "js-sys",
  "mr_audio",
  "mr_levels",

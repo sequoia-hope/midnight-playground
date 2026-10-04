@@ -2,10 +2,11 @@
 //! this module, calls [`run`], downloads the scene with a progress bar and
 //! hands it in with [`load_scene`]. Status goes out on `window.__mr`.
 //!
-//! The gesture bridge is a stub for now: the page calls [`gesture`] inside
-//! its pointer-up, touch-end, click and key-down handlers, which is where
-//! audio resume, fullscreen, the landscape lock and the motion permission
-//! must happen (they are refused a frame later). M5 and M6 fill it in.
+//! The gesture bridge: the page calls [`gesture`] inside its pointer-down,
+//! pointer-up, touch-end, click and key-down handlers, which is where audio
+//! resume, fullscreen, the landscape lock and the motion permission must
+//! happen (they are refused a frame later). The audio wakes there
+//! (`play::audio::gesture`, M5); the rest is M6's.
 
 use crate::options::Options;
 use crate::status::Status;
@@ -82,6 +83,7 @@ pub fn survey_failed(message: String) {
 #[wasm_bindgen]
 pub fn gesture(_kind: &str) {
     GESTURES.fetch_add(1, Ordering::Relaxed);
+    crate::play::audio::gesture();
 }
 
 /// Captures the next frame with Bevy's screenshot and hands it to the
