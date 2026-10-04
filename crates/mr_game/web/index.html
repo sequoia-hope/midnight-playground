@@ -113,6 +113,20 @@
     return buf.length === n ? buf : buf.slice(0, n);
   }
 
+  // An image's pixels: unpremultiplied RGBA rows, top first.
+  async function loadPhoto(url) {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0);
+    const { width, height, data } = g.getImageData(0, 0, c.width, c.height);
+    c.width = c.height = 0;
+    return { width, height, data: new Uint8Array(data.buffer) };
+  }
+
   // WebGPU, asked a few times: Chrome can answer null while its GPU process
   // is still starting (seen headless on Linux).
   async function webgpuAdapter() {
@@ -244,7 +258,18 @@
       }
       level = lv;
       // ?world=gen: the client builds the level itself (Sierra), no download.
-      if (params.get('world') === 'gen' && glue.generates_scene(lv)) { show(0.3, `Building ${lv}…`); return; }
+      if (params.get('world') === 'gen' && glue.generates_scene(lv)) {
+        show(0.3, `Building ${lv}…`);
+        // Seaside's ground photo, decoded by the browser as the JS game's
+        // texture (and the scene exporter) reads it: an image drawn on a
+        // canvas, getImageData's bytes (D680).
+        if (lv === 'seaside' && !glue.has_photo()) {
+          loadPhoto('../../src/levels/seaside/photo.jpg')
+            .then(({ width, height, data }) => glue.load_photo(width, height, data))
+            .catch((e) => glue.photo_failed(String(e.message || e)));
+        }
+        return;
+      }
       if (!sceneUrl) { glue.scene_failed('no scene: build.json has no scene directory and no ?scene= was given'); return; }
       let bytes;
       try {

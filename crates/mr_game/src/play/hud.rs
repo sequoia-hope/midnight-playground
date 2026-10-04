@@ -1,10 +1,13 @@
 //! The race's plain HUD and screens (Bevy UI, the bundled font): the
 //! centre text and toasts (`hud.center`, `hud.toast`), position, clock and
-//! lap, speed and gear, the pause card and the results list. The styled
+//! lap (with the lap time and best lap on a circuit, `#hud-lap`), the
+//! cruise's score, multiplier, distance and best (`#hud-cruise`), speed
+//! and gear, the pause card and the results list. The styled
 //! HUD and menus of `HUD.js` and `hud.css` are roadmap M6.
 
 use super::flow::{Mode, fmt_time, ordinal};
 use super::{Play, touch::Layout};
+use crate::ui::widgets::locale_int;
 use bevy::prelude::*;
 use bevy::text::{FontWeight, Justify, TextLayout};
 use bevy::ui::widget::TextShadow;
@@ -169,8 +172,10 @@ fn set(t: &mut Text, s: String) {
 
 pub(super) fn update(
     play: Res<Play>,
+    opts: Res<crate::Opts>,
     mut texts: Query<(&HudText, &mut Text, &mut TextColor, Option<&mut Node>)>,
     mut panel: Query<&mut Visibility, With<Panel>>,
+    mut best: Local<(u32, String, f64)>,
 ) {
     // The pause card and the results list are `crate::ui`'s screens now
     // (WP 6.2): the placeholder panel stays hidden.
@@ -189,6 +194,16 @@ pub(super) fn update(
     };
     let st = &race.session.curr;
     let p = &st.players[0];
+    // `race.hud.bestScore = store.get('bestScore.' + level, 0)` at each
+    // start (main.js `startRace`).
+    if st.race.cruise && (best.0 != race.starts || best.1 != opts.o.level) {
+        let key = format!("bestScore.{}", opts.o.level);
+        *best = (
+            race.starts,
+            opts.o.level.clone(),
+            crate::ui::store::Store::platform().num(&key, 0.0),
+        );
+    }
     let lay: &Layout = &race.touch.layout;
     let touch = play.touch_ui;
     let scale = play.css_scale.max(0.01);
@@ -218,20 +233,45 @@ pub(super) fn update(
                     Some(st.race.time)
                 };
                 let mut s = if st.race.cruise {
+                    // `#hud-cruise` (HUD.js `update`): the score, the
+                    // multiplier and its timer bar, the distance and the
+                    // best score (`hud.bestScore`, the stored best).
+                    let r = &p.rules;
+                    let fill = if r.mult > 1.0 {
+                        (r.mult_timer / 6.0).clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    };
+                    let k = (fill * 10.0).round() as usize;
+                    let bar = format!("{}{}", "|".repeat(k), ".".repeat(10 - k.min(10)));
+                    let km = r.dist / 1000.0;
                     format!(
-                        "SCORE {}\n{}",
-                        mr_math::js::round(p.rules.score),
+                        "SCORE {}\n×{} {bar}\n{:.1} mi · best {}\n{}",
+                        locale_int(r.score.floor()),
+                        r.mult,
+                        km / 1.60934,
+                        locale_int(best.2.max(r.score).floor()),
                         fmt_time(time)
                     )
                 } else {
                     format!("POS {pos}/{}\n{}", list.len(), fmt_time(time))
                 };
                 if st.race.laps > 0 {
+                    // `#hud-lap`: `LAP n/of`, the lap's time (none once
+                    // finished) and the best lap so far.
+                    let r = &p.rules;
                     s.push_str(&format!(
                         "\nLAP {}/{}",
-                        p.rules.lap.min(st.race.laps as i32),
+                        r.lap.min(st.race.laps as i32),
                         st.race.laps
                     ));
+                    if !r.finished {
+                        s.push_str(&format!("  {}", fmt_time(Some(st.race.time - r.lap_start))));
+                    }
+                    if !r.lap_times.is_empty() {
+                        let b = r.lap_times.iter().copied().fold(f64::INFINITY, f64::min);
+                        s.push_str(&format!("\nBEST LAP {}", fmt_time(Some(b))));
+                    }
                 }
                 set(
                     &mut t,

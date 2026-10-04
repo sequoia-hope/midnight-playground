@@ -5231,3 +5231,157 @@ budget (16 MB, D675) stays on gzip, the encoding every load can fall
 back to. Scene files are not precompressed: they are the parity cache's
 exports, read only when a level is not built in the client, and their
 delivery is still open (D439).
+
+## Seaside Raceway and the Night City Cruise in the client
+
+The client halves of WP 7.4 and 7.5: D595's and D632's lists.
+
+## D680. Seaside Raceway is built in the client: `crate::levels`
+
+2026-10-04, WP 7.4 (D595's list). `animate::generated` is true for
+`seaside` (and `cruise`, D683), so the client builds Seaside Raceway for
+its animators, and with `?world=gen` draws that build without the
+download. What Seaside needs beyond Level 1's setup is in a module of its
+own, `crates/mr_game/src/levels/` (`animate` gains one line in
+`generated`, a call to `levels::new_build` at the top of `new_build`, a
+wait on `levels::inputs_ready` before a build starts, and the countdown of
+D682): the build is `tests/seaside_animators.rs`'s, `seaside::prepare`
+with the survey, `World::with_level_data` with the same
+`Arc<SeasideData>`, `TerrainSetup { ground_color:
+seaside_ground_color(survey), photo: GroundPhoto::seaside(..) }`, and a
+scenery factory naming Raceway alone (D498's rule: `scenery::PORTED`
+would link every level's modules).
+
+- **The survey** is the one `make_track` parses for the Track (the page's
+  download of `assets/seaside/survey.bin`, the file natively): it hands a
+  copy to `levels::seaside::survey_parsed`, which keeps it across reloads.
+  Natively `native::load` read the survey only when it also read the
+  export; it now reads it first, so `?world=gen` gets it too. A failed
+  survey still starts the build, whose first job (the Track) fails and
+  says so (D590).
+- **The photo** (`src/levels/seaside/photo.jpg`, 1843 × 2160) is the
+  caller's to decode (D234). On the web the page decodes it as the scene
+  exporter read it (`tools/parity/lib/scene-page.js`: an `Image` drawn on
+  a canvas, `getImageData`) and hands the bytes in (`load_photo`;
+  `photo_failed`; `has_photo`, so it is fetched once). Natively, D681. It
+  is kept once decoded (an `Arc<Texture>` every drawn build shares,
+  16 MB), so a reload, or the menu's sections (D740+), do not decode it
+  again. It is fetched only with `?world=gen`: with the export drawn, the
+  build is for the animators, which never read the photo, and a 1 × 1
+  blank stands in (the texture keeps its place in the numbering, so the
+  build's shape is the export's and the edits address it).
+- The wasm grows by Raceway's world generation: 8.12 MB (WebGPU) and
+  8.50 MB (WebGL2) after gzip, against 8.09 and 8.47 (D675).
+
+## D681. The photo natively: the `image` crate's JPEG decoder
+
+2026-10-04, WP 7.4. The native client decodes `photo.jpg` with `image`
+0.25 (JPEG only, zune-jpeg), a dependency of the native target alone, so
+the wasm does not link it (the browser decodes on the web, D680). It is
+not Chrome's decoder: against Chrome's decode in the export it differs by
+0.278 levels mean absolute, at most 4 levels, and 0.012 % of the bytes by
+more than 2 (IDCT and chroma upsampling). `levels::seaside::tests`
+holds it: byte for byte against the golden's SHA-256 if it ever matches,
+else under 1 level mean against the cached export. The pictures that gate
+the level are the web build's, whose decode is Chrome's (D684).
+
+## D682. The start lights follow the race's countdown
+
+2026-10-04, WP 7.4. `Race.update` calls `world.onCountdown(started ? -1 :
+this.countdown)` every frame of a race. The client's equivalent:
+`levels::RaceCountdown` (PostUpdate, before `run_animators`) holds the
+race's `countdown` while its state is `Countdown`, -1 after, and `None`
+with no race (the menu, the fly camera), when the JS does not call it;
+`run_animators` appends `WorldBuild::countdown(cd)`'s edits after
+`WorldBuild::update`'s, as D595 asked, and applies them as D493 applies
+any: the five lamp materials' `emissiveIntensity` goes to their animation
+blocks (D490), so in a Seaside race 6 materials have blocks (the road's
+`uWet` and the five lamps). The countdown is the simulation's at the last
+tick, as the HUD's numbers are. Checked in the web build, downloaded
+export and `?world=gen` alike: the lamps dark at the start, four columns
+lit at 0.89 s to go (`ceil((4 - 0.89) × 5 / 4) = 4`), all dark at GO.
+The JS e2e `circuit` test's count (`lampMats`) has no Rust bridge yet;
+the logic itself is held step by step by `tests/seaside_animators.rs`
+(D594).
+
+## D683. The Night City Cruise in the client
+
+2026-10-04, WP 7.5 (D632's list). The loop needs nothing beyond Level 1's
+setup: City is its only scenery, and `animate::level1_scenery` names it,
+so `generated("cruise")` is the whole change. The build has 12 animators;
+10 materials get animation blocks, as D632 counted. With the export drawn,
+its 52 nodes exported hidden are spawned hidden (D498) and the cut-off's
+visibility edits now show and hide them; with `?world=gen` the build's
+scene starts all visible and the first frame's cut-off hides what is far.
+
+## D684. The L4 gate on Seaside's and the loop's stations, from the web build
+
+2026-10-04, WP 7.4 and 7.5, D496's method: `rust-web-stations.mjs
+--level <id> --query world=gen` (no download; the photo through the
+request interception), then `cargo xtask parity shots` against the JS run
+`a`. **Seaside Raceway: all 29 stations within SPEC 12's limits** (14
+places × chase and high, and the attract view), median 0.21 mean ΔE00 and
+0.49 block 95 %, worst 0.925 / 5.01 (the attract view under the
+start-finish bridge, where the banner's "MIDNIGHT RACER" is set in the
+bundled Roboto and the JS shot in the machine's Arial, so one letter falls
+behind a post: D370). **Night City Cruise: all 115 stations within the
+limits** (57 places × 2 and the attract view), median 0.34 / 0.98, worst
+0.916 / 4.14 (03000-high).
+
+## D685. The races, keyboard and autopilot
+
+2026-10-04. In the web build (WebGPU, headless Chrome, `?world=gen` and
+the downloaded export): Seaside Raceway, W held from GO gives 13 m/s and
+200 m in 8 s; with `autodrive=1&timescale=4` the three laps run to the
+results (4:27.47, laps 1:31.21, 1:28.27, 1:27.99, results with the lap
+row). Natively the same with `shots=` (countdown, race, results). The
+Night City Cruise: W and autodrive both drive the loop, the score
+counting. The e2e suites that touch these levels pass against the build:
+`level-switch` (Sierra → Seaside → Sierra and a race, downloaded and
+`?world=gen`, where Seaside is now built rather than downloaded) and
+`race-flow` (11 tests, the cruise's End run among them).
+
+## D686. Budgets: memory and frame time on Seaside and the loop
+
+2026-10-04. Wasm size: D680. Wasm memory and frames from
+`tools/parity/rust-perf.mjs` (WebGPU, the dev machine's RTX 3060, uncapped
+frame rate, 30 s flight, the machine shared: load averages given):
+
+| Run | ready | p50 / p95 / max ms | wasm MB, load → reloads | load |
+|---|---|---|---|---|
+| Seaside `?world=gen` | 2.7 s | 3.0 / 7.2 / 41 | 205 → 236 (10 reloads, +0) | 10.0 → 10.5 |
+| JS Seaside | 1.3 s | 0.4 / 1.5 / 737 (242 over 50) | JS heap | 10 |
+| Cruise `?world=gen` | 5.4–6.7 s | 2.9 / 7.4 / 38 | 438 → 479–490 (10 reloads, +0) | 4.3–9.1 |
+| Cruise export, no build (`world=off`) | 4.2 s | 2.6 / 7.9 / 37 | 390 → **562** | 4.3 |
+| Cruise export with the build (default) | 5.2 s | 3.1 / 8.4 / 34 | 443 → **615** | 6.4 → 11.6 |
+| JS Cruise | 2.3 s | 0.5 / 1.7 / 105 (150 over 50) | JS heap | ~6 |
+
+Seaside's downloaded path (the 38 MB export and the build for the
+animators) stays at 192 MB. The race pages' figures agree: Seaside 219
+(`?world=gen`), Cruise 448 at load and 512 after two reloads with the
+race's cars and sound.
+
+So the loop's default path is over SPEC 6.6's 512 MB on a second load,
+and was before this package (562 MB with no world build; the build adds
+the animators' 50 MB). Its `?world=gen` path, with no 181 MB export to
+download and parse, stays under the budget and does not grow over ten
+reloads, at the same frame times. The animators cost nothing measurable
+(the loop's per-frame edits, D632, are mostly unchanged values). Not
+decided here, the owner's (D439, D492): whether the client should build
+its levels instead of downloading them. For the loop the memory now says
+it must, or the export path must lose its CPU copies; for Seaside either
+path fits.
+
+## D687. The lap and cruise lines of the plain HUD
+
+2026-10-04, WP 7.4's lap HUD and WP 7.5's cruise scoring HUD. The plain
+HUD (`play::hud`, D431, a stand-in until M6's styled HUD) carried `LAP
+n/of` and the cruise's score. It now carries what `HUD.js` `update` shows
+in `#hud-lap` and `#hud-cruise`: on a circuit the lap's time (`time -
+lapStart`, none once finished) and `BEST LAP` (the fastest lap so far);
+on the cruise the score (`Math.floor(…).toLocaleString()`), `×mult` with
+its timer as a ten-segment bar (`clamp(multTimer / 6, 0, 1)` when the
+multiplier is over 1, as `#hud-mult-fill`'s width), the distance in miles
+(`this.mph` is true) and the best (`max(hud.bestScore, score)`, the
+stored `bestScore.<level>` read at each start as `startRace` sets it). The
+layout, fonts and styling are M6's (WP 6.3).
