@@ -313,6 +313,11 @@ pub struct SceneGraph {
     /// the JS texture module hands out one `THREE.Texture` per key, so a
     /// second call returns the same texture (DECISIONS D271).
     pub shared: Vec<(Image, TextureId)>,
+    /// The car models' caches (`CarModel.js`'s module state: shared
+    /// materials, wheel, caliper, part and far geometry), whose handles
+    /// belong to this graph (DECISIONS D410). [`SceneGraph::append`] keeps
+    /// this graph's and drops the appended one's.
+    pub cars: Box<crate::car_model::CarKit>,
 }
 
 impl SceneGraph {
