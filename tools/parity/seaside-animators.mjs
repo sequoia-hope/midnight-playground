@@ -1,59 +1,33 @@
-// Level 1's animators, time step by time step (roadmap WP 3.9): the game's
-// own `world.update(dt, s, focus, camera)` on Sierra, with the parity
-// kernel, over a fixed list of frames, and every value it changes under
-// `world.root` recorded after each frame. That covers every updater of
-// Sierra at once (the flag, the waterfall's streaks, foam and spray, the
-// windpumps, waterwheel and sails, the creek, the freeway's chase bulbs and
-// lamps, the neon, the street lamps, the aircraft warning lights, the glow
-// points, the traffic streams, the sky glow, the road's dew) and the night
-// parameters World.update applies before them.
+// Seaside Raceway's animators, time step by time step (roadmap WP 7.4; the
+// pattern of tools/parity/desert-animators.mjs, D555, whose file and
+// golden it does not touch): the game's own `world.update(dt, s, focus,
+// camera)` on Seaside Raceway, with the parity kernel, then the race's
+// `world.onCountdown(cd)`, over a fixed list of frames, and every value
+// they change under `world.root` recorded after each frame. Raceway
+// registers no updater: what moves is the road's dew, the night parameters
+// and the sky World.update applies, and the start lights, whose five
+// materials' emissiveIntensity onCountdown sets from the countdown (the
+// race calls it every frame with the seconds left, 3.999 to 0, or -1 once
+// racing).
 //
-//   node --import=./tools/parity/kernel/register.mjs tools/parity/animators.mjs [--level coast] [--check]
-//   node tools/parity/animators.mjs --browser [--level coast] [--check]
+//   node --import=./tools/parity/kernel/register.mjs tools/parity/seaside-animators.mjs [--check]
+//   node tools/parity/seaside-animators.mjs --browser [--check]
 //
-// --level picks the level (default sierra). On the Coast Highway (WP 7.1)
-// the frames run the route from blue hour to morning with the camera by the
-// cliffs, the pier and the docks (no Coast, Beach or Harbor updater looks at
-// the camera), and the golden is parity/golden/animators/coast.json. On
-// Downtown Streets (WP 7.2) they run the route at midnight with the camera
-// by the start, under the viaduct and by the finish (only the steam reads
-// the camera, its field of view), the player passing under the elevated
-// railway where the train is scripted to meet him, one long frame letting
-// the free-running train wrap round, and the ticks run under the viaduct;
-// the golden is parity/golden/animators/streets.json.
+// As animators.mjs: by default under Node (a canvas that draws nothing, a
+// patched material's uniforms taken by running its onBeforeCompile on an
+// empty shader, the aerial photo's texture an empty one, since nothing
+// reads its pixels); --browser takes the same capture in the game itself
+// (?kernel=1&freeze=1&s=0, the menu: no race, so nothing else calls
+// onCountdown).
 //
-// By default the world is built under Node: the game's own World.build on
-// Sierra with a canvas that draws nothing (no updater reads a pixel), and a
-// patched material's uniforms read by running its onBeforeCompile on an
-// empty shader. --browser takes the same capture in the game itself
-// (headless Chrome, ?kernel=1&freeze=1&s=0, Math.random seeded as the scene
-// export seeds it: the frozen menu calls world.update with dt 0, so no
-// updater has advanced its clock), the uniforms read from the compiled
-// programs. Both write the same file, which is how the Node capture is
-// known to be the game's (DECISIONS D470).
-//
-// In one synchronous run, so that nothing comes between: a snapshot of
-// every node (position, quaternion, scale, visibility, light colour and
-// intensity, instance count; instance matrices, instance colours and
-// geometry attributes by their version), every material (each own number,
-// boolean and colour, and each uniform: a ShaderMaterial's own, a patched
-// material's that three's ShaderLib lacks) and every texture a material
-// uses (offset, repeat, rotation, centre); then each frame of FRAMES and
-// TICKS through World.update and a snapshot after it. A value is recorded
-// when it differs from the first snapshot in any frame.
-//
-// Targets are numbered as the scene export numbers them under world.root
-// (nodes depth first; materials in order of first use; a texture by the
-// first material and key that hold it), which is how mr_worldgen numbers
-// its scene. Numbers are hex f64 bits, arrays the SHA-256 of their bytes.
-//
-// Writes parity/golden/animators/sierra.json: the targets, the keys, the
-// first snapshot's values, every value per frame of FRAMES and, for the run
-// of TICKS (fixed 1/120 s ticks), a SHA-256 per tick of the lines
-// `key=value`. crates/mr_worldgen/tests/animators.rs replays the frames on
-// the Rust build (WorldBuild::update_sky, the night parameters, then
-// WorldBuild::update) and requires the same values. --check captures again
-// (twice with --browser) and fails if the golden would change.
+// The frames: uneven steps (dt 0 to 3.3 s) round the lap with the camera
+// at the line, the hairpin and the Corkscrew, the countdown running down
+// from 3.999 through every light to GO and racing (-1), then back; then 360
+// ticks of 1/120 s with the player at 60 m/s and the countdown running from
+// 4 to 0 (cd = 4 - (k + 1) / 90). Writes parity/golden/animators/seaside.json;
+// crates/mr_worldgen/tests/seaside_animators.rs replays it on the Rust build
+// (WorldBuild::update_sky, the night parameters, WorldBuild::update, then
+// WorldBuild::countdown).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -62,13 +36,12 @@ import { seedRandom, RANDOM_SEED } from './lib/seed-random.mjs';
 
 const CHECK = process.argv.includes('--check');
 const BROWSER = process.argv.includes('--browser');
-const LEVEL = process.argv.includes('--level') ? process.argv[process.argv.indexOf('--level') + 1] : 'sierra';
-if (!['sierra', 'coast', 'streets'].includes(LEVEL)) throw new Error('animators: --level sierra, coast or streets');
-const OUT = path.join(ROOT, `parity/golden/animators/${LEVEL}.json`);
+const OUT = path.join(ROOT, 'parity/golden/animators/seaside.json');
+const LEVEL = 'seaside';
 
 // Runs in the page (env null) or under Node, synchronously until the
 // hashing at the end.
-async function run(env, level = 'sierra') {
+async function run(env) {
   const page = !env;
   if (page) env = { THREE: window.__THREE, world: window.__world, camera: window.__camera.clone() };
   const { THREE, world, camera } = env;
@@ -102,7 +75,7 @@ async function run(env, level = 'sierra') {
     let compiled;
     if (page) {
       compiled = renderer.properties.get(m).uniforms;
-      if (!compiled) throw new Error('animators: a patched material was never compiled');
+      if (!compiled) throw new Error('seaside-animators: a patched material was never compiled');
     } else {
       // The patch's own uniform objects, as onBeforeCompile hands them to
       // the program.
@@ -178,84 +151,48 @@ async function run(env, level = 'sierra') {
     return out;
   }
 
-  // Where the frames put the camera: by the lookout's flag (the flag waves
-  // within 600 m), by the waterfall's pool (the foam and spray move within
-  // 800 m), in the city (neither). On the coast: by the cliffs, the pier and
-  // the docks.
-  let at, FRAMES, PLACES, S0 = 4000;
-  if (level === 'streets') {
-    const t = world.track;
-    const by = (s) => { const f = t.frame(s, {}); return [f.x, f.y + 6, f.z]; };
-    const el = t.tag('el')[0];
-    const sx = Math.round((el.s0 + el.s1) / 2);
-    const L = t.length;
-    at = { start: by(t.startS + 20), viaduct: by(sx), finish: by(t.finishS - 40) };
-    PLACES = ['start', 'viaduct', 'finish'];
-    FRAMES = [
-      [0.0, 0, 'start'], [1 / 120, 0, 'viaduct'], [1 / 120, 40, 'finish'], [1 / 60, 300, 'start'],
-      [0.25, sx - 600, 'viaduct'], [0.5, sx - 380, 'finish'], [1 / 30, sx - 379, 'start'], [2, sx - 120, 'viaduct'],
-      [0.1, sx, 'finish'], [0.7, sx + 159, 'start'], [1 / 120, sx + 160, 'viaduct'], [3.3, sx + 400, 'finish'],
-      [150, Math.round(L * 0.7), 'start'], [1.25, Math.round(L * 0.8), 'viaduct'], [0.016, L - 10, 'finish'], [0.333, L, 'start'],
-    ];
-    S0 = sx - 300;
-  } else if (level === 'coast') {
-    const t = world.track;
-    const mid = (name) => { const g = t.tag(name)[0]; return (g.s0 + g.s1) / 2; };
-    const by = (s) => { const f = t.frame(s, {}); return [f.x, f.y + 6, f.z]; };
-    at = { cliffs: by(mid('lighthouse')), pier: by(mid('pier')), docks: by(mid('containers')) };
-    PLACES = ['cliffs', 'pier', 'docks'];
-    FRAMES = [
-      [0.0, 0, 'cliffs'], [1 / 120, 0, 'pier'], [1 / 120, 40, 'docks'], [1 / 60, 300, 'cliffs'],
-      [0.25, 1200, 'pier'], [0.5, 2000, 'docks'], [1 / 30, 2700, 'cliffs'], [2, 3300, 'pier'],
-      [0.1, 3900, 'docks'], [0.7, 4500, 'cliffs'], [1 / 120, 4865, 'pier'], [3.3, 5400, 'docks'],
-      [0.05, 6000, 'cliffs'], [1.25, 6600, 'pier'], [0.016, 7200, 'docks'], [0.333, 7665, 'cliffs'],
-    ];
-  } else {
-  const mountain = world.root.getObjectByName('mountain');
-  let flag = null, pool = null;
-  mountain.traverse((o) => {
-    const p = o.geometry?.parameters;
-    if (o.isMesh && o.geometry.type === 'PlaneGeometry' && p.width === 1.8 && p.height === 1.1) flag = o;
-    if (o.isMesh && o.geometry.type === 'CircleGeometry' && p.radius === 3.4) pool = o;
-  });
-  if (!flag || !pool) throw new Error('animators: the flag or the pool was not found');
+  // Where the frames put the camera: at the line, by the hairpin, at the
+  // Corkscrew.
   const t = world.track;
-  const city = t.frame(8200, {});
-  at = {
-    flag: [flag.position.x + 40, flag.position.y + 12, flag.position.z - 25],
-    pool: [pool.position.x - 60, pool.position.y + 20, pool.position.z + 35],
-    city: [city.x, city.y + 6, city.z],
-  };
-  // (dt, s, where): uneven steps, the route's time of day from day to night.
-  FRAMES = [
-    [0.0, 0, 'flag'], [1 / 120, 0, 'pool'], [1 / 120, 40, 'flag'], [1 / 60, 300, 'pool'],
-    [0.25, 1500, 'city'], [0.5, 2500, 'flag'], [1 / 30, 3500, 'pool'], [2, 4500, 'city'],
-    [0.1, 5200, 'pool'], [0.7, 6000, 'flag'], [1 / 120, 6419, 'city'], [3.3, 7000, 'pool'],
-    [0.05, 7600, 'flag'], [1.25, 8200, 'city'], [0.016, 8800, 'pool'], [0.333, 9379, 'flag'],
+  const mid = (name) => { const g = t.tag(name)[0]; return (g.s0 + g.s1) / 2; };
+  const st = (s) => { const f = t.frame(s, {}); return [f.x, f.y + 6, f.z]; };
+  const at = { line: st(20), hairpin: st(mid('hairpin')), corkscrew: st(mid('corkscrew')) };
+  const PLACES = ['line', 'hairpin', 'corkscrew'];
+  // (dt, s, where, cd): uneven steps round the lap and past the line, the
+  // countdown lighting each column in turn, GO, racing, then a fresh start.
+  const FRAMES = [
+    [0.0, 0, 'line', 3.999], [1 / 120, 0, 'line', 3.5], [1 / 60, 40, 'hairpin', 3.2], [0.25, 300, 'line', 2.7],
+    [0.5, 600, 'hairpin', 2.4], [2, 1200, 'corkscrew', 1.6], [1 / 30, 1800, 'line', 1.2], [0.1, 2200, 'hairpin', 0.8],
+    [3.3, 2560, 'corkscrew', 0.3], [0.7, 3000, 'line', 0.0001], [1 / 120, 3400, 'hairpin', 0], [1.25, 3594, 'corkscrew', -1],
+    [0.05, 3700, 'line', -1], [0.333, 5000, 'hairpin', 3.999], [2, 7000, 'corkscrew', 2], [0.016, 10700, 'line', -1],
   ];
-  PLACES = ['flag', 'pool', 'city'];
-  }
-  // Then fixed ticks with the player moving at 60 m/s, the camera hopping.
-  const TICKS = 360, TICK = 1 / 120;
+  // Then fixed ticks with the player moving at 60 m/s, the camera hopping
+  // and the countdown running from 4 to 0.
+  const TICKS = 360, TICK = 1 / 120, S0 = 1000;
+  const cdAt = (k) => 4 - (k + 1) / 90;
   const focus = new THREE.Vector3();
-  const step = (dt, s, where, look = true) => {
+  const step = (dt, s, where, cd, look = true) => {
     camera.position.fromArray(at[where]);
     focus.fromArray(at[where]);
     world.update(dt, s, focus, camera);
+    world.onCountdown?.(cd);
     return look ? snapshot(false) : null;
   };
 
-  // A frozen frame first (dt 0 at the start, as the menu's, but at a fixed
+  // A frozen frame first (dt 0 at the line, as the menu's, but at a fixed
   // place: the menu's own drifts with the clock), so that the first
-  // snapshot is the same wherever the world was built.
-  step(0, 0, PLACES[0], false);
+  // snapshot is the same wherever the world was built. It does not call
+  // onCountdown: the lights are as built, dark.
+  camera.position.fromArray(at.line);
+  focus.fromArray(at.line);
+  world.update(0, 0, focus, camera);
   const base = snapshot(true);
-  const frames = FRAMES.map(([dt, s, where]) => ({ dt, s, where, snap: step(dt, s, where) }));
+  const frames = FRAMES.map(([dt, s, where, cd]) => ({ dt, s, where, cd, snap: step(dt, s, where, cd) }));
   const ticks = [];
   for (let k = 0; k < TICKS; k++) {
     const where = PLACES[Math.floor(k / 40) % 3];
     const s = S0 + k * TICK * 60;
-    ticks.push({ s, where, snap: step(TICK, s, where) });
+    ticks.push({ s, where, snap: step(TICK, s, where, cdAt(k)) });
   }
 
   // The keys that changed, in the order snapshot() lists them.
@@ -279,9 +216,9 @@ async function run(env, level = 'sierra') {
     keys,
     base: keys.map((key) => base.get(key)),
     frames: [],
-    ticks: { s0: bits(S0), dt: bits(TICK), count: TICKS, speed: bits(60), digests: [] },
+    ticks: { s0: bits(S0), dt: bits(TICK), count: TICKS, speed: bits(60), cd: '4 - (k + 1) / 90', digests: [] },
   };
-  for (const f of frames) out.frames.push({ dt: bits(f.dt), s: bits(f.s), at: f.where, values: await row(f.snap) });
+  for (const f of frames) out.frames.push({ dt: bits(f.dt), s: bits(f.s), at: f.where, cd: bits(f.cd), values: await row(f.snap) });
   for (const f of ticks) out.ticks.digests.push(await digest(await row(f.snap)));
   return out;
 }
@@ -293,7 +230,7 @@ async function captureBrowser() {
     const game = await openGame(browser, { query: `level=${LEVEL}&kernel=1&freeze=1&s=0`, init: seedRandom, initArgs: [RANDOM_SEED] });
     const state = await game.eval(() => ({ id: window.__world?.level?.id, kernel: !!window.__parity?.kernel, freeze: !!window.__parity?.freeze }));
     if (state.id !== LEVEL || !state.kernel || !state.freeze) throw new Error(`page state ${JSON.stringify(state)}`);
-    const out = await game.eval(run, null, LEVEL);
+    const out = await game.eval(run, null);
     const errors = [...game.errors, ...(await game.eval('(window.__parity?.errors || []).map(String)'))];
     if (errors.length) throw new Error('page errors: ' + errors.slice(0, 3).join(' | '));
     await game.close();
@@ -309,7 +246,7 @@ async function captureBrowser() {
 async function captureNode() {
   const { kernelInstalled } = await import('../../src/parity/kernel.js');
   if (!kernelInstalled()) {
-    console.error('animators: run with --import=./tools/parity/kernel/register.mjs (or --browser)');
+    console.error('seaside-animators: run with --import=./tools/parity/kernel/register.mjs (or --browser)');
     process.exit(1);
   }
   seedRandom(RANDOM_SEED);
@@ -328,6 +265,9 @@ async function captureNode() {
   const THREE = await import('three');
   const { LEVELS } = await import('../../test/unit/support/levels.js');
   const { World } = await import('../../src/world/World.js');
+  // The aerial photo: nothing reads its pixels, and Node has no image
+  // loader.
+  THREE.TextureLoader.prototype.loadAsync = async () => new THREE.Texture();
   const level = LEVELS.find((l) => l.id === LEVEL);
   const renderer = { toneMappingExposure: 1, domElement: { height: 800 } };
   const world = new World(new THREE.Scene(), renderer, level);
@@ -339,10 +279,13 @@ async function captureNode() {
   } finally {
     Object.assign(console, { warn, error });
   }
-  if (said.length) throw new Error('the build complained: ' + said.slice(0, 3).join(' | '));
+  // blobGeometry calls toNonIndexed on an icosahedron, which already is:
+  // three warns and returns it (the game does the same).
+  const complaints = said.filter((m) => !m.includes('BufferGeometry is already non-indexed'));
+  if (complaints.length) throw new Error('the build complained: ' + complaints.slice(0, 3).join(' | '));
   // main.js's camera.
   const camera = new THREE.PerspectiveCamera(62, 1280 / 800, 0.3, 9000);
-  return run({ THREE, world, camera }, LEVEL);
+  return run({ THREE, world, camera });
 }
 
 const capture = () => (BROWSER ? captureBrowser() : captureNode());
@@ -350,9 +293,7 @@ const capture = () => (BROWSER ? captureBrowser() : captureNode());
 // One frame's values per line, so the file diffs by frame.
 function text(r) {
   const head = {
-    note: LEVEL === 'sierra'
-      ? 'Generated by tools/parity/animators.mjs: Sierra\'s world.update over fixed frames (kernel on), every value it changes under world.root. Numbers are hex f64 bits; arrays the SHA-256 of their bytes. Do not edit.'
-      : `Generated by tools/parity/animators.mjs --level ${LEVEL}: the level's world.update over fixed frames (kernel on), every value it changes under world.root. Numbers are hex f64 bits; arrays the SHA-256 of their bytes. Do not edit.`,
+    note: 'Generated by tools/parity/seaside-animators.mjs: Seaside Raceway\'s world.update and world.onCountdown over fixed frames (kernel on), every value they change under world.root. Numbers are hex f64 bits; arrays the SHA-256 of their bytes. Do not edit.',
     camera: r.camera, fov: r.fov, viewportHeight: r.viewportHeight, targets: r.targets,
   };
   const lines = [JSON.stringify(head, null, 1).slice(0, -2) + ','];
@@ -376,10 +317,10 @@ if (CHECK) {
   if (BROWSER && text(await capture()) !== first) { bad++; console.log('  two captures differ'); }
   if (!fs.existsSync(OUT) || fs.readFileSync(OUT, 'utf8') !== first) { bad++; console.log(`  ${path.relative(ROOT, OUT)}: would change`); }
   if (bad) process.exit(1);
-  console.log(`animators: ${BROWSER ? 'two captures in the game' : 'the Node capture'} and the golden agree`);
+  console.log(`seaside-animators: ${BROWSER ? 'two captures in the game' : 'the Node capture'} and the golden agree`);
 } else {
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, first);
   const j = JSON.parse(first);
-  console.log(`animators: ${j.keys.length} values over ${j.frames.length} frames and ${j.ticks.count} ticks, ${Object.keys(j.targets).length} targets, in ${path.relative(ROOT, OUT)}`);
+  console.log(`seaside-animators: ${j.keys.length} values over ${j.frames.length} frames and ${j.ticks.count} ticks, ${Object.keys(j.targets).length} targets, in ${path.relative(ROOT, OUT)}`);
 }

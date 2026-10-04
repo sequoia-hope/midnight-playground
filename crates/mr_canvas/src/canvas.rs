@@ -510,6 +510,11 @@ impl Canvas {
         self.text(text, x, y, None, true);
     }
 
+    /// `strokeText(text, x, y, maxWidth)`.
+    pub fn stroke_text_max(&mut self, text: &str, x: f64, y: f64, max_width: f64) {
+        self.text(text, x, y, Some(max_width), true);
+    }
+
     pub fn measure_text(&self, text: &str) -> TextMetrics {
         TextMetrics {
             width: layout(&self.fonts, &self.state.font_spec, text).width,

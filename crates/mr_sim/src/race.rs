@@ -254,6 +254,13 @@ pub enum SimEvent {
     },
     /// Something the pursuit did (heat, units, props, busts, ...).
     Pursuit(PursuitEvent),
+    /// The player drove this tick on controls other than its input: the
+    /// cool-down driver after the finish, or the hold of a bust. The audio
+    /// hears this throttle (`ctrl.throttle` in Race.update's audio call).
+    Controls {
+        player: usize,
+        throttle: f64,
+    },
 }
 
 /// How a race is set up (Race's constructor arguments).
@@ -808,6 +815,12 @@ pub fn step(
     } else {
         inp
     };
+    if st.players[0].rules.finished || st.pv.as_ref().is_some_and(|pv| pv.held()) {
+        events.push(SimEvent::Controls {
+            player: 0,
+            throttle: ctrl.throttle,
+        });
+    }
     {
         let p = &mut st.players[0];
         p.phys.update(&mut p.v, t, dt, &ctrl);

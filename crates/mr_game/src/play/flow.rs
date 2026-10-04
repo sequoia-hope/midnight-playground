@@ -12,6 +12,7 @@ use mr_sim::race::{
     DT, LevelRuntime, RaceOpts, RaceStateKind, ResultRow, SimEvent, SimState, results,
 };
 
+use super::audio::TickAudio;
 use super::camera::CameraRig;
 use super::input::Input;
 use super::pose::Springs;
@@ -110,6 +111,13 @@ pub struct Race {
     /// The events of the ticks of the last frame (for the camera bumps and
     /// the tests).
     pub log: Vec<SimEvent>,
+    /// What the audio hears of each tick of the last frame, in order
+    /// ([`super::audio`]).
+    pub audio_ticks: Vec<TickAudio>,
+    /// The music key (M) was pressed this frame.
+    pub music_pressed: bool,
+    /// Races started on this `Race` (`restart` counts one more).
+    pub starts: u32,
 }
 
 /// Every car slot of a state: the players, the rivals, the traffic pool
@@ -142,6 +150,9 @@ impl Race {
             mode: Mode::Race,
             results: None,
             log: Vec::new(),
+            audio_ticks: Vec::new(),
+            music_pressed: false,
+            starts: 1,
         }
     }
 
@@ -160,6 +171,7 @@ impl Race {
         self.results = None;
         self.input.pressed.clear();
         self.input.enabled = true;
+        self.starts += 1;
     }
 
     pub fn state(&self) -> RaceStateKind {
@@ -187,6 +199,7 @@ impl Race {
     /// `?timescale`).
     pub fn frame(&mut self, dt: f64) {
         self.log.clear();
+        self.audio_ticks.clear();
         if self.input.consume("pause") {
             match self.mode {
                 Mode::Race => self.pause(true),
@@ -194,7 +207,7 @@ impl Race {
                 Mode::Results => {}
             }
         }
-        self.input.consume("music"); // no music yet (M5)
+        self.music_pressed = self.input.consume("music");
         if self.mode == Mode::Paused {
             return;
         }
@@ -206,25 +219,30 @@ impl Race {
             input,
             touch,
             setup,
+            audio_ticks,
             ..
         } = self;
         let autodrive = setup.autodrive;
         let track = session.lr.track.clone();
         let mut first = true;
-        session.advance(dt, |st| {
-            let s = input.update(DT, Some(touch));
-            let mut inp = s.sim();
-            if autodrive {
-                autopilot(&mut inp, &st.players[0].v, &track);
-            }
-            let mut f = InputFrame::quantise(&inp);
-            // The reset key is read once a frame, by its first tick.
-            if first && input.consume("reset") {
-                f.flags |= RESET;
-            }
-            first = false;
-            f
-        });
+        session.advance_observed(
+            dt,
+            |st| {
+                let s = input.update(DT, Some(touch));
+                let mut inp = s.sim();
+                if autodrive {
+                    autopilot(&mut inp, &st.players[0].v, &track);
+                }
+                let mut f = InputFrame::quantise(&inp);
+                // The reset key is read once a frame, by its first tick.
+                if first && input.consume("reset") {
+                    f.flags |= RESET;
+                }
+                first = false;
+                f
+            },
+            |lr, st, ev, f| audio_ticks.push(TickAudio::of(lr, st, ev, f)),
+        );
         self.touch.tick(dt);
         let events = std::mem::take(&mut self.session.events);
         for e in &events {
