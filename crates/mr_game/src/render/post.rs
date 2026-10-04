@@ -17,7 +17,7 @@ use bevy::render::camera::ExtractedCamera;
 use bevy::render::extract_component::ExtractComponent;
 use bevy::render::render_resource::binding_types::{sampler, texture_2d, uniform_buffer_sized};
 use bevy::render::render_resource::*;
-use bevy::render::renderer::{RenderContext, RenderDevice, ViewQuery};
+use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue, ViewQuery};
 use bevy::render::texture::{CachedTexture, TextureCache};
 use bevy::render::view::ViewTarget;
 use std::num::NonZeroU64;
@@ -112,6 +112,20 @@ pub struct PostPipelines {
 const UNIFORM_FLOATS: usize = 24;
 const UNIFORM_SIZE: u64 = (UNIFORM_FLOATS * 4) as u64;
 
+/// The chain's uniform buffer and bind groups, kept between frames
+/// (D457): they change only with the exposure (the buffer's contents) and
+/// the textures (a resize, and the view's two post-process textures, which
+/// swap every frame), so a frame creates no WebGPU objects here. Creating
+/// a buffer and thirteen bind groups every frame made garbage the browser
+/// collects (Firefox: a major GC every 20 s or so, "TOO_MUCH_MALLOC").
+#[derive(Resource, Default)]
+pub struct PostCache {
+    buffer: Option<Buffer>,
+    data: Vec<u8>,
+    /// Bind groups per set of views: source, destination, the bloom's.
+    groups: Vec<(Vec<TextureViewId>, Vec<BindGroup>)>,
+}
+
 pub fn init_post_pipelines(
     mut commands: Commands,
     render_device: Res<RenderDevice>,
@@ -189,6 +203,8 @@ pub fn three_post(
     pipelines: Option<Res<PostPipelines>>,
     pipeline_cache: Res<PipelineCache>,
     globals: Option<Res<Globals>>,
+    queue: Res<RenderQueue>,
+    mut cache: ResMut<PostCache>,
     mut ctx: RenderContext,
 ) {
     let (target, textures) = view.into_inner();
@@ -280,32 +296,69 @@ pub fn three_post(
             data[at + 4 * k..at + 4 * k + 4].copy_from_slice(&x.to_le_bytes());
         }
     }
-    let buffer = device.create_buffer_with_data(&BufferInitDescriptor {
-        label: Some("mr_post_uniforms"),
-        contents: &data,
-        usage: BufferUsages::UNIFORM,
-    });
-    let layout = pipeline_cache.get_bind_group_layout(&pipelines.layout);
+    let cache = &mut *cache;
+    if cache
+        .buffer
+        .as_ref()
+        .is_none_or(|b| b.size() != data.len() as u64)
+    {
+        cache.buffer = Some(device.create_buffer_with_data(&BufferInitDescriptor {
+            label: Some("mr_post_uniforms"),
+            contents: &data,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        }));
+        cache.groups.clear();
+        cache.data.clone_from(&data);
+    } else if cache.data != data {
+        if let Some(b) = &cache.buffer {
+            queue.write_buffer(b, 0, &data);
+        }
+        cache.data.clone_from(&data);
+    }
+    let Some(buffer) = cache.buffer.clone() else {
+        return;
+    };
+    let key: Vec<TextureViewId> = [post.source.id(), post.destination.id(), bright.id()]
+        .into_iter()
+        .chain((0..N_MIPS).flat_map(|i| [h(i).id(), v(i).id()]))
+        .collect();
+    if !cache.groups.iter().any(|(k, _)| *k == key) {
+        let layout = pipeline_cache.get_bind_group_layout(&pipelines.layout);
+        let groups = steps
+            .iter()
+            .map(|s| {
+                device.create_bind_group(
+                    "mr_post_bind_group",
+                    &layout,
+                    &BindGroupEntries::sequential((
+                        BufferBinding {
+                            buffer: &buffer,
+                            offset: 0,
+                            size: NonZeroU64::new(UNIFORM_SIZE),
+                        },
+                        s.inputs[0],
+                        &pipelines.sampler,
+                        s.inputs[1],
+                        s.inputs[2],
+                        s.inputs[3],
+                        s.inputs[4],
+                    )),
+                )
+            })
+            .collect();
+        // Two entries in use (the swapping textures); older ones are from
+        // textures since replaced.
+        if cache.groups.len() >= 4 {
+            cache.groups.clear();
+        }
+        cache.groups.push((key.clone(), groups));
+    }
+    let Some((_, groups)) = cache.groups.iter().find(|(k, _)| *k == key) else {
+        return;
+    };
     let encoder = ctx.command_encoder();
     encoder.push_debug_group("mr_post");
-    for (i, s) in steps.iter().enumerate() {
-        let group = device.create_bind_group(
-            "mr_post_bind_group",
-            &layout,
-            &BindGroupEntries::sequential((
-                BufferBinding {
-                    buffer: &buffer,
-                    offset: 0,
-                    size: NonZeroU64::new(UNIFORM_SIZE),
-                },
-                s.inputs[0],
-                &pipelines.sampler,
-                s.inputs[1],
-                s.inputs[2],
-                s.inputs[3],
-                s.inputs[4],
-            )),
-        );
+    for (i, (s, group)) in steps.iter().zip(groups).enumerate() {
         let mut pass = encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("mr_post_pass"),
             color_attachments: &[Some(RenderPassColorAttachment {
@@ -320,7 +373,7 @@ pub fn three_post(
             multiview_mask: None,
         });
         pass.set_pipeline(s.pipeline);
-        pass.set_bind_group(0, &group, &[(align * i as u64) as u32]);
+        pass.set_bind_group(0, group, &[(align * i as u64) as u32]);
         pass.draw(0..3, 0..1);
     }
     encoder.pop_debug_group();

@@ -1,53 +1,31 @@
-// Level 1's animators, time step by time step (roadmap WP 3.9): the game's
-// own `world.update(dt, s, focus, camera)` on Sierra, with the parity
-// kernel, over a fixed list of frames, and every value it changes under
-// `world.root` recorded after each frame. That covers every updater of
-// Sierra at once (the flag, the waterfall's streaks, foam and spray, the
-// windpumps, waterwheel and sails, the creek, the freeway's chase bulbs and
-// lamps, the neon, the street lamps, the aircraft warning lights, the glow
-// points, the traffic streams, the sky glow, the road's dew) and the night
+// Desert Run's animators, time step by time step (roadmap WP 7.3; the
+// pattern of tools/parity/animators.mjs, D470, whose file and golden it
+// does not touch): the game's own `world.update(dt, s, focus, camera)` on
+// Desert Run, with the parity kernel, over a fixed list of frames, and
+// every value it changes under `world.root` recorded after each frame. That
+// covers Desert's updater (the glows' shared clock and colours, the flame,
+// beam and pool opacities, the freight train's cars, lights and beam, the
+// tumbleweeds rolling across the highway), the road's dew and the night
 // parameters World.update applies before them.
 //
-//   node --import=./tools/parity/kernel/register.mjs tools/parity/animators.mjs [--level coast] [--check]
-//   node tools/parity/animators.mjs --browser [--level coast] [--check]
+//   node --import=./tools/parity/kernel/register.mjs tools/parity/desert-animators.mjs [--check]
+//   node tools/parity/desert-animators.mjs --browser [--check]
 //
-// --level picks the level (default sierra). On the Coast Highway (WP 7.1)
-// the frames run the route from blue hour to morning with the camera by the
-// cliffs, the pier and the docks (no Coast, Beach or Harbor updater looks at
-// the camera), and the golden is parity/golden/animators/coast.json.
+// As animators.mjs: by default under Node (a canvas that draws nothing, a
+// patched material's uniforms taken by running its onBeforeCompile on an
+// empty shader); --browser takes the same capture in the game itself
+// (?kernel=1&freeze=1&s=0). The tumbleweeds draw from the page's
+// Math.random, so just before the first frame the capture reseeds it with
+// the scene captures' seed (0x5eed, lib/seed-random.mjs), as the Rust
+// animator seeds its own generator (DECISIONS D552); the frozen frame at
+// s = 0 draws nothing from it.
 //
-// By default the world is built under Node: the game's own World.build on
-// Sierra with a canvas that draws nothing (no updater reads a pixel), and a
-// patched material's uniforms read by running its onBeforeCompile on an
-// empty shader. --browser takes the same capture in the game itself
-// (headless Chrome, ?kernel=1&freeze=1&s=0, Math.random seeded as the scene
-// export seeds it: the frozen menu calls world.update with dt 0, so no
-// updater has advanced its clock), the uniforms read from the compiled
-// programs. Both write the same file, which is how the Node capture is
-// known to be the game's (DECISIONS D470).
-//
-// In one synchronous run, so that nothing comes between: a snapshot of
-// every node (position, quaternion, scale, visibility, light colour and
-// intensity, instance count; instance matrices, instance colours and
-// geometry attributes by their version), every material (each own number,
-// boolean and colour, and each uniform: a ShaderMaterial's own, a patched
-// material's that three's ShaderLib lacks) and every texture a material
-// uses (offset, repeat, rotation, centre); then each frame of FRAMES and
-// TICKS through World.update and a snapshot after it. A value is recorded
-// when it differs from the first snapshot in any frame.
-//
-// Targets are numbered as the scene export numbers them under world.root
-// (nodes depth first; materials in order of first use; a texture by the
-// first material and key that hold it), which is how mr_worldgen numbers
-// its scene. Numbers are hex f64 bits, arrays the SHA-256 of their bytes.
-//
-// Writes parity/golden/animators/sierra.json: the targets, the keys, the
-// first snapshot's values, every value per frame of FRAMES and, for the run
-// of TICKS (fixed 1/120 s ticks), a SHA-256 per tick of the lines
-// `key=value`. crates/mr_worldgen/tests/animators.rs replays the frames on
-// the Rust build (WorldBuild::update_sky, the night parameters, then
-// WorldBuild::update) and requires the same values. --check captures again
-// (twice with --browser) and fails if the golden would change.
+// The frames: uneven steps (dt 0 to 3.3 s) from the start, where the train
+// waits, through Route 66, where it rolls and the tumbleweeds spawn, to
+// the lake, then back; then 360 ticks of 1/120 s with the player at 60 m/s
+// on Route 66, the camera hopping between three stations. Writes
+// parity/golden/animators/desert.json; crates/mr_worldgen/tests/
+// desert_animators.rs replays it on the Rust build.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -56,13 +34,12 @@ import { seedRandom, RANDOM_SEED } from './lib/seed-random.mjs';
 
 const CHECK = process.argv.includes('--check');
 const BROWSER = process.argv.includes('--browser');
-const LEVEL = process.argv.includes('--level') ? process.argv[process.argv.indexOf('--level') + 1] : 'sierra';
-if (!['sierra', 'coast'].includes(LEVEL)) throw new Error('animators: --level sierra or coast');
-const OUT = path.join(ROOT, `parity/golden/animators/${LEVEL}.json`);
+const OUT = path.join(ROOT, 'parity/golden/animators/desert.json');
+const LEVEL = 'desert';
 
 // Runs in the page (env null) or under Node, synchronously until the
 // hashing at the end.
-async function run(env, level = 'sierra') {
+async function run(env) {
   const page = !env;
   if (page) env = { THREE: window.__THREE, world: window.__world, camera: window.__camera.clone() };
   const { THREE, world, camera } = env;
@@ -96,7 +73,7 @@ async function run(env, level = 'sierra') {
     let compiled;
     if (page) {
       compiled = renderer.properties.get(m).uniforms;
-      if (!compiled) throw new Error('animators: a patched material was never compiled');
+      if (!compiled) throw new Error('desert-animators: a patched material was never compiled');
     } else {
       // The patch's own uniform objects, as onBeforeCompile hands them to
       // the program.
@@ -172,50 +149,22 @@ async function run(env, level = 'sierra') {
     return out;
   }
 
-  // Where the frames put the camera: by the lookout's flag (the flag waves
-  // within 600 m), by the waterfall's pool (the foam and spray move within
-  // 800 m), in the city (neither). On the coast: by the cliffs, the pier and
-  // the docks.
-  let at, FRAMES, PLACES;
-  if (level === 'coast') {
-    const t = world.track;
-    const mid = (name) => { const g = t.tag(name)[0]; return (g.s0 + g.s1) / 2; };
-    const by = (s) => { const f = t.frame(s, {}); return [f.x, f.y + 6, f.z]; };
-    at = { cliffs: by(mid('lighthouse')), pier: by(mid('pier')), docks: by(mid('containers')) };
-    PLACES = ['cliffs', 'pier', 'docks'];
-    FRAMES = [
-      [0.0, 0, 'cliffs'], [1 / 120, 0, 'pier'], [1 / 120, 40, 'docks'], [1 / 60, 300, 'cliffs'],
-      [0.25, 1200, 'pier'], [0.5, 2000, 'docks'], [1 / 30, 2700, 'cliffs'], [2, 3300, 'pier'],
-      [0.1, 3900, 'docks'], [0.7, 4500, 'cliffs'], [1 / 120, 4865, 'pier'], [3.3, 5400, 'docks'],
-      [0.05, 6000, 'cliffs'], [1.25, 6600, 'pier'], [0.016, 7200, 'docks'], [0.333, 7665, 'cliffs'],
-    ];
-  } else {
-  const mountain = world.root.getObjectByName('mountain');
-  let flag = null, pool = null;
-  mountain.traverse((o) => {
-    const p = o.geometry?.parameters;
-    if (o.isMesh && o.geometry.type === 'PlaneGeometry' && p.width === 1.8 && p.height === 1.1) flag = o;
-    if (o.isMesh && o.geometry.type === 'CircleGeometry' && p.radius === 3.4) pool = o;
-  });
-  if (!flag || !pool) throw new Error('animators: the flag or the pool was not found');
+  // Where the frames put the camera: at the start, on Route 66, on the lake.
   const t = world.track;
-  const city = t.frame(8200, {});
-  at = {
-    flag: [flag.position.x + 40, flag.position.y + 12, flag.position.z - 25],
-    pool: [pool.position.x - 60, pool.position.y + 20, pool.position.z + 35],
-    city: [city.x, city.y + 6, city.z],
-  };
-  // (dt, s, where): uneven steps, the route's time of day from day to night.
-  FRAMES = [
-    [0.0, 0, 'flag'], [1 / 120, 0, 'pool'], [1 / 120, 40, 'flag'], [1 / 60, 300, 'pool'],
-    [0.25, 1500, 'city'], [0.5, 2500, 'flag'], [1 / 30, 3500, 'pool'], [2, 4500, 'city'],
-    [0.1, 5200, 'pool'], [0.7, 6000, 'flag'], [1 / 120, 6419, 'city'], [3.3, 7000, 'pool'],
-    [0.05, 7600, 'flag'], [1.25, 8200, 'city'], [0.016, 8800, 'pool'], [0.333, 9379, 'flag'],
+  const z1 = t.zones[1].s0, z2 = t.zones[2].s0;
+  const st = (s) => { const f = t.frame(s, {}); return [f.x, f.y + 6, f.z]; };
+  const at = { start: st(40), route: st(z1 + 900), lake: st(z2 + 600) };
+  // (dt, s, where): uneven steps, the train waiting then rolling, the
+  // tumbleweeds spawning (a weed spawns with probability dt × 0.8), the
+  // route's time of day from day to night, then a jump back.
+  const FRAMES = [
+    [0.0, 0, 'start'], [1 / 120, 0, 'start'], [1 / 60, z1 - 700, 'start'], [0.25, z1 - 450, 'route'],
+    [0.5, z1 + 100, 'route'], [2, z1 + 300, 'route'], [1 / 30, z1 + 330, 'route'], [0.1, z1 + 700, 'route'],
+    [3.3, z1 + 1200, 'route'], [0.7, z1 + 1500, 'lake'], [1 / 120, z2 - 100, 'lake'], [1.25, z2 + 200, 'lake'],
+    [0.05, z2 + 400, 'start'], [0.333, z2 + 800, 'lake'], [2, t.length - 500, 'lake'], [0.016, z1 - 100, 'route'],
   ];
-  PLACES = ['flag', 'pool', 'city'];
-  }
   // Then fixed ticks with the player moving at 60 m/s, the camera hopping.
-  const TICKS = 360, TICK = 1 / 120, S0 = 4000;
+  const TICKS = 360, TICK = 1 / 120, S0 = z1 + 600;
   const focus = new THREE.Vector3();
   const step = (dt, s, where, look = true) => {
     camera.position.fromArray(at[where]);
@@ -227,12 +176,23 @@ async function run(env, level = 'sierra') {
   // A frozen frame first (dt 0 at the start, as the menu's, but at a fixed
   // place: the menu's own drifts with the clock), so that the first
   // snapshot is the same wherever the world was built.
-  step(0, 0, PLACES[0], false);
+  // The page's Math.random, reseeded (see the top of the file).
+  {
+    let a = 0x5eed >>> 0;
+    Math.random = function random() {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let q = a;
+      q = Math.imul(q ^ (q >>> 15), q | 1);
+      q ^= q + Math.imul(q ^ (q >>> 7), q | 61);
+      return ((q ^ (q >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  step(0, 0, 'start', false);
   const base = snapshot(true);
   const frames = FRAMES.map(([dt, s, where]) => ({ dt, s, where, snap: step(dt, s, where) }));
   const ticks = [];
   for (let k = 0; k < TICKS; k++) {
-    const where = PLACES[Math.floor(k / 40) % 3];
+    const where = ['route', 'lake', 'start'][Math.floor(k / 40) % 3];
     const s = S0 + k * TICK * 60;
     ticks.push({ s, where, snap: step(TICK, s, where) });
   }
@@ -272,7 +232,7 @@ async function captureBrowser() {
     const game = await openGame(browser, { query: `level=${LEVEL}&kernel=1&freeze=1&s=0`, init: seedRandom, initArgs: [RANDOM_SEED] });
     const state = await game.eval(() => ({ id: window.__world?.level?.id, kernel: !!window.__parity?.kernel, freeze: !!window.__parity?.freeze }));
     if (state.id !== LEVEL || !state.kernel || !state.freeze) throw new Error(`page state ${JSON.stringify(state)}`);
-    const out = await game.eval(run, null, LEVEL);
+    const out = await game.eval(run, null);
     const errors = [...game.errors, ...(await game.eval('(window.__parity?.errors || []).map(String)'))];
     if (errors.length) throw new Error('page errors: ' + errors.slice(0, 3).join(' | '));
     await game.close();
@@ -288,7 +248,7 @@ async function captureBrowser() {
 async function captureNode() {
   const { kernelInstalled } = await import('../../src/parity/kernel.js');
   if (!kernelInstalled()) {
-    console.error('animators: run with --import=./tools/parity/kernel/register.mjs (or --browser)');
+    console.error('desert-animators: run with --import=./tools/parity/kernel/register.mjs (or --browser)');
     process.exit(1);
   }
   seedRandom(RANDOM_SEED);
@@ -321,7 +281,7 @@ async function captureNode() {
   if (said.length) throw new Error('the build complained: ' + said.slice(0, 3).join(' | '));
   // main.js's camera.
   const camera = new THREE.PerspectiveCamera(62, 1280 / 800, 0.3, 9000);
-  return run({ THREE, world, camera }, LEVEL);
+  return run({ THREE, world, camera });
 }
 
 const capture = () => (BROWSER ? captureBrowser() : captureNode());
@@ -329,9 +289,7 @@ const capture = () => (BROWSER ? captureBrowser() : captureNode());
 // One frame's values per line, so the file diffs by frame.
 function text(r) {
   const head = {
-    note: LEVEL === 'sierra'
-      ? 'Generated by tools/parity/animators.mjs: Sierra\'s world.update over fixed frames (kernel on), every value it changes under world.root. Numbers are hex f64 bits; arrays the SHA-256 of their bytes. Do not edit.'
-      : `Generated by tools/parity/animators.mjs --level ${LEVEL}: the level's world.update over fixed frames (kernel on), every value it changes under world.root. Numbers are hex f64 bits; arrays the SHA-256 of their bytes. Do not edit.`,
+    note: 'Generated by tools/parity/desert-animators.mjs: Desert Run\'s world.update over fixed frames (kernel on, Math.random reseeded with 0x5eed before them), every value it changes under world.root. Numbers are hex f64 bits; arrays the SHA-256 of their bytes. Do not edit.',
     camera: r.camera, fov: r.fov, viewportHeight: r.viewportHeight, targets: r.targets,
   };
   const lines = [JSON.stringify(head, null, 1).slice(0, -2) + ','];
@@ -355,10 +313,10 @@ if (CHECK) {
   if (BROWSER && text(await capture()) !== first) { bad++; console.log('  two captures differ'); }
   if (!fs.existsSync(OUT) || fs.readFileSync(OUT, 'utf8') !== first) { bad++; console.log(`  ${path.relative(ROOT, OUT)}: would change`); }
   if (bad) process.exit(1);
-  console.log(`animators: ${BROWSER ? 'two captures in the game' : 'the Node capture'} and the golden agree`);
+  console.log(`desert-animators: ${BROWSER ? 'two captures in the game' : 'the Node capture'} and the golden agree`);
 } else {
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, first);
   const j = JSON.parse(first);
-  console.log(`animators: ${j.keys.length} values over ${j.frames.length} frames and ${j.ticks.count} ticks, ${Object.keys(j.targets).length} targets, in ${path.relative(ROOT, OUT)}`);
+  console.log(`desert-animators: ${j.keys.length} values over ${j.frames.length} frames and ${j.ticks.count} ticks, ${Object.keys(j.targets).length} targets, in ${path.relative(ROOT, OUT)}`);
 }
