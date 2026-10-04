@@ -116,6 +116,8 @@ pub fn extra_attribute(m: &MaterialDesc) -> Option<&'static str> {
         Patch::Steam => Some("aSeed"),
         // With `aDir` beside it (`ATTRIBUTE_EXTRA2`).
         Patch::Traffic => Some("aPar"),
+        // `SkidMarks`' per-vertex alpha (WP 4.4).
+        Patch::Skid => Some("alpha"),
         _ => None,
     }
 }

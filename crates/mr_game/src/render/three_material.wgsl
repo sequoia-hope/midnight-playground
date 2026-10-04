@@ -21,6 +21,8 @@
 // POINTS_FLICKER, FLICKER_BLINK). WP 3.9: PATCH_ROCK, PATCH_REFLECTOR,
 // SIDING_SIDING | SIDING_BOARDS | SIDING_ROOF, PATCH_CITY, PATCH_TRAFFIC and
 // PATCH_SKYGLOW (two ShaderMaterials, their own fragment), SPRITE;
+// WP 4.4: PATCH_PARTICLES (Effects.js's smoke and sparks, on quads) and
+// PATCH_SKID (its skid marks), ShaderMaterials with their own fragment;
 // USE_ALPHAMAP. VERTEX_EXTRA: the patch's own attribute
 // (`convert::ATTRIBUTE_EXTRA`), VERTEX_EXTRA2 the traffic streams' second
 // one. A material's animated values come from its block in the globals
@@ -406,6 +408,16 @@ fn vertex(v: Vertex) -> VOut {
         let v_a = t::smooth_step(0.0, 0.15, steam_life) * (1.0 - steam_life) * t::smooth_step(2.0, 9.0, mz);
         out.extra = vec4<f32>(v_a, a_seed.y, 0.0, 0.0);
         point_quad(&out, size, v.extra.zw);
+    }
+#endif
+#ifdef PATCH_PARTICLES
+    {
+        // Effects.js's points: gl_PointSize = aSize × uScale /
+        // max(0.1, -mvPosition.z); vAlpha (extra.y), vColor (the vertex
+        // colour). GL clamps the size to its point-size range.
+        let psize = clamp(extra.x * material.kind0.x / max(0.1, -out.view_pos.z), 1.0, MAX_POINT_SIZE);
+        out.extra = vec4<f32>(extra.y, 0.0, 0.0, 0.0);
+        point_quad(&out, psize, extra.zw);
     }
 #endif
     return out;
@@ -935,6 +947,19 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     var sa = max(0.0, 1.0 - r2 / lump);
     sa = sa * sa * in.extra.x * 0.16;
     return vec4<f32>(vec3<f32>(0.6, 0.58, 0.64) * sa, sa);
+#else ifdef PATCH_PARTICLES
+    // Effects.js's points: texture2D(uTex, gl_PointCoord) tinted by vColor,
+    // its alpha × vAlpha, then fog_fragment (a ShaderMaterial has no lights,
+    // so no sun tint).
+    let ptex = textureSample(map_texture, map_sampler, in.uv);
+    var pcol = vec4<f32>(in.color.rgb * ptex.rgb, ptex.a * in.extra.x);
+#ifdef USE_FOG
+    pcol = vec4<f32>(mix(pcol.rgb, globals_at(g::G_FOG).rgb, fog_factor_of(-in.view_pos.z)), pcol.a);
+#endif
+    return pcol;
+#else ifdef PATCH_SKID
+    // SkidMarks: gl_FragColor = vec4(0.02, 0.02, 0.02, vA).
+    return vec4<f32>(0.02, 0.02, 0.02, in.extra.x);
 #else ifdef PATCH_SURF
     return surf_fragment(in);
 #else ifdef PATCH_BEAM
@@ -995,6 +1020,12 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     // starts at the exported opacity; D701).
     if (has_block()) {
         diffuse_color.a = block_at(4).x;
+    }
+    if (material.night.z > 2.5) {
+        // The opacity in a light slot, set per frame (Effects.js's shared
+        // pool material, `poolMat.opacity = 0.3 × night`; D803).
+        let ok = i32(material.night.w);
+        diffuse_color.a = globals_at(g::G_LIGHTS + ok / 4)[ok % 4];
     }
 #endif
 #ifdef PATCH_POOL
@@ -1336,7 +1367,7 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
 #ifdef LIT
     var emissive_color = material.emissive.rgb;
     var emissive_intensity = 1.0;
-    if (material.night.z > 1.5) {
+    if (material.night.z > 1.5 && material.night.z < 2.5) {
         // A light setter's emissiveIntensity (CarModel's head, tail,
         // reverse, accent and siren lenses), set per frame in the globals.
         let k = i32(material.night.w);

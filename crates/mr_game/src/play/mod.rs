@@ -14,11 +14,16 @@
 //! `pursuit=1`, `heat`, `touch=0|1`; natively also `shots=<dir>`, which
 //! saves the countdown, the race and the results as PNGs and exits.
 //!
-//! Cars are `CarModel.js`'s models, ported in WP 4.1 ([`models`]).
+//! Cars are `CarModel.js`'s models, ported in WP 4.1 ([`models`]); the
+//! smoke, sparks, skid marks, flames and headlight pools are `Effects.js`'s
+//! ([`effects`], drawn by [`fx`], WP 4.4).
 
 pub mod audio;
 pub mod camera;
+pub mod effects;
 pub mod flow;
+mod fx;
+mod fx_stage;
 pub mod gamepad;
 pub mod gamepad_io;
 mod hud;
@@ -134,6 +139,8 @@ pub struct Play {
     pub race: Option<Race>,
     /// The cars, per slot (players, rivals, the traffic pool).
     models: Option<models::Cars>,
+    /// The race's effects (`race.effects`).
+    fx: Option<fx::Fx>,
     /// The touch controls are shown (a touch device, or `?touch=1`).
     pub touch_ui: bool,
     pub insets: Insets,
@@ -166,6 +173,8 @@ pub fn plugin(app: &mut App) {
         let o = &app.world().resource::<Opts>().o;
         (o.race_on(), Params::from_options(o))
     };
+    // `?fx=<scene>`: a staged effect scene in a fly-camera station.
+    fx_stage::plugin(app);
     if !on {
         return;
     }
@@ -174,6 +183,7 @@ pub fn plugin(app: &mut App) {
         params,
         race: None,
         models: None,
+        fx: None,
         touch_ui,
         insets: Insets::default(),
         started: false,
@@ -189,6 +199,13 @@ pub fn plugin(app: &mut App) {
         Update,
         (start, read_input, step, draw)
             .chain()
+            .in_set(PlayFrame)
+            .run_if(in_state(AppState::Running)),
+    )
+    .add_systems(
+        Update,
+        effects_frame
+            .after(draw)
             .in_set(PlayFrame)
             .run_if(in_state(AppState::Running)),
     )
@@ -226,11 +243,18 @@ fn start(
     windows: Query<&Window, With<PrimaryWindow>>,
     mut lights: ResMut<MaterialLights>,
     cars: Query<Entity, With<RaceCar>>,
+    cams: Query<&Projection, With<Camera3d>>,
 ) {
     if play.stop {
-        // `race.dispose()`: the field's cars go with the race.
+        // `race.dispose()`: the field's cars go with the race, and the
+        // effects (the flames with the cars).
         for e in &cars {
             commands.entity(e).despawn();
+        }
+        if let Some(f) = play.fx.take() {
+            for e in f.entities {
+                commands.entity(e).despawn();
+            }
         }
         play.race = None;
         play.models = None;
@@ -320,6 +344,28 @@ fn start(
             .entity(c.root)
             .insert((RaceCar, Name::new(format!("car {}", w.kind))));
     }
+    // `new Effects(...)`, `addCar` for each car, and `resize` with the
+    // drawing buffer's height and the camera's field of view at the start.
+    let height = windows
+        .single()
+        .map_or(800.0, |w| w.physical_height() as f32);
+    let fov = cams.iter().next().map_or(62.0, |p| match p {
+        Projection::Perspective(pp) => pp.fov.to_degrees(),
+        _ => 62.0,
+    });
+    play.fx = fx::Fx::spawn(
+        &mut commands,
+        fx::Assets3 {
+            meshes: &mut meshes,
+            images: &mut images,
+            mats: &mut mats,
+            shared: &shared,
+            lights: &mut lights,
+        },
+        &fx::CarSpec::of(&cars, st.players.len()),
+        setup.opts.seed,
+        (height, fov),
+    );
     play.models = Some(cars);
     play.race = Some(race);
 }
@@ -618,6 +664,43 @@ fn draw(
         &mut lighting,
         &mut env,
     );
+}
+
+/// `Race.update`'s effects, once a frame after the cars are drawn
+/// (`effects.update(dt, night, this.extras)`; [`fx`]).
+#[allow(clippy::too_many_arguments)]
+fn effects_frame(
+    time: Res<Time>,
+    mut play: ResMut<Play>,
+    sky_res: Res<SkyRes>,
+    mut parts: Query<(&mut Transform, &mut Visibility), With<fx::FxPart>>,
+    mut lights: ResMut<MaterialLights>,
+    mut mats: ResMut<Assets<ThreeMaterial>>,
+    writes: Res<crate::animate::MeshWrites>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    cams: Query<&Projection, With<Camera3d>>,
+) {
+    let play = &mut *play;
+    let (Some(race), Some(models), Some(f)) =
+        (play.race.as_ref(), play.models.as_ref(), play.fx.as_mut())
+    else {
+        return;
+    };
+    // `main.js`'s resize handler: the new height, the field of view now.
+    if let Ok(w) = windows.single() {
+        let fov = cams.iter().next().map_or(62.0, |p| match p {
+            Projection::Perspective(pp) => pp.fov.to_degrees(),
+            _ => 62.0,
+        });
+        f.resize(w.physical_height() as f32, fov, &mut mats);
+    }
+    let dt = if race.mode == Mode::Paused || !play.started {
+        0.0
+    } else {
+        (f64::from(time.delta_secs()) * play.params.timescale).min(session::MAX_FRAME)
+    };
+    let night = sky_res.sky.as_ref().map_or(0.0, |k| k.night);
+    fx::frame(f, race, models, dt, night, &mut parts, &mut lights, &writes);
 }
 
 /// `Race.js`'s headlights for the player, "one real spotlight": `new
