@@ -3607,3 +3607,201 @@ chase bulbs (instance colours), the port's glow points (the `color`
 attribute, base × k stored as f32), the boats (transforms from a YXZ
 Euler) and the breakwater lamps (instance colours). D537 holds them to the
 game step by step.
+
+## WP 7.2 Streets decisions
+
+## D610. The shape of `mr_worldgen::streets`
+
+2026-10-04, WP 7.2. `Streets.js` is `mr_worldgen::streets` (`streets/mod.rs`),
+`streets/props.js` is `streets::props`, `streets/facades.js`
+`streets::facades` and `streets/textures.js` `streets::textures` (their
+canvas pictures; `facadeMaterial` and `patchStreetAtlas` are in `mod.rs`
+beside `ambientPatch` and `neonFlicker`, which are kinds whose GLSL is the
+renderer's). The JS methods are spread over `mod.rs` (the route analysis,
+the materials, the blocks and their kerb outlines, the streets, the
+pavements, `emitAll`), `buildings.rs` (`block`, `midrise` and its signs,
+`rowhouse`, `tower`, `plaza`, `farBlock`, the trees, the aircraft lights,
+the billboards) and `dressing.rs` (the lamps, signals, barriers, gantries,
+crowds, lanterns, the elevated railway, the vents, the reflections), all
+`impl Bld`, where `Bld` is the JS `this` while it builds: the grid
+(`level.grid` is `mr_levels::streets`: `PX`, `PZ`, `HW`, `WALK`, the
+route's `setback` and `legs` from `build_route()`, `ground`, `district`),
+the generator 9090, the materials, the collected lists (fronts, sign
+lights, spill, steam, cables, trees, aircraft, billboards) and the ten
+chunked builders. `Chunks` keeps the JS `Map` keyed `"cx,cz"`: builders in
+the order first asked for, a `BTreeMap` used only for lookup. The JS
+makes a chunk wherever it writes `const P = this.bPlain.at(cx, cz)`, even
+when nothing goes into it, and the order of the chunks is the order of the
+meshes, so the port asks for the chunk at the same place (the gate found
+the one place it did not). `this.blocks` is a `Vec` in insertion order with
+a lookup map; `crossUse`'s values are only tested for truth, so it is a
+set. Where the JS draws from the generator in a loop condition (`k < (tier
+=== 0 ? 1 + Math.floor(rng() * 3) : 0)`, the wires, the newspaper boxes)
+the port draws the bound anew at every test (D350); where it draws inside
+an argument list or an array literal, into locals in the same order.
+`Props.parkedCars` bakes `car_model::build_vehicle` (`lod: 'low'`, seed 3)
+as `bakeCar` does, through `mountain::kit::world_matrices`;
+`setHeadlights(0)` changes only emissive intensities, which the bake does
+not read, so it is not called. `plan()` sets the runout by
+`mr_levels::world::plan_runout` (0), mirrors it into `sim_data`, and
+assigns `world.no_marks` (`t.noMarks = nm`; Streets is the level's only
+module). Streets is the eighth line of `scenery::PORTED`: the terrain and
+road gates run its own `plan()`, which gives the recorded unpainted
+stretches bit for bit, and Level 3 builds from ported modules alone. Two
+JS quirks are kept, not deviations: no traffic-signal mast stands on a
+kerb (the corner points fall outside the kerb's rounded corner), so
+`buildSignals` builds nothing but still draws its coin flips; and the
+billboards' posts go into a plain builder after `emitAll` has emitted it,
+so nothing draws them.
+
+## D611. The steam puffs' `Math.random`
+
+2026-10-04, WP 7.2. `buildSteam` gives each puff `aSeed = (k / 10,
+Math.random())`, from the page's `Math.random`, which the scene export
+seeds (D20). The 900 seeds of the export are 900 consecutive draws of
+mulberry32(0x5eed) from draw 15,284 on (found by scanning the stream for
+the export's first three values; all 900 then match as f32), so
+`streets::props::STEAM_RANDOM_AT` is 15,284 and the port draws them from
+`valley::page_random(STEAM_RANDOM_AT)`, as D332 does Valley's planks. A
+level built for play draws the same seeds. Nothing else in Streets reads
+`Math.random`.
+
+## D612. Downtown Streets' animators, step by step
+
+2026-10-04, WP 7.2. The updaters are, in the JS order, `NeonClock` (the
+one `uNTime` uniform the two neon materials share; the port writes it into
+both), `Signals` (none on Streets, D610), `Blink` (the barrier flashers'
+colour), `Flashes` (the phone flashes' point size), `Train` (the elevated
+train's position: scripted to meet the player from 380 m before the
+crossing to 160 m after it, free-running at 16 m/s and wrapping
+elsewhere; it reads the level's ground, so it keeps nothing of the
+build), `Steam` (its clock, and `uScale` = 0.5 × the drawing buffer's
+height (or 720) / tan(fov / 2) from the camera) and `Aircraft` (the warning
+lights' colour). `tools/parity/animators.mjs --level streets` captures the
+game's `world.update` over 16 uneven frames (dt 0 to 150 s, the player
+under the viaduct and away from it, one long frame letting the train wrap)
+and 360 ticks under the viaduct, as D537 does Level 2's: 7 values on 7
+targets, in `parity/golden/animators/streets.json`. The Node capture and
+two browser captures agree; the Sierra and Coast goldens are unchanged;
+CI checks it regenerates. `tests/streets_animators.rs`: **identical,
+every frame and every tick, native and in wasm**.
+
+## D613. The L3 gate for Downtown Streets, and what it found
+
+2026-10-04, WP 7.2. `tools/parity/streets-golden.mjs` (coast-golden.mjs's
+method, D531, in a file of its own) digests the groups `streets` and
+`road` (whose `asphalt2` Streets wets: roughness 0.62, metalness 0.05,
+colour 0.72) of the cached export into `parity/golden/streets/streets.json`.
+`tools/parity/streets-textures.mjs` (coast-textures.mjs's method, D535)
+captures every canvas of both groups as Chrome draws it with the bundled
+fonts: 22 pictures for 31 texture entries, in
+`parity/golden/streets/textures.json` and `parity/cache/<key>/streets/`.
+`tests/streets.rs` builds Level 3 with `scenery_factory(None)`, updates the
+sky at the export's focus, applies the night parameters, runs every
+updater once (dt 0, s 0, the export's camera) and holds (a) both groups to
+the golden and every canvas to the capture within WP 3.2's threshold, and
+(b) the whole scene to the export as Level 2 is (D536). Result:
+**identical**, native and in wasm: the group `streets` 346 nodes
+(2,379,330 vertices) and its 40 materials (StreetFacade, StreetAtlas,
+AmbientProp ×5 with their `rgb`, Neon ×2, the Steam `ShaderMaterial` with
+its GLSL, the built-ins) parameter by parameter; the group `road` 14 nodes
+and 3 materials; the scene 441 nodes, 432 meshes, 45 materials, 26
+textures, 10 instance sets, 434 drawables, 2,706,726 vertices, 1,855,224
+indices, every digest entry equal but the pixels of the 24 canvas
+textures. Against the capture the pictures are within 1.25 levels mean
+absolute difference: the neon atlases 1.23/1.25/1.18 and 1.04/0.96/0.94
+(R/G/B; the shadow-blurred glyphs, as Desert's neon, D551), the ads 0.19
+to 0.82, the banners 0.17 and 0.06, the shared glow 0.58, the barrier 0.42,
+the puddle (`filter: blur(6px)`) 0.23, the façade, street and train
+atlases 0.02 to 0.10, the pavement 0.06. The lettered ones differ from the
+export by up to 36 levels (the start banner), all in the glyphs (the
+export's machine fonts).
+The one port fix the gate found was a chunk's creation order (D610). No
+shared module's behaviour changed; mr_canvas gained `stroke_text_max`
+(`strokeText(text, x, y, maxWidth)`, beside `fill_text_max`, for the neon
+signs), an export only. Rerun: `node tools/parity/streets-golden.mjs`
+(with the cache), `node tools/parity/streets-textures.mjs` when the fonts
+change, then `cargo test -p mr_worldgen --test streets` (and in wasm).
+
+## D614. What the client still stands in for on Downtown Streets
+
+2026-10-04, WP 7.2. The data side of every material kind Downtown Streets
+uses is complete (D613). `convert::stand_in` and `render::material` on
+`main` today draw these with stand-ins or hide them; the list for the L4
+stations:
+
+- **StreetFacade** (`streets/facades.js` `facadeMaterial`; the upper
+  floors, far blocks, towers and roofs, one mesh per 560 m chunk): drawn as
+  a plain lit standard material, its atlas sampled at the raw tile-unit
+  uv. A `MeshStandardMaterial` (map and emissiveMap the 1024² façade atlas,
+  4×4 cells of 256 px, clamped; emissive white, emissiveIntensity 1.1,
+  roughness 0.62, metalness 0.2; no vertex colours), program key
+  `streets-facade`, attributes `position`, `normal`, `uv` (tile units,
+  unbounded), `cell` (atlas cell + 16 × the building's seed) and `fdata`
+  (street-level y, bounce strength, bounce hue; GeoBuilder's `color`
+  renamed). The patch: `vCell`, `vAUv`, `vFData` and the world y `vWY`
+  from the vertex stage; replacing `map_fragment`, `fIdx = mod(floor(vCell
+  + 0.5), 16)`, `fSeed = floor((vCell + 0.5) / 16)`, `fUv = ((cx +
+  clamp(fract(u), 0.004, 0.996)) / 4, (3 − cy + clamp(fract(v), 0.004,
+  0.996)) / 4)`, sampled with `textureGrad` and `dFdx/dFdy(vAUv) × 0.25`;
+  replacing `emissivemap_fragment`, `totalEmissiveRadiance *=
+  emissive(fUv) × windowLight(floor(vAUv × FSPEC[fIdx].xy), fSeed,
+  FSPEC[fIdx].z)` (`FSPEC` is `GRID`: columns, rows, lighting kind;
+  `fHash`, `fHue` and `windowLight` are `facades.js:363–390`), then the
+  street bounce `+= diffuse × (bc × fdata.y × exp(−max(vWY − fdata.x, 0) /
+  7) + (0.03, 0.032, 0.045))`, `bc` the sodium `(1, 0.68, 0.4)` or, for a
+  hue `fdata.z > 0.001`, `mix((1, 0.7, 0.45), fHue(fdata.z), 0.65)`.
+- **StreetAtlas** (`streets/textures.js` `patchStreetAtlas`; shop fronts,
+  rowhouses, awnings, vending machines, stalls, posters): drawn as a plain
+  lit standard material. A `MeshStandardMaterial` (map and emissiveMap the
+  1536×1152 street atlas, 4×3 cells of 384 px, clamped; emissive white,
+  emissiveIntensity 1.2, roughness 0.7, metalness 0.05, `vertexColors`
+  for the tint), program key `street-atlas-2`, attributes `position`,
+  `normal`, `uv` (tile units; a rowhouse's are mirrored, so negative),
+  `color`, `cell`. The patch as the façade's but `sUv = ((cx + clamp(fract
+  u)) / 4, (2 − cy + clamp(fract v)) / 3)` with gradients × (1/4, 1/3);
+  the emissive × `wl`, `wl = 0.65 + 0.6 × fHash(vec2(sSeed, 5))` for a
+  cell of kind 0, else `windowLight(floor(vAUv × SSPEC.xy), sSeed,
+  SSPEC.z) × 1.4` (`S_GRID`); then `totalEmissiveRadiance += diffuse ×
+  (0.075, 0.06, 0.05)`.
+- **AmbientProp** (`streets/props.js` `ambientPatch`; program keys
+  `streets-amb-pave`, `-plain`, `-car`, `-tree`, `-steel`; the pavements,
+  the plain dressing, the parked cars, the trees (an InstancedMesh with
+  `instanceColor`, `flatShading`) and the viaduct's steel and braces (an
+  InstancedMesh)): drawn as plain lit standard materials, so unlit sides
+  go black at night. The patch adds, after `emissivemap_fragment`,
+  `totalEmissiveRadiance += diffuseColor.rgb × kind_opts.rgb`.
+- **Neon** (`streets/props.js` `neonFlicker`; program keys `streets-neon-h`
+  and `-v`; the fascia and blade signs): drawn as a plain unlit basic
+  material, steady. A `MeshBasicMaterial` (map the 1024×512 horizontal or
+  vertical neon atlas, colour (2.4, 2.4, 2.4), HDR, not clamped), uniform
+  `uNTime` (the `NeonClock` animator's `Number` edit on both materials every
+  frame), attributes `position`, `normal`, `uv`, `ndata` (seed, mode, 0;
+  GeoBuilder's `color` renamed). The patch, before `opaque_fragment`: `sd
+  = ndata.x × 97`, `k = 0.94 + 0.06 sin(t·60 + sd)`; mode 1 `k ×=
+  nHash(floor(t·13) + sd) < 0.18 ? 0.12 : 1`; mode 2 `k ×= fract(t·0.35 +
+  ndata.x) < 0.72 ? 1 : 0.06`; mode 3 `k ×= 0.35 + 0.65 step(0.45,
+  nHash(floor(t·7) + sd))`; `outgoingLight ×= k`, with `nHash(p) =
+  fract(sin(p × 91.345) × 47453.5453)`.
+- **Steam** (`streets/props.js` `buildSteam`; one `Points` of 900 puffs,
+  `userData.dynamic`): hidden (`stand_in`'s `Steam => Hidden`). A
+  `ShaderMaterial` with its GLSL in the scene (`gl_PointSize = (0.8 +
+  life × 3.2) × uScale / −mv.z`, `gl_PointCoord` in the fragment stage,
+  premultiplied output), transparent, `depthWrite` false, `CustomBlending`
+  One / OneMinusSrcAlpha, no fog; uniforms `uTime` and `uScale`, both
+  `Number` edits of the `Steam` animator every frame (`uScale` from the
+  camera: 0.5 × drawing-buffer height / tan(fov / 2)); attributes
+  `position` and `aSeed` (vec2). Points become quads (D294).
+- Built-ins to mind: the lantern globes (671 instances, D452) are a
+  `MeshBasicMaterial` of colour (2.6, 0.5, 0.25) times `instanceColor` up
+  to 2.8, so up to 7.3 in red: the data equals the export bit for bit; the
+  renderer must multiply and not clamp. The lamp lenses are a basic colour
+  (4, 2.9, 1.7). The aircraft lights are a `PointsMaterial` with
+  `sizeAttenuation` false and `frustumCulled` false, their colour a
+  `Color` edit; the barrier flashers' colour and the phone flashes' size
+  are edits too. The elevated train is a `Mesh` the `Train` animator moves
+  (`Transform`; `matrixAutoUpdate` stays on). Puddles, spill, reflections
+  and lamp pools are additive basic materials with polygon offset −4/−4
+  and render order 2; the lane paint −2/−2, the side-street asphalt +1/+2.
+  The billboards are double-sided basic materials (colour 1.5) on the ad
+  textures.
