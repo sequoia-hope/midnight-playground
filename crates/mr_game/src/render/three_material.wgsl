@@ -164,6 +164,13 @@ fn kind_uniforms() -> vec4<f32> {
 #else ifdef PATCH_BEAM
     // uStrength = 0.03 + 0.32 × smoothstep(0.2, 0.8, night).
     return vec4<f32>(0.03 + 0.32 * t::smooth_step(0.2, 0.8, n), 0.0, 0.0, 0.0);
+#else ifdef PATCH_NEON
+    // The NeonClock animator: uNTime += dt.
+    return vec4<f32>(globals_at(g::G_ANIM2).z, 0.0, 0.0, 0.0);
+#else ifdef PATCH_STEAM
+    // buildSteam's updater: uTime += dt; uScale = 0.5 × the drawing
+    // buffer's height / tan(fov / 2).
+    return vec4<f32>(globals_at(g::G_ANIM2).z, 0.5 * view.viewport.w * view.clip_from_view[1][1], 0.0, 0.0);
 #else ifdef PATCH_POOL
     // Desert.js animate: glowTime = T; poolMat.opacity = smoothstep(0.15,
     // 0.7, night).
@@ -276,6 +283,13 @@ fn vertex(v: Vertex) -> VOut {
     let traffic_t = fract(a_par.x + tu.x * a_par.y);
     local_pos += v.extra2.xyz * traffic_t;
 #endif
+#ifdef PATCH_STEAM
+    // buildSteam: each puff's life, and its rise and drift.
+    let su = kind_uniforms();
+    let a_seed = v.extra.xy;
+    let steam_life = fract(su.x * 0.28 + a_seed.x + a_seed.y * 0.1);
+    local_pos += vec3<f32>(sin(a_seed.y * 40.0 + steam_life * 3.0) * 0.5 * steam_life, steam_life * 4.5, cos(a_seed.y * 23.0) * 0.4 * steam_life);
+#endif
 #ifdef MR_INSTANCED
     let world_from_local = mat4x4<f32>(v.i_col0, v.i_col1, v.i_col2, v.i_col3);
     let world = world_from_local * vec4<f32>(local_pos, 1.0);
@@ -380,6 +394,15 @@ fn vertex(v: Vertex) -> VOut {
 #endif
 #ifdef SPRITE
     sprite_vertex(&out, world_from_local, v.position);
+#endif
+#ifdef PATCH_STEAM
+    {
+        let mz = -out.view_pos.z;
+        let size = clamp((0.8 + steam_life * 3.2) * su.y / mz, 1.0, MAX_POINT_SIZE);
+        let v_a = t::smooth_step(0.0, 0.15, steam_life) * (1.0 - steam_life) * t::smooth_step(2.0, 9.0, mz);
+        out.extra = vec4<f32>(v_a, a_seed.y, 0.0, 0.0);
+        point_quad(&out, size, v.extra.zw);
+    }
 #endif
     return out;
 }
@@ -768,6 +791,55 @@ fn shop_zone(ci: i32, hgt: f32, ny: f32) -> f32 {
 }
 #endif
 
+#ifdef STREET_WINDOWS
+// streets/facades.js: the hash and hue the façades and shop fronts share.
+fn f_hash(p_in: vec2<f32>) -> f32 {
+    var p = fract(p_in * vec2<f32>(0.1031, 0.1030));
+    p += dot(p, p.yx + 33.33);
+    return fract((p.x + p.y) * p.x);
+}
+
+fn f_hue(h: f32) -> vec3<f32> {
+    let q = h * 6.0 + vec3<f32>(0.0, 4.0, 2.0);
+    return clamp(abs(q - 6.0 * floor(q / 6.0) - 3.0) - 1.0, vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
+// Per-window lighting: kind 1 flats (odd warm windows, the odd TV blue),
+// kind 2 offices (whole floors lit, a few late desks), kind 3 mostly dark
+// glass.
+fn window_light(w: vec2<f32>, seed: f32, kind: f32) -> vec3<f32> {
+    let h1 = f_hash(w + seed * vec2<f32>(17.13, 31.7));
+    if (kind < 0.5) {
+        return vec3<f32>(1.0);
+    }
+    if (kind < 1.5) {
+        let on = step(h1, 0.36);
+        let h2 = f_hash(w * 1.7 + seed + 3.0);
+        var tint = vec3<f32>(1.0, 0.45, 0.75);
+        if (h2 < 0.55) {
+            tint = vec3<f32>(1.0, 0.72, 0.42);
+        } else if (h2 < 0.8) {
+            tint = vec3<f32>(1.0, 0.88, 0.7);
+        } else if (h2 < 0.93) {
+            tint = vec3<f32>(0.5, 0.66, 1.0);
+        }
+        return tint * on * (0.45 + 0.7 * f_hash(w + 9.1 + seed)) + vec3<f32>(0.012, 0.012, 0.018);
+    }
+    let share = select(0.07, 0.2 + 0.45 * f_hash(vec2<f32>(seed, 1.7)), kind < 2.5);
+    let fl = f_hash(vec2<f32>(w.y * 1.31, seed * 3.1 + 7.0));
+    let grp = f_hash(vec2<f32>(floor(w.x / 3.0), w.y) + seed * 5.3);
+    let floor_on = step(fl, share);
+    let on = floor_on * step(0.12, grp) + (1.0 - floor_on) * step(h1, 0.05);
+    let tint = select(vec3<f32>(1.05, 0.9, 0.7), vec3<f32>(0.78, 0.9, 1.05), f_hash(vec2<f32>(w.y, seed + 11.0)) < 0.7);
+    return tint * on * (0.6 + 0.4 * f_hash(vec2<f32>(w.y, seed))) + vec3<f32>(0.01, 0.014, 0.022);
+}
+
+// GLSL's mod for a positive divisor.
+fn gmod(x: f32, y: f32) -> f32 {
+    return x - y * floor(x / y);
+}
+#endif
+
 // three's fog_fragment for FogExp2 (the ShaderMaterials' own).
 fn fog_factor_of(depth: f32) -> f32 {
     let fog = globals_at(g::G_FOG);
@@ -845,6 +917,14 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     let glow_g = exp(-glow_h / material.kind0.z);
     let glow_col = mix(vec3<f32>(0.5, 0.26, 0.16), vec3<f32>(0.22, 0.14, 0.3), t::smooth_step(0.0, 2.5 * material.kind0.z, glow_h));
     return vec4<f32>(glow_col * glow_g * kind_uniforms().x, 1.0);
+#else ifdef PATCH_STEAM
+    // buildSteam's fragment shader: a lumpy soft puff, premultiplied.
+    let pc = vec2<f32>(in.uv.x, 1.0 - in.uv.y) - 0.5;
+    let r2 = dot(pc, pc) * 4.0;
+    let lump = 0.75 + 0.25 * sin(atan2(pc.y, pc.x) * 3.0 + in.extra.y * 20.0);
+    var sa = max(0.0, 1.0 - r2 / lump);
+    sa = sa * sa * in.extra.x * 0.16;
+    return vec4<f32>(vec3<f32>(0.6, 0.58, 0.64) * sa, sa);
 #else ifdef PATCH_SURF
     return surf_fragment(in);
 #else ifdef PATCH_BEAM
@@ -854,8 +934,14 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     // control flow, ahead of any discard).
     let face_direction = select(-1.0, 1.0, is_front);
     var normal = normalize(in.normal);
+#ifdef FLAT_SHADED
+    // normal_fragment_begin with FLAT_SHADED: cross(dFdx, dFdy) of
+    // vViewPosition (= -view_pos; GLSL's dFdy is -dpdy).
+    normal = normalize(cross(-dpdx(in.view_pos), dpdy(in.view_pos)));
+#else
 #ifdef DOUBLE_SIDED
     normal = normal * face_direction;
+#endif
 #endif
 #ifdef USE_NORMALMAP
     // getTangentFrame( - vViewPosition, normal, vNormalMapUv ); the sea's
@@ -932,6 +1018,31 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     // (vMapUv.y = (vMapUv.y + aVar) × 0.25), read later as a mask.
     let container_uv = vec2<f32>(dot(material.map_t0.xyz, vec3<f32>(in.uv, 1.0)), dot(material.map_t1.xyz, vec3<f32>(in.uv, 1.0))) + map_offset;
     let c_t = textureSample(map_texture, map_sampler, vec2<f32>(container_uv.x, (container_uv.y + in.extra.x) * 0.25));
+#else ifdef PATCH_SFACADE
+    // facadeMaterial at map_fragment: the 4 × 4 atlas cell from `cell` (its
+    // building's seed in the sixteens), sampled with the raw uv's gradients.
+    let s_idx = gmod(floor(in.extra.x + 0.5), 16.0);
+    let s_seed = floor((in.extra.x + 0.5) / 16.0);
+    let s_cxy = vec2<f32>(gmod(s_idx, 4.0), floor(s_idx / 4.0));
+    let s_uv = vec2<f32>((s_cxy.x + clamp(fract(in.uv.x), 0.004, 0.996)) / 4.0, (3.0 - s_cxy.y + clamp(fract(in.uv.y), 0.004, 0.996)) / 4.0);
+    let s_dx = dpdx(in.uv) * 0.25;
+    let s_dy = dpdy(in.uv) * 0.25;
+#ifdef USE_MAP
+    diffuse_color *= textureSampleGrad(map_texture, map_sampler, s_uv, s_dx, s_dy);
+#endif
+    let s_em = textureSampleGrad(emissive_texture, emissive_sampler, s_uv, s_dx, s_dy).rgb;
+#else ifdef PATCH_SATLAS
+    // patchStreetAtlas at map_fragment: the 4 × 3 atlas.
+    let s_idx = gmod(floor(in.extra.x + 0.5), 16.0);
+    let s_seed = floor((in.extra.x + 0.5) / 16.0);
+    let s_cxy = vec2<f32>(gmod(s_idx, 4.0), floor(s_idx / 4.0));
+    let s_uv = vec2<f32>((s_cxy.x + clamp(fract(in.uv.x), 0.004, 0.996)) / 4.0, (2.0 - s_cxy.y + clamp(fract(in.uv.y), 0.004, 0.996)) / 3.0);
+    let s_dx = dpdx(in.uv) * vec2<f32>(0.25, 1.0 / 3.0);
+    let s_dy = dpdy(in.uv) * vec2<f32>(0.25, 1.0 / 3.0);
+#ifdef USE_MAP
+    diffuse_color *= textureSampleGrad(map_texture, map_sampler, s_uv, s_dx, s_dy);
+#endif
+    let s_em = textureSampleGrad(emissive_texture, emissive_sampler, s_uv, s_dx, s_dy).rgb;
 #else ifdef PATCH_CITY
     // patchCityMaterial at map_fragment: the atlas cell from the `cell`
     // attribute (its fraction a per-building seed), sampled with the
@@ -1332,10 +1443,48 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
         }
     }
     total_emissive_radiance *= c_em;
+#else ifdef PATCH_SFACADE
+    // facadeMaterial, replacing emissivemap_fragment: the lit windows, then
+    // the street's bounce light up the lowest floors and a faint ambient.
+    {
+        var f_spec = array<vec3<f32>, 16>(
+            vec3<f32>(4.0, 4.0, 1.0), vec3<f32>(4.0, 4.0, 1.0), vec3<f32>(4.0, 4.0, 1.0), vec3<f32>(4.0, 4.0, 2.0),
+            vec3<f32>(8.0, 4.0, 2.0), vec3<f32>(4.0, 4.0, 2.0), vec3<f32>(6.0, 4.0, 2.0), vec3<f32>(6.0, 4.0, 2.0),
+            vec3<f32>(8.0, 4.0, 3.0), vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(1.0, 1.0, 0.0),
+            vec3<f32>(8.0, 8.0, 1.0), vec3<f32>(8.0, 8.0, 2.0), vec3<f32>(4.0, 4.0, 1.0), vec3<f32>(1.0, 1.0, 0.0),
+        );
+        let sp = f_spec[clamp(i32(s_idx), 0, 15)];
+#ifdef USE_EMISSIVEMAP
+        total_emissive_radiance *= s_em * window_light(floor(in.uv * sp.xy), s_seed, sp.z);
+#endif
+        let fdata = in.extra.yzw;
+        let hh = max(in.world_pos.y - fdata.x, 0.0);
+        let bc = select(vec3<f32>(1.0, 0.68, 0.4), mix(vec3<f32>(1.0, 0.7, 0.45), f_hue(fdata.z), 0.65), fdata.z > 0.001);
+        total_emissive_radiance += diffuse_color.rgb * (bc * fdata.y * exp(-hh / 7.0) + vec3<f32>(0.03, 0.032, 0.045));
+    }
+#else ifdef PATCH_SATLAS
+    // patchStreetAtlas, replacing emissivemap_fragment.
+    {
+        var s_spec = array<vec3<f32>, 12>(
+            vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(2.0, 1.0, 1.0), vec3<f32>(2.0, 1.0, 1.0),
+            vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(1.0, 1.0, 0.0),
+            vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(1.0, 1.0, 0.0),
+        );
+        let sp = s_spec[clamp(i32(s_idx), 0, 11)];
+#ifdef USE_EMISSIVEMAP
+        let wl = select(window_light(floor(in.uv * sp.xy), s_seed, sp.z) * 1.4, vec3<f32>(0.65 + 0.6 * f_hash(vec2<f32>(s_seed, 5.0))), sp.z < 0.5);
+        total_emissive_radiance *= s_em * wl;
+#endif
+        total_emissive_radiance += diffuse_color.rgb * vec3<f32>(0.075, 0.06, 0.05);
+    }
 #else
 #ifdef USE_EMISSIVEMAP
     total_emissive_radiance *= emissive_sample;
 #endif
+#endif
+#ifdef PATCH_AMBIENT
+    // ambientPatch, after emissivemap_fragment: the city's bounce light.
+    total_emissive_radiance += diffuse_color.rgb * material.kind0.rgb;
 #endif
     // PATCH_REFLECTOR: Mountain.js means the reflector's emissive to take
     // the instance colour (`#ifdef USE_INSTANCING_COLOR totalEmissiveRadiance
@@ -1524,6 +1673,24 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
             glit *= glit; glit *= glit; glit *= glit; glit *= glit;
             outgoing_light += min(globals_at(g::G_SUN_COLOR).rgb, vec3<f32>(4.0)) * glit * 3.0 * (1.0 - foam) * t::smooth_step(1500.0, 200.0, sea_dist);
         }
+    }
+#endif
+#ifdef PATCH_NEON
+    // neonFlicker, before opaque_fragment: per sign (ndata: seed, mode) a
+    // hum, a buzz with drop-outs, on-off switching or a dying tube.
+    {
+        let nt = kind_uniforms().x;
+        let sd = in.extra.x * 97.0;
+        let nm = in.extra.y;
+        var k = 0.94 + 0.06 * sin(nt * 60.0 + sd);
+        if (nm > 0.5 && nm < 1.5) {
+            k *= select(1.0, 0.12, fract(sin((floor(nt * 13.0) + sd) * 91.345) * 47453.5453) < 0.18);
+        } else if (nm > 1.5 && nm < 2.5) {
+            k *= select(0.06, 1.0, fract(nt * 0.35 + in.extra.x) < 0.72);
+        } else if (nm > 2.5) {
+            k *= 0.35 + 0.65 * step(0.45, fract(sin((floor(nt * 7.0) + sd) * 91.345) * 47453.5453));
+        }
+        outgoing_light *= k;
     }
 #endif
     // opaque_fragment
