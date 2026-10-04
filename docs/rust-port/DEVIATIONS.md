@@ -15,6 +15,12 @@ when a work package introduces one, with the package and the JS it concerns.
 | Native audio through a Rust Web Audio implementation | One graph definition; small differences in compressor and oscillator behaviour | SPEC 7.1 |
 | Music player is a screen in the game, not a second page | One wasm app | SPEC 7.3 |
 | Seaside survey data in a binary file | No base64-in-JS loader | SPEC 4.4 |
+| The menus' selected-tab glow, hover states and the native pickers are approximated (the ring, Chrome's control shapes, a dropdown list) | Bevy UI has no outer-only shadow under translucent nodes, no form controls | WP 6.1, DECISIONS D573 |
+| ◂ ▸ read ← →, N₂O reads N2O; ★ ⏭ ♪ are drawn pictures | The bundled faces lack those characters | WP 6.1, D573 |
+| The menu is drawn at up to 2× the CSS resolution on phones without High quality | The DOM's text was always sharp; the canvas's at 1× is not | WP 6.2, D575 |
+| The music player link opens the JS page | Its Rust screen is M5's | WP 6.2, D573 |
+| A tap on no control of the pause screen resumes | The M4 phone flow, kept | WP 6.2, D578 |
+| The logo's gradients and glow are flat colours per line and letter | No gradient text in Bevy UI; drawing it in software cost 0.3 MB of wasm | WP 6.1, D573 |
 
 ## Known JS quirks reproduced, not fixed
 
