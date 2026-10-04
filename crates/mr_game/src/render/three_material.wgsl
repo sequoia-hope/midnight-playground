@@ -19,7 +19,9 @@
 // PATCH_TERRAIN (+ TERRAIN_PACKED, MR_PHOTO), PATCH_ASPHALT, PATCH_SHOULDER,
 // PATCH_MARKINGS, PATCH_SEA; POINTS (+ USE_SIZEATTENUATION, POINTS_GLOW,
 // POINTS_FLICKER, FLICKER_BLINK). VERTEX_EXTRA: the patch's own attribute
-// (`convert::ATTRIBUTE_EXTRA`).
+// (`convert::ATTRIBUTE_EXTRA`). MR_INSTANCED: an InstancedMesh drawn as one
+// entity (`render::instancing`, D450): the world matrix, instanceColor and
+// receiveShadow come from the instance stream, not Bevy's mesh uniform.
 //
 // WGSL wants implicit-derivative texture samples and derivatives in uniform
 // control flow, so where a JS patch samples inside a branch (the terrain's
@@ -65,7 +67,10 @@ struct ThreeParams {
     kind0: vec4<f32>,
     // Points: the flicker's 13 × rate, 4.7 × rate, 29 × rate, blink (as the
     // JS writes them into its GLSL, to three decimals).
-    kind1: vec4<f32>,
+    kind1: vec4<f32>,    // world.nightMaterials (D455): emissiveIntensity by day and by night,
+    // and 1 in z when the material follows nightfall; 2 in z: the
+    // intensity is light slot w of the globals (D456).
+    night: vec4<f32>,
 };
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> material: ThreeParams;
@@ -109,6 +114,16 @@ struct Vertex {
 #ifdef VERTEX_EXTRA
     @location(8) extra: vec4<f32>,
 #endif
+#ifdef MR_INSTANCED
+    // The instance stream: the InstancedMesh's matrixWorld × instanceMatrix
+    // (multiplied on the CPU), then instanceColor (white without one) and
+    // receiveShadow.
+    @location(9) i_col0: vec4<f32>,
+    @location(10) i_col1: vec4<f32>,
+    @location(11) i_col2: vec4<f32>,
+    @location(12) i_col3: vec4<f32>,
+    @location(13) i_color: vec4<f32>,
+#endif
 };
 
 struct VOut {
@@ -129,6 +144,10 @@ struct VOut {
     @location(7) world_normal: vec3<f32>,
     // vSurf (x), vLane (xyz), vDepth (x); points: vGA or vFl (x).
     @location(8) extra: vec4<f32>,
+#ifdef MR_INSTANCED
+    // receiveShadow (1 or 0), in place of the mesh uniform's flag.
+    @location(9) @interpolate(flat) receive: f32,
+#endif
 };
 
 // The largest point three's WebGL draws: gl_PointSize is clamped to
@@ -145,11 +164,34 @@ fn unpack_tint(tag: u32) -> vec3<f32> {
     ) / 511.5;
 }
 
+#ifdef MR_INSTANCED
+// The normal through the instance's matrix: its inverse transpose (the
+// cofactors over the determinant, whose sign is all that survives the
+// normalisation), as Bevy's mesh_normal_local_to_world uses for an entity.
+fn instance_normal(world_from_local: mat4x4<f32>, normal: vec3<f32>) -> vec3<f32> {
+    if (all(normal == vec3<f32>(0.0))) {
+        return normal;
+    }
+    let a = world_from_local[0].xyz;
+    let b = world_from_local[1].xyz;
+    let c = world_from_local[2].xyz;
+    let cof = mat3x3<f32>(cross(b, c), cross(c, a), cross(a, b));
+    let s = select(1.0, -1.0, dot(a, cof[0]) < 0.0);
+    return normalize(cof * normal * s);
+}
+#endif
+
 @vertex
 fn vertex(v: Vertex) -> VOut {
     var out: VOut;
+#ifdef MR_INSTANCED
+    let world_from_local = mat4x4<f32>(v.i_col0, v.i_col1, v.i_col2, v.i_col3);
+    let world = world_from_local * vec4<f32>(v.position, 1.0);
+    out.receive = v.i_color.w;
+#else
     let world_from_local = mesh_functions::get_world_from_local(v.instance_index);
     let world = mesh_functions::mesh_position_local_to_world(world_from_local, vec4<f32>(v.position, 1.0));
+#endif
     out.view_pos = (view.view_from_world * world).xyz;
     out.clip = view.clip_from_world * world;
     out.instance_index = v.instance_index;
@@ -160,7 +202,11 @@ fn vertex(v: Vertex) -> VOut {
 #endif
     out.extra = extra;
 #ifdef VERTEX_NORMALS
+#ifdef MR_INSTANCED
+    var n = instance_normal(world_from_local, v.normal);
+#else
     var n = mesh_functions::mesh_normal_local_to_world(v.normal, v.instance_index);
+#endif
     out.world_normal = normalize((world_from_local * vec4<f32>(v.normal, 0.0)).xyz);
 #else
     var n = vec3<f32>(0.0, 0.0, 1.0);
@@ -180,7 +226,11 @@ fn vertex(v: Vertex) -> VOut {
     color = v.color;
 #endif
 #ifdef INSTANCE_COLOR
+#ifdef MR_INSTANCED
+    color = vec4<f32>(color.rgb * v.i_color.rgb, color.a);
+#else
     color = vec4<f32>(color.rgb * unpack_tint(mesh_functions::get_tag(v.instance_index)), color.a);
+#endif
 #endif
     out.color = color;
     // shadowmap_vertex: the world position pushed out along the (normalised)
@@ -688,6 +738,17 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
     var outgoing_light: vec3<f32>;
 #ifdef LIT
     var total_emissive_radiance = material.emissive.rgb;
+    if (material.night.z > 1.5) {
+        // A light setter's emissiveIntensity (CarModel's head, tail,
+        // reverse, accent and siren lenses), set per frame in the globals.
+        let k = i32(material.night.w);
+        total_emissive_radiance *= globals_at(g::G_LIGHTS + k / 4)[k % 4];
+    } else if (material.night.z > 0.5) {
+        // World.update: emissiveIntensity = day + (night - day) × n, with
+        // the sky's night factor (three's emissive uniform is the colour ×
+        // the intensity; `emissive` holds the colour here).
+        total_emissive_radiance *= material.night.x + (material.night.y - material.night.x) * globals_at(g::G_SKY_PARAMS).x;
+    }
 #ifdef USE_EMISSIVEMAP
     total_emissive_radiance *= emissive_sample;
 #endif
@@ -776,7 +837,11 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
         light.color = sun_color.rgb;
         light.direction = view_dir_of(sun_dir.xyz);
         light.visible = true;
+#ifdef MR_INSTANCED
+        let receive = in.receive > 0.5;
+#else
         let receive = (mesh[in.instance_index].flags & MESH_FLAGS_SHADOW_RECEIVER_BIT) != 0u;
+#endif
         if (sun_color.w > 0.0 && receive) {
             light.color *= getShadow(in.shadow_coord);
         }

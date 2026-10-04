@@ -10,9 +10,13 @@
 //! Combinations are the pipeline's inputs: the material's [`ThreeKey`]
 //! (shader defs, blending, culling, depth state), the mesh's vertex
 //! attributes and topology, and whether it casts a shadow. Materials with
-//! the same key share one pipeline, so one stand-in covers them all.
+//! the same key share one pipeline, so one stand-in covers them all. An
+//! InstancedMesh's material has `instanced` in its key (its pipelines take
+//! the instance stream, D450), and its stand-in is an instanced entity with
+//! a stream of one instance, drawn as the real ones are.
 
 use crate::render::ThreeMaterial;
+use crate::render::instancing::{self, InstanceStream, Instances};
 use crate::render::material::ThreeKey;
 use crate::status::Status;
 use bevy::asset::RenderAssetUsages;
@@ -22,8 +26,10 @@ use bevy::mesh::{
     Mesh, MeshVertexAttribute, MeshVertexAttributeId, PrimitiveTopology, VertexAttributeValues,
 };
 use bevy::prelude::*;
+use bevy::render::batching::NoAutomaticBatching;
 use bevy::render::render_resource::VertexFormat;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// A mesh's vertex layout, as far as it picks a pipeline.
 #[derive(Clone, Debug)]
@@ -83,7 +89,7 @@ type Key = (ThreeKey, Signature, bool);
 #[derive(Default)]
 pub struct Combos {
     seen: HashMap<Key, usize>,
-    list: Vec<(Handle<ThreeMaterial>, Layout, bool)>,
+    list: Vec<(Handle<ThreeMaterial>, Layout, bool, bool)>,
 }
 
 impl Combos {
@@ -101,7 +107,8 @@ impl Combos {
             return;
         }
         self.seen.insert(k, self.list.len());
-        self.list.push((material.clone(), layout.clone(), casts));
+        self.list
+            .push((material.clone(), layout.clone(), casts, key.instanced));
     }
 
     pub fn len(&self) -> usize {
@@ -118,7 +125,15 @@ impl Combos {
     /// specialised for the main view and the shadow view.
     pub fn spawn(&self, commands: &mut Commands, meshes: &mut Assets<Mesh>) -> usize {
         let mut cache: HashMap<Signature, Handle<Mesh>> = HashMap::new();
-        for (material, layout, casts) in &self.list {
+        let mut stand_in = Vec::new();
+        instancing::push_instance(
+            &mut stand_in,
+            &bevy::math::DMat4::from_translation(bevy::math::DVec3::new(0.0, -1.0e7, 0.0)),
+            [1.0; 3],
+            false,
+        );
+        let stream = Instances(Arc::new(InstanceStream::new(&stand_in)));
+        for (material, layout, casts, instanced) in &self.list {
             let mesh = cache
                 .entry(layout.signature())
                 .or_insert_with(|| meshes.add(layout.degenerate()))
@@ -134,6 +149,9 @@ impl Combos {
             ));
             if !casts {
                 e.insert(NotShadowCaster);
+            }
+            if *instanced {
+                e.insert((stream.clone(), NoAutomaticBatching));
             }
         }
         self.list.len()
