@@ -3865,9 +3865,15 @@ Gate, the web build at 1280 × 800 through the registered server
 (`rust-web-stations.mjs --server`; Coast's export is over D106's
 interception limit): 67 stations, 3 over the limits (13 before), median
 0.26 / 0.62. The three are the beach at sunrise from the chase camera
-(04000, 04250, 04500: worst 5.1 / 30.2): the asphalt in the low sun
-reflects brighter than in the JS. They were the same before these kinds
-(5.2 / 30.2) and involve none of them; not resolved here. The material
+(04000, 04250, 04500: worst 5.1 / 30.2). They predate WP 3.9's client: a
+web build of 1bb2dd6 gives the same three numbers (5.16 / 30.216, 3.975 /
+23.59, 2.717 / 22.243). The difference map shows the cause: the beach
+road's lamp pools (`Beach.js`, additive) are lit in the client and dark in
+the JS. Their `opacity` is `0.42 × smoothstep(0.08, 0.5, night)`, set by
+Beach's updater; the export was taken at the route's start, at night on
+Coast, so it holds 0.42, and at sunrise the JS has turned them off. A
+plain material's colour or opacity moved by an updater needs the level's
+animators (D498), so these three stations wait for the size decision. The material
 scenes for Surf, LighthouseBeam and Stucco pass (0.06 / 0.13 at worst)
 and join `all`; ContainerAtlas's scene is over (3.5 / 18.1) because the
 material tool draws it without the instance stream (no `aVar`), so it
