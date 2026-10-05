@@ -424,6 +424,22 @@ impl GameAudio {
         }
     }
 
+    /// `_radioCur.srcs`: the sources of the radio transmission on the air
+    /// (or the last one), its hiss, its clips or its burble, in order. The
+    /// test bridge reads them (`__audio._radioCur`).
+    pub fn radio_cur_srcs(&self) -> Option<Vec<crate::wa::Node>> {
+        let cur = self.radio_cur.as_ref()?;
+        Some(
+            cur.srcs
+                .iter()
+                .map(|s| match s {
+                    shots::Src::Buf(b) => (**b).clone(),
+                    shots::Src::Osc(o) => (**o).clone(),
+                })
+                .collect(),
+        )
+    }
+
     /// The context, once `init` made or took one.
     pub fn ctx(&self) -> Option<&AudioContext> {
         self.ctx.as_ref()

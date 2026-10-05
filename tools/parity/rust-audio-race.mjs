@@ -7,7 +7,14 @@
 // makes on its audio as the JS reference's facade recorder writes them.
 //
 //   cargo xtask web --release && node tools/parity/rust-audio-race.mjs
-//       [--backend webgpu|webgl2] [--scene <url>] [--ticks 5400] [--tolerance 1e-9]
+//       [--drive race|pursuit] [--backend webgpu|webgl2] [--scene <url>]
+//       [--ticks 5400] [--tolerance 1e-9]
+//
+// `--drive pursuit` is the reference's `pursuit` drive instead (the same
+// race in Hot Pursuit at heat 2, 7200 ticks; DECISIONS D982): PursuitView's
+// calls too (the radio's prefetch after startRace's, the sirens, mood,
+// damage and spiked tyres every tick, the radio lines and the stingers),
+// the sirens' pans held as the rivals' are.
 //
 // Checks, in order:
 //   1. Nothing plays before the first gesture: the page loads, the race is
@@ -41,7 +48,9 @@ import { ROOT, cacheDir } from './lib/jstree.mjs';
 const args = process.argv.slice(2);
 const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const backend = opt('--backend', 'webgpu');
-const ticks = Number(opt('--ticks', 5400));
+const drive = opt('--drive', 'race');
+if (drive !== 'race' && drive !== 'pursuit') throw new Error(`--drive race|pursuit, not ${drive}`);
+const ticks = Number(opt('--ticks', drive === 'pursuit' ? 7200 : 5400));
 const tolerance = Number(opt('--tolerance', 1e-9));
 const timeoutMs = Number(opt('--timeout', 600000));
 const scene = opt('--scene', '../../' + path.relative(ROOT, path.join(cacheDir('scenes'), 'sierra.base.mrscene')));
@@ -52,7 +61,7 @@ const TYPES = {
   '.png': 'image/png', '.bin': 'application/octet-stream', '.mrscene': 'application/octet-stream', '.mp3': 'audio/mpeg',
 };
 
-const js = zlib.gunzipSync(fs.readFileSync(path.join(ROOT, 'parity/golden/audio/drive-race.jsonl.gz'))).toString('utf8')
+const js = zlib.gunzipSync(fs.readFileSync(path.join(ROOT, `parity/golden/audio/drive-${drive}.jsonl.gz`))).toString('utf8')
   .split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((c) => c[0] < ticks);
 
 const browser = await puppeteer.launch({
@@ -86,7 +95,7 @@ try {
     if (!fs.existsSync(p)) return req.respond({ status: 404, body: 'not found' });
     req.respond({ status: 200, contentType: TYPES[path.extname(p)] || 'application/octet-stream', body: fs.readFileSync(p) });
   });
-  const query = `level=sierra&car=sports&seed=1&autodrive=1&touch=0&audiolog=1&backend=${backend}&scene=${encodeURIComponent(scene)}`;
+  const query = `level=sierra&car=sports&seed=1&autodrive=1&touch=0&audiolog=1${drive === 'pursuit' ? '&pursuit=1&heat=2' : ''}&backend=${backend}&scene=${encodeURIComponent(scene)}`;
   const cdp = await page.createCDPSession();
   // Read the page without handing it a user activation.
   const evaluate = async (expression) => {
@@ -150,10 +159,12 @@ try {
   const start = all.findIndex((c) => c[1] === 'setPaused');
   if (start < 0) throw new Error('no startRace calls in the log');
   console.log(`before startRace: ${all.slice(0, start).map((c) => c[1]).join(', ') || 'nothing'}`);
-  // startRace's own seven calls, then everything but the gestures' wake-ups.
+  // startRace's own seven calls (and a pursuit's prefetch), then everything
+  // but the gestures' wake-ups.
+  const head = drive === 'pursuit' ? 8 : 7;
   const race = all.slice(start).filter((c) => c[0] < ticks);
-  const ours = [...race.slice(0, 7), ...race.slice(7).filter((c) => c[1] !== 'init' && c[1] !== 'unlock')];
-  console.log(`gestures' wake-ups during the race: ${race.length - ours.length} calls (${race.slice(7).filter((c) => c[1] === 'init').map((c) => 'tick ' + c[0]).join(', ')})`);
+  const ours = [...race.slice(0, head), ...race.slice(head).filter((c) => c[1] !== 'init' && c[1] !== 'unlock')];
+  console.log(`gestures' wake-ups during the race: ${race.length - ours.length} calls (${race.slice(head).filter((c) => c[1] === 'init').map((c) => 'tick ' + c[0]).join(', ')})`);
 
   // Compare.
   let maxPan = 0, panAt = null, exact = 0, pans = 0, rivalMax = 0;
@@ -175,7 +186,7 @@ try {
     const where = `line ${i + 1} (tick ${b[0]}, ${b[1]})`;
     let ok = a[0] === b[0] && a[1] === b[1] && a.length === b.length;
     if (ok && b[1] === 'impact') ok = same(a[2], b[2]) && panDiff(a[3], b[3], where, false);
-    else if (ok && b[1] === 'setRivalEngines') {
+    else if (ok && (b[1] === 'setRivalEngines' || b[1] === 'setSirens')) {
       ok = a[2].length === b[2].length && a[2].every((r, k) => {
         const { pan: p1, ...r1 } = r, { pan: p2, ...r2 } = b[2][k];
         return same(r1, r2) && panDiff(p1, p2, where, true);
@@ -189,8 +200,8 @@ try {
   if (off.some((o) => o.rival)) problems.push('a rival engine\'s pan is off');
   const out = path.join(ROOT, 'parity/report/rust-audio');
   fs.mkdirSync(out, { recursive: true });
-  fs.writeFileSync(path.join(out, 'race.jsonl'), all.map((c) => JSON.stringify(c)).join('\n') + '\n');
-  console.log(`the client's log: ${path.relative(ROOT, path.join(out, 'race.jsonl'))}`);
+  fs.writeFileSync(path.join(out, `${drive}.jsonl`), all.map((c) => JSON.stringify(c)).join('\n') + '\n');
+  console.log(`the client's log: ${path.relative(ROOT, path.join(out, `${drive}.jsonl`))}`);
 } catch (e) {
   errors.push(String(e.message || e));
 } finally {

@@ -149,6 +149,12 @@ pub struct Race {
     /// (`race.phys.events.push(…)` in the JS suites: a wall impact for the
     /// rumble).
     pub inject: Vec<SimEvent>,
+    /// Hot Pursuit's radio chatter (`PursuitView.say`): the lines said this
+    /// frame ([`super::radio`]).
+    pub radio: super::radio::Radio,
+    /// Lines the test bridge says (`race.pv.say(line, now)`), said at the
+    /// next frame.
+    pub stage_say: Vec<(mr_audio::radio::lines::Line, bool)>,
     was_nitro: bool,
     offroad: f64,
 }
@@ -192,6 +198,8 @@ impl Race {
             feel: None,
             pad_reset: None,
             inject: Vec::new(),
+            radio: Default::default(),
+            stage_say: Vec::new(),
             was_nitro: false,
             offroad: 0.0,
         }
@@ -214,6 +222,7 @@ impl Race {
         self.input.enabled = true;
         self.hush_pads = true;
         self.was_nitro = false;
+        self.radio = Default::default();
         self.starts = next_start();
     }
 
@@ -257,6 +266,10 @@ impl Race {
         if self.mode == Mode::Paused {
             return;
         }
+        self.radio.frame(dt);
+        for (line, force) in std::mem::take(&mut self.stage_say) {
+            self.radio.say(line, force);
+        }
         if self.input.consume("camera") {
             self.rig.cycle();
         }
@@ -295,6 +308,8 @@ impl Race {
         for e in &events {
             self.on_event(e);
         }
+        // WP 8.4: pursuit events → radio lines here.
+        self.radio.events(&mut self.audio_ticks);
         self.log = events;
         self.rumble();
         self.stuck_hint();
