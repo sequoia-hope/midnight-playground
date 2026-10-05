@@ -6908,6 +6908,217 @@ compiled pipelines and the shader cache for the views' materials, the
 renderer's grown buffers), which Bevy does not release. Not closed further
 here; for the owner if the remaining 25 to 30 MB matter.
 
+## Frame-time decisions (SPEC 6.6, "no worse than the JS game")
+
+## D860. How frame time is compared with the JS game
+
+2026-10-04. SPEC 6.6 asks for frame time no worse than the JS game on the
+same device and settings. Until now both games were compared by the
+interval between `requestAnimationFrame` callbacks, uncapped (BASELINE.md
+from WP 2.6 on). On this machine that interval measures whichever stage is
+slowest at the moment, and the stages are shared: the CPUs with other
+agents (load average 8 to 130 during this work) and the GPU (other users
+kept it at 100 % utilisation before any of these runs started). So
+`tools/parity/rust-perf.mjs` now times each frame's work from inside the
+page, the same way for both games, and the comparison uses CPU time:
+
+- **rAF callback time** ("raf" below): every `requestAnimationFrame`
+  callback is wrapped before the page's scripts run, and the callbacks of
+  one frame are summed. Both games do all of a frame's work there: the JS
+  game's `frame` (simulation, `world.update`, three's render), and Bevy's
+  whole `App::update` (winit runs it from its animation frame; there is no
+  other per-frame task). This is wall time, so it includes the thread
+  being descheduled under load and waiting on the GPU process.
+- **Main-thread CPU per frame** ("main"): `--trace N` records N seconds of
+  Chrome's trace (`toplevel`, `devtools.timeline`, aggregated as the events
+  arrive) and divides the renderer main thread's thread time (`tdur` of
+  its top-level tasks) by the frames. Thread time leaves out time the
+  thread was descheduled, so this is the figure least moved by the load.
+- **GPU-process CPU per frame** ("gpu"): the same for the GPU process's
+  main thread (`CrGpuMain`), where Chrome decodes and runs the page's WebGL
+  or WebGPU commands, with its busy share; and "all", every traced thread.
+- The **load average** is sampled every two seconds through each run;
+  builds alternate (JS, the build before, the build after) level by level.
+
+Settings as BASELINE.md's: 1280 × 800, high quality, the fly camera at
+60 m/s from s = 80 (JS `?s=80&v=60&h=5&back=14`; Rust the measurement page
+`?perf=1`), uncapped, plus runs at 60 Hz (`--capped`), a phone (844 × 390
+at dpr 3, touch, `--hq 0`, CPU throttled 4 ×: `--phone --throttle 4`),
+WebGL2 (`--backend webgl2`) and races with the autopilot (`--race`: the
+sports car, seed 1, no pursuit, timed from race time 3 s, audio allowed
+without a gesture in both games). The Rust flights pass `cars=0`: the JS
+fly camera has no cars, while the Rust one adds WP 2.4's thirty stand-in
+cars by default (`cars_on`), which the comparison should not carry.
+
+Profiles: Chrome's sampling profiler over a copy of the release wasm with
+its function names kept (`wasm-opt -Oz -g` on the same code), mostly at
+60 Hz so the page is not blocked on the GPU process; WebGPU (and WebGL)
+calls per frame counted by wrapping the `GPU*` prototypes; the GPU
+process traced with Chrome's `gpu` and `dawn` categories. The native
+client could not be profiled with `perf` here (`perf_event_paranoid` is 4
+and there is no root), and Bevy's `trace_chrome` feature needs crates
+that are not in `Cargo.lock`; the wasm profile in the browser is the one
+that matters for the web, and is what the findings below come from.
+
+## D861. No light clustering
+
+2026-10-04. Bevy clusters point lights, spot lights and decals for its
+own PBR shaders. Where the device has compute (WebGPU) it does it on the
+GPU every frame: a z-slicing compute pass, a raster pass and an
+allocation pass per view, and a staging buffer mapped (`mapAsync`) to
+read the counts back for the next frame. The client has no Bevy point or
+spot lights: three's lights (the sun, the hemisphere, the headlight spot,
+the police point light) reach `three_std` through the globals texture
+(D293, D456), and no material reads Bevy's clusters. In a profile of
+Sierra's flight the clustering systems and the readback were about a
+third of a WebGPU frame's main-thread time (1.24 ms of passes and 1.35
+ms in `mapAsync`, of 7.9 ms, uncapped at load 30), and two of the
+frame's render passes and four of its compute dispatches. Now a Startup
+system sets `GlobalClusterSettings::gpu_clustering` to `None` (Bevy's own
+switch, for devices without compute) and the camera carries
+`ClusterConfig::None`, so the CPU path that replaces it has no clusters
+to fill (WebGL2 always took that path, and now does nothing there
+either). Sierra, A/B alternating at load 40: main-thread CPU 1.71 to
+1.42 ms a frame, GPU process 2.62 to 2.10 ms. Pictures: unchanged, as
+for D862 to D865 (BASELINE.md, "Frame time against the JS game":
+stations, WebGL2, effect scenes and HUD shots against the build
+before).
+
+## D862. Bevy's `render_system` without its empty submission
+
+2026-10-04. After the render graph has submitted the frame,
+`bevy_render::renderer::render_system` makes a second command encoder for
+screenshot copies and GPU readbacks and submits it every frame, empty or
+not. In Chrome every submission is a `Queue::Submit` and a `vkQueueSubmit`
+in the GPU process, which sets an uncapped WebGPU frame's pace (its main
+thread was busy 100 % of the time in every Rust run, against 50 to 90 %
+for the JS game). `render::frame` takes `render_system`'s place in the
+`Render` schedule (removed with `remove_systems_in_set`, the new system
+ordered after `RenderSystems::Render`, which then holds only the
+pipeline cache's queue processing, and before `Cleanup`): while an entity
+with `Screenshot` or `Readback` exists in the main world it calls Bevy's
+`render_system` itself, so screenshots and readbacks work as before;
+otherwise it runs the render graph and presents, as `render_system`
+does, without the extra encoder. Sierra, three alternating pairs at load
+20 to 50: GPU-process CPU 2.83, 2.49, 2.80 to 2.56, 1.80, 2.09 ms a frame,
+all threads 3.84, 3.59, 3.84 to 3.52, 3.22, 3.30 ms. It copies Bevy
+0.19.1's present loop; a Bevy upgrade (D100) must check it against its
+`render_system`.
+
+## D863. The level ids are kept, not rebuilt every frame
+
+2026-10-04. `Options::race_on` asked `mr_levels::levels()` whether the
+level is one of the menu's, and that builds all six levels (Downtown
+Streets' route among them) each call; `fly_system` and `cars::start_cars`
+call it every frame (0.17 ms a frame of wall time in the profile above).
+`options::is_level` keeps the ids once (`OnceLock`); `make_track` uses it
+too.
+
+## D864. The gamepad bridge is written when it changes
+
+2026-10-04. `gamepad_io::web::publish` built `window.__mr.pads` (about 40
+properties in four objects) every frame for the tests (WP 6.4), about
+0.09 ms of a race frame's wall time, more than reading the pads. It now
+remembers what it wrote (the pads' state, the pad in hand, a capture,
+rumble and the reset label) and writes only when that differs. The tests
+read the same object with the same contents.
+
+## D865. The HUD's uniforms are written into their buffers
+
+2026-10-04. The dial's and the minimap's uniforms (D821, 6 KB each)
+change most frames of a race, and the HUD wrote them by editing the
+`HudMaterial` asset, which Bevy answers by preparing the material again:
+the uniforms encoded, a new buffer created mapped, a new bind group, the
+old ones dropped (D455's cost; in Firefox the per-frame GPU objects drive
+the GC pauses of D457). About 0.12 ms of a race frame's main-thread wall
+time, plus the GPU process's share. `HudMaterial` now implements
+`AsBindGroup` itself (the layout is the derive's, from a one-field
+struct): its bind group is made once over a uniform buffer per material
+that the render world keeps (`UNIFORM | COPY_DST`), and `hud::update`
+hands new uniforms to `HudWrites`; they are extracted and written into
+the buffer (`write_buffer`) after the materials are prepared
+(`PrepareResources`), so the same bytes (encase's encoding, as the derive
+uses) reach the GPU in the same frame as the edit did.
+
+## D866. Where the Rust client stands against the JS game, and what is left
+
+2026-10-04, after D861 to D865 (numbers in BASELINE.md, "Frame time
+against the JS game"). Per frame, the main thread's CPU time:
+
+- **At 60 Hz on the desktop** (as browsers run it), the Rust client now
+  spends less than the JS game on the two heaviest levels (Sierra 0.90
+  against 1.12 ms, Coast 0.96 against 1.53) and 10 to 20 % more on Desert,
+  Streets and the Cruise (0.93 against 0.78, 0.78 against 0.72, 0.79
+  against 0.69); Seaside, the lightest, is 0.78 against 0.36. Before:
+  1.09 to 1.40 ms on every level.
+- **In a race at 60 Hz** (Sierra, Coast): 2.25 and 2.23 ms against the
+  JS's 2.34 and 2.00 (before: 2.69, 2.88).
+- **The GPU process** (Chrome's, which decodes and runs the page's GPU
+  commands): 1.0 to 1.3 ms a frame against the JS's 0.4 to 1.1 when
+  flying, 1.9 to 2.0 against 1.3 to 1.5 in a race (before: 1.4 to 1.7, and
+  3.5 to 3.6 in a race).
+- **A throttled phone** (4 ×, 844 × 390, high quality off): the page's
+  frame work is 9 to 12 ms of the 16.7 against the JS's 3 to 9.5; Sierra
+  and Seaside fell from 13.5 and 11.2 ms; Coast did not move (one run each).
+- **Uncapped**, where the slowest stage sets the pace, the Rust client
+  runs at 85 to 95 % of the JS game's frame rate on Sierra, Coast and
+  Desert (105, 102, 100 against 120, 109, 115 fps) and below it on the
+  light levels (Seaside 154 against 200, Streets 148 against 171), because
+  its GPU-process thread is busy all the time.
+
+What is left, and why it is not closed here:
+
+1. **Bevy's fixed cost per frame.** About 360 systems run each frame
+   (Bevy's main world, extraction, the render world's prepare and queue
+   systems, the render graph) whatever the scene holds; on the light
+   levels this is most of the frame (Seaside: 0.78 ms against the JS's
+   0.36). About a tenth of it is systems of features the client never
+   uses (morph and skin batching, decals, light probes, atmosphere,
+   volumetric fog, screen-space reflections, order-independent
+   transparency, mip generation, motion-vector history, point-light
+   visibility): about 0.1 ms a frame on this desktop. They live inside
+   `PbrPlugin` and `CorePipelinePlugin`, so leaving them out means
+   removing systems by name after the app is built (each checked for
+   what reads its output) or a patched Bevy; not done.
+2. **WebGPU's cost per command in Chrome's GPU process.** The Rust client
+   issues about 500 draws a frame on Sierra, as the JS game does (310
+   indexed, 187 not; the JS 310 and 186), but about 1,000 WebGPU calls
+   against about 3,200 WebGL calls, and Dawn validating and recording
+   each draw and submission costs more than ANGLE's path: the GPU
+   process's thread is the frame's bottleneck when uncapped. It shows in
+   the page too: at 60 Hz the Rust callback takes 2.0 to 2.6 ms of wall
+   time for 0.8 to 1.0 ms of CPU, the rest spent waiting on calls into the
+   GPU process (the JS game's callback waits proportionally less). Less
+   work there means fewer draws or commands (render bundles, merged
+   draws), which is a renderer redesign, not a setting.
+3. **`RenderDevice::limits()` per draw.** Bevy's `SetMeshBindGroup` asks
+   for the device limits on every draw (`skins_use_uniform_buffers`), and
+   wgpu's WebGPU backend answers by reading every limit from the
+   browser's `GPUSupportedLimits` object (`map_wgt_limits`): about 0.08
+   ms a frame of main-thread time on Sierra. A one-line cache in wgpu
+   would remove it; that is a patched dependency, the owner's call (D674
+   item 5's reasoning), and worth reporting upstream.
+4. **WebGL2.** The fallback's main thread is 1.1 to 1.4 ms against the
+   JS's 0.7 to 0.9, and uncapped it runs at 28 to 37 fps against the JS's
+   100 to 110 on this desktop (the same before these changes): its GPU
+   side (wgpu's GL backend through ANGLE) is the limit, as D456 described
+   for Coast. Not investigated further here.
+5. GPU preprocessing stays on: off (`?gpupre=0`), Sierra's main thread
+   went from 1.4 to 5.9 ms a frame (19 fps).
+
+## D867. Open, for the owner: `simd128` on the WebGPU build
+
+2026-10-04, D674 item 2 measured again on the current client. The
+WebGPU build with `-C target-feature=+simd128` (and wasm-opt's
+`--enable-simd`): 0.16 MB smaller after gzip (8.83 against 8.99 MB), and
+at 60 Hz, two alternating rounds at load 6 to 7, the main thread's CPU a
+frame 0.88 and 0.87 ms against 0.99 and 0.88 on Sierra, 0.75 and 0.76
+against 0.82 and 0.78 on Seaside: about 0.05 ms (5 %) less, within the
+runs' spread. Every browser with WebGPU has wasm SIMD, so on the WebGPU
+build it costs nothing; on the WebGL2 build it would stop the page
+loading on Safari before 16.4. Proposed: the WebGPU build only, which
+needs `xtask web` to pass the flag to that build's own target directory
+(as D391 does for the WebGL2 cfg). Not adopted here.
 ## D679. A level viewer ("god mode"), Rust only
 
 2026-10-04, the owner: "add a 'god mode' level viewer to the spec and

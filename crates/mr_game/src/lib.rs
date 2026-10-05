@@ -57,6 +57,7 @@ mod web;
 use bevy::camera::{Hdr, PerspectiveProjection, Projection};
 use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::light::DirectionalLightShadowMap;
+use bevy::light::cluster::{ClusterConfig, GlobalClusterSettings};
 use bevy::math::DVec3;
 use bevy::prelude::*;
 use bevy::render::view::Msaa;
@@ -142,6 +143,9 @@ pub struct SkyRes {
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
+        // No clustered lights: three's lights reach the shaders through
+        // the globals (D861).
+        ClusterConfig::None,
         Hdr,
         Msaa::Sample4,
         Tonemapping::None,
@@ -157,6 +161,18 @@ fn spawn_camera(mut commands: Commands) {
     ));
 }
 
+/// No light clustering (DECISIONS D861). Bevy clusters point and spot
+/// lights and decals for its own PBR shaders, on the GPU where there is
+/// compute (WebGPU): every frame a compute pass, a raster pass and a
+/// buffer mapped to read the counts back. The client has no Bevy point or
+/// spot lights and its shaders read three's lights from the globals, so
+/// that work had nothing to cluster; it was a third of a WebGPU frame.
+/// With `gpu_clustering` off the CPU path runs instead, and the camera's
+/// `ClusterConfig::None` leaves it nothing to do.
+fn no_light_clustering(mut settings: ResMut<GlobalClusterSettings>) {
+    settings.gpu_clustering = None;
+}
+
 /// Builds the level's Track (Seaside once its survey is in) and its sky.
 /// Without a level (the models), the sky is Sierra's at the start.
 fn make_track(mut tr: ResMut<TrackRes>, mut sky: ResMut<SkyRes>, opts: Res<Opts>) {
@@ -164,7 +180,7 @@ fn make_track(mut tr: ResMut<TrackRes>, mut sky: ResMut<SkyRes>, opts: Res<Opts>
         return;
     }
     let id = opts.o.level.as_str();
-    let known = mr_levels::levels().iter().any(|l| l.id == id);
+    let known = options::is_level(id);
     if !known {
         tr.none = true;
         if sky.sky.is_none() {
@@ -528,7 +544,7 @@ pub fn app(o: Options, hq: bool) -> App {
     })
     .insert_resource(Opts { o, hq })
     .init_state::<AppState>()
-    .add_systems(Startup, spawn_camera)
+    .add_systems(Startup, (spawn_camera, no_light_clustering))
     .add_systems(First, status::tick)
     .add_systems(Update, make_track)
     .add_systems(Update, unload_scene.before(receive_scene))
