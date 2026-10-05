@@ -65,6 +65,25 @@ pub mod web {
             Ok(())
         }
     }
+
+    /// `navigator.audioSession` looked up when it is used, as
+    /// `askForPlayback(navigator)` reads `nav.audioSession` at the call:
+    /// missing then, it does nothing.
+    pub struct NavigatorSession;
+
+    impl AudioSession for NavigatorSession {
+        fn get_type(&self) -> Result<String, String> {
+            navigator_session()
+                .ok_or_else(|| "no navigator.audioSession".to_owned())?
+                .get_type()
+        }
+
+        fn set_type(&self, t: &str) -> Result<(), String> {
+            navigator_session()
+                .ok_or_else(|| "no navigator.audioSession".to_owned())?
+                .set_type(t)
+        }
+    }
 }
 
 #[cfg(test)]

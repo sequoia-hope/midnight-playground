@@ -207,6 +207,8 @@ pub struct UiState {
     pub pads: bool,
     /// The page's safe-area inset at the top, CSS px.
     pub inset_top: f32,
+    /// `#np-pause`: the track playing (`showNowPlaying`), empty until one does.
+    pub now_playing: String,
 }
 
 #[derive(Clone, Debug)]
@@ -227,13 +229,15 @@ struct UiRoot;
 #[derive(Component)]
 struct Scroller;
 
-/// Whether this run opens on the menu (`?level=` races at once, D432; so do
-/// `autostart`, `race=1` and the native `shots=`), for a level that races.
+/// Whether this run opens on the menu, for a level that races. As in the
+/// JS, `?level=` only picks the menu's level (not saved) and `autostart`
+/// races at once; so do the Rust-only `race=1`, `car=` (D432) and the
+/// native `shots=` (D903).
 pub fn menu_first(o: &Options) -> bool {
     o.race_on()
-        && o.param("level").is_none()
         && o.param("autostart").is_none()
         && o.param("race").is_none()
+        && o.param("car").is_none()
         && o.param("shots").is_none()
 }
 
@@ -259,7 +263,11 @@ pub fn plugin(app: &mut App) {
     // As the page decided it (play's own copy is set at Startup).
     let touch = touch_ui(&o);
     let store = Store::platform();
-    let settings = Settings::load(&store, touch);
+    let mut settings = Settings::load(&store, touch);
+    // `if (params.has('level')) settings.level = params.get('level')`.
+    if o.param("level").is_some() {
+        settings.level = o.level.clone();
+    }
     let first = menu_first(&o);
     {
         let mut play = app.world_mut().resource_mut::<Play>();
@@ -307,6 +315,7 @@ pub fn plugin(app: &mut App) {
             to_menu: false,
             pads: false,
             inset_top: 0.0,
+            now_playing: String::new(),
         })
         .init_resource::<nav::MenuNav>()
         .init_resource::<pad_setup::PadSetup>()
@@ -538,6 +547,16 @@ fn sync_audio(
         );
     }
     *last = Some((a.settings.music, a.settings.sfx, a.settings.track.clone()));
+    // `audio.onTrackChange`: `#np-pause` names the new track.
+    if let Some(i) = a.audio.track_info() {
+        let t = format!("♪ {} · {}", i.title, i.style);
+        if t != ui.now_playing {
+            ui.now_playing = t;
+            if ui.screen == Screen::Pause {
+                ui.dirty = true;
+            }
+        }
+    }
     if std::mem::take(&mut ui.to_menu) {
         a.to_menu();
     }

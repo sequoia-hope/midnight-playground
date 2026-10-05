@@ -763,8 +763,12 @@ fn platform() -> Platform {
         new_context: Some(Box::new(|o| {
             mr_audio::wa::web::context(o.latency_hint.as_deref()).ok()
         })),
-        audio_session: mr_audio::session::web::navigator_session()
-            .map(|s| Box::new(s) as Box<dyn AudioSession>),
+        // Read at the gesture that makes the context, as `askForPlayback`
+        // reads `navigator.audioSession` then (WP 6.7: the e2e `audio`
+        // suite stands one in after the page has loaded).
+        audio_session: Some(
+            Box::new(mr_audio::session::web::NavigatorSession) as Box<dyn AudioSession>
+        ),
         radio: Rc::new(mr_audio::radio::web::WebFetch {
             base: RADIO_BASE.into(),
         }),

@@ -275,6 +275,22 @@ pub fn pause(p: &mut ChildSpawnerCommands, cx: &mut Cx, ui: &UiState, play: &Pla
             ..default()
         })
         .with_children(|p| {
+            // `#np-pause` (`.np-line span:empty { display: none }`); the ♪
+            // is an icon, as no bundled face has it.
+            if let Some(rest) = ui.now_playing.strip_prefix("♪ ") {
+                p.spawn((
+                    Node {
+                        align_items: AlignItems::Center,
+                        column_gap: bp.px(4.0),
+                        ..default()
+                    },
+                    Control::named("np-pause", Value::Text(ui.now_playing.clone())),
+                ))
+                .with_children(|p| {
+                    w::icon_node(p, &bp, &cx.icons.note, 14.0, w::dim());
+                    p.spawn(w::text(rest, T::new(16.0).ls(0.05).c(w::dim()), bp.k));
+                });
+            }
             w::button_mini(
                 p,
                 &bp,
