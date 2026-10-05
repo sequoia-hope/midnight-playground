@@ -795,6 +795,33 @@ type Placed<'w, 's> = Query<
 
 /// One frame of `World.update` on the drawn scene.
 #[allow(clippy::too_many_arguments)]
+/// The countdown's lamps (Seaside's start lights) the last frame of a
+/// countdown set, and how many are lit: the test bridge's stand-in for the
+/// JS's `scenery[0].lampMats` (`__mr.lamps`).
+pub static LAMPS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+pub static LAMPS_LIT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+fn count_lamps(edits: &[SceneEdit]) {
+    let mut n = 0;
+    let mut lit = 0;
+    for e in edits {
+        if let Change::Number {
+            prop: "emissiveIntensity",
+            value,
+        } = &e.change
+        {
+            n += 1;
+            if *value > 0.0 {
+                lit += 1;
+            }
+        }
+    }
+    if n > 0 {
+        LAMPS.store(n, Ordering::Relaxed);
+        LAMPS_LIT.store(lit, Ordering::Relaxed);
+    }
+}
+
 pub fn run_animators(
     mut commands: Commands,
     wg: ResMut<WorldGen>,
@@ -866,7 +893,9 @@ pub fn run_animators(
     });
     // `Race.update`'s `world.onCountdown` (Seaside's start lights, D682).
     if let Some(cd) = race.0 {
-        edits.extend(wb.countdown(cd));
+        let lamps = wb.countdown(cd);
+        count_lamps(&lamps);
+        edits.extend(lamps);
     }
     drop(wb);
     let blocks_before = blocks.texels.len();

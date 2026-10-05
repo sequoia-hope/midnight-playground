@@ -35,7 +35,7 @@ pub mod tilt;
 pub mod touch;
 mod touch_ui;
 #[cfg(target_arch = "wasm32")]
-mod web;
+pub(crate) mod web;
 
 use crate::loader::{AppState, SkyDome};
 use crate::render::Lighting;

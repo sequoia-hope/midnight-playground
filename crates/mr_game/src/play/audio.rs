@@ -850,9 +850,32 @@ pub fn plugin(app: &mut App) {
     );
 }
 
+/// The test bridge's context calls (`__audio.ctx.suspend()`, as iOS
+/// interrupts a context on a call), made at the next frame.
+static CTX_OPS: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+
+/// `__mr.stage({cmd: 'audio', op})`: `suspend` or `resume` the context.
+pub fn stage_ctx(op: &str) {
+    let op = match op {
+        "suspend" => "suspend",
+        "resume" => "resume",
+        _ => return,
+    };
+    CTX_OPS.lock().unwrap_or_else(|e| e.into_inner()).push(op);
+}
+
 /// After the frame's ticks and the camera: the race's audio calls.
 fn frame(shared: NonSend<Shared>, mut play: ResMut<Play>, mut keys: MessageReader<KeyboardInput>) {
     let mut a = shared.0.borrow_mut();
+    for op in std::mem::take(&mut *CTX_OPS.lock().unwrap_or_else(|e| e.into_inner())) {
+        if let Some(c) = a.audio.ctx() {
+            let _ = if op == "suspend" {
+                c.suspend()
+            } else {
+                c.resume()
+            };
+        }
+    }
     let next = keys
         .read()
         .any(|k| k.state == ButtonState::Pressed && !k.repeat && k.key_code == KeyCode::KeyT);
@@ -969,6 +992,16 @@ fn publish(a: &mut RaceAudio) {
             .track_info()
             .map_or(JsValue::NULL, |t| JsValue::from_str(t.id)),
     );
+    // What the e2e suites read off `__audio` (`_musicOn`,
+    // `musicGate.gain.value`, `_vol`).
+    set(&o, "musicOn", JsValue::from_bool(a.audio.music_on()));
+    set(&o, "musicGate", JsValue::from_f64(a.audio.music_gate()));
+    let (master, sfx, music) = a.audio.volumes();
+    let vol = Object::new();
+    set(&vol, "master", JsValue::from_f64(master));
+    set(&vol, "sfx", JsValue::from_f64(sfx));
+    set(&vol, "music", JsValue::from_f64(music));
+    set(&o, "vol", vol.into());
     set(&o, "prepareMs", JsValue::from_f64(a.prepare_ms));
     set(&o, "frameMsMax", JsValue::from_f64(a.frame_ms_max));
     set(
