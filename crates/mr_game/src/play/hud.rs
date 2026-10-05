@@ -1274,8 +1274,8 @@ fn set_vis(v: &mut Option<Mut<Visibility>>, on: bool) {
 /// where a translucent colour shows more of what is behind it (a dark
 /// panel lighter, a faint white one brighter). `hc` gives a colour the
 /// alpha that, blended in linear, lands where the browser's sRGB blend
-/// would over a typical background (sRGB 0.25; exact for any background
-/// when the colour is black). D823.
+/// would over a typical background (sRGB 0.25; close over others when the
+/// colour is dark). D823.
 pub fn hc(c: Color) -> Color {
     let s = c.to_srgba();
     let l = 0.2126 * s.red + 0.7152 * s.green + 0.0722 * s.blue;
@@ -1781,10 +1781,15 @@ mod tests {
     #[test]
     fn alphas_for_a_linear_blend() {
         // Black at 50 %: the background at half its sRGB value, which in
-        // linear is (1 - a') of it.
+        // linear is (1 - a') of it: exact over sRGB 0.25, close over
+        // brighter ones.
         let a = lin_alpha(0.0, 0.5);
         let lin = |v: f32| ((v + 0.055) / 1.055).powf(2.4);
-        assert!(((1.0 - a) - lin(0.6 * 0.5) / lin(0.6)).abs() < 0.02, "{a}");
+        assert!(
+            ((1.0 - a) - lin(0.25 * 0.5) / lin(0.25)).abs() < 1e-3,
+            "{a}"
+        );
+        assert!(((1.0 - a) - lin(0.6 * 0.5) / lin(0.6)).abs() < 0.06, "{a}");
         // Faint white is fainter; opaque and clear stay.
         assert!(lin_alpha(1.0, 0.12) < 0.12);
         assert_eq!(lin_alpha(1.0, 1.0), 1.0);
