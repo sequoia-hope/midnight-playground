@@ -30,6 +30,8 @@ export const SKIPS = [
   { suite: 'pursuit', name: /^busted/, m8: true, why: 'busts, the hold and the penalty: M8' },
   { suite: 'pursuit', name: /^wrecked/, m8: true, why: 'damage and wrecks: M8' },
   { suite: 'pursuit', name: /^results: the pursuit stats/, m8: true, why: 'pursuit results and the pursuit best time: M8' },
+  // Deviations (DEVIATIONS.md).
+  { suite: 'audio', name: /^phone: pausing suspends the audio, taps on the pause screen leave it/, why: 'deviation: a tap on no control of the pause screen resumes (DEVIATIONS.md, D578); suspend on pause and resume are race-flow\'s Esc test' },
   // JS-only hooks.
   { suite: 'race-button', name: /^phone: a second tap while the race is starting/, why: 'replaces three\'s `renderer.compileAsync` and traps `window.__race` assignments; the Rust check counts `__mr.races` (tools/parity/e2e/rust-only.test.mjs)' },
   { suite: 'traffic-lod', name: /./, why: 'reads three.js scene-graph internals (CarModel.setFar, geometry groups, Traffic.lod); the Rust far-model switch is the renderer\'s (play::FAR_OUT/FAR_IN, D)' },

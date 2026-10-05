@@ -46,7 +46,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       if (!fs.existsSync(p)) return req.respond({ status: 404, body: 'not found' });
       req.respond({ status: 200, contentType: TYPES[path.extname(p)] || 'application/octet-stream', body: fs.readFileSync(p) });
     });
-    const q = `level=${process.env.LEVEL || 'seaside'}${kind !== 'touch' ? '&autodrive=1&timescale=4&seed=1' : ''}${extra ? '&' + extra : ''}`;
+    const q = `race=1&level=${process.env.LEVEL || 'seaside'}${kind !== 'touch' ? '&autodrive=1&timescale=4&seed=1' : ''}${extra ? '&' + extra : ''}`;
     await page.goto(`${ORIGIN}/dist/next/index.html?${q}`);
     const ev = (f) => cdp.send('Runtime.evaluate', { expression: f, returnByValue: true, userGesture: false }).then((r) => r.result.value);
     const t0 = Date.now();

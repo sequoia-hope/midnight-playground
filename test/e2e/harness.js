@@ -232,22 +232,18 @@ export class Game {
   async tap(selector) {
     const { x, y } = await this.center(selector);
     await this.page.touchscreen.tap(x, y);
-    if (this.target === 'rust') await this.frames(2);
   }
 
   // A mouse click, as on a desktop.
   async click(selector) {
     const { x, y } = await this.center(selector);
     await this.page.mouse.click(x, y);
-    if (this.target === 'rust') await this.frames(2);
   }
 
   async key(code, holdMs = 0) {
     await this.page.keyboard.down(code);
     if (holdMs) await sleep(holdMs);
-    else if (this.target === 'rust') await this.frames(2); // the client reads keys once a frame
     await this.page.keyboard.up(code);
-    if (this.target === 'rust') await this.frames(2);
   }
 
   // Raw multi-touch: points is [{x, y, id}]; type is touchStart/Move/End.
@@ -346,6 +342,19 @@ async function openRust(browser, { device, query, storage, path: page_, init, in
   const cdp = await page.createCDPSession();
   const target = page_ ? 'js' : 'rust';
   const game = new Game(page, cdp, context, target);
+  // The JS game handles an input event at once; the Rust client reads it
+  // in its next frame. Each mouse, finger and key event the suites send
+  // (through the Game's helpers or the page's own) waits for two frames.
+  for (const [dev, names] of [[page.mouse, ['click', 'down', 'up']], [page.touchscreen, ['tap']], [page.keyboard, ['down', 'up']]]) {
+    for (const n of names) {
+      const f = dev[n].bind(dev);
+      dev[n] = async (...a) => {
+        const r = await f(...a);
+        if (game.target === 'rust') await game.frames(2);
+        return r;
+      };
+    }
+  }
 
   page.on('pageerror', (e) => game.errors.push(String(e.message || e)));
   page.on('console', (m) => {
