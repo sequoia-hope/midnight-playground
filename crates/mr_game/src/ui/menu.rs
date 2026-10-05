@@ -283,6 +283,34 @@ pub fn menu(
             BorderColor::all(w::white(0.12)),
         ))
         .with_children(|p| {
+            // The level viewer (SPEC 8.6, D679): a pill in the card's
+            // corner, out of the layout, so nothing else on the menu moves.
+            let f = cx.f("btn-viewer");
+            let mut e = p.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    top: bp.px(if bp.compact { 6.0 } else { 10.0 }),
+                    right: bp.px(if bp.compact { 10.0 } else { 14.0 }),
+                    padding: UiRect::axes(bp.px(10.0), bp.px(3.0)),
+                    border: w::border(&bp, 1.0),
+                    border_radius: w::pill(),
+                    ..default()
+                },
+                BorderColor::all(w::white(0.25)),
+                BackgroundColor(w::white(0.06)),
+                Control::act("btn-viewer", Act::Viewer).value(Value::Text("Level viewer".into())),
+            ));
+            w::focus_ring(&mut e, &bp, f);
+            e.with_children(|p| {
+                p.spawn((
+                    w::text(
+                        "LEVEL VIEWER",
+                        T::new(11.0).bold().ls(0.12).c(w::accent2()),
+                        bp.k,
+                    ),
+                    TextLayout::no_wrap(),
+                ));
+            });
             p.spawn((
                 w::text(level.num, T::new(12.0).bold().ls(0.4).c(w::accent()), bp.k),
                 Control::named("lvl-num", Value::Text(level.num.into())),
