@@ -37,15 +37,18 @@
 use super::Play;
 use super::camera::{CameraRig, Car, View};
 use super::flow::Mode;
+use super::radio::{self, PvCall};
 use crate::Opts;
 use crate::loader::AppState;
 use bevy::input::ButtonState;
 use bevy::input::keyboard::{KeyCode, KeyboardInput};
 use bevy::prelude::*;
-use mr_audio::game::{CarState, GameAudio, Platform, Rival, Volume};
+use mr_audio::game::{CarState, GameAudio, Platform, Rival, SirenUnit, Volume};
 use mr_math::{clamp, kernel};
 use mr_sim::input::InputFrame;
 use mr_sim::physics::{MOTOR_MAX, PhysEvent};
+use mr_sim::police::{Mode as UnitMode, Siren};
+use mr_sim::pursuit::{PursuitEvent, State as PursuitState};
 use mr_sim::race::{DT, LevelRuntime, RaceStateKind, SimEvent, SimState};
 use mr_track::ROAD_TYPES;
 use mr_track::Track;
@@ -81,9 +84,127 @@ pub struct RivalAt {
     pub electric: bool,
 }
 
+/// A police unit whose siren may sound (`PursuitView.audio`'s list before
+/// the camera's pan): its callsign, where it is from the player, and how
+/// fast the gap closes.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SirenAt {
+    pub id: i32,
+    pub dx: f64,
+    pub dz: f64,
+    pub dist: f64,
+    /// Closing speed (m/s, + = closing).
+    pub rel: f64,
+    pub mode: &'static str,
+}
+
+/// What Hot Pursuit's audio hears of one tick: the pursuit's events with
+/// what `PursuitView.events` reads to say them (the zone, the heading, the
+/// callsigns, the pursuit's state), and `PursuitView.audio`'s sirens, mood,
+/// damage and spiked tyres.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PursuitTick {
+    pub events: Vec<PursuitEvent>,
+    /// `zoneName()` and `heading()` at the player's car after the tick.
+    pub zone: String,
+    pub heading: &'static str,
+    /// Every police car's callsign (units, then the roadblock cars), as the
+    /// events number them.
+    pub callsigns: Vec<i32>,
+    /// `pu.state === 'pursuit'`.
+    pub chasing: bool,
+    /// The units in earshot, in the units' order (not sorted yet).
+    pub sirens: Vec<SirenAt>,
+    /// `setPursuitMood`'s argument.
+    pub mood: &'static str,
+    pub damage: f64,
+    /// `setSpikedTyres(race.phys.spiked > 0, speed)`.
+    pub spiked: bool,
+    pub speed: f64,
+}
+
+impl PursuitTick {
+    fn of(lr: &LevelRuntime, st: &SimState, events: &[SimEvent]) -> Option<PursuitTick> {
+        let pv = st.pv.as_ref()?;
+        let pu = &pv.pursuit;
+        let t = &*lr.track;
+        let p = &st.players[0];
+        let v = &p.v;
+        let events = events
+            .iter()
+            .filter_map(|e| match e {
+                SimEvent::Pursuit(pe) => Some(pe.clone()),
+                _ => None,
+            })
+            .collect();
+        let callsigns = pu
+            .units
+            .iter()
+            .chain(&pu.block_cars)
+            .map(|u| u.callsign)
+            .collect();
+        // PursuitView.audio: the units with their lights on and in earshot.
+        let mut sirens = Vec::new();
+        for u in &pu.units {
+            if !u.active
+                || u.siren != Siren::Flash
+                || matches!(
+                    u.mode,
+                    UnitMode::Disabled | UnitMode::Hold | UnitMode::Standdown
+                )
+            {
+                continue;
+            }
+            let (dx, dz) = (u.k.v.x - v.x, u.k.v.z - v.z);
+            let d = kernel::hypot(dx, dz);
+            if d > 360.0 {
+                continue;
+            }
+            // Closing speed: how fast the gap between us shrinks.
+            let rel =
+                -((dx * (u.k.v.vx - v.vx) + dz * (u.k.v.vz - v.vz)) / mr_math::js::max(d, 1.0));
+            sirens.push(SirenAt {
+                id: u.callsign,
+                dx,
+                dz,
+                dist: d,
+                rel,
+                mode: if u.mode == UnitMode::Search {
+                    "hilo"
+                } else if d < 60.0 {
+                    "yelp"
+                } else {
+                    "wail"
+                },
+            });
+        }
+        let mood = if pv.held() || p.rules.finished {
+            "off"
+        } else {
+            match pu.state {
+                PursuitState::Patrol => "off",
+                PursuitState::Pursuit => "pursuit",
+                PursuitState::Cooldown => "cooldown",
+            }
+        };
+        Some(PursuitTick {
+            events,
+            zone: radio::zone_name(t, v.s),
+            heading: radio::heading(t, v.s),
+            callsigns,
+            chasing: pu.state == PursuitState::Pursuit,
+            sirens,
+            mood,
+            damage: pv.damage,
+            spiked: p.phys.spiked > 0.0,
+            speed: kernel::hypot(v.vx, v.vz),
+        })
+    }
+}
+
 /// What the audio hears of one tick: everything of `Race.update`'s audio
 /// calls but the camera.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct TickAudio {
     /// The tick (`SimState::tick` after it).
     pub tick: u32,
@@ -99,6 +220,11 @@ pub struct TickAudio {
     pub countdown: bool,
     /// The camera's shake from this tick's contacts (`cam.bump`).
     pub bumps: Vec<f64>,
+    /// Hot Pursuit's side of the tick, in a pursuit.
+    pub pursuit: Option<PursuitTick>,
+    /// `PursuitView.events`' calls on the audio this tick, in order (the
+    /// stingers and the radio lines that got through; [`radio::Radio`]).
+    pub pv: Vec<PvCall>,
 }
 
 impl TickAudio {
@@ -151,6 +277,16 @@ impl TickAudio {
                 }
                 SimEvent::Finished { .. } => shots.push(Shot::FinishFanfare),
                 SimEvent::Controls { throttle, .. } => ctrl_throttle = *throttle,
+                _ => {}
+            }
+        }
+        // PursuitView.events' camera shakes (after the tick's contacts).
+        for e in events {
+            match e {
+                SimEvent::Pursuit(PursuitEvent::Takedown {
+                    by_player: true, ..
+                }) => bumps.push(1.0),
+                SimEvent::Pursuit(PursuitEvent::Wrecked { .. }) => bumps.push(1.2),
                 _ => {}
             }
         }
@@ -222,6 +358,8 @@ impl TickAudio {
             car: Car::of(v),
             countdown: st.race.state == RaceStateKind::Countdown,
             bumps,
+            pursuit: PursuitTick::of(lr, st, events),
+            pv: Vec::new(),
         }
     }
 }
@@ -252,7 +390,10 @@ enum Call {
     Init,
     Unlock,
     PlayTrack(String),
-    SetVolume { music: f64, sfx: f64 },
+    SetVolume {
+        music: f64,
+        sfx: f64,
+    },
     SetMusic(bool),
     SetCar(&'static str),
     NextTrack,
@@ -262,6 +403,24 @@ enum Call {
     SetRivalEngines(Vec<Rival>),
     SetEnvironment(&'static str),
     Shot(Shot, f64),
+    /// `radioVoice.prefetch(ids)`.
+    Prefetch(Vec<String>),
+    SetSirens(Vec<SirenUnit>),
+    SetPursuitMood(&'static str),
+    SetDamage(f64),
+    SetSpikedTyres(bool, f64),
+    /// One of `PursuitView.events`' calls.
+    Pv(PvCall),
+}
+
+/// A JSON string as `JSON.stringify` writes it.
+fn json_str(s: &str) -> String {
+    serde_json::Value::from(s).to_string()
+}
+
+fn json_strs(v: &[String]) -> String {
+    let items: Vec<String> = v.iter().map(|s| json_str(s)).collect();
+    format!("[{}]", items.join(","))
 }
 
 /// A number as the facade recorder writes it: `-0` kept, non-finite as
@@ -352,6 +511,37 @@ impl Call {
                 Shot::Whoosh(p, strength) => ("whoosh", vec![num(p), num(strength)]),
                 Shot::FinishFanfare => ("finishFanfare", vec![]),
             },
+            Call::Prefetch(ids) => ("radioVoice.prefetch", vec![json_strs(ids)]),
+            Call::SetSirens(list) => {
+                let items: Vec<String> = list
+                    .iter()
+                    .map(|u| {
+                        object(&[
+                            ("id", u.id.map(num)),
+                            ("dist", u.dist.map(num)),
+                            ("pan", u.pan.map(num)),
+                            ("relSpeed", u.rel_speed.map(num)),
+                            ("mode", u.mode.as_deref().map(json_str)),
+                        ])
+                    })
+                    .collect();
+                ("setSirens", vec![format!("[{}]", items.join(","))])
+            }
+            Call::SetPursuitMood(m) => ("setPursuitMood", vec![json_str(m)]),
+            Call::SetDamage(d) => ("setDamage", vec![num(*d)]),
+            Call::SetSpikedTyres(on, speed) => {
+                ("setSpikedTyres", vec![on.to_string(), num(*speed)])
+            }
+            Call::Pv(c) => match c {
+                PvCall::SirenHorn => ("sirenHorn", vec![]),
+                PvCall::Escaped => ("escaped", vec![]),
+                PvCall::Takedown => ("takedown", vec![num(1.0)]),
+                PvCall::SpikePop => ("spikePop", vec![]),
+                PvCall::Barrier => ("impact", vec![num(0.35), num(0.0)]),
+                PvCall::Busted => ("busted", vec![]),
+                PvCall::Wrecked => ("wrecked", vec![]),
+                PvCall::RadioLine(parts) => ("radioLine", vec![json_strs(parts)]),
+            },
         };
         let mut out = format!("[{tick},\"{method}\"");
         for a in args {
@@ -391,6 +581,25 @@ impl Call {
                 Shot::Whoosh(p, strength) => a.whoosh(p, strength),
                 Shot::FinishFanfare => a.finish_fanfare(),
             },
+            Call::Prefetch(ids) => {
+                // Not awaited (`race.audio?.radioVoice?.prefetch(...)`): the
+                // fetches run on.
+                let _ = a.radio_voice.prefetch(&ids);
+            }
+            Call::SetSirens(list) => a.set_sirens(&list),
+            Call::SetPursuitMood(m) => a.set_pursuit_mood(m),
+            Call::SetDamage(d) => a.set_damage(d),
+            Call::SetSpikedTyres(on, speed) => a.set_spiked_tyres(on, speed),
+            Call::Pv(c) => match c {
+                PvCall::SirenHorn => a.siren_horn(0.0),
+                PvCall::Escaped => a.escaped(),
+                PvCall::Takedown => a.takedown(1.0, 0.0),
+                PvCall::SpikePop => a.spike_pop(0.0),
+                PvCall::Barrier => a.impact(0.35, 0.0),
+                PvCall::Busted => a.busted(),
+                PvCall::Wrecked => a.wrecked(),
+                PvCall::RadioLine(parts) => a.radio_line(&parts, 0.0),
+            },
         }
     }
 }
@@ -411,6 +620,8 @@ pub struct RaceAudio {
     prepared: bool,
     was_nitro: bool,
     in_tunnel: bool,
+    /// The race on has a PursuitView (its `dispose` quiets the sirens).
+    pursuit: bool,
     mode: Mode,
     /// The camera as the JS game's audio reads it (D515): a rig stepped
     /// per tick, the orientation its last `lookAt` gave (`q`) and the one
@@ -440,6 +651,7 @@ impl RaceAudio {
             prepared: false,
             was_nitro: false,
             in_tunnel: false,
+            pursuit: false,
             mode: Mode::Race,
             rig: CameraRig::default(),
             q: (1.0, 0.0),
@@ -515,6 +727,38 @@ impl RaceAudio {
         self.rig = CameraRig::default();
     }
 
+    /// A new race's `PursuitView`, after `startRace`'s calls: the last
+    /// race's is disposed of (`race?.dispose()`), and a pursuit fetches its
+    /// level's radio lines now, so each is ready when it is said
+    /// (`radioVoice.prefetch(radioClips(...))`).
+    pub fn new_race(&mut self, clips: Option<Vec<String>>) {
+        self.end_pursuit();
+        if let Some(ids) = clips {
+            self.pursuit = true;
+            self.call(Call::Prefetch(ids));
+        }
+    }
+
+    /// `PursuitView.dispose`: no sirens, no mood, no damage, no spiked
+    /// tyres.
+    fn end_pursuit(&mut self) {
+        if !std::mem::take(&mut self.pursuit) {
+            return;
+        }
+        self.call(Call::SetSirens(Vec::new()));
+        self.call(Call::SetPursuitMood("off"));
+        self.call(Call::SetDamage(0.0));
+        self.call(Call::SetSpikedTyres(false, 0.0));
+    }
+
+    /// Radio lines said outside the ticks (the test bridge's
+    /// `race.pv.say`): `audio.radioLine(parts)` at once.
+    pub fn radio_lines(&mut self, lines: &[mr_audio::radio::lines::Line]) {
+        for l in lines {
+            self.call(Call::Pv(PvCall::RadioLine(l.parts.clone())));
+        }
+    }
+
     /// `pause(on)`.
     pub fn pause(&mut self, on: bool) {
         self.call(Call::SetPaused(on));
@@ -570,6 +814,7 @@ impl RaceAudio {
     /// `toMenu`: the sound unpaused, the engine idle, no rivals, the open
     /// road's acoustics.
     pub fn to_menu(&mut self) {
+        self.end_pursuit();
         self.call(Call::SetPaused(false));
         self.mode = Mode::Race;
         self.call(Call::Update(
@@ -619,6 +864,10 @@ impl RaceAudio {
                 };
                 self.call(Call::Shot(*s, pan));
             }
+            // PursuitView.events (in `sync`, after the finish).
+            for c in &ta.pv {
+                self.call(Call::Pv(c.clone()));
+            }
             for &b in &ta.bumps {
                 self.rig.bump(b);
             }
@@ -662,6 +911,9 @@ impl RaceAudio {
                 });
                 near.truncate(3);
                 self.call(Call::SetRivalEngines(near));
+                if let Some(pt) = &ta.pursuit {
+                    self.pursuit_audio(pt, crx, crz);
+                }
             }
             self.was_nitro = ta.nitro;
             if ta.in_tunnel != self.in_tunnel {
@@ -676,6 +928,36 @@ impl RaceAudio {
         }
         // The frame's render brings the matrix up to date.
         self.mw = self.q;
+    }
+
+    /// `PursuitView.audio(camRight)`: the three nearest sirens, the music's
+    /// mood, the engine's damage and the spiked tyres.
+    fn pursuit_audio(&mut self, pt: &PursuitTick, crx: f64, crz: f64) {
+        let mut list: Vec<SirenUnit> = pt
+            .sirens
+            .iter()
+            .map(|u| SirenUnit {
+                id: Some(f64::from(u.id)),
+                dist: Some(u.dist),
+                pan: Some(clamp(
+                    (u.dx * crx + u.dz * crz) / mr_math::js::max(u.dist, 1.0),
+                    -1.0,
+                    1.0,
+                )),
+                rel_speed: Some(u.rel),
+                mode: Some(u.mode.to_owned()),
+            })
+            .collect();
+        // `.sort((a, b) => a.dist - b.dist)`: stable.
+        list.sort_by(|a, b| {
+            let d = a.dist.unwrap_or(0.0) - b.dist.unwrap_or(0.0);
+            d.partial_cmp(&0.0).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        list.truncate(3);
+        self.call(Call::SetSirens(list));
+        self.call(Call::SetPursuitMood(pt.mood));
+        self.call(Call::SetDamage(pt.damage));
+        self.call(Call::SetSpikedTyres(pt.spiked, pt.speed));
     }
 
     /// `camera.lookAt(target)`: the matrix takes the orientation the last
@@ -916,7 +1198,9 @@ fn frame(shared: NonSend<Shared>, mut play: ResMut<Play>, mut keys: MessageReade
             .first()
             .map_or(race.session.curr.tick, |t| t.tick - 1);
         a.start_race(race.session.lr.level.id, race.setup.opts.car);
+        a.new_race(pursuit_clips(&race.session.lr, &race.session.curr));
     }
+    a.radio_lines(race.radio.direct());
     if race.music_pressed {
         a.toggle_music();
     }
@@ -937,6 +1221,22 @@ fn frame(shared: NonSend<Shared>, mut play: ResMut<Play>, mut keys: MessageReade
     a.frame_ms_sum += ms;
     a.frames += 1;
     publish(&mut a);
+}
+
+/// The radio clips of a pursuit's level (`radioClips({ zones, units,
+/// names })` in PursuitView's constructor): the track's zones, the units'
+/// callsigns, the rivals' names. `None` without a pursuit.
+pub fn pursuit_clips(lr: &LevelRuntime, st: &SimState) -> Option<Vec<String>> {
+    let pu = &st.pv.as_ref()?.pursuit;
+    let zones: Vec<&str> = lr.track.zones.iter().map(|z| z.zone.name).collect();
+    let units: Vec<i32> = pu.units.iter().map(|u| u.callsign).collect();
+    let names: Vec<&str> = pu.racers.iter().filter(|r| r.ai).map(|r| r.name).collect();
+    Some(
+        mr_audio::radio::lines::radio_clips(&zones, &units, &names)
+            .into_iter()
+            .map(|c| c.id)
+            .collect(),
+    )
 }
 
 /// A millisecond clock for the cost figures.
@@ -1018,6 +1318,7 @@ fn publish(a: &mut RaceAudio) {
         "frameMsMean",
         JsValue::from_f64(a.frame_ms_sum / f64::from(a.frames.max(1))),
     );
+    set(&o, "radioCur", radio_cur(a));
     set(&mr, "audio", o.into());
     if let Some(log) = &mut a.log
         && !log.is_empty()
@@ -1034,6 +1335,42 @@ fn publish(a: &mut RaceAudio) {
             arr.push(&JsValue::from_str(&l));
         }
     }
+}
+
+/// `_radioCur` for the test bridge: `{ srcs }`, the browser's own source
+/// nodes of the transmission on the air (or the last one), so a page reads
+/// `buffer.duration`, `loop` and `instanceof OscillatorNode` off them as
+/// off the JS game's; `null` before the first.
+#[cfg(target_arch = "wasm32")]
+fn radio_cur(a: &RaceAudio) -> wasm_bindgen::JsValue {
+    use js_sys::{Array, Object, Reflect};
+    use wasm_bindgen::JsValue;
+    thread_local! {
+        static CUR: RefCell<Option<(Vec<u32>, JsValue)>> = const { RefCell::new(None) };
+    }
+    let Some(srcs) = a.audio.radio_cur_srcs() else {
+        return JsValue::NULL;
+    };
+    let ids: Vec<u32> = srcs.iter().map(|n| n.id()).collect();
+    CUR.with(|c| {
+        let mut c = c.borrow_mut();
+        if let Some((k, v)) = c.as_ref()
+            && *k == ids
+        {
+            return v.clone();
+        }
+        let arr = Array::new();
+        for n in &srcs {
+            if let Some(j) = mr_audio::wa::web::js_node(n) {
+                arr.push(&j);
+            }
+        }
+        let o = Object::new();
+        let _ = Reflect::set(&o, &JsValue::from_str("srcs"), &arr);
+        let v: JsValue = o.into();
+        *c = Some((ids, v.clone()));
+        v
+    })
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1117,6 +1454,58 @@ mod tests {
         compare(&a.log.take().unwrap(), &js);
     }
 
+    /// The scripted pursuit of the JS reference (`drive-pursuit.jsonl.gz`:
+    /// Sierra, the sports car, seed 1, the autopilot, Hot Pursuit at heat 2,
+    /// 60 s): the race's calls and PursuitView's, the radio lines and their
+    /// prefetch, the sirens, the mood, the damage and the stingers, line for
+    /// line.
+    #[test]
+    fn the_scripted_pursuit_makes_the_js_calls() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../parity/golden/audio/drive-pursuit.jsonl.gz");
+        let mut js = String::new();
+        flate2::read::GzDecoder::new(std::fs::File::open(path).unwrap())
+            .read_to_string(&mut js)
+            .unwrap();
+        let js: Vec<&str> = js.lines().filter(|l| !l.is_empty()).collect();
+
+        let opts = RaceOpts {
+            car: "sports",
+            seed: 1,
+            pursuit: true,
+            heat: 2.0,
+        };
+        let lr = LevelRuntime::new(mr_levels::level_by_id("sierra")).unwrap();
+        let mut race = Race::new(
+            lr,
+            Setup {
+                opts,
+                autodrive: true,
+                touch: false,
+            },
+            TouchControls::default(),
+        );
+        let mut a = RaceAudio::new(null_platform(), Settings::default(), true);
+        a.started = race.starts;
+        a.start_race("sierra", "sports");
+        a.new_race(pursuit_clips(&race.session.lr, &race.session.curr));
+        let mut said = 0;
+        while race.session.curr.tick < 7200 {
+            race.frame(1.0 / 60.0);
+            said += race.radio.said.len();
+            let ticks: Vec<TickAudio> = race
+                .audio_ticks
+                .iter()
+                .filter(|t| t.tick <= 7200)
+                .cloned()
+                .collect();
+            a.ticks(&ticks, &race.session.lr.track, 0, false);
+            a.poll();
+        }
+        assert_eq!(said, 9, "the lines on the HUD are the lines spoken");
+        compare(&a.log.take().unwrap(), &js);
+    }
+
     /// Line by line: every argument bit for bit but the pans from the
     /// camera, which come out of three's quaternion round trip in the JS
     /// and are held to 1e-9.
@@ -1130,7 +1519,7 @@ mod tests {
                 pans.push(v[3].as_f64().unwrap());
                 v[3] = Value::Null;
             }
-            if m == "setRivalEngines"
+            if (m == "setRivalEngines" || m == "setSirens")
                 && let Some(list) = v[2].as_array_mut()
             {
                 for r in list {

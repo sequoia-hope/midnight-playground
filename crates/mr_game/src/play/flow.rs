@@ -149,16 +149,17 @@ pub struct Race {
     /// (`race.phys.events.push(…)` in the JS suites: a wall impact for the
     /// rumble).
     pub inject: Vec<SimEvent>,
-    /// Dispatch: the lines said this frame (`play::radio`, WP 8.4).
+    /// Hot Pursuit's radio chatter (`PursuitView.say`): the lines said this
+    /// frame ([`super::radio`]).
     pub radio: super::radio::Radio,
-    /// Lines the test bridge says (`race.pv.say(line, now)`), said in the
-    /// next frame after the radio's new frame.
+    /// Lines the test bridge says (`race.pv.say(line, now)`), said at the
+    /// next frame.
     pub stage_say: Vec<(mr_audio::radio::lines::Line, bool)>,
     /// Hot Pursuit's options the simulation leaves to the page
     /// (`?cops=N`, the flash setting), set on every new field.
     pub pursuit_opts: PursuitOpts,
     /// Frames run (not paused): tells a frame's `radio.said` from the
-    /// last one's.
+    /// last one's (the HUD shows each line once).
     pub frames: u32,
     was_nitro: bool,
     offroad: f64,
@@ -229,7 +230,7 @@ impl Race {
             feel: None,
             pad_reset: None,
             inject: Vec::new(),
-            radio: super::radio::Radio::default(),
+            radio: Default::default(),
             stage_say: Vec::new(),
             pursuit_opts: PursuitOpts::default(),
             frames: 0,
@@ -257,13 +258,13 @@ impl Race {
         self.rig = CameraRig::default();
         self.springs = vec![Springs::default(); slots(&self.session.curr).count()];
         self.hud = Hud::default();
-        self.radio = super::radio::Radio::default();
         self.mode = Mode::Race;
         self.results = None;
         self.input.pressed.clear();
         self.input.enabled = true;
         self.hush_pads = true;
         self.was_nitro = false;
+        self.radio = Default::default();
         self.starts = next_start();
     }
 
@@ -307,8 +308,6 @@ impl Race {
         if self.mode == Mode::Paused {
             return;
         }
-        // PursuitView.events' `radioT -= dt`, once a frame; the bridge's
-        // lines first.
         self.frames += 1;
         self.radio.frame(dt);
         for (line, force) in std::mem::take(&mut self.stage_say) {
@@ -353,6 +352,7 @@ impl Race {
             self.on_event(e);
         }
         // WP 8.4: pursuit events → radio lines here.
+        self.radio.events(&mut self.audio_ticks);
         self.log = events;
         self.rumble();
         self.stuck_hint();
