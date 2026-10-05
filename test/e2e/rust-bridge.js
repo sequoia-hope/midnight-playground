@@ -22,9 +22,11 @@
 //   `getComputedStyle` answer the selectors the suites use with stand-ins
 //   backed by `__mr.uiNodes` (the canvas UI's controls, by their DOM ids).
 //
-// What has no Rust counterpart yet reads as absent: `__pursuit` (Hot
-// Pursuit is M8), `__world.renderer` and the three.js objects. The list,
-// with what each JS read maps to, is in DECISIONS (WP 6.7).
+// Hot Pursuit (M8): `__pursuit` and `__race.pv` over `__mr.pursuit`, their
+// writes and calls as staging commands (`unit`, `hurt`, `say`, `set
+// pursuit.*`, `set pv.*`). What has no Rust counterpart reads as absent:
+// `__world.renderer` and the three.js objects. The list, with what each
+// JS read maps to, is in DECISIONS (WP 6.7, WP 8.3).
 
 // The level tabs and car picks in the menu's order (src/levels/index.js,
 // CarPhysics' CAR_SPECS): `:nth-child(n)` selectors name them by position.
@@ -92,6 +94,7 @@ export function installBridge(selectorSrc) {
     sent: 0,
     queue: [],
     view: undefined,
+    pview: undefined,
     tag: null,
     fps: null,
     // A stage command, sent when the eval ends (or at once outside one).
@@ -108,12 +111,12 @@ export function installBridge(selectorSrc) {
       }
     },
     run(thunk) {
-      if (S.depth++ === 0) { S.view = undefined; swap(true); syncBody(); }
+      if (S.depth++ === 0) { S.view = undefined; S.pview = undefined; swap(true); syncBody(); }
       let r;
       try {
         r = thunk();
       } finally {
-        if (--S.depth === 0) { swap(false); S.view = undefined; S.flush(); }
+        if (--S.depth === 0) { swap(false); S.view = undefined; S.pview = undefined; S.flush(); }
       }
       const out = (v) => ({ v, wait: S.sent > (M().staged ?? 0) ? S.sent : 0 });
       return r && typeof r.then === 'function' ? Promise.resolve(r).then(out) : out(r);
@@ -193,6 +196,8 @@ export function installBridge(selectorSrc) {
       const ai = fields({ s: a.s, lat: a.lat, speed: a.speed, prog: a.prog, finished: a.finished, finishTime: a.finishTime }, `ais.${i}.`);
       ai.v = { x: a.x, y: a.y, z: a.z, s: a.s, lat: a.lat, vx: a.vx, vz: a.vz, yaw: a.yaw };
       ai.writePos = () => S.send({ cmd: 'aiWritePos', i });
+      // A rival is a body a police unit can chase (`u.target = ai`).
+      Object.defineProperty(ai, '__body', { value: 'rival:' + i });
       return ai;
     });
     const r = fields({
@@ -201,8 +206,9 @@ export function installBridge(selectorSrc) {
     Object.assign(r, {
       state: o.state, time: o.time, countdown: o.countdown, cruise: o.cruise, lap: o.lap, lapTimes: o.lapTimes,
       playerFinished: o.playerFinished, playerTime: o.playerTime, dist: o.dist, pursuitOn: o.pursuitOn,
-      // Hot Pursuit's PursuitView is M8's.
-      pv: null,
+      // Hot Pursuit's PursuitView (null in a race without it).
+      pv: pvView(),
+      playerBody: PLAYER_BODY,
       traffic: o.traffic ? {} : null,
       track, player, phys, ais,
       cam: fields({ mode: o.camMode, snap: false }, 'cam.'),
@@ -231,6 +237,72 @@ export function installBridge(selectorSrc) {
     if (S.depth === 0) return raceView();
     if (S.view === undefined) S.view = raceView();
     return S.view;
+  }
+
+  // ── Hot Pursuit ────────────────────────────────────────────────────
+
+  // `race.playerBody`: the player's body, as a unit's target.
+  const PLAYER_BODY = Object.freeze({ __body: 'player' });
+
+  // `race.pv`: the PursuitView's counts and its `say` and `hurt`.
+  function pvView() {
+    const p = M().pursuit;
+    if (!p || !p.available) return null;
+    const pv = fields({ penalty: p.pv.penalty, damage: p.pv.damage }, 'pv.');
+    Object.assign(pv, {
+      wrecks: p.pv.wrecks,
+      flash: p.flash,
+      held: (p.player?.hold ?? 0) > 0,
+      // `say(line, force)`: a RADIO line ({text, parts}) through the
+      // client's radio, rate limit and all.
+      say(line, force = false) {
+        S.send({ cmd: 'say', text: String(line.text), parts: (line.parts || [line.text]).map(String), force: !!force });
+      },
+      hurt(d) { S.send({ cmd: 'hurt', d: Number(d) }); },
+    });
+    return pv;
+  }
+
+  // `window.__pursuit`: the race's Pursuit (undefined without one).
+  function pursuitView() {
+    const p = M().pursuit;
+    if (!p || !p.available) return undefined;
+    const units = (p.units || []).map((u, i) => {
+      const o = fields({ speed: u.speed, s: u.s, lat: u.lat }, `pursuit.units.${i}.`);
+      Object.assign(o, {
+        i, active: u.active, mode: u.mode, siren: u.siren, callsign: u.callsign, type: u.type, health: u.health,
+        v: { x: u.x, z: u.z, model: { root: { visible: !!u.visible } } },
+      });
+      let target = u.target;
+      Object.defineProperty(o, 'target', {
+        enumerable: true,
+        get: () => target,
+        set: (b) => { target = b; S.send({ cmd: 'set', path: `pursuit.units.${i}.target`, value: b?.__body ?? null }); },
+      });
+      return o;
+    });
+    const v = fields({ state: p.state }, 'pursuit.');
+    Object.assign(v, {
+      heat: p.heat, maxHeat: p.maxHeat, heatMeter: p.heatMeter, bust: p.bust, evade: p.evade,
+      busts: p.busts, takedowns: p.takedowns, flash: p.flash, maxUnits: p.maxUnits,
+      units, player: p.player ? { ...p.player } : null,
+      // `activate(u, s, lat, speed, mode, dir)`.
+      activate(u, s, lat, speed, mode, dir = 1) {
+        S.send({ cmd: 'unit', i: u.i, s, lat, speed, mode, dir });
+        Object.assign(u._raw, { s, lat, speed });
+        u.active = true;
+        u.mode = mode;
+      },
+      placeRoadblock(s) { S.send({ cmd: 'roadblock', s }); },
+      placeSpikes(s) { S.send({ cmd: 'spikes', s }); },
+    });
+    return v;
+  }
+
+  function pview() {
+    if (S.depth === 0) return pursuitView();
+    if (S.pview === undefined) S.pview = pursuitView();
+    return S.pview;
   }
 
   function audioView() {
@@ -279,8 +351,7 @@ export function installBridge(selectorSrc) {
     if (!prev || now - prev.t > 400) S.fps = { t: now, f, fps: prev && now > prev.t ? +(1000 * (f - prev.f) / (now - prev.t)).toFixed(1) : prev?.fps };
     return { fps: S.fps.fps };
   });
-  // Hot Pursuit is M8's.
-  define('__pursuit', () => undefined);
+  define('__pursuit', pview);
 
   // ── The DOM stand-ins ──────────────────────────────────────────────
 
@@ -410,11 +481,16 @@ export function installBridge(selectorSrc) {
         return new El({ domId: id, visible: () => !!(hud().shown && hud().laps) });
       case 'hud-lap-n': return new El({ domId: id, text: () => hud().texts?.lapN ?? '' });
       case 'hud-lap-best': return new El({ domId: id, text: () => hud().texts?.lapBest ?? '' });
-      case 'hud-pen': return new El({ domId: id, text: () => hud().texts?.pen ?? '' });
-      // Hot Pursuit's furniture is M8's: never shown yet.
-      case 'hud-pz': case 'hud-dmg': case 'pz-bar': case 'hud-hold': case 'pz-stars':
-        return new El({ domId: id, visible: () => false });
-      case 'hud-radio-text': return new El({ domId: id, text: () => '' });
+      // Hot Pursuit's furniture (`__mr.hud`: each shows as its `.hidden`
+      // says, inside a shown HUD).
+      case 'hud-pen': return new El({ domId: id, visible: () => !!(hud().shown && hud().pen), text: () => hud().texts?.pen ?? '' });
+      case 'hud-pz': case 'pz-stars': return new El({ domId: id, visible: () => !!(hud().shown && hud().pz) });
+      case 'pz-bar': return new El({ domId: id, visible: () => !!(hud().shown && hud().pzBar) });
+      case 'pz-label': return new El({ domId: id, visible: () => !!(hud().shown && hud().pzBar), text: () => hud().pzLabel ?? '' });
+      case 'hud-dmg': return new El({ domId: id, visible: () => !!(hud().shown && hud().dmg) });
+      case 'hud-hold': return new El({ domId: id, visible: () => !!(hud().shown && hud().hold) });
+      case 'hud-radio': return new El({ domId: id, visible: () => !!hud().shown, cls: (c) => (c === 'show' ? !!hud().radio : undefined) });
+      case 'hud-radio-text': return new El({ domId: id, visible: () => !!hud().shown, text: () => hud().radioText ?? '' });
       case 'res-extra':
         return new El({ domId: id, visible: () => tiles().length > 0, text: () => tiles().map(([v, l]) => v + ' ' + l).join(' ') });
       case 'pad-name': return new El({ uid: id, text: () => pad().name ?? (U(id)?.value || '') });
