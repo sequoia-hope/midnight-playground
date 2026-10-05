@@ -111,7 +111,7 @@ impl Default for Options {
 
 /// Whether `id` names one of the menu's levels. `mr_levels::levels()` builds
 /// every level (Streets' route among them) each call, and the race and fly
-/// systems ask every frame, so the ids are kept once (DECISIONS D862).
+/// systems ask every frame, so the ids are kept once (DECISIONS D863).
 pub fn is_level(id: &str) -> bool {
     static IDS: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
     IDS.get_or_init(|| mr_levels::levels().iter().map(|l| l.id).collect())

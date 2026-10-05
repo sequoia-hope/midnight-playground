@@ -1,4 +1,4 @@
-//! Bevy's `render_system` without its empty submission (DECISIONS D861).
+//! Bevy's `render_system` without its empty submission (DECISIONS D862).
 //!
 //! Each frame `bevy_render::renderer::render_system` runs the render graph
 //! (whose camera driver submits the frame's command buffers), then makes a
