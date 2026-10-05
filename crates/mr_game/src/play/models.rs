@@ -309,6 +309,10 @@ impl Spawner<'_> {
                 if !receive {
                     d.insert(NotShadowReceiver);
                 }
+                // The glass and the siren glow's `renderOrder` (D810).
+                if let Some(o) = crate::render::sort::RenderOrder::of(n.render_order) {
+                    d.insert(o);
+                }
             }
         }
         let children = self.scene.nodes[i].children.clone();

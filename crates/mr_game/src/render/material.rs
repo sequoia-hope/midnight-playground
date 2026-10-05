@@ -237,12 +237,12 @@ pub struct ThreeKey {
     /// the camera; the race's effects, D803). Other materials keep the
     /// constant alone (D103).
     pub depth_slope: i32,
-    /// Where the material sorts among transparent objects (D808). 0: by
-    /// distance plus the constant depth bias, as the scene materials always
-    /// have (Bevy adds a material's `depth_bias` to its sort distance; three
-    /// does not sort by its polygon offset). n > 0: by distance alone,
-    /// ties broken by n, as three breaks them by creation order (the race's
-    /// effects).
+    /// A tie-break among transparent objects at the same distance (D808):
+    /// three breaks such ties by object id, so the race's effects, which
+    /// share a sort point, rank in the order `Effects` makes them; 0 for the
+    /// scene's materials, whose ties keep the scene's order (D810). Nothing
+    /// else moves a material in the sort: three never sorts by its polygon
+    /// offset.
     pub sort_rank: u8,
     /// The JS patch (WP 2.4), or points.
     pub patch: Patch,
@@ -390,13 +390,10 @@ impl Material for ThreeMaterial {
     }
 
     fn depth_bias(&self) -> f32 {
-        // Bevy uses this only to sort transparent items (the pipeline's
-        // bias is set in `specialize`).
-        if self.key.sort_rank > 0 {
-            f32::from(self.key.sort_rank) * SORT_STEP
-        } else {
-            self.key.depth_bias as f32
-        }
+        // Bevy adds this to a transparent item's sort distance and uses it
+        // for nothing else (the pipeline's bias is set in `specialize`):
+        // three's sort never sees the polygon offset (D808, D810).
+        f32::from(self.key.sort_rank) * SORT_STEP
     }
 
     fn specialize(
