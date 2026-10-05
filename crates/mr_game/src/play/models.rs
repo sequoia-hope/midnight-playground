@@ -10,6 +10,11 @@
 //! Every material × mesh-layout combination the field can draw (the
 //! hidden far models and lights included) joins the pipeline warm-up when
 //! the cars are built (D458), so a race compiles nothing after `ready`.
+//!
+//! In Hot Pursuit the police cars and the sawhorses follow the field
+//! ([`Extra`], PursuitView's `makeUnit`, WP 8.1 and 8.2) into the same
+//! graph, as the JS builds them into the same page's caches; the siren's
+//! glow billboards draw with `Patch::PoliceGlow` (D921).
 
 use crate::convert::{self, Draw, MeshKey, StandIn};
 use crate::loader::SceneEntity;
@@ -17,12 +22,15 @@ use crate::render::SharedImages;
 use crate::render::lighting::MaterialLights;
 use crate::render::material::{ThreeKey, ThreeMaterial, three_material};
 use crate::warmup::{Combos, Layout};
+use bevy::camera::primitives::Aabb;
 use bevy::light::{NotShadowCaster, NotShadowReceiver};
 use bevy::math::{DQuat, EulerRot, Vec4};
+use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
-use mr_scene::Scene;
+use mr_scene::{MaterialKind, MeshDesc, Scene};
 use mr_worldgen::car_model::{BuildOpts, Lod, VehicleModel, build_vehicle};
-use mr_worldgen::object::{HandleMap, SceneGraph};
+use mr_worldgen::object::{HandleMap, NodeId, SceneGraph};
+use mr_worldgen::pursuit_props::{PropKit, sawhorse_model, spike_geometry, spike_material};
 use mr_worldgen::textures::TextureCache;
 use mr_worldgen::world::{Change, Edit, Handle as WHandle};
 use std::collections::HashMap;
@@ -37,6 +45,29 @@ pub struct Want {
     pub far: bool,
     /// Race.js casts shadows from every mesh of a racer.
     pub racer: bool,
+}
+
+/// What the pursuit adds after the field (PursuitView's `makeUnit`, in its
+/// order: the units, the roadblock cars, the sawhorses).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Extra {
+    /// `buildVehicle(kind, { ...o, lod: 'low', far: true, seed })`, every
+    /// mesh casting a shadow; `livery` is the interceptor's `{ livery:
+    /// 'police' }`.
+    Police {
+        kind: &'static str,
+        livery: bool,
+        seed: u32,
+    },
+    /// `sawhorseModel()`.
+    Sawhorse,
+}
+
+/// A prop drawn as a minimal vehicle model (a sawhorse): its root and its
+/// body with the body's rest transform.
+pub struct Prop {
+    pub root: Entity,
+    body: Option<(Entity, Transform)>,
 }
 
 /// A wheel: its node's entity, its rest transform, radius and spin.
@@ -61,6 +92,15 @@ pub struct Car {
 /// Every car of the race, drawn.
 pub struct Cars {
     pub cars: Vec<Car>,
+    /// Where the police cars start in `cars` (they follow the field).
+    pub police_base: usize,
+    /// The sawhorses.
+    pub props: Vec<Prop>,
+    /// The spike strips' material (`spikeMat`), with a pursuit.
+    pub spike_material: Option<Handle<ThreeMaterial>>,
+    /// Scene material index of a siren glow → its two light slots (`uRed`
+    /// and `uBlue`'s levels, D921), once given.
+    glow_slots: HashMap<u32, (usize, usize)>,
     handles: HandleMap,
     /// Scene node index → its entity.
     nodes: Vec<Option<Entity>>,
@@ -74,9 +114,11 @@ pub struct Cars {
     slots: HashMap<u32, usize>,
 }
 
-/// Builds the field's models and spawns them, hidden until placed.
-pub fn spawn(
+/// Builds the field's models and spawns them, hidden until placed, then
+/// the pursuit's cars and props after the field.
+pub fn spawn_field(
     wants: &[Want],
+    extras: &[Extra],
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     images: &mut Assets<Image>,
@@ -86,6 +128,8 @@ pub fn spawn(
     let mut graph = SceneGraph::new();
     let mut textures = TextureCache::new();
     let mut models = Vec::new();
+    // Per model: every mesh casts a shadow (racers and police).
+    let mut racer: Vec<bool> = wants.iter().map(|w| w.racer).collect();
     for w in wants {
         let opts = BuildOpts {
             lod: Some(w.lod),
@@ -100,6 +144,50 @@ pub fn spawn(
         graph.roots.push(m.root);
         models.push(m);
     }
+    let mut kit = PropKit::default();
+    let mut saws = Vec::new();
+    for e in extras {
+        match *e {
+            Extra::Police { kind, livery, seed } => {
+                let opts = BuildOpts {
+                    lod: Some(Lod::Low),
+                    far: true,
+                    seed,
+                    police_livery: livery,
+                    ..BuildOpts::default()
+                };
+                // PursuitView falls back to a dark sedan if a kind fails.
+                let m = build_vehicle(&mut graph, &mut textures, kind, &opts)
+                    .or_else(|| {
+                        let o = BuildOpts {
+                            color: Some(0x16181c),
+                            police_livery: false,
+                            ..opts
+                        };
+                        build_vehicle(&mut graph, &mut textures, "sedan", &o)
+                    })
+                    .expect("the sedan builds");
+                graph.roots.push(m.root);
+                models.push(m);
+                racer.push(true);
+            }
+            Extra::Sawhorse => {
+                let m = sawhorse_model(&mut graph, &mut kit);
+                graph.roots.push(m.root);
+                saws.push(m);
+            }
+        }
+    }
+    // A spike strip's material on a strip's geometry, never drawn: the
+    // strips are made where the pursuit lays them (`play::police`), with
+    // this material, and its pipeline joins the warm-up now.
+    let spike = (!extras.is_empty()).then(|| {
+        let mat = spike_material(&mut graph, &mut kit);
+        let geo = graph.add_geometry(spike_geometry(8.0));
+        let n = graph.mesh(geo, mat);
+        graph.roots.push(n);
+        n
+    });
     let (scene, handles) = graph.finish();
     let image_handles: Vec<Option<Handle<Image>>> = scene
         .textures
@@ -117,14 +205,20 @@ pub fn spawn(
         nodes: vec![None; scene.nodes.len()],
     };
     let mut cars = Vec::new();
-    for (m, w) in models.into_iter().zip(wants) {
+    for (k, (m, &racer)) in models.into_iter().zip(&racer).enumerate() {
         let Some(ri) = handles.node(m.root) else {
             continue;
         };
-        let root = s.node(ri as usize, None, commands, meshes, mats, w.racer);
+        let root = s.node(ri as usize, None, commands, meshes, mats, racer);
         commands
             .entity(root)
             .insert((Transform::default(), Visibility::Hidden, SceneEntity));
+        if k >= wants.len() {
+            // The police: drawn and taken away with the race's cars.
+            commands
+                .entity(root)
+                .insert((super::RaceCar, Name::new(format!("police {}", m.kind))));
+        }
         let ent = |id| handles.node(id).and_then(|i| s.nodes[i as usize]);
         let base = |i: u32| Transform::from_matrix(convert::mat4(&scene.nodes[i as usize].matrix));
         let body = handles
@@ -169,6 +263,46 @@ pub fn spawn(
             pivots,
         });
     }
+    let mut props = Vec::new();
+    for m in saws {
+        let Some(ri) = handles.node(m.root) else {
+            continue;
+        };
+        let root = s.node(ri as usize, None, commands, meshes, mats, false);
+        commands
+            .entity(root)
+            .insert((Transform::default(), Visibility::Hidden, SceneEntity));
+        let body = handles.node(m.body).and_then(|i| {
+            Some((
+                s.nodes[i as usize]?,
+                Transform::from_matrix(convert::mat4(&scene.nodes[i as usize].matrix)),
+            ))
+        });
+        commands.entity(root).insert(super::RaceCar);
+        props.push(Prop { root, body });
+    }
+    let spike_material = spike.and_then(|n| {
+        let ni = handles.node(n)?;
+        let node = &scene.nodes[ni as usize];
+        let mesh = node.mesh?;
+        let mi = *node.materials.first()?;
+        let (start, count) = convert::draw_span(&scene, &scene.meshes[mesh as usize], None);
+        let m = convert::build_mesh(
+            &scene,
+            MeshKey {
+                mesh,
+                start,
+                count,
+                draw: Draw::Triangles,
+                colors: false,
+                lit: true,
+                extra: None,
+            },
+        )?;
+        let (mat, key) = s.material(mi, mats)?;
+        s.combos.note(key, &mat, &Layout::of(&m), false);
+        Some(mat)
+    });
     // D458: the field's combinations join the warm-up (`warmup`): one
     // off-screen stand-in each, despawned once every pipeline is ready.
     let n = s.combos.spawn(commands, meshes);
@@ -176,6 +310,10 @@ pub fn spawn(
     crate::warmup::spawn_glyphs(commands);
     info!("race cars: {n} material × mesh-layout combinations warmed up");
     Cars {
+        police_base: wants.len(),
+        props,
+        spike_material,
+        glow_slots: HashMap::new(),
         cars,
         materials: s.materials,
         nodes: s.nodes,
@@ -198,7 +336,114 @@ struct Spawner<'a> {
     nodes: Vec<Option<Entity>>,
 }
 
+/// The siren glow's geometry: its positions, and the corner, `aBlue` and
+/// `aSize` in the extra attribute (`Patch::PoliceGlow`).
+fn glow_mesh(scene: &Scene, m: &MeshDesc) -> Option<Mesh> {
+    let attr = |name: &str| {
+        m.attribute(name)
+            .map(|a| &scene.buffers[a.accessor as usize])
+    };
+    let pos = attr("position")?;
+    let n = pos.count();
+    let get = |b: Option<&mr_scene::Buffer>, i: usize, k: usize| -> f32 {
+        b.map_or(0.0, |b| b.data.get(i * b.item_size as usize + k) as f32)
+    };
+    let (corner, blue, size) = (attr("corner"), attr("aBlue"), attr("aSize"));
+    let p: Vec<[f32; 3]> = (0..n)
+        .map(|i| [0, 1, 2].map(|k| get(Some(pos), i, k)))
+        .collect();
+    let extra: Vec<[f32; 4]> = (0..n)
+        .map(|i| {
+            [
+                get(corner, i, 0),
+                get(corner, i, 1),
+                get(blue, i, 0),
+                get(size, i, 0),
+            ]
+        })
+        .collect();
+    let idx: Vec<u32> = match m.index {
+        Some(b) => {
+            let b = &scene.buffers[b as usize];
+            (0..b.data.len()).map(|i| b.data.get(i) as u32).collect()
+        }
+        None => (0..n as u32).collect(),
+    };
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::RENDER_WORLD,
+    );
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, p);
+    mesh.insert_attribute(convert::ATTRIBUTE_EXTRA, extra);
+    mesh.insert_indices(Indices::U32(idx));
+    Some(mesh)
+}
+
 impl Spawner<'_> {
+    /// The siren's glow billboards (`sirenGlow`, renderOrder 2): culled by
+    /// its bounding sphere grown by the largest spot, as three culls it,
+    /// and casting no shadow (its quads are points until the vertex shader
+    /// opens them, so the JS's shadow pass draws nothing of them either).
+    #[allow(clippy::too_many_arguments)]
+    fn glow(
+        &mut self,
+        i: usize,
+        mesh: u32,
+        mi: u32,
+        parent: Entity,
+        commands: &mut Commands,
+        meshes: &mut Assets<Mesh>,
+        mats: &mut Assets<ThreeMaterial>,
+    ) {
+        let desc = &self.scene.meshes[mesh as usize];
+        let key = MeshKey {
+            mesh,
+            start: 0,
+            count: 0,
+            draw: Draw::Triangles,
+            colors: false,
+            lit: false,
+            extra: Some("corner+aBlue+aSize"),
+        };
+        let scene = self.scene;
+        let Some((mh, layout)) = self
+            .meshes
+            .entry(key)
+            .or_insert_with(|| {
+                glow_mesh(scene, desc).map(|m| {
+                    let layout = Layout::of(&m);
+                    (meshes.add(m), layout)
+                })
+            })
+            .clone()
+        else {
+            return;
+        };
+        let Some((mat, mkey)) = self.material(mi, mats) else {
+            return;
+        };
+        self.combos.note(mkey, &mat, &layout, false);
+        let mut d = commands.spawn((
+            Mesh3d(mh),
+            MeshMaterial3d(mat),
+            Transform::default(),
+            ChildOf(parent),
+            NotShadowCaster,
+            NotShadowReceiver,
+        ));
+        if let Some(bs) = &desc.bounding_sphere
+            && bs.len() == 4
+        {
+            d.insert(Aabb {
+                center: Vec3::new(bs[0] as f32, bs[1] as f32, bs[2] as f32).into(),
+                half_extents: Vec3::splat(bs[3] as f32).into(),
+            });
+        }
+        if let Some(o) = crate::render::sort::RenderOrder::of(self.scene.nodes[i].render_order) {
+            d.insert(o);
+        }
+    }
+
     fn material(
         &mut self,
         i: u32,
@@ -266,6 +511,10 @@ impl Spawner<'_> {
             let receive = n.receive_shadow;
             for (mi, (start, count)) in parts {
                 let mdesc = &self.scene.materials[mi as usize];
+                if mdesc.kind == MaterialKind::PoliceGlow {
+                    self.glow(i, mesh, mi, id, commands, meshes, mats);
+                    continue;
+                }
                 let mode = convert::stand_in(mdesc);
                 if mode == StandIn::Hidden || mode == StandIn::Sky {
                     continue;
@@ -331,6 +580,68 @@ impl Car {
 }
 
 impl Cars {
+    /// The entity drawn for a model's node (the siren's anchor, say).
+    pub fn entity_of(&self, id: NodeId) -> Option<Entity> {
+        self.handles.node(id).and_then(|i| self.nodes[i as usize])
+    }
+
+    /// The siren glow's `uRed` and `uBlue` levels of car `i` (`setSiren`'s
+    /// levels times PursuitView's daylight dimming), into its two light
+    /// slots, which it takes the first time (D921).
+    pub fn set_glow(
+        &mut self,
+        i: usize,
+        red: f64,
+        blue: f64,
+        assets: &mut Assets<ThreeMaterial>,
+        lights: &mut MaterialLights,
+    ) {
+        let Some(m) = self
+            .cars
+            .get(i)
+            .and_then(|c| c.model.siren)
+            .and_then(|s| self.handles.material(s.glow_material))
+        else {
+            return;
+        };
+        let slots = match self.glow_slots.get(&m) {
+            Some(&k) => k,
+            None => {
+                let (Some(r), Some(b)) = (lights.slot(red as f32), lights.slot(blue as f32)) else {
+                    return;
+                };
+                for h in &self.materials[m as usize].0 {
+                    if let Some(mut mat) = assets.get_mut(h) {
+                        mat.params.kind0.x = r as f32;
+                        mat.params.kind0.y = b as f32;
+                    }
+                }
+                self.glow_slots.insert(m, (r, b));
+                (r, b)
+            }
+        };
+        lights.values[slots.0] = red as f32;
+        lights.values[slots.1] = blue as f32;
+    }
+
+    /// A prop's body pitch and roll (`Vehicle.sync` on a sawhorse: no
+    /// wheels, no steering, no lights).
+    pub fn sync_prop(
+        &self,
+        k: usize,
+        springs: &super::pose::Springs,
+        q: &mut Query<&mut Transform, super::BodyFilter>,
+    ) {
+        if let Some((e, base)) = self.props.get(k).and_then(|p| p.body)
+            && let Ok(mut t) = q.get_mut(e)
+        {
+            let (_, y, _) = base.rotation.to_euler(EulerRot::XYZ);
+            t.rotation =
+                DQuat::from_euler(EulerRot::XYZ, springs.pitch, f64::from(y), springs.roll)
+                    .as_quat();
+        }
+    }
+
     /// The body's pitch and roll (`body.rotation.x/z`), the wheels' spin
     /// (`rotation.x += speed / radius × dt`) and the steer pivots
     /// (`rotation.y = −steerAngle`) of car `i`.
