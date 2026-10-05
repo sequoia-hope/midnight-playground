@@ -236,6 +236,7 @@ time after M2.
 | 6.6 | Tilt, fullscreen and landscape lock through the gesture bridge; visibility pause | L1 (`tilt.test.js`); `tilt` e2e |
 | 6.7 | The full test bridge (`window.__mr`, begun in WP 2.5) and the harness `target` option | The e2e suites run against the Rust build |
 | 6.8 | Native: window state, F11, `--query`, `--smoke-test` | Smoke test in CI |
+| 6.9 | The level viewer (SPEC 8.6): free fly, orbit, overview and ride cameras; the panel; keyboard, mouse, pad and touch; links that carry the pose. Rust only (D679) | `viewer` e2e; the owner reviews every level with it on desktop and phone |
 
 **Order:** 6.1 and 6.7 first. Then 6.2 to 6.6 in parallel.
 

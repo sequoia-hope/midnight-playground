@@ -6907,3 +6907,17 @@ gesture. The rest is what drawing the menu leaves in the renderer (the
 compiled pipelines and the shader cache for the views' materials, the
 renderer's grown buffers), which Bevy does not release. Not closed further
 here; for the owner if the remaining 25 to 30 MB matter.
+
+## D679. A level viewer ("god mode"), Rust only
+
+2026-10-04, the owner: "add a 'god mode' level viewer to the spec and
+kick it off, i want to review levels from a different perspective". SPEC
+8.6 and ROADMAP WP 6.9 describe it: free fly, orbit, overview and ride
+cameras over the built level, a panel (route position, time of day,
+fog, far plane, animators, scene groups, readout, screenshot, a link
+carrying the pose), on keyboard and mouse, gamepad and touch, entered by
+`?view=god` or a "Level viewer" button on the menu's level card. It is an
+addition, not a change to anything the JS does: the game, the simulation
+and the parity pictures are untouched, so it is not a deviation; the
+menu button is listed in DEVIATIONS.md as the one visible difference on
+a JS screen. Its decisions are D880 to D899.

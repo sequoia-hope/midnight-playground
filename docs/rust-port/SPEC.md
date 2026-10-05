@@ -1009,6 +1009,52 @@ jobs; the browser suites run on the dev machine, as they do today.
 Native has `--smoke-test` (run to ready, report errors, exit code) and
 `--screenshot <png> --after <frames>`.
 
+### 8.6 Level viewer ("god mode")
+
+A Rust-only tool, not in the JS game, for reviewing a level from any point
+of view (the owner, 2026-10-04, DECISIONS D679). It changes nothing in the
+game, the simulation or the pictures the parity gates take; it is the
+built level (section 6.4: built whole) seen through a free camera.
+
+- **Entry.** `?view=god` with `level=` on the web, `--query "view=god&..."`
+  natively, and a "Level viewer" button on the menu's level card, so it is
+  reachable on a phone without typing a URL. The level is the one the
+  client builds by default (D678); `?world=export` works as elsewhere.
+- **Cameras.**
+  - *Free fly*: move, rise and sink, look; a speed that scales from walking
+    pace to several hundred m/s.
+  - *Orbit*: circle, tilt and zoom about a point (the route at the chosen
+    position, or a picked point).
+  - *Overview*: a top-down view of the whole level, the route drawn over
+    it with its zone boundaries; tap or click a point to fly there.
+  - *Ride*: the existing fly camera along the route (`s`, `h`, `back`,
+    `lat`, `yaw`, `pitch`), with speed and height adjustable live.
+- **Controls.** Keyboard and mouse (WASD and Q/E or Space/Ctrl, Shift
+  faster, drag or pointer-lock to look, wheel for speed or zoom); gamepad
+  (left stick moves, right stick looks, triggers sink and rise, bumpers
+  change speed, with the WP 6.4 pad layer); touch (one finger looks or
+  orbits, a thumb stick moves, two-finger pinch zooms and pans).
+- **Panel.** A small collapsible panel over the view:
+  - route position slider (jumps the camera) and the zone name;
+  - time of day: follow the camera's route position as the game does, or
+    pin it to any point of the route;
+  - toggles: fog, far plane extended (to see the whole level), animators
+    running or frozen, the level's top-level scene groups shown or hidden;
+  - readout: camera position, nearest route position, frame time, draw
+    calls and triangles, wasm memory;
+  - screenshot (a PNG download) and a link that carries the camera pose
+    (`cam=x,y,z,yaw,pitch`, plus the panel's state), so a view can be sent
+    and opened again exactly.
+- **The world follows the camera.** The world's focus (chunk cut-offs,
+  LOD, the sky dome, distance-shown nodes) is the camera position, as the
+  game's is the player's car.
+- **Budgets.** Free fly and orbit hold the race's frame-time and memory
+  budgets (section 6.6). Overview and the extended far plane draw more than
+  any race view; they are measured and may cost more, but must not crash a
+  phone.
+- **Test bridge.** `__mr.viewer` reports the mode and pose and takes a pose,
+  so the e2e harness and the parity tools can place the camera.
+
 ## 9. Multiplayer (`mr_net`, `mr_host`)
 
 ### 9.1 Model
