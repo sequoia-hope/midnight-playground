@@ -377,7 +377,16 @@ pub fn build(
                 left: bp.px(m + v.insets[3]),
                 top: bp.px(m + v.insets[0]),
                 width: bp.px(width),
-                max_height: bp.px(bp.h - 2.0 * m - v.insets[0] - v.insets[2]),
+                // On a touch screen it stops above the stick.
+                max_height: bp.px(bp.h
+                    - 2.0 * m
+                    - v.insets[0]
+                    - v.insets[2]
+                    - if v.touch {
+                        2.0 * STICK_R + STICK_IN
+                    } else {
+                        0.0
+                    }),
                 flex_direction: FlexDirection::Column,
                 row_gap: bp.px(8.0),
                 padding: UiRect::all(bp.px(if c { 8.0 } else { 10.0 })),

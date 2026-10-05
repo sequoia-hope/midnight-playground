@@ -7093,3 +7093,55 @@ hide, speed, route, folded, help, count})` takes a pose and the panel's
 state (with `cam`, at once, no flight). `tools/parity/e2e/viewer.test.mjs`
 drives it; `tools/parity/viewer-shots.mjs` takes the review pictures and
 the measurements into `parity/report/viewer/`.
+
+## D892. Pointer units on the web, and the panel's scale
+
+2026-10-04. With the race's pixel ratio forced (D887: 1 on a phone with
+High quality off), winit hands touch and cursor positions in the device's
+pixels over the overridden scale factor, not in the UI's logical px (the
+race's controls convert with `touch_scale`, D846). The viewer measures
+CSS px per logical px as the race does (the canvas's CSS width over the
+window's logical width) for the panel's breakpoints and the bridge's
+boxes, and takes pointer positions to logical px by `(scale /
+base scale) / css` (`Viewer::ptr`); natively both are 1. On a phone the
+panel stops above the touch stick and scrolls.
+
+## D893. What the viewer costs
+
+2026-10-04, release WebGPU build, headless Chrome on the RTX 3060, frame
+rate uncapped, `tools/parity/viewer-shots.mjs --race` (desktop 1280 × 800,
+High quality on) and `--device iphone` (844 × 390 at dpr 3, High quality
+off, so no shadows and pixel ratio 1); the machine shared (load 23 to 72),
+so the tails are other processes' as much as ours. Frame time p50 / p95 in
+ms; draws are objects (camera + shadow map) and triangles in millions,
+counted as D889; wasm is the memory's high-water mark (the same in every
+mode: the level's build sets it).
+
+| Level | Free | Orbit | Overview | Far plane out, fog off | Ride | Race (autopilot) | Draws: free / orbit / overview | M tris: free / orbit / overview | Wasm MB (race) |
+|---|---|---|---|---|---|---|---|---|---|
+| Sierra | 7.6 / 26.6 | 8.2 / 29.0 | 5.6 / 30.7 | 3.8 / 15.2 | 8.1 / 29.5 | 7.7 / 32.4 | 394 / 112 / 504 | 2.90 / 1.17 / 3.16 | 347 (370) |
+| Coast | 4.7 / 20.6 | 4.6 / 23.0 | 5.9 / 28.8 | 6.6 / 31.0 | 4.7 / 22.9 | 6.0 / 23.1 | 329 / 99 / 428 | 2.56 / 1.28 / 3.24 | 456 to 504 (461 to 493) |
+| Streets | 4.2 / 15.7 | 3.8 / 14.3 | 4.6 / 26.5 | 3.8 / 14.6 | 3.8 / 21.2 | 5.8 / 15.2 | 214 / 131 / 359 | 1.35 / 0.94 / 1.71 | 394 (398) |
+| Desert | 6.7 / 15.1 | 4.4 / 13.5 | 9.9 / 26.8 | 3.8 / 24.1 | 5.0 / 21.7 | 5.9 / 27.6 | 308 / 139 / 349 | 2.39 / 1.40 / 2.68 | 310 (315) |
+| Seaside | 5.1 / 21.4 | 4.1 / 9.5 | 4.9 / 10.6 | 4.0 / 12.1 | 8.4 / 32.0 | 4.6 / 14.7 | 125 / 129 / 166 | 1.09 / 1.10 / 1.06 | 210 (210) |
+| Cruise | 4.5 / 13.3 | 6.1 / 13.5 | 7.5 / 27.2 | 4.2 / 12.2 | 3.8 / 34.8 | 4.5 / 15.8 | 198 / 208 / 357 | 1.72 / 1.85 / 2.30 | 438 (443) |
+
+(the first desktop run; a second, at load 23 to 55, gave the same draws,
+triangles and memory and frame times within its noise, Coast's wasm 456
+MB against 504 in the first.) Free fly and orbit hold the race's budgets:
+their median frames are the race's on the same build and machine (within
+the run-to-run noise), and their draws and triangles are under the JS
+figures plus 10 % (SPEC 6.6: 833, 705, 686, 644, 404, 721 calls; 3.48,
+3.50, 1.98, 3.13, 1.18, 2.06 M triangles). The overview draws the most
+(up to 504 objects, 3.2 M triangles; the Cruise's 2.30 M is over its
+race figure, which SPEC 8.6 allows), but no shadow pass (the sun's box
+follows the camera, high above anything), so its frames cost about what a
+race's do. iPhone emulation (desktop GPU, so the frame times say little
+about a phone; the memory is the phone's): the same wasm high-water marks
+(206 to 488 MB), constant across modes, so no mode grows memory and
+nothing needed degrading for the 512 MB budget; the overview at 172 to
+484 objects and 1.1 to 3.2 M triangles is within the races' peaks on
+every level but the Cruise. What stays near the budget is Coast's own
+build (D678: 512 MB on reload; 456 to 504 here), not the viewer: a viewer
+run holds no race field and no sound graph. Load to ready 4.6 to 13.8 s
+(the level's build).

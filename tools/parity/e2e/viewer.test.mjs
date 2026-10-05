@@ -250,17 +250,18 @@ test('the menu\'s Level viewer button opens the viewer on the chosen level', asy
   const game = await openGame(browser, { storage: { 'mr.level': 'seaside' } });
   try {
     assert.equal(await game.screen(), 'menu');
-    const nav = game.page.waitForNavigation({ timeout: 30000 });
-    await game.click('#btn-viewer');
-    await nav;
+    // A click that navigates: no frames waited after it (the page goes).
+    const navClick = async (id) => {
+      const { x, y } = await game.center(id);
+      await Promise.all([game.page.waitForNavigation({ timeout: 30000 }), game.page.mouse.click(x, y)]);
+    };
+    await navClick('#btn-viewer');
     await game.waitFor(() => window.__mr?.viewer?.ready === true, { timeout: 120000, interval: 250, what: 'the viewer after the button' });
     const v = await vw(game);
     assert.equal(v.level, 'seaside');
     assert.ok(await game.eval(() => new URLSearchParams(location.search).get('view') === 'god'));
     // And back.
-    const back = game.page.waitForNavigation({ timeout: 30000 });
-    await game.click('#vw-menu');
-    await back;
+    await navClick('#vw-menu');
     await game.waitFor(() => window.__mr?.screen === 'menu' && window.__mr.ready, { timeout: 120000, interval: 250, what: 'the menu again' });
     assert.equal(await game.eval('window.__mr.level'), 'seaside');
     assert.deepEqual(errorsOf(game), []);
