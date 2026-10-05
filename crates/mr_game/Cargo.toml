@@ -85,7 +85,13 @@ bevy = { version = "=0.19.1", default-features = false, features = [
 mr_worldgen = { workspace = true, features = ["parallel"] }
 # Seaside Raceway's ground photo (`photo.jpg`) for the client's own build
 # natively; on the web the browser decodes it (`levels::seaside`, D681).
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+# PNG too: the window's icon, `desktop/icon.png` (WP 6.8; Bevy's `png`
+# feature turns it on in the same crate already).
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+# The window's icon and state natively (WP 6.8, DECISIONS D1000): Bevy has
+# no icon API, and `winit::window::Icon` is not re-exported. The version
+# Bevy 0.19.1 uses; its features come from bevy_winit.
+winit = { version = "0.30", default-features = false }
 
 # The web backend is chosen at compile time (SPEC 2), one wasm file each,
 # picked by the page (roadmap WP 2.7; DECISIONS D391): WebGPU by default,

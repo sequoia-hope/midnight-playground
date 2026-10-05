@@ -8090,3 +8090,158 @@ radio text), the suite's "dispatch speaks in the recorded voice" test
 passed on the Rust build: the level's clips preloaded, the intercept
 call played as two clips of the right lengths with no burble, an
 unrecorded line got the burble.
+
+## WP 6.8 decisions: the native window, its keys, focus pause and the CI smoke test
+
+## D1000. The player's window keeps its state, as the Electron shell's did
+
+2026-10-05, WP 6.8. `native::window_state` ports `desktop/main.cjs`'s
+window: the interactive window opens at the bounds saved in
+`window-state.json`, `{x, y, width, height, fullscreen, maximized}` as
+`saveState` writes it, maximised or fullscreen as it was; 1600 × 900 the
+first time (a missing or zero size is the default, `st.width || 1600`),
+800 × 450 at least, titled "Midnight Racer", with `desktop/icon.png` as its
+icon (as every interactive window has, `--size` ones too). It is saved when the window is asked to close, on Ctrl+Q, and on any
+other exit of the app while the window is there (the terminal's Ctrl+C
+too), with the last bounds seen while the window was neither maximised nor
+fullscreen when it is either (`win._lastBounds`).
+
+- **Where.** Beside the settings store (`FileStore::default_path`'s
+  directory, `~/.config/midnight-racer/` on Linux, the directory of
+  `$MR_STORE` when that is set). Electron's own file
+  (`~/.config/Midnight Racer/window-state.json`) is not read: the first
+  native run opens at 1600 × 900.
+- **Units.** The client draws at a scale factor of 1 natively, so the
+  bounds are the window's pixels: `x`, `y` the outer position (what winit
+  places), `width`, `height` the inner size. The minimum goes to winit as
+  Bevy passes it, in desktop logical pixels; at a desktop scale of 1, as
+  here, they are the same.
+- **Which runs.** Only the player's window: not `--smoke-test`,
+  `--screenshot`, `shots=`, `--stations`, `--materials`, nor any run with
+  `--size`. Those keep exactly the window they had (1280 × 800, 512 × 512
+  for the material scenes, `--size`, hidden for the pictures), so no picture
+  changes; a unit test pins it.
+- **Fullscreen and maximised, read back.** winit's `fullscreen()` is the
+  last it asked for and misses the window manager's own changes, and
+  `current_monitor()` is a cached guess. Where the position is known (X11)
+  a window is fullscreen when it covers one of the monitors exactly; on
+  Wayland, which tells no position, it is winit's state (the compositor's).
+  A saved fullscreen opens on the monitor holding the saved position
+  (Bevy's `MonitorSelection::Entity`); `Current` put it on the wrong one
+  of two.
+- **Platform notes.** Wayland gives no position, so none is written there
+  and a saved one is kept. The X11 class and Wayland app id are
+  `midnight-racer`, the desktop entry's `StartupWMClass`
+  (`tools/install-desktop-entry.sh`), so the desktop claims the window with
+  the entry's icon (the counterpart of Electron's `CHROME_DESKTOP`); on
+  Wayland that is the icon shown. The icon itself is built in at 64 × 64:
+  the 256 × 256 one left X11's `_NET_WM_ICON` empty (a quarter of a
+  megabyte in one property request). `winit` is a direct dependency of
+  `mr_game` for `winit::window::Icon` (Bevy 0.19 has no icon API), at the
+  version Bevy uses, and `image` gains `png` (already on through Bevy's).
+
+Checked on the dev machine (GNOME on Wayland, two monitors): on XWayland,
+driven with `xdotool`/`wmctrl` configure requests and EWMH messages, a
+first run at 1600 × 900; resized and moved, then maximised and closed, it
+saved the normal bounds with `maximized: true`, reopened maximised, and
+unmaximised to those bounds; fullscreen by the window manager saved as
+fullscreen with the normal bounds, reopened fullscreen on the same monitor,
+and left fullscreen by the window manager saved as windowed; `--size` and
+`--smoke-test` left the file alone. On Wayland (the session's own backend),
+the first run opened at 1600 × 900 and a saved maximised or fullscreen state
+read back as it was saved.
+
+## D1001. The window title is "Midnight Racer"; the status line with `stats=1`
+
+2026-10-05, WP 6.8. The player's window is titled "Midnight Racer", as the
+Electron window (`title: 'Midnight Racer'`), not the status line that
+changed every half second (state, level, s, fps, worst frame). The status
+line stays in the title with `stats=1`, the native counterpart of the web
+build's stats panel (SPEC 8.4's `stats` hook), and in the runs that are not
+the player's window (`--size`, the pictures), where it served development
+before.
+
+## D1002. Focus loss pauses a race natively; F11 and Ctrl+Q
+
+2026-10-05, WP 6.8, SPEC 8.4. `native::focus_pause` is the counterpart of
+`play::web::visibility` (`if (document.hidden && mode === 'race')
+pause(true)`): when the window loses the focus (Bevy's `WindowFocused`),
+a race in progress pauses through the same `Race::pause(true)`, before the
+frame's ticks, and stays paused when the focus comes back, as the JS does
+on returning to the page. The input layer already lets go of every key on
+focus loss (`read_input`). It does not pause in the runs that make
+pictures or check the build (their window may never have the focus) nor
+with `autodrive=1`, where nobody drives and a measurement would stall: a
+window loses the focus far more often than a page goes hidden.
+
+F11 toggles borderless fullscreen (Electron's `setFullScreen` on Linux),
+on the monitor under the window's middle, judged from the window's real
+state (D1000) so a fullscreen the window manager made or ended is toggled
+from what it is. Ctrl+Q and Cmd+Q (Super) quit, the chord read in the
+order the keys came, since one slow frame can hold both the Ctrl's press
+and its release. Neither reaches the game as a binding: `play::input::
+dom_code` has no F11, and Ctrl+Q leaves before a Q matters. They are on for
+every interactive window, `--size` included.
+
+Checked on Xvfb, through lavapipe and XTEST: in a race on Seaside, F11
+reached the window, another X client taking the focus paused the race (the
+pause screen came up), and Ctrl+Q quit with exit code 0 and saved the
+state. Not checked: F11 under a window manager by key. XWayland here
+passes XTEST through the input-capture portal (`-enable-ei-portal`) and
+Wayland has no injection, so the key was not pressed on the real desktop;
+the same mode change, made at start for a saved fullscreen, was checked
+there (D1000). The owner can press F11 and Ctrl+Q once in a native
+window. Cmd+Q on macOS and Windows are untested.
+
+## D1003. The native smoke test in CI: Xvfb and lavapipe
+
+2026-10-05, WP 6.8, the gate. The `rust` job installs `xvfb`, `xauth`,
+`mesa-vulkan-drivers` and `libvulkan1`, builds `midnight-racer` (debug, on
+the dependencies `cargo test` built) and runs `--smoke-test --after 5`
+twice under `xvfb-run` with `VK_ICD_FILENAMES` set to lavapipe's ICD and
+`WGPU_BACKEND=vulkan`, with a store of its own (`MR_STORE`): the default
+run (the menu's first screen, Sierra's section built in the client, D678,
+D742) and a race on Seaside Raceway (`level=seaside&autostart=sports`),
+the lightest level to build. Race timings through lavapipe under Xvfb on
+the dev machine, to the end of the run: Seaside 11 s, Desert 18 s, Coast
+21 s, Sierra 25 s, Streets 27 s, Cruise 32 s; the menu 7 s. Restricted
+to four cores and without an ALSA device (`ALSA_CONFIG_PATH=/dev/null`),
+as on a runner, the two CI runs took 18 s and 31 s and passed.
+
+Locally the same way: Xvfb is not installed here, so the Ubuntu package
+was unpacked into a scratch directory (`apt-get download xvfb`, `dpkg -x`)
+and its `xvfb-run` used with `WAYLAND_DISPLAY` and `DISPLAY` unset;
+lavapipe (Mesa 26.0.3, llvmpipe on LLVM 21) ran Bevy 0.19 without trouble.
+The report names the adapter (`llvmpipe (...) (Vulkan, Cpu)`), so a run
+on the real GPU cannot pass for one on lavapipe.
+
+`--smoke-test` now follows the Electron one's check: a tracing layer beside
+Bevy's (`native::log_tally`, under the same filter) counts the log's
+warnings and errors; the report lists the first twenty, and any error fails
+the run (exit 1), as a console error fails Electron's. Errors that say
+nothing about the build count as warnings, as Electron filters the
+favicon's 404: so far only web-audio-api's "buffer underrun or overrun",
+which the sound's output stream logs while a software renderer holds a
+frame up (it failed Desert, Coast and Streets on lavapipe before). The run
+also fails on a failed load and when the scene is not up within 600 s
+(Electron waits 60 s for `__ready`; lavapipe compiles slower than a GPU).
+The report line is `smoke test: ok|failed: <level>, ready in <s>, <n>
+frames after; adapter <name>; <e> errors, <w> warnings; <counts>`.
+
+## D1004. `--query` and SPEC 8.4's debug hooks, natively
+
+2026-10-05, WP 6.8. Every hook in SPEC 8.4's list reaches the native
+client through `--query` (or bare `key=value` arguments), read by the same
+code as the web's query string: `level`, `pursuit`, `heat`, `cops`, `t`,
+the fly camera's `s`, `h`, `back`, `lat`, `yaw`, `pitch` (and `v`),
+`timescale`, `autodrive` (also `--autodrive`), `autostart` and `touch`
+(`touch=1` shows the touch controls, the mouse as one finger, D436). Gaps,
+left as they are:
+
+- `stats=1` natively is the window title's status line (D1001): frame rate
+  and the worst frame, not the JS panel's draw calls, triangles, load time
+  and heap. The web build's panel has the frame numbers and the adapter.
+- The Electron shell's flags map as: `--url-query` → `--query`, `--shot
+  <png>` → `--screenshot <png>` (its own run: with both, the picture is
+  taken and the smoke report is not printed), `--wait <ms>` → `--after
+  <frames>`. `--dev` (F12 devtools) has no counterpart.
