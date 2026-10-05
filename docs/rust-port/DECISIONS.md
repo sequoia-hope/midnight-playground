@@ -6766,3 +6766,63 @@ touch arrives while a frame is busy (winit cancels every touchstart on
 the canvas); the suites leave that line out of their error check, since
 the canvas is `touch-action: none` and nothing scrolls or zooms either
 way.
+
+## D751. Race from the menu builds the level first (the owner's D750 choice)
+
+2026-10-04, the owner's option 2 for D750: build the level before the
+race's cars and sound come up, so a race started from the menu peaks no
+higher than the same level raced from the address. The boot and the Race
+tap change, in `ui` only:
+- **No field behind the menu.** Over the menu's views no race field is
+  built at boot (`play.armed` false when `preview::wanted`), so D574's
+  warm-up field and the sound's graph built with it (D580) are gone from
+  the menu: the cars come up only for a race, after its level, behind the
+  loading screen, where Race's hold (D574: three quiet frames, at most
+  three seconds) compiles their pipelines as it does after a level switch.
+  The sound's graph is built by the first gesture, as `wakeAudio` builds
+  it in the JS (the music on the menu starts with the first tap, as
+  there).
+- **The views go first.** Race frees the views and waits four frames
+  (`Starting::Free`, `FREE_FRAMES`) for the despawned assets to be
+  released before asking for the level; the level is then built, then the
+  field and the sound's car, as from the address.
+Measured on WebGPU at load 38 to 66 with `compare.mjs` (Coast from the
+menu and from the address, alternating, three rounds each): before this,
+515 to 564 MB from the menu against 466 to 507 from the address (D749);
+with D751 to D753, 490 to 522 (median 490) against 462 to 510 (median
+462). WebGL2 at load 86 to 121: 518 to 535 (median 521) against 453 to 501
+(median 496). The menu's own high-water drops from 167 to 173 MB to 139
+to 151 (no field). `sections.test.mjs`, `level-switch.test.mjs` and
+`race-flow.test.mjs` pass on WebGPU and WebGL2 (the last two take
+`MR_BACKEND=webgl2` now); the native menu-to-race script too.
+
+## D752. The menu's glyph atlases go with the views
+
+2026-10-04. Bevy keeps a CPU copy of every glyph atlas it has drawn text
+into. The menu, drawn at up to twice the CSS resolution (D575) in many
+sizes, held about 20 MB of them (`FontAtlasSet::total_bytes`, a diagnostic
+build). When Race frees the views it clears the atlas set and marks every
+`Text` and `TextSpan` changed, so the texts that stay are laid out again
+from fresh atlases on the next frame (`preview::release_glyphs`).
+
+## D753. The page's loading screen covers Race's load; none under it
+
+2026-10-04. On the web the page's own loading screen covers the canvas
+while the client loads (D576), and the client drew its Bevy copy under it,
+whose glyphs (about 8 MB at the screens' ratio) were then held through
+the level's build. On the web the client now draws no loading screen
+(`ui::build`, `Screen::Loading`; `__mr.screen` still reads `loading`), and
+Race puts the page's up at once (`__mr.cover`, from `preview::cover`)
+while the views are freed, before `__mr.reload` keeps it up for the load.
+Natively the client's loading screen is drawn as before.
+
+What is still above the address's figure (about 25 to 30 MB at the
+median): counted with a heap-counting allocator (a diagnostic build, not
+committed), the heap in use when Coast's build starts from the menu is
+about 77 MB against about 43 MB from the address. The sound's graph (about
+12 MB) is built by the first tap, on the menu or on Race, and cannot wait
+for the level: on a phone the context must be made and resumed inside a
+gesture. The rest is what drawing the menu leaves in the renderer (the
+compiled pipelines and the shader cache for the views' materials, the
+renderer's grown buffers), which Bevy does not release. Not closed further
+here; for the owner if the remaining 25 to 30 MB matter.

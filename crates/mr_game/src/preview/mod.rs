@@ -727,6 +727,7 @@ fn switch(world: &mut World) {
             blocks.texels.clear();
             blocks.map.clear();
         }
+        release_glyphs(world);
         info!("sections freed");
         return;
     }
@@ -760,6 +761,25 @@ fn switch(world: &mut World) {
         }
     }
     show(world, k, shown);
+}
+
+/// The menu's glyph atlases go before the level builds (D752): drawn at up
+/// to twice the CSS resolution (D575) in many sizes, they hold about 20 MB
+/// that the loading screen and the race do not need. Every text is laid
+/// out again from fresh atlases on the next frame.
+fn release_glyphs(world: &mut World) {
+    let Some(mut set) = world.get_resource_mut::<bevy::text::FontAtlasSet>() else {
+        return;
+    };
+    set.clear();
+    let mut texts = world.query::<&mut Text>();
+    for mut t in texts.iter_mut(world) {
+        t.set_changed();
+    }
+    let mut spans = world.query::<&mut TextSpan>();
+    for mut t in spans.iter_mut(world) {
+        t.set_changed();
+    }
 }
 
 /// Marks a newly spawned section's entities and indexes them by node.
@@ -1003,6 +1023,18 @@ fn note_unload(mut pv: ResMut<Previews>) {
     if !active() {
         pv.full = None;
         pv.shown = None;
+    }
+}
+
+/// Puts the page's loading screen up (`__mr.cover`), on the web; natively
+/// the client's own shows.
+pub fn cover() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let f = js_sys::Function::new_no_args(
+            "const c = window.__mr && window.__mr.cover; if (c) c();",
+        );
+        let _ = f.call0(&wasm_bindgen::JsValue::NULL);
     }
 }
 

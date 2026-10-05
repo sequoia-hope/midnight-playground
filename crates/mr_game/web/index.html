@@ -306,6 +306,10 @@
       requestAnimationFrame(poll);
     };
 
+    // __mr.cover(): the loading screen up at once (Race from the menu's
+    // views, while they are freed before the level is asked for, D753).
+    mr.cover = () => { $('loading').hidden = false; $('msg').className = ''; show(0.3, 'Loading…'); };
+
     // __mr.reload(level): tear the scene down and load it (or another
     // level) again, behind the loading screen; resolves when it is ready.
     mr.reload = async (lv = level) => {
