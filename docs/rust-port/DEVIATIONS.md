@@ -22,6 +22,7 @@ when a work package introduces one, with the package and the JS it concerns.
 | The music player link opens the JS page | Its Rust screen is M5's | WP 6.2, D573 |
 | A tap on no control of the pause screen resumes | The M4 phone flow, kept | WP 6.2, D578 |
 | The logo's gradients and glow are flat colours per line and letter | No gradient text in Bevy UI; drawing it in software cost 0.3 MB of wasm | WP 6.1, D573 |
+| A barrier hit's sparks fly with the player's velocity after the hit's 3 % slowdown, not before it (`PursuitView.js:200`) | The simulation applies the slowdown at the tick (D61); the sparks are drawn after the ticks | WP 8.2, D942 |
 | A level tab only selects: the menu flies over a simplified view of that level (its land, road, sky, time of day and sea, with invented stand-ins for its scenery: trees, poles, lit blocks, hoodoos, barriers, a skyline; the first 500 m from `startS + 60`, starting over at the end), prepared for every level when the menu opens; Race builds the level whole behind the loading screen (`main.js` `loadLevel` rebuilds the whole world on a tab, and the attract camera drifts along the whole first zone with the real scenery). Main menu after a race keeps the raced level for its tab, as the JS does | The owner (D676, D746): instant switching, no full level per tab, simplified views | D676, D740–D750 |
 
 ## Known JS quirks reproduced, not fixed
@@ -32,6 +33,9 @@ Unless the owner says otherwise (SPEC 15, question 2):
   (`Effects.js:249,273`).
 - The shadow box is said to snap to texels but does not (`Sky.js:271`).
 - `input.enabled` is never set false.
+- Traffic and police cars always show their exhaust flames: they have no
+  entry in `Race.extras`, so `ex.nitro && visible` is `undefined`, which
+  three draws (`Effects.js:236-240`; DECISIONS D945).
 
 ## Dropped tests
 

@@ -402,12 +402,18 @@ impl Effects {
     /// in the order they were added.
     pub fn update(&mut self, dt: f64, night: f64, cars: &[CarIn], extras: &[Extras]) {
         for (k, v) in cars.iter().enumerate().take(self.cars.len()) {
-            let ex = extras.get(k).copied().unwrap_or_default();
+            // A car past the end of `extras` has no entry in the JS's map
+            // (traffic, the police): `extras.get(v) || {}`.
+            let entry = extras.get(k).copied();
+            let ex = entry.unwrap_or_default();
             let visible = v.visible;
             // Nitro flames.
             let nit = ex.nitro && visible;
             let player = self.cars[k].player;
-            self.cars[k].flames_on = nit;
+            // Without an entry `ex.nitro && visible` is undefined, and three
+            // draws an object whose `visible` is anything but `false`: such
+            // a car's flames show, at their length as they are (D945).
+            self.cars[k].flames_on = nit || entry.is_none();
             for fi in 0..self.cars[k].flames.len() {
                 if nit {
                     let fl = 0.7 + self.random() * 0.6;
