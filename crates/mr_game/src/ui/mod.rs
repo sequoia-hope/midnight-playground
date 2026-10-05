@@ -282,6 +282,8 @@ pub fn plugin(app: &mut App) {
         {
             play.params.car = k;
         }
+        // `new PursuitView(race, { flash: settings.flash })`.
+        play.params.flash = settings.flash;
         if o.param("pursuit").is_none() {
             let level = mr_levels::level_by_id(&o.level);
             play.params.pursuit = store::mode_for(&store, &level) == "pursuit";
@@ -594,6 +596,7 @@ fn arm(ui: &mut UiState, play: &mut Play, store: &Store, o: &Options) {
     let forced = o.param("pursuit").map(|v| v == "1");
     play.params.pursuit =
         level.police.is_some() && forced.unwrap_or(store::mode_for(store, &level) == "pursuit");
+    play.params.flash = s.flash;
     play.stop = true;
     play.armed = true;
     play.hold = true;

@@ -102,9 +102,11 @@ fn frame(
     windows: Query<&Window, With<PrimaryWindow>>,
     cams: Query<&GlobalTransform, With<Camera3d>>,
     hud: Option<Res<super::hud::HudState>>,
+    drawn: Option<Res<super::police::PoliceDrawn>>,
 ) {
     let Some(mr) = mr() else { return };
     bridge_page(&mr, hud.as_deref());
+    bridge_pursuit(&mr, play.race.as_ref(), drawn.as_deref());
     if let Some(ins) = get(mr.as_ref(), "insets") {
         let i = Insets {
             top: num(&ins, "top"),
@@ -337,19 +339,152 @@ fn bridge_page(mr: &Object, hud: Option<&super::hud::HudState>) {
         }
     }
     set(&h, "texts", t);
+    // Hot Pursuit's furniture: what shows, the stars' fills and the lines.
+    let pz = hud.map(|h| h.bridge_pz()).unwrap_or_default();
+    set(&h, "pz", pz.pz);
+    set(&h, "pzBar", pz.bar);
+    set(&h, "dmg", pz.dmg);
+    set(&h, "hold", pz.hold);
+    set(&h, "pen", pz.pen);
+    set(&h, "radio", pz.radio);
+    set(&h, "radioText", pz.radio_text.as_str());
+    set(&h, "pzLabel", pz.label.as_str());
+    let stars = js_sys::Array::new();
+    for f in pz.stars {
+        stars.push(&JsValue::from_f64(f));
+    }
+    set(&h, "stars", stars);
     set(mr, "hud", h);
     let l = Object::new();
     set(&l, "n", crate::animate::LAMPS.load(Ordering::Relaxed));
     set(&l, "lit", crate::animate::LAMPS_LIT.load(Ordering::Relaxed));
     set(mr, "lamps", l);
-    // `__pursuit`: Hot Pursuit's client is M8's; until then the snapshot
-    // says so (D906).
-    if get(mr.as_ref(), "pursuit").is_none() {
-        let pz = Object::new();
-        set(&pz, "available", false);
-        set(&pz, "waits", "roadmap M8 (Hot Pursuit)");
-        set(mr, "pursuit", pz);
+}
+
+/// `window.__pursuit` (the race's `Pursuit`) and `race.pv`'s fields, for
+/// the pursuit suite: null without a pursuit, as the JS clears it.
+fn bridge_pursuit(
+    mr: &Object,
+    race: Option<&super::flow::Race>,
+    drawn: Option<&super::police::PoliceDrawn>,
+) {
+    use mr_sim::pursuit::{HoldReason, State};
+    let Some(pv) = race.and_then(|r| r.session.curr.pv.as_ref()) else {
+        set(mr, "pursuit", JsValue::NULL);
+        return;
+    };
+    let pu = &pv.pursuit;
+    let o = Object::new();
+    set(&o, "available", true);
+    set(
+        &o,
+        "state",
+        match pu.state {
+            State::Patrol => "patrol",
+            State::Pursuit => "pursuit",
+            State::Cooldown => "cooldown",
+        },
+    );
+    set(&o, "heat", pu.heat);
+    set(&o, "maxHeat", pu.max_heat);
+    set(&o, "heatMeter", pu.heat_meter);
+    set(&o, "bust", pu.bust);
+    set(&o, "evade", pu.evade);
+    set(&o, "busts", pu.busts);
+    set(&o, "takedowns", pu.takedowns);
+    set(&o, "flash", pu.flash);
+    set(&o, "maxUnits", pu.max_units as f64);
+    let units = js_sys::Array::new();
+    for (i, u) in pu.units.iter().enumerate() {
+        let uo = Object::new();
+        set(&uo, "active", u.active);
+        set(&uo, "mode", mode_name(u.mode));
+        set(
+            &uo,
+            "siren",
+            match u.siren {
+                mr_sim::police::Siren::Off => "off",
+                mr_sim::police::Siren::Flash => "flash",
+                mr_sim::police::Siren::Disabled => "disabled",
+            },
+        );
+        set(&uo, "s", u.k.s);
+        set(&uo, "lat", u.k.lat);
+        set(&uo, "speed", u.k.speed);
+        set(&uo, "callsign", u.callsign);
+        set(&uo, "type", format!("{:?}", u.unit_type).to_lowercase());
+        set(&uo, "x", u.k.v.x);
+        set(&uo, "z", u.k.v.z);
+        set(&uo, "health", u.health);
+        set(
+            &uo,
+            "target",
+            u.target
+                .map_or(JsValue::NULL, |t| JsValue::from_f64(t as f64)),
+        );
+        // `u.v.model.root.visible`: whether the police draw shows this
+        // unit's model this frame (`play::police::PoliceDrawn`, D923).
+        set(
+            &uo,
+            "visible",
+            drawn.and_then(|d| d.0.get(i).copied()).unwrap_or(false),
+        );
+        units.push(&uo);
     }
+    set(&o, "units", units);
+    if let Some(p) = pu.player.map(|i| &pu.racers[i]) {
+        let po = Object::new();
+        set(&po, "hold", p.hold);
+        set(
+            &po,
+            "holdReason",
+            match p.hold_reason {
+                Some(HoldReason::Busted) => JsValue::from_str("busted"),
+                Some(HoldReason::Wrecked) => JsValue::from_str("wrecked"),
+                None => JsValue::UNDEFINED,
+            },
+        );
+        set(&po, "holdTotal", p.hold_total);
+        set(&po, "grace", p.grace);
+        set(&po, "bust", p.bust);
+        set(&o, "player", po);
+    }
+    let v = Object::new();
+    set(&v, "damage", pv.damage);
+    set(&v, "wrecks", pv.wrecks);
+    set(&v, "penalty", pv.penalty);
+    set(&o, "pv", v);
+    set(mr, "pursuit", o);
+}
+
+/// A unit's mode as the JS names it.
+fn mode_name(m: mr_sim::police::Mode) -> &'static str {
+    use mr_sim::police::Mode as M;
+    match m {
+        M::Parked => "parked",
+        M::Chase => "chase",
+        M::Oncoming => "oncoming",
+        M::Search => "search",
+        M::Standdown => "standdown",
+        M::Hold => "hold",
+        M::Disabled => "disabled",
+        M::Block => "block",
+    }
+}
+
+fn mode_of(name: &str) -> Option<mr_sim::police::Mode> {
+    use mr_sim::police::Mode as M;
+    Some(match name {
+        "parked" => M::Parked,
+        "chase" => M::Chase,
+        "oncoming" => M::Oncoming,
+        "search" => M::Search,
+        "standdown" => M::Standdown,
+        "hold" => M::Hold,
+        "disabled" => M::Disabled,
+        "block" => M::Block,
+        _ => return None,
+    })
 }
 
 /// The rest of `__mr.race`: what the JS suites read off `window.__race`
@@ -443,7 +578,10 @@ fn bridge_race(
 /// not the race's.
 pub fn stage_race(play: &mut Play, v: &serde_json::Value) -> bool {
     let cmd = v["cmd"].as_str().unwrap_or("");
-    if !matches!(cmd, "reset" | "set" | "aiWritePos" | "event") {
+    if !matches!(
+        cmd,
+        "reset" | "set" | "aiWritePos" | "event" | "unit" | "hurt" | "say" | "roadblock" | "spikes"
+    ) {
         return false;
     }
     let Some(r) = play.race.as_mut() else {
@@ -478,6 +616,63 @@ pub fn stage_race(play: &mut Play, v: &serde_json::Value) -> bool {
                         side: num("side").unwrap_or(1.0) as i32,
                     },
                 });
+            }
+        }
+        // `__pursuit.activate(unit, s, lat, speed, mode, dir)`.
+        "unit" => {
+            let i = v["i"].as_u64().unwrap_or(0) as usize;
+            let mode = v["mode"].as_str().and_then(mode_of);
+            let st = &mut r.session.curr;
+            if let (Some(pv), Some(mode)) = (st.pv.as_mut(), mode)
+                && i < pv.pursuit.units.len()
+            {
+                pv.pursuit.activate(
+                    &t,
+                    i,
+                    num("s").unwrap_or(0.0),
+                    num("lat").unwrap_or(0.0),
+                    num("speed").unwrap_or(0.0),
+                    mode,
+                    num("dir").unwrap_or(1.0) as i32,
+                );
+            }
+        }
+        // `race.pv.hurt(d)`.
+        "hurt" => {
+            mr_sim::race::hurt_player(&r.session.lr, &mut r.session.curr, num("d").unwrap_or(0.0))
+        }
+        // `race.pv.say(line, now)`: through the radio's own `say` in the
+        // next frame (`play::radio`).
+        "say" => {
+            let text = v["text"].as_str().unwrap_or("").to_owned();
+            let parts = v["parts"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|p| p.as_str().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_else(|| vec![text.clone()]);
+            r.stage_say.push((
+                mr_audio::radio::lines::Line { text, parts },
+                v["force"].as_bool().unwrap_or(false),
+            ));
+            return true;
+        }
+        // `__pursuit.placeRoadblock(s)`, `__pursuit.placeSpikes(s)`.
+        "roadblock" | "spikes" => {
+            let st = &mut r.session.curr;
+            let s = num("s").unwrap_or(st.players[0].v.s + 300.0);
+            if let Some(pv) = st.pv.as_mut() {
+                if cmd == "roadblock" {
+                    pv.pursuit.place_roadblock(&t, s, &mut st.rng.pursuit);
+                } else {
+                    let racers = mr_sim::field::RacerAccess {
+                        players: &mut st.players,
+                        rivals: &mut st.rivals,
+                    };
+                    pv.pursuit.place_spikes(&t, &racers, s);
+                }
             }
         }
         // A field written: `race.player.vx = …`, `race.ais[i].s = …`.
@@ -516,6 +711,50 @@ fn set_field(r: &mut super::flow::Race, path: &str, value: &serde_json::Value) {
         ["score"] => p.rules.score = x.unwrap_or(p.rules.score),
         ["nearMisses"] => p.rules.near_misses = x.unwrap_or(0.0) as i32,
         ["cam", "snap"] => r.rig.snap = b.unwrap_or(true),
+        // `race.pv.penalty = x`, `race.pv.damage = x`.
+        ["pv", f] => {
+            let Some(pv) = st.pv.as_mut() else { return };
+            match *f {
+                "penalty" => pv.penalty = x.unwrap_or(pv.penalty),
+                "damage" => pv.damage = x.unwrap_or(pv.damage),
+                _ => warn!("__mr.stage: no pv.{f}"),
+            }
+        }
+        // `__pursuit.state = 'pursuit'`.
+        ["pursuit", "state"] => {
+            use mr_sim::pursuit::State;
+            let Some(pv) = st.pv.as_mut() else { return };
+            match value.as_str() {
+                Some("patrol") => pv.pursuit.state = State::Patrol,
+                Some("pursuit") => pv.pursuit.state = State::Pursuit,
+                Some("cooldown") => pv.pursuit.state = State::Cooldown,
+                _ => warn!("__mr.stage: no pursuit state {value}"),
+            }
+        }
+        // A unit's field: `u.speed = 0`, `u.target = race.playerBody` (the
+        // racer's index, the player's or a rival's).
+        ["pursuit", "units", i, f] => {
+            let Some(pv) = st.pv.as_mut() else { return };
+            let pu = &mut pv.pursuit;
+            let target = match value.as_str() {
+                Some("player") => pu.player,
+                _ => value
+                    .as_str()
+                    .and_then(|r| r.strip_prefix("rival:"))
+                    .and_then(|k| k.parse::<usize>().ok())
+                    .and_then(|k| pu.racer_for(mr_sim::body::BodyId::Rival(k))),
+            };
+            let Some(u) = i.parse::<usize>().ok().and_then(|i| pu.units.get_mut(i)) else {
+                return;
+            };
+            match *f {
+                "speed" => u.k.speed = x.unwrap_or(u.k.speed),
+                "s" => u.k.s = x.unwrap_or(u.k.s),
+                "lat" => u.k.lat = x.unwrap_or(u.k.lat),
+                "target" => u.target = target,
+                _ => warn!("__mr.stage: no unit.{f}"),
+            }
+        }
         ["touch", "autoGas"] => r.touch.auto_gas = b.unwrap_or(true),
         ["progS", i] => {
             if let (Ok(i), Some(x)) = (i.parse::<usize>(), x)

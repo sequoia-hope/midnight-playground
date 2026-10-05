@@ -32,6 +32,7 @@ mod models;
 pub mod police;
 pub mod pose;
 mod pv_stage;
+pub mod radio;
 pub mod session;
 pub mod tilt;
 pub mod touch;
@@ -69,6 +70,10 @@ pub struct Params {
     pub timescale: f64,
     pub pursuit: bool,
     pub heat: f64,
+    /// `?cops=N`: Hot Pursuit's cap on units (6 by default).
+    pub cops: f64,
+    /// The police lights strobe (the menu's flash option, `settings.flash`).
+    pub flash: bool,
     /// `?touch=1|0` forces the touch controls on or off.
     pub touch: Option<bool>,
     /// Natively: save the three screenshots here and exit.
@@ -102,6 +107,8 @@ impl Params {
                 .and_then(|s| s.parse().ok())
                 .filter(|h: &f64| *h >= 1.0)
                 .unwrap_or(1.0),
+            cops: get("cops").and_then(|c| c.parse().ok()).unwrap_or(6.0),
+            flash: true,
             touch: get("touch").map(|v| v == "1"),
             shots: get("shots").map(str::to_owned),
             fx: get("fx") != Some("0"),
@@ -306,7 +313,11 @@ fn start(
         setup.opts.seed,
         if setup.autodrive { ", autodrive" } else { "" }
     );
-    let race = Race::new(lr, setup, tc);
+    let mut race = Race::new(lr, setup, tc);
+    race.set_pursuit_opts(flow::PursuitOpts {
+        cops: play.params.cops,
+        flash: play.params.flash,
+    });
     let st = &race.session.curr;
     let mut wants = Vec::new();
     for p in &st.players {
