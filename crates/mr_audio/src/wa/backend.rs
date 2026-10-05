@@ -195,6 +195,13 @@ pub trait Backend {
         out.fill(0);
     }
 
+    /// The browser's own node behind `node` (the web backend), for a page
+    /// that reads it (the test bridge).
+    #[cfg(all(feature = "web", target_arch = "wasm32"))]
+    fn js_node(&self, _node: NodeId) -> Option<wasm_bindgen::JsValue> {
+        None
+    }
+
     /// An offline context: render it whole, channel by channel.
     fn render(&mut self) -> Option<Vec<Vec<f32>>> {
         None
