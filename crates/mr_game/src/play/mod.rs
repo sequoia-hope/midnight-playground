@@ -30,6 +30,7 @@ mod hud;
 pub mod input;
 mod models;
 pub mod pose;
+pub mod radio;
 pub mod session;
 pub mod tilt;
 pub mod touch;
