@@ -1002,7 +1002,8 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
                 Starting::Level
             } else {
                 // The views' memory goes before the level's build takes
-                // its own (D751).
+                // its own (D751); the page's loading screen covers it.
+                crate::preview::cover();
                 Starting::Free(0)
             });
         }
@@ -1306,8 +1307,12 @@ fn build(
     for e in &roots {
         commands.entity(e).despawn();
     }
-    // `menu=0`: the screens are not drawn (pictures of what is behind).
-    if ui.screen == Screen::None || opts.o.param("menu") == Some("0") {
+    // `menu=0`: the screens are not drawn (pictures of what is behind). On
+    // the web the page's own loading screen covers the canvas while the
+    // client loads (D576), so the client draws none under it (D753: its
+    // glyphs would be held through the level's build).
+    let page_covers = cfg!(target_arch = "wasm32") && ui.screen == Screen::Loading;
+    if ui.screen == Screen::None || page_covers || opts.o.param("menu") == Some("0") {
         ui.focus_order.clear();
         return;
     }

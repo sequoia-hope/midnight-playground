@@ -1026,6 +1026,18 @@ fn note_unload(mut pv: ResMut<Previews>) {
     }
 }
 
+/// Puts the page's loading screen up (`__mr.cover`), on the web; natively
+/// the client's own shows.
+pub fn cover() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let f = js_sys::Function::new_no_args(
+            "const c = window.__mr && window.__mr.cover; if (c) c();",
+        );
+        let _ = f.call0(&wasm_bindgen::JsValue::NULL);
+    }
+}
+
 /// What the sections cost, for the page and the tests (`__mr.sections`).
 pub struct Report {
     pub id: &'static str,
