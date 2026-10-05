@@ -47,6 +47,7 @@ and carry on with the option that best preserves parity.
 | JS unit tests | `npm run test:unit` (and `npm run test:unit:kernel`, with the parity kernel) |
 | Rebuild and check the parity kernel | `cargo xtask kernel` (CI: `cargo xtask kernel --check`) |
 | JS browser tests | `npm run test:e2e` (headless Chrome on the GPU, ~3 min) |
+| The same browser suites against the Rust build | `cargo xtask web --release && npm run test:e2e:rust` (one Chrome at a time; prints the suite table) |
 
 Toolchain: stable Rust with the `wasm32-unknown-unknown` target
 (`rust-toolchain.toml`), `wasm-bindgen-cli` at exactly the version of the
