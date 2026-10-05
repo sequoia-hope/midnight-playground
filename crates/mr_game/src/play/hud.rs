@@ -155,6 +155,19 @@ pub(super) struct HudState {
     shown: bool,
 }
 
+impl HudState {
+    /// What the test bridge reads (`__mr.hud`): whether the HUD is up,
+    /// whether it has a circuit's lap panel (`#hud-lap`), and the texts
+    /// it shows (`#hud-lap-n`, `#hud-lap-best`, …).
+    pub(super) fn bridge(&self) -> (bool, bool, Option<&model::Texts>) {
+        (
+            self.shown && self.root.is_some(),
+            self.key.as_ref().is_some_and(|k| k.laps),
+            self.model.as_ref().map(|m| &m.last),
+        )
+    }
+}
+
 pub(super) fn spawn(mut commands: Commands, play: Option<Res<Play>>) {
     if play.is_some() {
         commands.insert_resource(HudState::default());

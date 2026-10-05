@@ -240,6 +240,9 @@
     mr.ui = (id) => (mr.uiNodes || {})[id] ?? null;
     mr.reveal = (id) => glue.ui_reveal(String(id));
     mr.stage = (c) => glue.stage(typeof c === 'string' ? c : JSON.stringify(c));
+    // The race's road, read at once (the e2e bridge's `__race.track`).
+    mr.trackFrame = (s) => Array.from(glue.track_frame(+s));
+    mr.trackWrap = (s) => glue.track_wrap(+s);
     // __mr.flyTo(station): the fly camera to a screenshot station; then
     // __mr.flyQuiet counts settled frames (a test hook).
     mr.flyTo = (p) => { mr.flyQuiet = 0; glue.fly_to(p.s, p.h, p.back, p.lat || 0, p.yaw || 0, p.pitch || 0); };

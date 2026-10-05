@@ -10,8 +10,10 @@ use super::touch::{Hold, Insets};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use js_sys::{Object, Reflect};
+use mr_track::Track;
 use std::sync::atomic::{AtomicBool, Ordering};
-use wasm_bindgen::prelude::Closure;
+use std::sync::{Arc, Mutex};
+use wasm_bindgen::prelude::{Closure, wasm_bindgen};
 use wasm_bindgen::{JsCast, JsValue};
 
 /// The page went hidden since the last frame (`visibilitychange`). A hidden
@@ -99,8 +101,10 @@ fn frame(
     mut play: ResMut<Play>,
     windows: Query<&Window, With<PrimaryWindow>>,
     cams: Query<&GlobalTransform, With<Camera3d>>,
+    hud: Option<Res<super::hud::HudState>>,
 ) {
     let Some(mr) = mr() else { return };
+    bridge_page(&mr, hud.as_deref());
     if let Some(ins) = get(mr.as_ref(), "insets") {
         let i = Insets {
             top: num(&ins, "top"),
@@ -250,8 +254,10 @@ fn frame(
         set(&tt, "fullLock", tl.full_lock);
         set(&to, "tilt", tt);
     }
+    set(&to, "u", t.slide.as_ref().and_then(|s| s.u).map_or(JsValue::NULL, JsValue::from_f64));
     set(&o, "touch", to);
     set(&o, "touchUi", touch_ui);
+    bridge_race(&o, race, &cams, hud.as_deref());
     if let Some(rows) = &race.results {
         let arr = js_sys::Array::new();
         for r in rows {
@@ -266,6 +272,259 @@ fn frame(
         set(&o, "results", arr);
     }
     set(&mr, "race", o);
+}
+
+// ── The test bridge (SPEC 8.5, WP 6.7) ─────────────────────────────────
+
+/// The race's road, for `__mr.trackFrame(s)` and `__mr.trackWrap(s)` (the
+/// suites' `__race.track.frame(s)` and `.wrap(s)`, read synchronously).
+static TRACK: Mutex<Option<Arc<Track>>> = Mutex::new(None);
+
+fn track() -> Option<Arc<Track>> {
+    TRACK.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// `track.frame(s)`: `[x, y, z, fx, fz, rx, rz, hw]`, empty with no race.
+#[wasm_bindgen]
+pub fn track_frame(s: f64) -> Vec<f64> {
+    track().map_or_else(Vec::new, |t| {
+        let f = t.frame(s);
+        vec![f.x, f.y, f.z, f.fx, f.fz, f.rx, f.rz, f.hw]
+    })
+}
+
+/// `track.wrap(s)`.
+#[wasm_bindgen]
+pub fn track_wrap(s: f64) -> f64 {
+    track().map_or(s, |t| t.wrap(s))
+}
+
+fn opt(v: Option<f64>) -> JsValue {
+    v.map_or(JsValue::NULL, JsValue::from_f64)
+}
+
+/// What the page shows outside the race's own state: the HUD
+/// (`__mr.hud`) and the countdown's lamps (`__mr.lamps`).
+fn bridge_page(mr: &Object, hud: Option<&super::hud::HudState>) {
+    let h = Object::new();
+    let (shown, laps, texts) = hud.map_or((false, false, None), |h| h.bridge());
+    set(&h, "shown", shown);
+    set(&h, "laps", laps);
+    let t = Object::new();
+    if let Some(x) = texts {
+        for (k, v) in [
+            ("pos", &x.pos),
+            ("time", &x.time),
+            ("zone", &x.zone),
+            ("speed", &x.speed),
+            ("gear", &x.gear),
+            ("lapN", &x.lap_n),
+            ("lapTime", &x.lap_time),
+            ("lapBest", &x.lap_best),
+            ("score", &x.score),
+            ("dist", &x.dist),
+            ("best", &x.best),
+            ("pen", &x.pen),
+        ] {
+            set(&t, k, v.as_str());
+        }
+    }
+    set(&h, "texts", t);
+    set(mr, "hud", h);
+    let l = Object::new();
+    set(&l, "n", crate::animate::LAMPS.load(Ordering::Relaxed));
+    set(&l, "lit", crate::animate::LAMPS_LIT.load(Ordering::Relaxed));
+    set(mr, "lamps", l);
+}
+
+/// The rest of `__mr.race`: what the JS suites read off `window.__race`
+/// (the car, its physics and rules, the rivals, the road, the camera).
+fn bridge_race(
+    o: &Object,
+    race: &super::flow::Race,
+    cams: &Query<&GlobalTransform, With<Camera3d>>,
+    _hud: Option<&super::hud::HudState>,
+) {
+    let st = &race.session.curr;
+    let p = &st.players[0];
+    let t = &race.session.lr.track;
+    {
+        let mut slot = TRACK.lock().unwrap_or_else(|e| e.into_inner());
+        if !slot.as_ref().is_some_and(|a| Arc::ptr_eq(a, t)) {
+            *slot = Some(t.clone());
+        }
+    }
+    set(o, "x", p.v.x);
+    set(o, "y", p.v.y);
+    set(o, "z", p.v.z);
+    set(o, "along", p.v.speed);
+    set(o, "prog", opt(p.v.prog));
+    set(o, "skid", p.phys.skid);
+    set(o, "damage", p.phys.damage);
+    set(o, "lap", p.rules.lap);
+    let laps = js_sys::Array::new();
+    for l in &p.rules.lap_times {
+        laps.push(&JsValue::from_f64(*l));
+    }
+    set(o, "lapTimes", laps);
+    set(o, "playerFinished", p.rules.finished);
+    set(o, "playerTime", opt(p.rules.finish_time));
+    set(o, "dist", p.rules.dist);
+    set(o, "lastS", opt(p.rules.last_s));
+    set(o, "odo", opt(p.rules.odo));
+    set(o, "cruise", st.race.cruise);
+    set(o, "score", p.rules.score);
+    set(o, "nearMisses", p.rules.near_misses);
+    set(o, "pursuitOn", st.race.pursuit_on);
+    set(o, "traffic", true);
+    let standings = mr_sim::race::standings(st);
+    let place = standings.iter().position(|s| s.player).map_or(1, |i| i + 1);
+    set(o, "place", place as f64);
+    set(o, "racers", standings.len() as f64);
+    let ais = js_sys::Array::new();
+    for a in &st.rivals {
+        let ao = Object::new();
+        let v = &a.k.v;
+        set(&ao, "s", a.k.s);
+        set(&ao, "lat", a.k.lat);
+        set(&ao, "speed", a.k.speed);
+        set(&ao, "prog", opt(a.prog));
+        set(&ao, "finished", a.finished);
+        set(&ao, "finishTime", opt(a.finish_time));
+        set(&ao, "x", v.x);
+        set(&ao, "y", v.y);
+        set(&ao, "z", v.z);
+        set(&ao, "vx", v.vx);
+        set(&ao, "vz", v.vz);
+        set(&ao, "yaw", v.yaw);
+        ais.push(&ao);
+    }
+    set(o, "ais", ais);
+    let tr = Object::new();
+    set(&tr, "startS", t.start_s);
+    set(&tr, "finishS", t.finish_s);
+    set(&tr, "n", t.n as f64);
+    set(&tr, "length", t.length);
+    set(&tr, "loop", t.is_loop);
+    set(&tr, "roadEnd", t.road_end());
+    set(o, "track", tr);
+    if let Some(c) = cams.iter().next() {
+        let pos = c.translation();
+        let cp = Object::new();
+        set(&cp, "x", pos.x);
+        set(&cp, "y", pos.y);
+        set(&cp, "z", pos.z);
+        set(o, "camPos", cp);
+    }
+    if let Ok(inp) = Reflect::get(o, &JsValue::from_str("input"))
+        && let Some(inp) = inp.dyn_ref::<Object>()
+    {
+        set(inp, "lookBack", race.input.state.look_back);
+    }
+}
+
+/// The race's staging commands (`__mr.stage`, from `ui::web`): what the
+/// suites write into `window.__race`. Returns false for a command that is
+/// not the race's.
+pub fn stage_race(play: &mut Play, v: &serde_json::Value) -> bool {
+    let cmd = v["cmd"].as_str().unwrap_or("");
+    if !matches!(cmd, "reset" | "set" | "aiWritePos" | "event") {
+        return false;
+    }
+    let Some(r) = play.race.as_mut() else {
+        return true;
+    };
+    let t = r.session.lr.track.clone();
+    let num = |k: &str| v[k].as_f64();
+    match cmd {
+        // `race.phys.reset(s, lat)`.
+        "reset" => {
+            let p = &mut r.session.curr.players[0];
+            let s = num("s").unwrap_or(p.v.s);
+            p.phys.reset(&mut p.v, &t, s, num("lat").unwrap_or(0.0));
+        }
+        // `a.writePos()`.
+        "aiWritePos" => {
+            let i = v["i"].as_u64().unwrap_or(0) as usize;
+            if let Some(a) = r.session.curr.rivals.get_mut(i) {
+                a.write_pos(&t);
+            }
+        }
+        // `race.phys.events.push({type: 'impact', strength, x, y, z, side})`.
+        "event" => {
+            if v["type"].as_str() == Some("impact") {
+                r.inject.push(mr_sim::race::SimEvent::Phys {
+                    player: 0,
+                    e: mr_sim::physics::PhysEvent::Impact {
+                        strength: num("strength").unwrap_or(0.5),
+                        x: num("x").unwrap_or(0.0),
+                        y: num("y").unwrap_or(0.0),
+                        z: num("z").unwrap_or(0.0),
+                        side: num("side").unwrap_or(1.0) as i32,
+                    },
+                });
+            }
+        }
+        // A field written: `race.player.vx = …`, `race.ais[i].s = …`.
+        _ => set_field(r, v["path"].as_str().unwrap_or(""), &v["value"]),
+    }
+    r.session.prev = r.session.curr.clone();
+    true
+}
+
+fn set_field(r: &mut super::flow::Race, path: &str, value: &serde_json::Value) {
+    let x = value.as_f64();
+    let b = value.as_bool();
+    let st = &mut r.session.curr;
+    let parts: Vec<&str> = path.split('.').collect();
+    let p = &mut st.players[0];
+    match parts.as_slice() {
+        ["player", f] => {
+            let Some(x) = x else { return };
+            match *f {
+                "x" => p.v.x = x,
+                "z" => p.v.z = x,
+                "vx" => p.v.vx = x,
+                "vz" => p.v.vz = x,
+                "yaw" => p.v.yaw = x,
+                "s" => p.v.s = x,
+                "lat" => p.v.lat = x,
+                "speed" => p.v.speed = x,
+                "prog" => p.v.prog = Some(x),
+                _ => warn!("__mr.stage: no player.{f}"),
+            }
+        }
+        ["phys", "nitro"] => p.phys.nitro = x.unwrap_or(p.phys.nitro),
+        ["phys", "damage"] => p.phys.damage = x.unwrap_or(p.phys.damage),
+        ["lastS"] => p.rules.last_s = x,
+        ["odo"] => p.rules.odo = x,
+        ["score"] => p.rules.score = x.unwrap_or(p.rules.score),
+        ["nearMisses"] => p.rules.near_misses = x.unwrap_or(0.0) as i32,
+        ["cam", "snap"] => r.rig.snap = b.unwrap_or(true),
+        ["touch", "autoGas"] => r.touch.auto_gas = b.unwrap_or(true),
+        ["progS", i] => {
+            if let (Ok(i), Some(x)) = (i.parse::<usize>(), x)
+                && let Some(slot) = st.race.prog_s.get_mut(i)
+            {
+                *slot = x;
+            }
+        }
+        ["ais", i, f] => {
+            let Some(a) = i.parse::<usize>().ok().and_then(|i| st.rivals.get_mut(i)) else {
+                return;
+            };
+            match *f {
+                "s" => a.k.s = x.unwrap_or(a.k.s),
+                "lat" => a.k.lat = x.unwrap_or(a.k.lat),
+                "speed" => a.k.speed = x.unwrap_or(a.k.speed),
+                "prog" => a.prog = x,
+                "finished" => a.finished = b.unwrap_or(false),
+                "finishTime" => a.finish_time = x,
+                _ => warn!("__mr.stage: no ais[].{f}"),
+            }
+        }
+        _ => warn!("__mr.stage: cannot set {path}"),
+    }
 }
 
 pub fn plugin(app: &mut App) {

@@ -145,6 +145,10 @@ pub struct Race {
     /// What the reset action is on the pad in hand, while one is connected
     /// (`pads.label('reset')`, for the stuck hint).
     pub pad_reset: Option<String>,
+    /// Events the test bridge adds to the next frame's, after its ticks'
+    /// (`race.phys.events.push(…)` in the JS suites: a wall impact for the
+    /// rumble).
+    pub inject: Vec<SimEvent>,
     was_nitro: bool,
     offroad: f64,
 }
@@ -187,6 +191,7 @@ impl Race {
             kicks: Vec::new(),
             feel: None,
             pad_reset: None,
+            inject: Vec::new(),
             was_nitro: false,
             offroad: 0.0,
         }
@@ -285,7 +290,8 @@ impl Race {
             |lr, st, ev, f| audio_ticks.push(TickAudio::of(lr, st, ev, f)),
         );
         self.touch.tick(dt);
-        let events = std::mem::take(&mut self.session.events);
+        let mut events = std::mem::take(&mut self.session.events);
+        events.append(&mut self.inject);
         for e in &events {
             self.on_event(e);
         }
