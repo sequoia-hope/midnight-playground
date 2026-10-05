@@ -15,9 +15,11 @@
 //! - [`post`]: UnrealBloomPass and OutputPass.
 //! - [`instancing`]: an `InstancedMesh` as one entity and one instanced
 //!   draw, as three draws it.
+//! - [`frame`]: Bevy's `render_system` without its empty submission.
 //! - [`sort`]: the transparent pass in three's order (`renderOrder`, then
 //!   depth, D810).
 
+pub mod frame;
 pub mod instancing;
 pub mod lighting;
 pub mod material;
@@ -182,5 +184,9 @@ impl Plugin for ThreeRenderPlugin {
                     .before(tonemapping)
                     .in_set(Core3dSystems::PostProcess),
             );
+    }
+
+    fn finish(&self, app: &mut App) {
+        frame::replace_render_system(app);
     }
 }

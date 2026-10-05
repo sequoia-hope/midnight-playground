@@ -42,6 +42,7 @@
 //   --trace N        N seconds of Chrome tracing from a quarter into the flight
 //   --tag name       a suffix for the result file
 //   --dist name      the Rust build in dist/<name>/ (default next)
+//   --size WxH       the desktop viewport (default 1280x800)
 //   --race           a race instead of the flight: the sports car on the
 //                    autopilot (seed 1, no pursuit) in both games, timed for
 //                    --secs (default 30) from race time 3 s; audio allowed to
@@ -192,6 +193,11 @@ async function traceFor(cdp, secs) {
     rafCpuPerFrameMs: r2(t.rafCpu / 1000 / n), rafWallPerFrameMs: r2(t.rafWall / 1000 / n),
     gcCpuPerFrameMs: r2(t.gc / 1000 / n),
     mainBusyShare: r2(t.taskWall / 1000 / (secs * 1000)),
+    // The GPU process's main thread (where WebGL's and WebGPU's commands
+    // are decoded and run), and every traced thread of the browser.
+    gpuCpuPerFrameMs: r2([...per].filter(([k]) => names.get(k) === 'CrGpuMain').reduce((a, [, x]) => a + x.taskCpu, 0) / 1000 / n),
+    gpuBusyShare: r2([...per].filter(([k]) => names.get(k) === 'CrGpuMain').reduce((a, [, x]) => a + x.taskWall, 0) / 1000 / (secs * 1000)),
+    allCpuPerFrameMs: r2([...per].reduce((a, [, x]) => a + x.taskCpu, 0) / 1000 / n),
     topEvents: [...counts].sort((x, y) => y[1] - x[1]).slice(0, 8),
   };
 }
@@ -200,7 +206,8 @@ try {
   if (phone) {
     await page.setViewport({ width: 844, height: 390, deviceScaleFactor: 3, isMobile: true, hasTouch: true, isLandscape: true });
   } else {
-    await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
+    const [w, h] = opt('--size', '1280x800').split('x').map(Number);
+    await page.setViewport({ width: w, height: h, deviceScaleFactor: 1 });
   }
   const cdp = await page.createCDPSession();
   if (throttle > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: throttle });
