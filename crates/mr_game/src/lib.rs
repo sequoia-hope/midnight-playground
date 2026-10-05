@@ -142,7 +142,7 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
         // No clustered lights: three's lights reach the shaders through
-        // the globals (D860).
+        // the globals (D861).
         ClusterConfig::None,
         Hdr,
         Msaa::Sample4,
@@ -159,7 +159,7 @@ fn spawn_camera(mut commands: Commands) {
     ));
 }
 
-/// No light clustering (DECISIONS D860). Bevy clusters point and spot
+/// No light clustering (DECISIONS D861). Bevy clusters point and spot
 /// lights and decals for its own PBR shaders, on the GPU where there is
 /// compute (WebGPU): every frame a compute pass, a raster pass and a
 /// buffer mapped to read the counts back. The client has no Bevy point or

@@ -318,7 +318,7 @@ mod web {
         }
     }
 
-    /// What [`publish`] last wrote (DECISIONS D863).
+    /// What [`publish`] last wrote (DECISIONS D864).
     type Published = (
         super::gamepad::State,
         Option<usize>,
@@ -334,7 +334,7 @@ mod web {
     /// `window.__mr.pads` for the tests (`window.__pads` in the JS): the
     /// state of the last poll, the pad in hand, a capture in progress.
     /// Written when it differs from what was written last: building the
-    /// object every frame cost more than the poll itself (D863).
+    /// object every frame cost more than the poll itself (D864).
     pub fn publish(pads: &Pads) {
         let now: Published = (
             pads.state.clone(),

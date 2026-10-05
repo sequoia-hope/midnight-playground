@@ -1316,6 +1316,7 @@ pub(super) fn update(
     windows: Query<&Window, With<PrimaryWindow>>,
     hs: Option<ResMut<HudState>>,
     mut mats: ResMut<Assets<HudMaterial>>,
+    mut writes: ResMut<material::HudWrites>,
     mut roots: Query<&mut Visibility, (With<HudRoot>, Without<El>)>,
     mut parts: Query<Parts>,
 ) {
@@ -1500,23 +1501,23 @@ pub(super) fn update(
     };
     if !key.bp.touch && hs.last_dial != Some(dial.draw) {
         hs.last_dial = Some(dial.draw);
-        if let Some(mut m) = mats.get_mut(&mats_h[0]) {
-            m.p = material::dial(&dial.draw);
+        if let Some(m) = mats.get(&mats_h[0]) {
+            writes.set(m, material::dial(&dial.draw));
         }
     }
     let scene = minimap::scene(track, &input, model.clock);
     if hs.last_scene.as_ref() != Some(&scene) {
-        if let Some(mut m) = mats.get_mut(&mats_h[1]) {
-            m.p = material::minimap(&scene);
+        if let Some(m) = mats.get(&mats_h[1]) {
+            writes.set(m, material::minimap(&scene));
         }
         hs.last_scene = Some(scene);
     }
     if model.speedlines != hs.last_lines {
         hs.last_lines = model.speedlines;
         if model.speedlines > 0.0
-            && let Some(mut m) = mats.get_mut(&mats_h[2])
+            && let Some(m) = mats.get(&mats_h[2])
         {
-            m.p = material::speedlines(model.speedlines);
+            writes.set(m, material::speedlines(model.speedlines));
         }
     }
 
