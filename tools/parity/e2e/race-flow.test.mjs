@@ -19,7 +19,8 @@ let browser;
 before(async () => { browser = await launch(); });
 after(async () => { await browser?.close(); });
 
-const FAST = 'timescale=2';
+// MR_BACKEND=webgl2 runs the WebGL2 build.
+const FAST = (process.env.MR_BACKEND ? `backend=${process.env.MR_BACKEND}&` : '') + 'timescale=2';
 
 // fmtTime (src/game/HUD.js).
 function fmtTime(t) {
