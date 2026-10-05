@@ -180,12 +180,16 @@ export async function runPerf(mr, params) {
 
   // The flight.
   mr.perf = { phase: 'flight', secs };
+  // The flight's window on the page's clock, for tools that time each frame's
+  // work themselves (tools/parity/rust-perf.mjs's CPU timer).
+  const flightT0 = performance.now();
   const rec = recorder(mr);
   while (rec.elapsed() < secs) {
     status(`flying ${r.level} ${Math.floor(rec.elapsed())} / ${Math.round(secs)} s · s ${Math.round(mr.s || 0)} m · worst ${r1(rec.worst())} ms`);
     await sleep(500);
   }
   r.flight = summarise(rec.stop());
+  r.flight.window = [flightT0, performance.now()];
   r.flight.lateFrames = mr.lateFrames || 0;
   r.memory.flight = memory(mr);
 
