@@ -1,0 +1,123 @@
+{
+  "note": "Staged Hot Pursuit scenes (roadmap WP 8.1 and 8.2, L4; DECISIONS D930, D950). Each is drawn by the JS game's own PursuitView.js (on a stand-in race: the level's track, a player Vehicle, an Effects, the seeded pursuit and police streams of src/parity/sim.js) in a fly-camera station of the level, and by the Rust client's play::police and play::fx with ?pv=<name>, from the same data: tools/parity/pursuit-scenes.mjs. Units are pursuit.units by index (0-2 patrol cars, 3-4 interceptors, 5-6 SUVs), placed with pursuit.activate(u, s, lat, speed, mode, dir) and given their siren; roadblock and spikes are placeRoadblock(s) and placeSpikes(s). Each frame, PursuitView's clock is t + frame x dt, the events due are pushed, then pv.sync(dt, night, lightsOn) and effects.update(dt, night, extras). Math.random is mulberry32(seed) for the frames on both sides.",
+  "scenes": [
+    {
+      "name": "units-red",
+      "what": "Three units on the player's tail at blue hour, seen from ahead, the sirens in a red burst: lenses, glow billboards, the shared red light on the road and the player's car, the units' headlight pools",
+      "level": "coast", "cam": { "s": 520, "h": 2.0, "back": -14, "lat": 0.5, "yaw": 3.141592653589793, "pitch": -0.06 },
+      "night": 0.72, "seed": 5, "heat": 2, "flash": true, "hq": true, "t": 0.02, "dt": 0.016666666666666666, "frames": 1,
+      "player": { "kind": "sports", "color": 14163510, "s": 526, "lat": -1.6 },
+      "units": [
+        { "unit": 0, "s": 513, "lat": 1.4, "mode": "chase", "siren": "flash" },
+        { "unit": 3, "s": 503, "lat": -2.0, "mode": "chase", "siren": "flash" },
+        { "unit": 5, "s": 489, "lat": 1.6, "mode": "chase", "siren": "flash" }
+      ],
+      "events": []
+    },
+    {
+      "name": "units-blue",
+      "what": "The same units a moment later, in a blue burst",
+      "level": "coast", "cam": { "s": 520, "h": 2.0, "back": -14, "lat": 0.5, "yaw": 3.141592653589793, "pitch": -0.06 },
+      "night": 0.72, "seed": 5, "heat": 2, "flash": true, "hq": true, "t": 0.42, "dt": 0.016666666666666666, "frames": 1,
+      "player": { "kind": "sports", "color": 14163510, "s": 526, "lat": -1.6 },
+      "units": [
+        { "unit": 0, "s": 513, "lat": 1.4, "mode": "chase", "siren": "flash" },
+        { "unit": 3, "s": 503, "lat": -2.0, "mode": "chase", "siren": "flash" },
+        { "unit": 5, "s": 489, "lat": 1.6, "mode": "chase", "siren": "flash" }
+      ],
+      "events": []
+    },
+    {
+      "name": "steady",
+      "what": "Police lights flash off: the sirens glow steady red and blue, and there is no shared light",
+      "level": "coast", "cam": { "s": 520, "h": 2.0, "back": -14, "lat": 0.5, "yaw": 3.141592653589793, "pitch": -0.06 },
+      "night": 0.72, "seed": 5, "heat": 2, "flash": false, "hq": true, "t": 0.02, "dt": 0.016666666666666666, "frames": 1,
+      "player": { "kind": "sports", "color": 14163510, "s": 526, "lat": -1.6 },
+      "units": [
+        { "unit": 0, "s": 513, "lat": 1.4, "mode": "chase", "siren": "flash" },
+        { "unit": 3, "s": 503, "lat": -2.0, "mode": "chase", "siren": "flash" },
+        { "unit": 5, "s": 489, "lat": 1.6, "mode": "chase", "siren": "flash" }
+      ],
+      "events": []
+    },
+    {
+      "name": "far",
+      "what": "Units 120 to 300 m off: their far models, and the glows held at their minimum size with a harder core",
+      "level": "coast", "cam": { "s": 520, "h": 2.4, "back": 9, "lat": 0, "yaw": 0, "pitch": -0.03 },
+      "night": 0.72, "seed": 5, "heat": 2, "flash": true, "hq": true, "t": 0.02, "dt": 0.016666666666666666, "frames": 1,
+      "player": { "kind": "sports", "color": 14163510, "s": 522, "lat": -1.8 },
+      "units": [
+        { "unit": 1, "s": 640, "lat": 1.6, "mode": "chase", "siren": "flash" },
+        { "unit": 4, "s": 720, "lat": -1.8, "mode": "chase", "siren": "flash" },
+        { "unit": 6, "s": 820, "lat": 1.8, "mode": "chase", "siren": "flash" }
+      ],
+      "events": []
+    },
+    {
+      "name": "day",
+      "what": "By day on Sierra: the glows dimmed to 0.3, the light at a quarter, no pools",
+      "level": "sierra", "cam": { "s": 425, "h": 2.0, "back": -14, "lat": 0.5, "yaw": 3.141592653589793, "pitch": -0.06 },
+      "night": 0, "seed": 5, "heat": 2, "flash": true, "hq": true, "t": 0.42, "dt": 0.016666666666666666, "frames": 1,
+      "player": { "kind": "sports", "color": 14163510, "s": 431, "lat": -1.6 },
+      "units": [
+        { "unit": 0, "s": 418, "lat": 1.4, "mode": "chase", "siren": "flash" },
+        { "unit": 3, "s": 406, "lat": -1.8, "mode": "chase", "siren": "flash" }
+      ],
+      "events": []
+    },
+    {
+      "name": "roadblock",
+      "what": "A heavy roadblock (heat 5): cars across the road with their lights going, the gap closed by two sawhorses",
+      "level": "coast", "cam": { "s": 530, "h": 3.0, "back": 6, "lat": 0, "yaw": 0, "pitch": -0.08 },
+      "night": 0.72, "seed": 9, "heat": 5, "flash": true, "hq": true, "t": 0.02, "dt": 0.016666666666666666, "frames": 1,
+      "player": { "kind": "sports", "color": 14163510, "s": 532, "lat": 0 },
+      "units": [],
+      "roadblock": { "s": 565 },
+      "events": []
+    },
+    {
+      "name": "barrier-close",
+      "what": "The heavy roadblock up close: the sawhorses' striped canvas boards and A-frame legs in the gap, the cars' lenses and glows beside them",
+      "level": "coast", "cam": { "s": 560, "h": 1.4, "back": 3, "lat": 0, "yaw": 0, "pitch": -0.12 },
+      "night": 0.72, "seed": 9, "heat": 5, "flash": true, "hq": true, "t": 0.42, "dt": 0.016666666666666666, "frames": 1,
+      "player": { "kind": "sports", "color": 14163510, "s": 520, "lat": 0 },
+      "units": [],
+      "roadblock": { "s": 565 },
+      "events": []
+    },
+    {
+      "name": "spikes",
+      "what": "A spike strip across the player's half of the road, the unit that laid it on the far shoulder, and a third of a second of sparks off the player's spiked rims",
+      "level": "coast", "cam": { "s": 523, "h": 2.2, "back": 7, "lat": 0, "yaw": 0, "pitch": -0.1 },
+      "night": 0.72, "seed": 13, "heat": 3, "flash": true, "hq": true, "t": 0.42, "dt": 0.016666666666666666, "frames": 20,
+      "player": { "kind": "sports", "color": 14163510, "s": 528, "lat": -1.2, "speed": 24, "spiked": 2 },
+      "units": [],
+      "spikes": { "s": 542 },
+      "events": []
+    },
+    {
+      "name": "spikes-close",
+      "what": "The spike strip from just behind it, looking down: its dark base and two rows of steel pyramids across the player's half of the road",
+      "level": "coast", "cam": { "s": 540, "h": 1.5, "back": 3, "lat": -1.5, "yaw": 0, "pitch": -0.35 },
+      "night": 0.72, "seed": 13, "heat": 3, "flash": true, "hq": true, "t": 0.02, "dt": 0.016666666666666666, "frames": 1,
+      "player": { "kind": "sports", "color": 14163510, "s": 520, "lat": -1.2 },
+      "units": [],
+      "spikes": { "s": 542 },
+      "events": []
+    },
+    {
+      "name": "damage",
+      "what": "A second of smoke: from under the player's bonnet at 95 % damage, from a disabled unit (its siren dim red), and a u-turn's two puffs",
+      "level": "coast", "cam": { "s": 516, "h": 2.6, "back": 8, "lat": 0, "yaw": 0, "pitch": -0.06 },
+      "night": 0.72, "seed": 17, "heat": 2, "flash": true, "hq": true, "t": 0.02, "dt": 0.016666666666666666, "frames": 60,
+      "player": { "kind": "sports", "color": 14163510, "s": 522, "lat": -1.6, "damage": 0.95 },
+      "units": [
+        { "unit": 1, "s": 540, "lat": 2.6, "mode": "disabled", "siren": "disabled" },
+        { "unit": 5, "s": 575, "lat": -1.4, "mode": "chase", "siren": "flash" }
+      ],
+      "events": [
+        { "frame": 30, "type": "uturn", "s": 562, "lat": 0.5 }
+      ]
+    }
+  ]
+}

@@ -7639,6 +7639,230 @@ suites left in `tools/parity/e2e/` (D905) pass: `menu` 1, `race-button`
 run takes about 16 minutes (each test loads the wasm and builds its
 level), the JS one about 10, one suite at a time.
 
+## Hot Pursuit on screen: the police, their lights and the props (WP 8.1, 8.2)
+
+## D920. The police in the client: the field's graph, then PursuitView.sync per frame
+
+2026-10-05, WP 8.1. PursuitView's `makeUnit` builds a unit's model as
+`MODELS[type]` (the patrol car `police`, the interceptor `muscle` in
+`livery: 'police'`, the SUV `policeSuv`) with `{ lod: 'low', far: true,
+seed }`, seeds from 300 in the Pursuit's order (the seven units, then the
+five roadblock cars), every mesh casting a shadow, and a sawhorse as
+`sawhorseModel()`. `play::police::extras` lists them from the pursuit in
+the simulation and `models::spawn_field` builds them into the field's graph
+after the traffic, so they share the kit's materials and geometry as the
+JS page shares its caches (D410); they are drawn and taken away with the
+race's cars (`RaceCar`). The JS models a car built before its race starts;
+the client builds them with the field, at the race's start, behind the
+loading screen, and their pipelines join the warm-up (D458).
+
+`play::police` is PursuitView.sync's visual half, a system after the
+field is drawn and before the effects, as `Race.update` calls `pv.sync`
+after its own visual sync and before `effects.update`. For each police car
+(units, then roadblock cars) that is active: `Vehicle.sync` (its pose
+between the last two ticks as every car is drawn, SPEC 6.5; the body
+springs, the wheels' spin, the steer pivots, `setBrake`), `farLod` from
+the camera (the camera of this frame, as the client's traffic uses it,
+D440; the JS reads last frame's), `setHeadlights(max(0.15, lightsOn))`,
+`setSiren(mode, t)` and the glow's daylight dimming; then each active
+sawhorse's sync. `t` is PursuitView's clock (`this.t`, which the
+simulation keeps per tick, D61) between the two ticks. `mode` is
+`flash` turned to `steady` when the "Police lights flash" option is off;
+the option is the menu's (`mr.flash`), read each frame as `race.pv.flash`
+follows the menu's checkbox.
+
+## D921. The siren glow billboards: `Patch::PoliceGlow`, two light slots a car
+
+2026-10-05, WP 8.1. `glowMaterial` is a `ShaderMaterial` (the
+`PoliceGlow` kind, hidden until now: `convert::stand_in`). It is ported as
+a block of `three_material.wgsl` (`PATCH_POLICEGLOW`): the vertex shader
+pulls each quad's centre towards the camera (`max(0.05, d − min(1 + d² ×
+0.0015, d/2)) / d`), opens the corner in clip space by half `aSize`,
+never below `uMin` (0.02) of the view's height, and passes vFar; the
+fragment raises the glow texture's alpha to `2 − vFar` and gives `mix(uRed,
+uBlue, vBlue) × a × (1 + 1.5 vFar)`, additive. Its `tonemapping_fragment`
+and `colorspace_fragment` do nothing into the post chain's render target
+(three renders into one there too), so the block writes linear colour as
+the rest. The corner, `aBlue` and `aSize` ride in the extra attribute
+(`models::glow_mesh`; `play::models` builds that mesh itself, so
+`convert` is unchanged).
+
+The uniforms change every frame for every unit: `setSiren` sets `uRed =
+(2.4, 0.12, 0.05) × red` and `uBlue = (0.1, 0.35, 3.2) × blue`, and
+PursuitView multiplies both by `0.3 + 0.7 × night`. A material edited per
+frame is prepared again (D456), so each car's glow material takes two
+material light slots the first time it is set (`Cars::set_glow`), holds
+their indices in `kind0.xy`, and the shader multiplies `setSiren`'s
+colours by them; `kind0.z` is `uMin`. The glow is culled by its geometry's
+bounding sphere grown by the largest spot (`glowGeometry`) as an `Aabb`,
+as three culls it, has renderOrder 2 (D810), and casts no shadow: PursuitView
+sets `castShadow` on it too, but three's shadow pass draws the quads with
+its depth material, where all four corners of a quad sit on one point, so
+nothing of them reaches the shadow map.
+
+## D922. The shared police light: the one point light, after the anchors move
+
+2026-10-05, WP 8.1. `new THREE.PointLight(0xff2030, 0, 38, 1.6)` exists
+only when High quality and the flash option are on as the race is made
+(`if (hq && flash)`): neither turning on later makes one. Each frame it
+goes to the nearest flashing unit within 40 m of the player: colour
+`(r/k, 0.08, b/k)` with `k = (r + b) || 0.001` from that unit's
+`sirenColor()`, intensity `(r + b) × 70 × (0.25 + 0.75 night) × (1 −
+smoothstep(25, 40, d))`, at its siren anchor's world position plus 0.6 m
+(the car's plus 1.8 m without an anchor); with none near, intensity 0. No
+level has a point light of its own (the JS's only `PointLight` is this
+one), so it is `Lighting::point`, which the shaders already light with as
+three does (the point light first, then the spots). It is placed in
+`PostUpdate` after the transforms propagate (`police::light`, as the
+headlight spot, D760), since the anchor rides the body's springs.
+
+## D923. The test bridge's view of the police
+
+2026-10-05, WP 8.1, for WP 8.3's bridge (`__pursuit.units[i].v.model.root.visible`).
+`crate::play::police::PoliceDrawn(pub Vec<bool>)` is a resource holding,
+per `pursuit.units` index, whether that unit's model is shown this frame
+(set by the same code that shows or hides it); empty outside a pursuit
+race. The staged scenes (D930) fill it too.
+
+## D930. L4: the staged pursuit scenes
+
+2026-10-05, WP 8.1 and 8.2's gate. `parity/golden/pursuit/scenes.json`
+holds ten scenes at fly-camera stations, the scenery frozen: three units
+on the player's tail at blue hour seen from ahead, in a red burst
+(`units-red`) and a blue one (`units-blue`), and with the flash option off
+(`steady`: steady glows, no light); units 120 to 300 m off on their far
+models with the glows at their minimum size (`far`); Sierra by day (`day`:
+glows dimmed, the light at a quarter); a heavy roadblock from behind the
+player (`roadblock`) and up close (`barrier-close`: the sawhorses' boards);
+a spike strip with the unit that laid it and a third of a second of the
+spiked rims' sparks (`spikes`), the strip up close (`spikes-close`); and a
+second of smoke from a 95 % damaged player, a disabled unit and a
+u-turn's two puffs (`damage`).
+
+`tools/parity/pursuit-scenes.mjs --side js` draws each with the JS's own
+`PursuitView.js` in the game's page (kernel on): a stand-in race (the
+level's track and level, a player `Vehicle` with its model, an `Effects`
+with the player added first, the pursuit and police streams of
+`src/parity/sim.js` seeded with the scene's seed), a new `PursuitView` on
+it (which adds its cars to the effects), the units activated with
+`pursuit.activate` and their sirens set, `placeRoadblock` / `placeSpikes`,
+then per frame with `Math.random = mulberry32(seed)`: PursuitView's clock,
+the events due, `player.sync`, `pv.sync`, `effects.update`. `--side rust`
+loads the web build with `?pv=<scene>` (`play::pv_stage`), which makes the
+same pursuit from `mr_sim` (`Pursuit::new` on the same streams,
+`activate`, `place_roadblock`, `place_spikes`), the same cars, and runs the
+same frames through `play::police` and `play::fx` once the entities exist;
+`__mr.pvStaged` counts the frames since. The pursuit is bit-identical
+(WP 1.6), so the cars stand in the same places and the roadblock's gap is
+where the JS put it; the effects draw from the scene's stream in the JS's
+order (D801), so the smoke and sparks land on the same pixels.
+
+At 1280 × 800 against the JS (`cargo xtask parity shots`), all within SPEC
+12's limits, WebGPU and WebGL2 the same to the second decimal (WebGL2's
+`units-blue` block 0.327):
+
+| Scene | mean ΔE00 | 95 % block |
+|---|---|---|
+| units-red | 0.161 | 0.343 |
+| units-blue | 0.161 | 0.329 |
+| steady | 0.163 | 0.323 |
+| far | 0.140 | 0.337 |
+| day | 0.211 | 0.494 |
+| roadblock | 0.156 | 0.400 |
+| barrier-close | 0.134 | 0.331 |
+| spikes | 0.181 | 0.413 |
+| spikes-close | 0.173 | 0.327 |
+| damage | 0.151 | 0.357 |
+
+What is left is edges and the player's own headlight lenses (the day
+scene's largest block). `barrier-close` was 0.485 before D945: the JS
+draws the roadblock SUVs' exhaust flames. Pictures:
+`parity/report/pursuit/scenes/{js,rust,rust-gl}/` and the comparison
+`parity/report/shots-pursuit/` (not in git; on the registered server).
+
+## D931. The pursuit in a race, beside the JS
+
+2026-10-05. `tools/parity/pursuit-race.mjs` (after `race-night.mjs`)
+pictures the JS game (`?parity=1`, stopped at the tick) and the Rust build
+(its own screenshot the first frame the race reaches the time) in the same
+seeded pursuit race with the autopilot: Coast, seed 1, heat 3. The
+simulations agree (the units' callsigns, modes and s at 40 s match `mr-sim
+race --state-at`), and the pictures show the same cars in the same
+places: a unit oncoming beside the player at 40 s, a disabled unit
+smoking at the player's side after a takedown at 24 s, the wrecked
+player's white smoke at 74 s. The Rust picture is one tick after the JS
+one, which is enough to change a siren's burst (each lasts 55 ms of
+100): at 40 s the JS light is between bursts and the Rust one in a red
+burst. The `1 pipeline(s) compiling after the warm-up` the page logs at
+the picture's place is the screenshot's own pipeline (a race without
+pursuit logs it where its picture is taken too). Pictures:
+`parity/report/pursuit/race/`.
+
+## D940. The props in `mr_worldgen`, and their L3 gate
+
+2026-10-05, WP 8.2. `mr_worldgen::pursuit_props` ports PursuitView.js's
+`sawhorseModel` (the 128 × 16 canvas of red and white diagonal bands drawn
+with `mr_canvas`, a `CanvasTexture` in sRGB, the board and four A-frame
+legs, `dims`) and `spikeStrip` (a base box and `round(w / 0.16)` pairs of
+four-sided cones merged without an index, placed at `pointAt(s, (lat0 +
+lat1) / 2)` turned to the road). The JS module keeps the sawhorse's parts
+and the strip's material in module variables; `PropKit` holds them for one
+graph. `tools/parity/pursuit-props-golden.mjs` writes
+`parity/golden/car_model/props.json` from the models export's group
+`pursuit-props` (D413's lines, written out whole: there are eight), and
+`tests/pursuit_props.rs` builds the same: every node identical, 3 of 3
+materials identical, the board's texture within WP 3.2's threshold (mean
+absolute difference 0.12, 1.62, 1.73, 0.19 per channel against Chrome's:
+the antialiasing of the diagonal edges).
+
+## D941. Spike strips and sawhorses drawn
+
+2026-10-05, WP 8.2. `syncSpikes`: when the pursuit's strip is not the one
+drawn (by its s, lat0 and lat1, where the JS compares the object), the old
+one goes and a new mesh is made where it lies (`spike_strip` into a small
+graph, converted as the scene is), with the strip material made with the
+field; a strip's geometry on that material joins the warm-up then, so
+laying one compiles nothing. It receives shadows and casts none, as the
+JS's. A sawhorse is drawn as `Vehicle.sync` draws it (no wheels, no
+lights), its flight after a hit coming from the simulation (`Surface::Raised`
+height in its y).
+
+## D942. The pursuit's smoke and sparks
+
+2026-10-05, WP 8.2. PursuitView.sync's calls into `Effects` are
+`police::emit`, run by `play::fx` after the frame's own sparks and before
+`effects.update`, in PursuitView's order: the events' (a u-turn's two
+puffs at the player's height, a barrier hit's fourteen sparks 0.8 m up),
+the disabled units' smoke (`Math.random() < 0.3`), the smoke from under a
+damaged bonnet (over 0.45 damage, `< (damage − 0.35) × 1.2`, darker with
+damage), the spiked rims' two sparks a side (over 5 m/s, `< 0.7`). They
+draw from the effects' stream (D801), the once-a-frame chances at their
+60 Hz rate (D802). A disabled unit smokes from its position at the tick.
+The barrier's sparks take the player's velocity as the tick left it,
+after the simulation's 3 % slowdown (`v.vx *= 0.97` follows `sparksAt` in
+the JS; DEVIATIONS.md).
+
+## D943. The police in the effects
+
+2026-10-05, WP 8.2. `this.cars = [...units, ...blockCars]` are added to
+the effects after the traffic (`race.effects.addCar(u.v)`): their
+headlight pools (7 × 12 m, 7.5 m ahead, when shown and after dusk) and
+their exhaust flames, with the cars as drawn between the ticks.
+
+## D945. Cars without an extras entry show their flames (a JS quirk, kept)
+
+2026-10-05, found by `barrier-close` (D930). `Effects.update` reads `ex =
+extras.get(v) || {}`; `Race` gives entries to the player and the rivals
+only, so for a traffic car or a police car `ex.nitro && visible` is
+`undefined`, which `f.visible = nit` stores, and three skips an object only
+when `visible === false`. Every traffic and police car's exhaust flames
+are drawn, unstretched (length 1, the core inside), in the JS game: the
+blue-white cones behind the roadblock's SUVs and behind traffic (a van at
+Coast's 74 s in both games, D931). Port, don't improve: the client now
+does the same (a car past the end of the extras has no entry and shows its
+flames, no random draw), so traffic changes too. DEVIATIONS.md lists it
+with the JS's quirks; making the flames show only with nitro is a
+one-line fix on both sides and the owner's call.
 
 ## WP 8.3 decisions: the pursuit HUD, results and mode switch
 
