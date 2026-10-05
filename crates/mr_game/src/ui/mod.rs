@@ -119,13 +119,24 @@ pub enum Act {
     PadDone,
 }
 
+/// Frames between freeing the menu's views and asking for the level: the
+/// despawned assets are released over the next frames (D751).
+const FREE_FRAMES: u32 = 4;
+
 /// A Race tap in progress (`startRace`): waiting for the level to load,
 /// then for the field's pipelines (at most three seconds, as the JS's
 /// `compileAsync` race).
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Starting {
+    /// The menu's views are being freed; the level is asked for once they
+    /// are (frames waited so far, D751).
+    Free(u32),
     Level,
-    Build { frames: u32, quiet: u32, t: f64 },
+    Build {
+        frames: u32,
+        quiet: u32,
+        t: f64,
+    },
 }
 
 /// One line of the results table.
@@ -265,6 +276,11 @@ pub fn plugin(app: &mut App) {
             let level = mr_levels::level_by_id(&o.level);
             play.params.pursuit = store::mode_for(&store, &level) == "pursuit";
         }
+        // Over the menu's views no field is built at boot (D751): Race
+        // builds the level first, then the cars and the sound's graph.
+        if crate::preview::wanted(&o) {
+            play.armed = false;
+        }
     }
     app.insert_resource(store)
         .insert_resource(UiState {
@@ -352,7 +368,7 @@ fn request_level(level: &str) {
 
 /// The session's mode as `window.__game.mode` reads it.
 pub fn mode_name(ui: &UiState, play: &Play, status: &Status) -> &'static str {
-    if !status.ready || ui.starting == Some(Starting::Level) {
+    if !status.ready || matches!(ui.starting, Some(Starting::Level | Starting::Free(_))) {
         return "loading";
     }
     match (&play.race, ui.preview, ui.starting) {
@@ -388,11 +404,22 @@ fn flow(
         play.armed = false;
         to_attract(&mut cs, &tr);
     }
-    if ui.preview && status.ready && tr.none {
+    // With the menu's views no field is built behind the menu (D751): the
+    // race's cars come up after the level, as a race from the address.
+    if ui.preview && status.ready && (tr.none || crate::preview::active()) {
         ui.preview = false;
     }
-    // Race: the level first, then the field and its pipelines.
+    // Race: the views freed, then the level, then the field and its
+    // pipelines (D751).
     match ui.starting {
+        Some(Starting::Free(n)) => {
+            if n >= FREE_FRAMES {
+                request_level(&ui.settings.level.clone());
+                ui.starting = Some(Starting::Level);
+            } else {
+                ui.starting = Some(Starting::Free(n + 1));
+            }
+        }
         Some(Starting::Level) => {
             // The level drawn whole, not its menu section (D743).
             if status.ready
@@ -431,17 +458,18 @@ fn flow(
     }
     // The screen.
     let racing = play.race.is_some() && !ui.preview && ui.starting.is_none();
-    let mut screen = if !status.ready || ui.starting == Some(Starting::Level) {
-        Screen::Loading
-    } else if racing {
-        match play.race.as_ref().map(|r| r.mode) {
-            Some(Mode::Paused) => Screen::Pause,
-            Some(Mode::Results) => Screen::Results,
-            _ => Screen::None,
-        }
-    } else {
-        Screen::Menu
-    };
+    let mut screen =
+        if !status.ready || matches!(ui.starting, Some(Starting::Level | Starting::Free(_))) {
+            Screen::Loading
+        } else if racing {
+            match play.race.as_ref().map(|r| r.mode) {
+                Some(Mode::Paused) => Screen::Pause,
+                Some(Mode::Results) => Screen::Results,
+                _ => Screen::None,
+            }
+        } else {
+            Screen::Menu
+        };
     // The Controller screen sits over the menu or the pause screen it was
     // opened from; Esc (which the race takes as un-pause) leaves it and
     // keeps the pause.
@@ -970,10 +998,14 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
             // already (D743).
             let level = ui.settings.level.clone();
             ctx.previews.free_sections();
-            if !ctx.previews.has_full(&level) {
-                request_level(&level);
-            }
-            ui.starting = Some(Starting::Level);
+            ui.starting = Some(if ctx.previews.has_full(&level) {
+                Starting::Level
+            } else {
+                // The views' memory goes before the level's build takes
+                // its own (D751); the page's loading screen covers it.
+                crate::preview::cover();
+                Starting::Free(0)
+            });
         }
         Act::Toggle(o) => {
             let s = &mut ui.settings;
@@ -1241,8 +1273,15 @@ fn build(
     roots: Query<Entity, With<UiRoot>>,
     scroller: Query<&ScrollPosition, With<Scroller>>,
     mut loading: Local<(f32, String)>,
+    mut tilt_seen: Local<u8>,
 ) {
     let Some(icons) = icons else { return };
+    // `tilt.onChange = showTiltState`: the menu's tilt note follows the sensor.
+    let tilt = crate::play::tilt::state_code();
+    if *tilt_seen != tilt {
+        *tilt_seen = tilt;
+        ui.dirty = true;
+    }
     let Ok(w) = windows.single() else { return };
     let css = play.css_scale.max(0.01);
     let bp = Bp::new(
@@ -1275,8 +1314,12 @@ fn build(
     for e in &roots {
         commands.entity(e).despawn();
     }
-    // `menu=0`: the screens are not drawn (pictures of what is behind).
-    if ui.screen == Screen::None || opts.o.param("menu") == Some("0") {
+    // `menu=0`: the screens are not drawn (pictures of what is behind). On
+    // the web the page's own loading screen covers the canvas while the
+    // client loads (D576), so the client draws none under it (D753: its
+    // glyphs would be held through the level's build).
+    let page_covers = cfg!(target_arch = "wasm32") && ui.screen == Screen::Loading;
+    if ui.screen == Screen::None || page_covers || opts.o.param("menu") == Some("0") {
         ui.focus_order.clear();
         return;
     }

@@ -31,6 +31,7 @@ pub mod input;
 mod models;
 pub mod pose;
 pub mod session;
+pub mod tilt;
 pub mod touch;
 mod touch_ui;
 #[cfg(target_arch = "wasm32")]
@@ -214,7 +215,7 @@ pub fn plugin(app: &mut App) {
     )
     .add_systems(
         Update,
-        (hud::update, touch_ui::update)
+        (hud::update, touch_ui::update, touch_ui::sizes)
             .after(draw)
             .run_if(in_state(AppState::Running)),
     )
@@ -225,7 +226,9 @@ pub fn plugin(app: &mut App) {
             .before(crate::render::lighting::pack_globals),
     );
     audio::plugin(app);
+    hud::plugin(app);
     gamepad_io::plugin(app);
+    tilt::plugin(app);
     #[cfg(target_arch = "wasm32")]
     web::plugin(app);
     #[cfg(not(target_arch = "wasm32"))]
