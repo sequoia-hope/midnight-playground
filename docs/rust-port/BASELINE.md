@@ -943,3 +943,125 @@ numbers, 4 colours, 3 texture offsets, 2 `Points` attributes). The world
 build: 1.2 s natively, 3.1 to 3.3 s in the web build. Ready from
 navigation 6.5 to 8.4 s with `?world=gen` (nothing downloaded), 8.1 to 9.4
 s with the export (199.8 MB downloaded locally in 3.2 to 3.8 s).
+
+## Frame time against the JS game (DECISIONS D860 to D867)
+
+2026-10-04. SPEC 6.6: frame time no worse than the JS game on the same
+device and settings. Both games measured the same way by
+`tools/parity/rust-perf.mjs` (D860): the fly camera at 60 m/s from s = 80
+(the Rust flights with `cars=0`, as the JS fly camera has no cars) or a
+race with the autopilot (`--race`), 1280 × 800, high quality, headless
+Chrome on the dev machine's RTX 3060, WebGPU unless marked; the JS game,
+the Rust build before (main at 2718502) and after alternating level by
+level. Per frame, in ms:
+
+- **main**: the renderer main thread's CPU time (Chrome trace, thread
+  time, so time descheduled by other load is left out);
+- **GPU proc**: the GPU process main thread's CPU time (where Chrome runs
+  the page's WebGL or WebGPU commands);
+- **rAF**: the median time inside the page's `requestAnimationFrame`
+  callbacks (wall time: includes waiting on the GPU process);
+- **fps**: median over half-second windows (uncapped runs only).
+
+"Load" is the 1-minute load average, min to max over the runs (24 cores;
+other agents' work). The GPU was shared too: other users had it at 100 %
+utilisation before the uncapped runs began. "After" for the 60 Hz,
+phone, WebGL2 and race rows is the final build (fix4, D861 to D865); the
+uncapped rows were taken with D861 to D864 (the HUD change, D865, does
+not run without a race).
+
+**Desktop, WebGPU, 60 Hz** (vsync, as browsers run it; one round, load 6
+to 16):
+
+| Level | JS main | before | after | JS GPU proc | before | after | JS rAF | before | after |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Sierra | 1.12 | 1.10 | **0.90** | 0.85 | 1.69 | 1.29 | 2.3 | 3.1 | 2.6 |
+| Coast | 1.53 | 1.40 | **0.96** | 1.06 | 1.67 | 1.11 | 2.8 | 3.9 | 2.6 |
+| Streets | 0.72 | 0.90 | 0.78 | 0.62 | 1.37 | 1.03 | 1.2 | 2.6 | 2.1 |
+| Desert | 0.78 | 1.09 | 0.93 | 0.60 | 1.45 | 1.12 | 1.3 | 2.8 | 2.3 |
+| Seaside | 0.36 | 0.90 | 0.78 | 0.36 | 1.60 | 1.24 | 0.5 | 2.4 | 2.0 |
+| Cruise | 0.69 | 0.87 | 0.79 | 0.67 | 1.36 | 1.02 | 1.1 | 2.4 | 2.2 |
+
+**Desktop, WebGPU, uncapped** (BASELINE's earlier convention; two rounds,
+medians; load 8 to 128, so read the CPU columns):
+
+| Level | Load | JS main | before | after | JS GPU proc | before | after | JS fps | before | after |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Sierra | 20–128 | 0.89 | 1.10 | **0.83** | 0.56 | 1.98 | 2.10 | 120 | 101 | 105 |
+| Coast | 30–91 | 1.17 | 1.58 | 1.42 | 0.68 | 2.63 | 2.67 | 109 | 109 | 102 |
+| Streets | 23–79 | 0.45 | 1.47 | 1.10 | 0.28 | 2.10 | 1.90 | 171 | 99 | 148 |
+| Desert | 14–43 | 0.93 | 1.31 | 1.19 | 0.66 | 3.06 | 2.71 | 115 | 100 | 100 |
+| Seaside | 10–34 | 0.22 | 1.01 | 0.95 | 0.18 | 1.94 | 1.50 | 200 | 154 | 154 |
+| Cruise | 8–24 | 0.38 | 1.01 | 0.80 | 0.24 | 2.02 | 1.85 | 172 | 140 | 168 |
+
+Uncapped, the Rust client's GPU-process thread is busy 97 to 100 % of
+the time in every run (the JS game's 60 to 90 %): that thread, not the
+page, sets its pace (D866 item 2).
+
+**A race at 60 Hz** (the sports car on the autopilot, seed 1, 30 s from
+race time 3 s; two rounds, load 7 to 12):
+
+| Level | JS main | before | after | JS GPU proc | before | after | JS rAF | before | after |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Sierra | 2.34 | 2.69 | **2.25** | 1.48 | 3.49 | 1.88 | 3.2 | 4.9 | 4.1 |
+| Coast | 2.00 | 2.88 | 2.23 | 1.26 | 3.58 | 1.97 | 3.4 | 5.0 | 4.3 |
+
+**Phone emulation** (844 × 390 at dpr 3, touch, high quality off, CPU
+throttled 4 ×, 60 Hz; one run each, load 7 to 16). The rAF column is the
+page's share of the 16.7 ms frame:
+
+| Level | JS main | before | after | JS rAF | before | after |
+|---|---:|---:|---:|---:|---:|---:|
+| Sierra | 3.09 | 5.31 | 3.60 | 5.4 | 13.5 | 10.0 |
+| Coast | 5.82 | 3.85 | 4.51 | 9.5 | 11.5 | 12.2 |
+| Seaside | 2.22 | 4.17 | 3.45 | 3.0 | 11.2 | 9.3 |
+
+**WebGL2** (uncapped, one run each, load 8 to 12):
+
+| Level | JS main | before | after | JS fps | before | after |
+|---|---:|---:|---:|---:|---:|---:|
+| Sierra | 0.85 | 1.50 | 1.43 | 109 | 28 | 32 |
+| Coast | 0.82 | 1.42 | 1.28 | 102 | 25 | 28 |
+| Desert | 0.68 | 1.16 | 1.10 | 110 | 38 | 37 |
+
+What each fix saved (A/B on its own, Sierra unless said): no light
+clustering (D861) main thread 1.71 to 1.42 ms, GPU process 2.62 to 2.10
+(load 40); `render_system` without the empty submission (D862) GPU
+process 2.71 to 2.15 ms (three pairs, load 20 to 50); the level ids kept
+(D863) about 0.17 ms of wall time a frame in the profile; the gamepad
+bridge written on change (D864) about 0.09 ms of a race frame's wall
+time; the HUD's uniforms written in place (D865) about 0.12 ms of a race
+frame's wall time and the GPU objects made per frame. The race's GPU
+process went from 3.5 to 1.9 ms a frame with all of them.
+
+**Pictures.** The build after against the build before, each in turn as
+`dist/next`, through the same tools: every level's screenshot stations
+from the default (built) path on WebGPU (`rust-web-stations.mjs`, 398
+stations), 392 identical to the pixel and six with one pixel different
+(Coast 04250-high, five of Seaside's high stations); flying those again
+from both builds, the same single pixels flip between two runs of either
+build, so they are run-to-run noise, not the change. Against the JS
+shots (`cargo xtask parity shots`): 398 stations, 0 over the limits,
+worst 0.925 mean ΔE00 and 5.171 block 95 %, as before. WebGL2, three
+stations a level (18): all identical. The five staged effect scenes
+(`effects-scenes.mjs`) on WebGPU and WebGL2: all identical. The HUD
+(`hud-shots.mjs`: Sierra at 20 s desktop and iPhone portrait, Sierra at
+101.5 s, Seaside at 40 s, the Cruise at 30 s, two runs of each build):
+the dial, minimap, speed lines and texts draw the same; the scenes behind
+differ between any two runs by the race's frame timing, as D826 notes.
+The `gamepad` (8 tests) and `race-flow` (11) e2e suites pass on the
+final build.
+
+**`simd128`** (D867, the owner's call): two alternating rounds at 60 Hz,
+load 6 to 7, main thread 0.88 / 0.87 ms against 0.99 / 0.88 (Sierra), 0.75
+/ 0.76 against 0.82 / 0.78 (Seaside); 8.83 against 8.99 MB after gzip.
+
+**How to run.** `cargo xtask web --release`, then (registered server up)
+`node tools/parity/rust-perf.mjs --level sierra --reloads 0 --secs 40
+--trace 10 --query cars=0 [--capped] [--race] [--phone --throttle 4 --hq
+0] [--backend webgl2] [--dist <dir under dist/>]` and the same with
+`--game js`; the summary line carries `cpu` (rAF), `trace`
+(`cpuPerFrameMs`, `gpuCpuPerFrameMs`, `gpuBusyShare`, `allCpuPerFrameMs`)
+and `loadDuring`. The session's scripts (alternating runs, the profiler
+over a names-kept wasm, WebGPU call counts, the GPU-process trace) are in
+its scratchpad, not the repo.

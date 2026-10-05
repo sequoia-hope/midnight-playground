@@ -109,6 +109,15 @@ impl Default for Options {
     }
 }
 
+/// Whether `id` names one of the menu's levels. `mr_levels::levels()` builds
+/// every level (Streets' route among them) each call, and the race and fly
+/// systems ask every frame, so the ids are kept once (DECISIONS D863).
+pub fn is_level(id: &str) -> bool {
+    static IDS: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    IDS.get_or_init(|| mr_levels::levels().iter().map(|l| l.id).collect())
+        .contains(&id)
+}
+
 /// Splits `a=1&b=2` (a leading `?` is ignored) into decoded pairs, in order.
 pub fn parse_query(q: &str) -> Vec<(String, String)> {
     q.trim_start_matches('?')
@@ -219,8 +228,7 @@ impl Options {
     /// race for a level when no fly camera, `freeze`, material scenes or
     /// stations are asked for (DECISIONS D432).
     pub fn race_on(&self) -> bool {
-        let level = mr_levels::levels().iter().any(|l| l.id == self.level);
-        level
+        is_level(&self.level)
             && !self.viewer()
             && match self.param("race") {
                 Some(v) => v == "1",
