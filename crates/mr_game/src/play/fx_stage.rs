@@ -208,6 +208,9 @@ fn stage(
         }
         fx.fx.update(dt, night, &ins, &extras);
     }
+    // three computes the spheres it sorts by at its first render, which
+    // comes after the frames here (D808).
+    fx.fix_sort_centres();
     fx.write(&writes);
     info!("fx: staged {name}, {frames} frames");
     staged.fx = Some(fx);

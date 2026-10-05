@@ -6403,3 +6403,63 @@ three's FrontSide culling. Nothing else changes: same quads, alpha,
 colour, blending and polygon offset. The two games still match each
 other; the JS-tree key changes with the edit, so the parity cache
 regenerates on demand. D806's entry in DEVIATIONS.md is removed.
+
+## D808. The effects sort among transparent objects as three sorts them
+
+2026-10-04, after D807 made the skid marks visible. In the staged
+`skid-day` scene the Rust drew the marks over the smoke, darker; the JS
+drew the smoke over them, so they read lighter grey. Neither the marks'
+colour nor alpha differed: the order did. Two causes, the first the one
+that showed:
+
+- **Bevy sorts by the polygon offset.** `Material::depth_bias` is added to
+  a transparent item's sort distance, and Bevy uses it for nothing else
+  (the pipeline's bias is ours, set in `specialize`). `ThreeMaterial`
+  returned its constant bias there, so every polygon-offset material
+  sorted as if hundreds of metres nearer the camera: the skids by 256, the
+  pools by 384. three's sort never looks at `polygonOffset`. The effects'
+  materials now return a tie-break instead (`ThreeKey::sort_rank`, below).
+- **Where three sorts the rings.** three sorts a transparent object by its
+  geometry's bounding-sphere centre (the box's middle, every position
+  counted, unused ring slots at the origin) through `matrixWorld`, then by
+  object id; the sphere is computed the first time the object is rendered
+  and never again. In a race that render comes before the first
+  `effects.update` (a JS race at 3 s: smoke, sparks, skids and pools all
+  centred on the origin, ids 3165, 3166, 3167, 3172), so the three rings
+  tie and draw in creation order, the marks over the smoke. In the staged
+  scenes the frames run before the first render, so each ring's centre is
+  that of its contents, and the smoke sorts behind or in front of the
+  marks by where it is. Bevy sorts by the render mesh's box centre (from
+  the vertices it was made with, all zeros) through the entity's
+  transform. Now `Fx::fix_sort_centres` takes three's centres from the
+  buffers at the same moment (at the race's start; after the staged
+  frames), each ring's entity sits at its centre and its vertices are
+  written relative to it, so Bevy sorts it by the same point. Ties break
+  by `sort_rank` (smoke 1, sparks 2, skids 3, flames 4, pools 5: the order
+  `Effects` makes them, as ids), one `SORT_STEP` of 1 cm each, which f32
+  resolves at a race's distances and nothing untied is that close.
+
+`skid-day` against the JS, mean ΔE00 and 95 % block: 0.285, 0.587 before
+(within the limits: the metric hides a local wrong order), 0.197, 0.390
+now; the marks the same grey under the same smoke. The five staged scenes
+on WebGPU and WebGL2, after D807 on both sides: pools 0.133, 0.331;
+skid-smoke 0.965, 5.675; skid-day 0.197, 0.390; sparks-flames 0.139,
+0.382; launch 0.235, 0.415 (WebGL2 0.422); all within. The night races
+(D805's boxes, the JS frames as before) are unchanged within a frame's
+motion: Coast desktop 0.0186, 0.0139 (WebGL2 0.0184, 0.0142) against
+0.0184, 0.0134; Sierra desktop 0.0397, 0.0233 against 0.0372, 0.0212;
+Sierra phone 0.0328, 0.0213; Coast phone 0.0266, 0.1598.
+
+## D809. The scene materials still sort by their polygon offset
+
+2026-10-04. D808's first cause holds for every scene material with
+`polygonOffset` that draws in the transparent pass (13 of the JS's world
+files set a polygon offset; Coast's and Desert's lamp pools are such
+materials): `sort_rank` 0 keeps their old sort, the
+constant bias (32 × −(factor + units), 128 to 384) added to their
+distance. Where two transparent objects overlap, that can put the offset
+one in front where three draws it behind. It is left as it is here,
+because every level's stations passed with it and changing it needs those
+stations run again; giving the scene materials a rank of their own (three
+breaks ties by object id, which is the scene's node order) is the fix,
+for whoever next runs the stations.
