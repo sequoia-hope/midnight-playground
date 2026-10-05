@@ -102,10 +102,11 @@ fn frame(
     windows: Query<&Window, With<PrimaryWindow>>,
     cams: Query<&GlobalTransform, With<Camera3d>>,
     hud: Option<Res<super::hud::HudState>>,
+    drawn: Option<Res<super::police::PoliceDrawn>>,
 ) {
     let Some(mr) = mr() else { return };
     bridge_page(&mr, hud.as_deref());
-    bridge_pursuit(&mr, play.race.as_ref());
+    bridge_pursuit(&mr, play.race.as_ref(), drawn.as_deref());
     if let Some(ins) = get(mr.as_ref(), "insets") {
         let i = Insets {
             top: num(&ins, "top"),
@@ -362,7 +363,11 @@ fn bridge_page(mr: &Object, hud: Option<&super::hud::HudState>) {
 
 /// `window.__pursuit` (the race's `Pursuit`) and `race.pv`'s fields, for
 /// the pursuit suite: null without a pursuit, as the JS clears it.
-fn bridge_pursuit(mr: &Object, race: Option<&super::flow::Race>) {
+fn bridge_pursuit(
+    mr: &Object,
+    race: Option<&super::flow::Race>,
+    drawn: Option<&super::police::PoliceDrawn>,
+) {
     use mr_sim::pursuit::{HoldReason, State};
     let Some(pv) = race.and_then(|r| r.session.curr.pv.as_ref()) else {
         set(mr, "pursuit", JsValue::NULL);
@@ -390,7 +395,7 @@ fn bridge_pursuit(mr: &Object, race: Option<&super::flow::Race>) {
     set(&o, "flash", pu.flash);
     set(&o, "maxUnits", pu.max_units as f64);
     let units = js_sys::Array::new();
-    for u in &pu.units {
+    for (i, u) in pu.units.iter().enumerate() {
         let uo = Object::new();
         set(&uo, "active", u.active);
         set(&uo, "mode", mode_name(u.mode));
@@ -417,10 +422,13 @@ fn bridge_pursuit(mr: &Object, race: Option<&super::flow::Race>) {
             u.target
                 .map_or(JsValue::NULL, |t| JsValue::from_f64(t as f64)),
         );
-        // `u.v.model.root.visible`: TODO(merge with WP 8.1) read
-        // `crate::play::police::PoliceDrawn` (one bool per unit, filled by
-        // the police draw); until the police are drawn, nothing is.
-        set(&uo, "visible", false);
+        // `u.v.model.root.visible`: whether the police draw shows this
+        // unit's model this frame (`play::police::PoliceDrawn`, D923).
+        set(
+            &uo,
+            "visible",
+            drawn.and_then(|d| d.0.get(i).copied()).unwrap_or(false),
+        );
         units.push(&uo);
     }
     set(&o, "units", units);

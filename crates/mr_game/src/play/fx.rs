@@ -789,8 +789,43 @@ pub fn frame(
             c.track = car.model.dims.track;
             ins.push(c);
         }
+        // Hot Pursuit: the police cars follow the field in `addCar`'s
+        // order, and PursuitView.sync's smoke and sparks come before the
+        // update (WP 8.2).
+        if let Some(pv) = &s.curr.pv {
+            let pu = &pv.pursuit;
+            let pp = s.prev.pv.as_ref().map_or(pu, |p| &p.pursuit);
+            let n = pu.units.len() + pu.block_cars.len();
+            for (k, car) in (0..n).zip(cars.cars.iter().skip(cars.police_base)) {
+                let (u, a) = (pu.police(k), pp.police(k));
+                let a = if a.active { &a.k.v } else { &u.k.v };
+                let mut c = car_in(a, &u.k.v, alpha);
+                c.visible = u.active;
+                c.wheel_base = car.model.dims.wheel_base;
+                c.track = car.model.dims.track;
+                ins.push(c);
+            }
+            if let Some(player) = ins.first() {
+                let player = *player;
+                super::police::emit(
+                    &mut fx.fx,
+                    &super::police::EmitIn {
+                        log: &race.log,
+                        pursuit: pu,
+                        damage: pv.damage,
+                        spiked: s.curr.players[0].phys.spiked,
+                        player: &player,
+                        dt,
+                        night,
+                    },
+                );
+            }
+        }
         let st = &s.curr;
-        let mut extras = vec![Extras::default(); ins.len()];
+        // `this.extras`: the players and the rivals only; the traffic and
+        // the police have no entry (D945).
+        let mut extras =
+            vec![Extras::default(); (st.players.len() + st.rivals.len()).min(ins.len())];
         if let Some(p) = st.players.first() {
             extras[0] = Extras {
                 nitro: p.phys.nitro_active,

@@ -99,6 +99,13 @@ pub enum Patch {
     /// `game/Effects.js` `SkidMarks`: a `ShaderMaterial`, dark quads with a
     /// per-vertex alpha (WP 4.4).
     Skid,
+    /// `vehicles/CarModel.js` `glowMaterial`: a `ShaderMaterial`, the
+    /// siren's additive glow billboards, turned to the camera, pulled
+    /// towards it and held at a minimum screen size (WP 8.1). The corner,
+    /// `aBlue` and `aSize` ride in the extra attribute; `uRed` and `uBlue`
+    /// are `setSiren`'s colours × light slots `kind0.x` and `kind0.y`
+    /// (`play::police`), `uMin` is `kind0.z`.
+    PoliceGlow,
 }
 
 /// `surfaceDetail`'s `mode` (`kind_opts.mode`).
@@ -183,6 +190,7 @@ impl Patch {
             MaterialKind::Steam => Patch::Steam,
             MaterialKind::Particles => Patch::Particles,
             MaterialKind::SkidMarks => Patch::Skid,
+            MaterialKind::PoliceGlow => Patch::PoliceGlow,
             _ if m.ty == "PointsMaterial" => points(PointsMode::Plain),
             _ => Patch::None,
         }
@@ -533,6 +541,7 @@ impl Material for ThreeMaterial {
             Patch::Steam => defs.push("PATCH_STEAM".into()),
             Patch::Particles => defs.push("PATCH_PARTICLES".into()),
             Patch::Skid => defs.push("PATCH_SKID".into()),
+            Patch::PoliceGlow => defs.push("PATCH_POLICEGLOW".into()),
         }
         if k.normal_map {
             defs.push("USE_NORMALMAP".into());
@@ -692,7 +701,8 @@ pub fn model_of_material(m: &MaterialDesc) -> Option<Model> {
         | MaterialKind::Surf
         | MaterialKind::LighthouseBeam
         | MaterialKind::Particles
-        | MaterialKind::SkidMarks => Some(Model::Basic),
+        | MaterialKind::SkidMarks
+        | MaterialKind::PoliceGlow => Some(Model::Basic),
         _ => None,
     })
 }
@@ -929,6 +939,11 @@ pub fn three_material(
         Patch::Particles => {
             let u = |n: &str, d: f64| m.number(n).unwrap_or(d) as f32;
             p.kind0 = Vec4::new(u("uScale", 400.0), 0.0, 0.0, 0.0);
+        }
+        Patch::PoliceGlow => {
+            // No light slots yet (-1: dark until `play::police` gives the
+            // car its two); `uMin`.
+            p.kind0 = Vec4::new(-1.0, -1.0, num("uMin", 0.02) as f32, 0.0);
         }
         Patch::Shoulder
         | Patch::Skid

@@ -23,6 +23,7 @@
 // PATCH_SKYGLOW (two ShaderMaterials, their own fragment), SPRITE;
 // WP 4.4: PATCH_PARTICLES (Effects.js's smoke and sparks, on quads) and
 // PATCH_SKID (its skid marks), ShaderMaterials with their own fragment;
+// WP 8.1: PATCH_POLICEGLOW (CarModel.js's siren glow billboards), likewise;
 // USE_ALPHAMAP. VERTEX_EXTRA: the patch's own attribute
 // (`convert::ATTRIBUTE_EXTRA`), VERTEX_EXTRA2 the traffic streams' second
 // one. A material's animated values come from its block in the globals
@@ -420,8 +421,43 @@ fn vertex(v: Vertex) -> VOut {
         point_quad(&out, psize, extra.zw);
     }
 #endif
+#ifdef PATCH_POLICEGLOW
+    police_glow_vertex(&out, extra);
+#endif
     return out;
 }
+
+#ifdef PATCH_POLICEGLOW
+// CarModel.js glowMaterial's vertex shader (WP 8.1): the quad's centre is
+// pulled towards the camera so the car's own roof doesn't cut it (further
+// when far away), the corner (extra.xy) pushed out in clip space by half
+// `aSize` (extra.w), never below `uMin` of the view's height; vUv in `uv`,
+// vBlue (extra.z) and vFar in `extra`.
+fn police_glow_vertex(out: ptr<function, VOut>, extra: vec4<f32>) {
+    var mv = (*out).view_pos;
+    let d = length(mv);
+    mv *= max(0.05, d - min(1.0 + d * d * 0.0015, d * 0.5)) / d;
+    var clip = view.clip_from_view * vec4<f32>(mv, 1.0);
+    // projectionMatrix[0][0] and [1][1]: Bevy's perspective has three's.
+    let hs = vec2<f32>(view.clip_from_view[0][0], view.clip_from_view[1][1]) * (0.5 * extra.w) / clip.w;
+    let grow = max(1.0, material.kind0.z / hs.y);
+    let v_far = clamp((grow - 1.0) / 1.5, 0.0, 1.0);
+    clip = vec4<f32>(clip.xy + extra.xy * hs * grow * clip.w, clip.zw);
+    (*out).clip = clip;
+    (*out).view_pos = mv;
+    (*out).uv = extra.xy * 0.5 + 0.5;
+    (*out).extra = vec4<f32>(extra.z, v_far, 0.0, 0.0);
+}
+
+// A material light slot (D456) by its index, 0 for none (-1).
+fn light_slot(k: f32) -> f32 {
+    let i = i32(k);
+    if (i < 0) {
+        return 0.0;
+    }
+    return globals_at(g::G_LIGHTS + i / 4)[i % 4];
+}
+#endif
 
 // A point of `point_size` pixels as its quad: the centre outside the clip
 // volume draws nothing (GL ES 3.0 2.13.1; Bevy's depth is reversed, so in
@@ -960,6 +996,18 @@ fn fragment(in: VOut, @builtin(front_facing) is_front: bool) -> @location(0) vec
 #else ifdef PATCH_SKID
     // SkidMarks: gl_FragColor = vec4(0.02, 0.02, 0.02, vA).
     return vec4<f32>(0.02, 0.02, 0.02, in.extra.x);
+#else ifdef PATCH_POLICEGLOW
+    // glowMaterial's fragment shader: held at its minimum size far away, a
+    // harder, brighter core. uRed and uBlue are setSiren's colours
+    // (2.4, 0.12, 0.05) × red and (0.1, 0.35, 3.2) × blue, times
+    // PursuitView's daylight dimming, carried as two light slots. Its
+    // tonemapping and colorspace chunks do nothing into the post chain's
+    // target (three renders into a render target there too).
+    let glow_tex = textureSample(map_texture, map_sampler, in.uv);
+    let glow_a = pow(max(glow_tex.a, 0.0), 2.0 - in.extra.y);
+    let u_red = vec3<f32>(2.4, 0.12, 0.05) * light_slot(material.kind0.x);
+    let u_blue = vec3<f32>(0.1, 0.35, 3.2) * light_slot(material.kind0.y);
+    return vec4<f32>(mix(u_red, u_blue, in.extra.x) * glow_a * (1.0 + 1.5 * in.extra.y), 1.0);
 #else ifdef PATCH_SURF
     return surf_fragment(in);
 #else ifdef PATCH_BEAM

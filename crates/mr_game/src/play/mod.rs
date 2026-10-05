@@ -29,7 +29,9 @@ pub mod gamepad_io;
 mod hud;
 pub mod input;
 mod models;
+pub mod police;
 pub mod pose;
+mod pv_stage;
 pub mod radio;
 pub mod session;
 pub mod tilt;
@@ -186,6 +188,8 @@ pub fn plugin(app: &mut App) {
     };
     // `?fx=<scene>`: a staged effect scene in a fly-camera station.
     fx_stage::plugin(app);
+    // `?pv=<scene>`: a staged pursuit scene in a fly-camera station.
+    pv_stage::plugin(app);
     if !on {
         return;
     }
@@ -236,6 +240,7 @@ pub fn plugin(app: &mut App) {
     hud::plugin(app);
     gamepad_io::plugin(app);
     tilt::plugin(app);
+    police::plugin(app);
     #[cfg(target_arch = "wasm32")]
     web::plugin(app);
     #[cfg(not(target_arch = "wasm32"))]
@@ -348,8 +353,14 @@ fn start(
             racer: false,
         });
     }
-    let cars = models::spawn(
+    // Hot Pursuit: the police cars and sawhorses follow the field.
+    let extras = st
+        .pv
+        .as_ref()
+        .map_or(Vec::new(), |pv| police::extras(&pv.pursuit));
+    let cars = models::spawn_field(
         &wants,
+        &extras,
         &mut commands,
         &mut meshes,
         &mut images,
