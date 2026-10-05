@@ -59,7 +59,10 @@ pub fn road(t: &Track, s: f64) -> Vec<(f64, f64)> {
     let (s0, s1) = if t.is_loop {
         ((s - 500.0).floor(), (s + 900.0).ceil())
     } else {
-        ((s - 500.0).floor().max(0.0), (n - 1.0).min((s + 900.0).ceil()))
+        (
+            (s - 500.0).floor().max(0.0),
+            (n - 1.0).min((s + 900.0).ceil()),
+        )
     };
     let mut out = Vec::new();
     let mut i = s0;
@@ -171,7 +174,13 @@ pub fn scene(t: &Track, st: &HudIn, clock: f64) -> Scene {
     }
     // Traffic.
     for o in &st.traffic {
-        shapes.push(dot(o.x, o.z, 10.0, [180.0 / 255.0, 190.0 / 255.0, 210.0 / 255.0, 0.8], None));
+        shapes.push(dot(
+            o.x,
+            o.z,
+            10.0,
+            [180.0 / 255.0, 190.0 / 255.0, 210.0 / 255.0, 0.8],
+            None,
+        ));
     }
     // Rivals.
     for r in &st.rivals {
@@ -181,10 +190,7 @@ pub fn scene(t: &Track, st: &HudIn, clock: f64) -> Scene {
         // Roadblocks as red bars across the road, spikes as thin amber
         // ones, drawn wider and thicker than life so they read on a 190 px
         // map.
-        for (list, w, col) in [
-            (&pu.roadblocks, 18.0, COP_RED),
-            (&pu.spikes, 9.0, 0xffb43c),
-        ] {
+        for (list, w, col) in [(&pu.roadblocks, 18.0, COP_RED), (&pu.spikes, 9.0, 0xffb43c)] {
             for b in list.iter() {
                 let half = b.width.max(36.0) / 2.0;
                 let (ax, az) = (-b.yaw.sin() * half, b.yaw.cos() * half);
@@ -212,7 +218,13 @@ pub fn scene(t: &Track, st: &HudIn, clock: f64) -> Scene {
         };
         for (i, u) in pu.units.iter().enumerate() {
             if u.disabled {
-                shapes.push(dot(u.x, u.z, 16.0, [120.0 / 255.0, 126.0 / 255.0, 140.0 / 255.0, 0.6], None));
+                shapes.push(dot(
+                    u.x,
+                    u.z,
+                    16.0,
+                    [120.0 / 255.0, 126.0 / 255.0, 140.0 / 255.0, 0.6],
+                    None,
+                ));
                 continue;
             }
             let red = (i + phase) % 2 == 0;
@@ -359,7 +371,13 @@ pub(crate) mod tests {
         // The finish (900 m ahead) is off the map; the far traffic too.
         assert_eq!(sc.shapes.len(), 2);
         match sc.shapes[0] {
-            Shape::Dot { x, y, r, fill, stroke } => {
+            Shape::Dot {
+                x,
+                y,
+                r,
+                fill,
+                stroke,
+            } => {
                 // 50 m ahead along +x with yaw 0: up.
                 assert!(close((x, y), (110.0, 126.0)));
                 assert!((r - 2.8).abs() < 1e-12);
@@ -369,7 +387,9 @@ pub(crate) mod tests {
             _ => panic!(),
         }
         match sc.shapes[1] {
-            Shape::Dot { r, fill, stroke, .. } => {
+            Shape::Dot {
+                r, fill, stroke, ..
+            } => {
                 assert!((r - 16.0 * 0.28).abs() < 1e-12);
                 assert_eq!(fill, rgb(0xff8800, 1.0));
                 let (w, c) = stroke.unwrap();
@@ -428,7 +448,12 @@ pub(crate) mod tests {
         // The roadblock: black under red, 36 m wide at least, across the
         // road (yaw 0: along z).
         match (sc.shapes[0], sc.shapes[1]) {
-            (Shape::Bar { a, b, w, color }, Shape::Bar { w: w2, color: c2, .. }) => {
+            (
+                Shape::Bar { a, b, w, color },
+                Shape::Bar {
+                    w: w2, color: c2, ..
+                },
+            ) => {
                 assert_eq!(color, BLACK);
                 assert!((w - 24.0 * 0.28).abs() < 1e-12 && (w2 - 18.0 * 0.28).abs() < 1e-12);
                 assert_eq!(c2, rgb(COP_RED, 1.0));
@@ -447,6 +472,8 @@ pub(crate) mod tests {
         s.pursuit.as_mut().unwrap().flash = false;
         let sc = scene(&t, &s, 0.3);
         assert_eq!(fills(&sc)[0], rgb(COP_RED, 1.0));
-        assert!(matches!(sc.shapes[2], Shape::Dot { stroke: Some((_, c)), .. } if c == rgb(COP_BLUE, 1.0)));
+        assert!(
+            matches!(sc.shapes[2], Shape::Dot { stroke: Some((_, c)), .. } if c == rgb(COP_BLUE, 1.0))
+        );
     }
 }

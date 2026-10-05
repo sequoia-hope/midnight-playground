@@ -394,7 +394,10 @@ impl Hud {
         set(&mut self.last.suf, ord(st.position).to_string());
         set(&mut self.last.time, fmt_time(st.time));
         let spd = st.speed * if self.mph { 2.23694 } else { 3.6 };
-        set(&mut self.last.speed, mr_math::js::round(spd.abs()).to_string());
+        set(
+            &mut self.last.speed,
+            mr_math::js::round(spd.abs()).to_string(),
+        );
         set(
             &mut self.last.unit,
             if self.mph { "MPH" } else { "KM/H" }.to_string(),
@@ -583,7 +586,12 @@ mod tests {
 
     #[test]
     fn fmt_time_shows_dashes_for_no_time() {
-        for t in [None, Some(f64::NAN), Some(f64::INFINITY), Some(f64::NEG_INFINITY)] {
+        for t in [
+            None,
+            Some(f64::NAN),
+            Some(f64::INFINITY),
+            Some(f64::NEG_INFINITY),
+        ] {
             assert_eq!(fmt_time(t), "--:--.--", "{t:?}");
         }
     }
@@ -882,10 +890,7 @@ mod tests {
         st.position = 2;
         st.speed = 31.0;
         h.update(DT, &st, &t);
-        assert_eq!(
-            (&*h.last.pos, &*h.last.suf, &*h.last.of),
-            ("2", "nd", "1")
-        );
+        assert_eq!((&*h.last.pos, &*h.last.suf, &*h.last.of), ("2", "nd", "1"));
         assert_eq!(h.last.speed, "69"); // 31 m/s × 2.23694 = 69.3
         assert_eq!(h.last.unit, "MPH");
         assert_eq!(h.last.gear, "3");

@@ -4,6 +4,8 @@
 //   node tools/parity/hud-shots.mjs --side js|rust --level sierra --time 20
 //       --device desktop|iphone|iphone-land [--car sports] [--dist next]
 //       [--backend webgpu|webgl2] [--perf secs] [--out dir] [--query k=v&…]
+//       [--countdown c]  (instead of --time: the countdown at c seconds, for
+//                         the centre pop; the JS shot is then taken at once)
 //   node tools/parity/hud-shots.mjs --index [--out dir]
 //
 // JS: answered from the worktree by interception (its Google Fonts request
@@ -40,7 +42,11 @@ const DEVICES = {
 };
 
 if (args.includes('--index')) {
-  const files = fs.readdirSync(OUT).filter((f) => f.endsWith('.png'));
+  const all = fs.readdirSync(OUT).filter((f) => f.endsWith('.png'));
+  const files = all.filter((f) => /-(js|rust)(-gl)?\.png$/.test(f));
+  // Crops from tools/parity/hud-crops.py: JS above, Rust below.
+  const crops = all.filter((f) => f.startsWith('crop-')).sort()
+    .map((f) => `<h2>${f} (JS above, Rust below)</h2><a href="${f}"><img src="${f}" style="max-width:96vw"></a>`);
   const shots = [...new Set(files.map((f) => f.replace(/-(js|rust)(-gl)?\.png$/, '')))].sort();
   const rows = shots.map((s) => {
     const dev = Object.keys(DEVICES).find((d) => s.endsWith('-' + d)) || 'desktop';
@@ -53,6 +59,7 @@ if (args.includes('--index')) {
 <style>body{background:#111;color:#ddd;font:14px system-ui;margin:16px} .pair{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start} figure{margin:0} img{display:block;height:auto;max-width:48vw;border:1px solid #333} h2{font-size:15px;margin:20px 0 6px}</style>
 <h1>The race HUD, JS game against the Rust build</h1>
 <p>Same level, seed 1, the autopilot, the same race time. Click a picture for full size.</p>
+${crops.join('\n')}
 ${rows.join('\n').replace(/<img src="([^"]+)"/g, '<a href="$1"><img src="$1"').replace(/<figcaption>/g, '</a><figcaption>')}`);
   console.log(`wrote ${path.relative(ROOT, OUT)}/index.html`);
   process.exit(0);
@@ -60,7 +67,8 @@ ${rows.join('\n').replace(/<img src="([^"]+)"/g, '<a href="$1"><img src="$1"').r
 
 const side = opt('--side', 'rust');
 const level = opt('--level', 'sierra');
-const time = Number(opt('--time', 20));
+const cd = args.includes('--countdown') ? Number(opt('--countdown', 1.85)) : null;
+const time = cd != null ? `cd${cd}` : Number(opt('--time', 20));
 const device = opt('--device', 'desktop');
 const car = opt('--car', 'sports');
 const dist = opt('--dist', 'next');
@@ -132,7 +140,11 @@ try {
         get() { return p; },
         set(v) {
           p = v;
-          v.onTick = (race) => { window.__tk++; if (race.time >= stopAt) { window.__stopped = true; v.fixed.ticks = 0; } };
+          v.onTick = (race) => {
+            window.__tk++;
+            const done = typeof stopAt === 'number' ? race.time >= stopAt : race.state === 'countdown' && race.countdown <= Number(stopAt.slice(2));
+            if (done) { window.__stopped = true; v.fixed.ticks = 0; }
+          };
         },
       });
     }, time);
@@ -143,7 +155,7 @@ try {
       if (Date.now() - t0 > timeoutMs) throw new Error(`js: tick ${s.tk} after ${timeoutMs} ms`);
       await sleep(100);
     }
-    await sleep(800); // a few frames of the stopped race
+    if (cd == null) await sleep(800); // a few frames of the stopped race
     let perf = null;
     if (perfSecs) perf = await ev(PERF, perfSecs);
     await page.screenshot({ path: path.join(OUT, name) });
@@ -158,15 +170,16 @@ try {
     for (;;) {
       const s = await ev(() => ({ st: window.__mr?.state, err: window.__mr?.error, tk: window.__mr?.race?.time }));
       if (s.err || s.st === 'failed') throw new Error(`rust: ${s.err}`);
-      if (perfSecs && !perf && s.tk >= time - perfSecs * 1.1) perf = await ev(PERF, perfSecs);
-      if (s.tk >= time - 1.5) break;
+      if (perfSecs && !perf && cd == null && s.tk >= time - perfSecs * 1.1) perf = await ev(PERF, perfSecs);
+      if (cd != null ? s.tk != null : s.tk >= time - 1.5) break;
       if (Date.now() - t0 > timeoutMs) throw new Error(`rust: time ${s.tk} after ${timeoutMs} ms`);
       await sleep(20);
     }
     const file = path.join(OUT, name);
     fs.rmSync(file, { force: true });
     await ev((n, t) => new Promise((res) => {
-      const f = () => { const r = window.__mr.race; if (r && r.time >= t) { window.__shotAt = [r.tick, r.time]; window.__mr.screenshot(n); res(); } else requestAnimationFrame(f); };
+      const due = (r) => (typeof t === 'number' ? r.time >= t : r.state === 'countdown' && r.countdown <= Number(t.slice(2)));
+      const f = () => { const r = window.__mr.race; if (r && due(r)) { window.__shotAt = [r.tick, r.time, r.countdown]; window.__mr.screenshot(n); res(); } else requestAnimationFrame(f); };
       requestAnimationFrame(f);
     }), name, time);
     const a = await ev(() => window.__shotAt);

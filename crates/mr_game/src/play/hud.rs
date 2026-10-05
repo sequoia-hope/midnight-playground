@@ -32,8 +32,8 @@ use bevy::prelude::*;
 use bevy::text::{Justify, LineBreak, LineHeight, TextLayout};
 use bevy::ui::widget::TextShadow;
 use bevy::ui::{
-    BackgroundGradient, BoxShadow, ColorStop, LinearGradient, RadialGradient,
-    RadialGradientShape, ShadowStyle, UiPosition, UiTransform, Val2,
+    BackgroundGradient, BoxShadow, ColorStop, LinearGradient, RadialGradient, RadialGradientShape,
+    ShadowStyle, UiPosition, UiTransform, Val2,
 };
 use bevy::ui_render::prelude::MaterialNode;
 use bevy::window::PrimaryWindow;
@@ -331,8 +331,15 @@ fn baseline(size: f32, lh: f32) -> f32 {
 fn tshadow(k: f32, y: f32, blur: f32, a: f32) -> TextShadow {
     TextShadow {
         offset: Vec2::new(0.0, y.max(1.0) * k),
-        color: hc(Color::srgba(0.0, 0.0, 0.0, a * (4.0 / blur.max(4.0)))),
+        color: Color::srgba(0.0, 0.0, 0.0, a * shadow_k(blur)),
     }
+}
+
+/// How much of a blurred shadow's alpha a hard copy keeps: the blur
+/// spreads it over about `blur` px, so a copy at full strength reads as a
+/// second, darker glyph on a light sky.
+fn shadow_k(blur: f32) -> f32 {
+    2.0 / blur.max(2.0)
 }
 
 fn txt(s: impl Into<String>, t: T, k: f32) -> impl Bundle {
@@ -372,7 +379,7 @@ fn css_color(s: &str) -> Color {
     match h.len() {
         3 => {
             let (r, g, b) = ((v >> 8) & 15, (v >> 4) & 15, v & 15);
-            widgets::rgb((r * 17) << 16 | (g * 17) << 8 | b * 17)
+            widgets::rgb(((r * 17) << 16) | ((g * 17) << 8) | (b * 17))
         }
         6 => widgets::rgb(v),
         _ => widgets::rgb(0x888888),
@@ -503,9 +510,7 @@ fn build(commands: &mut Commands, b: &Build) -> Entity {
                 ChildOf(tl),
             ))
             .id();
-        let line = commands
-            .spawn((Node::default(), ChildOf(lap)))
-            .id();
+        let line = commands.spawn((Node::default(), ChildOf(lap))).id();
         commands.spawn((
             txt("LAP 1/3", T::new(lay.lap).w(800).italic().ls(0.04), k),
             sh,
@@ -568,7 +573,11 @@ fn build(commands: &mut Commands, b: &Build) -> Entity {
                 ChildOf(root),
             ))
             .id();
-        commands.spawn((txt("SCORE", T::new(12.0).ls(0.5).c(dim), kc), shc, ChildOf(c)));
+        commands.spawn((
+            txt("SCORE", T::new(12.0).ls(0.5).c(dim), kc),
+            shc,
+            ChildOf(c),
+        ));
         commands.spawn((
             txt("0", T::new(56.0).w(800).italic().lh(1.0), kc),
             shc,
@@ -1018,7 +1027,11 @@ fn build_br(commands: &mut Commands, b: &Build, root: Entity) {
         ChildOf(speed),
     ));
     commands.spawn((
-        txt("MPH", T::new(15.0).w(800).ls(0.3).lh(1.0).c(hc(widgets::dim())), k),
+        txt(
+            "MPH",
+            T::new(15.0).w(800).ls(0.3).lh(1.0).c(hc(widgets::dim())),
+            k,
+        ),
         sh,
         Node {
             margin: UiRect::top(px(2.0)),
@@ -1303,7 +1316,7 @@ pub(super) fn update(
     windows: Query<&Window, With<PrimaryWindow>>,
     hs: Option<ResMut<HudState>>,
     mut mats: ResMut<Assets<HudMaterial>>,
-    mut roots: Query<(Entity, &mut Visibility), (With<HudRoot>, Without<El>)>,
+    mut roots: Query<&mut Visibility, (With<HudRoot>, Without<El>)>,
     mut parts: Query<Parts>,
 ) {
     let Some(mut hs) = hs else { return };
@@ -1316,7 +1329,7 @@ pub(super) fn update(
     // HUD.
     let Some(race) = play.race.as_ref().filter(|_| !play.hold) else {
         if hs.shown {
-            for (_, mut v) in &mut roots {
+            for mut v in &mut roots {
                 *v = Visibility::Hidden;
             }
             hs.shown = false;
@@ -1393,7 +1406,13 @@ pub(super) fn update(
         if let Some(r) = hs.root.take() {
             commands.entity(r).despawn();
         }
-        let lay = Lay::new(&bp, key.in_l, key.in_r, play.insets.top as f32, key.steer_top);
+        let lay = Lay::new(
+            &bp,
+            key.in_l,
+            key.in_r,
+            play.insets.top as f32,
+            key.steer_top,
+        );
         let labels = if key.electric {
             dials::power(0.0).labels
         } else {
@@ -1418,7 +1437,7 @@ pub(super) fn update(
         return;
     }
     if !hs.shown {
-        for (_, mut v) in &mut roots {
+        for mut v in &mut roots {
             *v = Visibility::Inherited;
         }
         hs.shown = true;
@@ -1458,7 +1477,8 @@ pub(super) fn update(
         hs.zone_seq = model.zone_card_seq;
         hs.zone_t0 = now;
     }
-    hs.toast.go(if model.toast_show { 1.0 } else { 0.0 }, now, 0.25);
+    hs.toast
+        .go(if model.toast_show { 1.0 } else { 0.0 }, now, 0.25);
     let toast_op = hs.toast.at(now, 0.25) as f32;
     let (c_scale, c_op) = pop(now - hs.center_t0);
     let (z_dx, z_op) = zone_card(now - hs.zone_t0);
@@ -1497,7 +1517,11 @@ pub(super) fn update(
     }
 
     let k = bp.k;
-    let lay_scale = if key.bp.narrow && !key.bp.touch { 0.7 } else { 1.0 };
+    let lay_scale = if key.bp.narrow && !key.bp.touch {
+        0.7
+    } else {
+        1.0
+    };
     let l = &model.last;
     for (el, mut text, color, shadow, font, node, tf, mut vis, grad, _bg) in &mut parts {
         match *el {
@@ -1616,7 +1640,7 @@ pub(super) fn update(
                         f.font_size = want;
                     }
                 }
-                fade(color, shadow, c, c_op as f32, 0.6 * 4.0 / 30.0);
+                fade(color, shadow, c, c_op as f32, 0.6 * shadow_k(30.0));
             }
             El::CenterBox => {
                 if let Some(mut t) = tf {
@@ -1640,7 +1664,13 @@ pub(super) fn update(
             }
             El::ZcName => {
                 set_text(&mut text, &model.zone_card.0);
-                fade(color, shadow, widgets::fg(), z_op as f32, 0.7 * 4.0 / 30.0);
+                fade(
+                    color,
+                    shadow,
+                    widgets::fg(),
+                    z_op as f32,
+                    0.7 * shadow_k(30.0),
+                );
             }
             El::ZcSub => {
                 set_text(&mut text, &model.zone_card.1.to_uppercase());
@@ -1677,7 +1707,7 @@ fn fade(
         }
     }
     if let Some(mut s) = shadow {
-        let want = hc(Color::srgba(0.0, 0.0, 0.0, shadow_a * op));
+        let want = Color::srgba(0.0, 0.0, 0.0, shadow_a * op);
         if s.color != want {
             s.color = want;
         }
