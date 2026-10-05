@@ -100,9 +100,10 @@ test('driving: the triggers, the stick (analogue, with its dead zone), A, X, Sta
 test('A held into the race doesn\'t fire the nitro until it is pressed again', async () => {
   const game = await open();
   try {
-    await hold(game, 'A', true); // held from the menu, and kept held
-    await game.click('#btn-start');
-    await game.waitFor(() => !!window.__mr.race && window.__mr.mode === 'race' && window.__mr.screen === 'none', { timeout: 30000, what: 'the race to start' });
+    // A on Race (the menu's first press with the pad acts on its default
+    // control, as MenuNav.js does), and keep holding it.
+    await hold(game, 'A', true);
+    await game.waitFor(raceStarted, { timeout: 30000, what: 'the race to start' });
     await waitRacing(game);
     await sleep(150);
     assert.equal((await input(game)).nitro, false, 'still held: quiet');
