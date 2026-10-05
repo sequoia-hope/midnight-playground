@@ -1348,9 +1348,13 @@ pub(super) fn update(
     );
     let st = &race.session.curr;
     let track = &race.session.lr.track;
-    let steering = ui
-        .as_ref()
-        .map_or("stick".to_string(), |u| u.settings.steering.clone());
+    // `--steer-top` follows what steers right now (`#touch.buttons`,
+    // `#touch.tilt`), which tilt can take over from the saved choice.
+    let steering = match race.touch.steering.unwrap_or(race.touch.mode) {
+        crate::play::touch::Steering::Stick => "stick",
+        crate::play::touch::Steering::Buttons => "buttons",
+        crate::play::touch::Steering::Tilt => "tilt",
+    };
     let mut colors = vec![st.players[0].spec.color];
     colors.extend(st.rivals.iter().map(|a| a.color));
     let key = Key {
@@ -1361,7 +1365,7 @@ pub(super) fn update(
         laps: st.race.laps > 0,
         electric: st.players[0].phys.electric,
         racers: colors.clone(),
-        steer_top: steer_top(&race.touch.layout, &steering),
+        steer_top: steer_top(&race.touch.layout, steering),
         in_l: (play.insets.left as f32).max(16.0),
         in_r: (play.insets.right as f32).max(16.0),
     };

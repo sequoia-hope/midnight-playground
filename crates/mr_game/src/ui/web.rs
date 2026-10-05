@@ -23,6 +23,9 @@ static STAGE: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// setting allows it.
 type Rects = Vec<(f32, f32, f32, f32)>;
 static FULLSCREEN: Mutex<(bool, Rects)> = Mutex::new((false, Vec::new()));
+/// The steering drop-down's Tilt option, where a tap asks an iPhone for
+/// motion access (`opt-steer`'s `tilt.enable`, inside the change).
+static TILT_OPTION: Mutex<Rects> = Mutex::new(Vec::new());
 
 fn mr() -> Option<Object> {
     let w = web_sys::window()?;
@@ -125,34 +128,40 @@ pub fn stage(cmd: String) {
 /// The page's gesture handlers call this inside the event (SPEC 8.4): a
 /// tap or click on Race, Race again or Restart on a touch screen goes
 /// fullscreen and asks for landscape, as `enterFullscreen` does inside
-/// `startRace`.
+/// `startRace`; with tilt chosen, it asks an iPhone for motion access
+/// (`startRace`'s `tilt.enable(true)`), as a tap on the steering choice's
+/// Tilt does (`opt-steer`'s change). The motion request comes first: a
+/// fullscreen request uses the tap up, and a browser with both would then
+/// refuse the other (DECISIONS D843).
 #[wasm_bindgen]
 pub fn gesture_at(_kind: &str, x: f64, y: f64) {
     let (on, rects) = FULLSCREEN.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    if !on {
-        return;
-    }
-    // One tap brings pointer-up, touch-end and click: ask once.
-    static LAST: Mutex<f64> = Mutex::new(-1e9);
-    let now = js_sys::Date::now();
     let (x, y) = (x as f32, y as f32);
-    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
-    if now - *last < 800.0 {
-        return;
+    let inside = |rs: &Rects| {
+        rs.iter()
+            .any(|r| x >= r.0 && x <= r.0 + r.2 && y >= r.1 && y <= r.1 + r.3)
+    };
+    let race = inside(&rects);
+    let picked_tilt = inside(&TILT_OPTION.lock().unwrap_or_else(|e| e.into_inner()));
+    if race || picked_tilt {
+        crate::play::tilt::web::ask_in_gesture(picked_tilt);
     }
-    if rects
-        .iter()
-        .any(|r| x >= r.0 && x <= r.0 + r.2 && y >= r.1 && y <= r.1 + r.3)
-    {
-        let f = js_sys::Function::new_no_args(
-            "if (document.fullscreenElement) return; const el = document.documentElement; \
-             const req = el.requestFullscreen || el.webkitRequestFullscreen; if (!req) return; \
-             try { Promise.resolve(req.call(el, { navigationUI: 'hide' })) \
-               .then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')) \
-               .catch(() => {}); } catch (e) { /* not allowed here */ }",
-        );
-        let _ = f.call0(&JsValue::NULL);
-        *last = now;
+    if on && race {
+        // One tap brings pointer-up, touch-end and click: ask once.
+        static LAST: Mutex<f64> = Mutex::new(-1e9);
+        let now = js_sys::Date::now();
+        let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+        if now - *last >= 800.0 {
+            let f = js_sys::Function::new_no_args(
+                "if (document.fullscreenElement) return; const el = document.documentElement; \
+                 const req = el.requestFullscreen || el.webkitRequestFullscreen; if (!req) return; \
+                 try { Promise.resolve(req.call(el, { navigationUI: 'hide' })) \
+                   .then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')) \
+                   .catch(() => {}); } catch (e) { /* not allowed here */ }",
+            );
+            let _ = f.call0(&JsValue::NULL);
+            *last = now;
+        }
     }
 }
 
@@ -211,6 +220,46 @@ fn take_commands(mut ui: ResMut<UiState>, mut play: ResMut<Play>) {
                     }
                 }
             }
+            // The controls suites' `placeCar` (and `phys.reset`): on the
+            // road `ahead` m past the start (or `fromFinish` m before the
+            // line) at `lat` (or `latFrac` of the half width), pointing
+            // along it at `speed` m/s, its heading turned by `yaw` radians.
+            Some("place") => {
+                if let Some(r) = play.race.as_mut() {
+                    let t = r.session.lr.track.clone();
+                    let st = &mut r.session.curr;
+                    let p = &mut st.players[0];
+                    let s = match v["fromFinish"].as_f64() {
+                        Some(d) => t.finish_s - d,
+                        None => t.start_s + v["ahead"].as_f64().unwrap_or(40.0),
+                    };
+                    let f = t.frame(s);
+                    let lat = v["latFrac"]
+                        .as_f64()
+                        .map_or(v["lat"].as_f64().unwrap_or(0.0), |k| k * f.hw);
+                    p.phys.reset(&mut p.v, &t, s, lat);
+                    let speed = v["speed"].as_f64().unwrap_or(0.0);
+                    p.v.vx = f.fx * speed;
+                    p.v.vz = f.fz * speed;
+                    p.v.yaw += v["yaw"].as_f64().unwrap_or(0.0);
+                    p.rules.last_s = Some(s);
+                    r.session.prev = r.session.curr.clone();
+                    // `window.__race.cam.snap = true`: the camera behind it now.
+                    r.rig.snap = true;
+                }
+            }
+            // `window.__race.phys.nitro = n`.
+            Some("nitro") => {
+                if let Some(r) = play.race.as_mut() {
+                    r.session.curr.players[0].phys.nitro = v["amount"].as_f64().unwrap_or(1.0);
+                }
+            }
+            // `window.__race.input.touch.autoGas = on`.
+            Some("autogas") => {
+                if let Some(r) = play.race.as_mut() {
+                    r.touch.auto_gas = v["on"].as_bool().unwrap_or(true);
+                }
+            }
             _ => warn!("__mr.stage: unknown command {c}"),
         }
     }
@@ -250,9 +299,13 @@ fn publish(
     let css = play.css_scale.max(0.01);
     let mut nodes = serde_json::Map::new();
     let mut full = Vec::new();
+    let mut tilt_option = Vec::new();
     for (id, r, vis, enabled, value, sel, z) in snapshot(&controls, css) {
         if matches!(id.as_str(), "btn-start" | "btn-again" | "btn-restart") && vis {
             full.push(r);
+        }
+        if id == "option-tilt" && vis && play.touch_ui {
+            tilt_option.push(r);
         }
         let value = match value {
             super::Value::None => serde_json::Value::Null,
@@ -268,24 +321,54 @@ fn publish(
             }),
         );
     }
-    // The touch controls' taps (`#touch [data-tap=…]`), from their layout.
+    // The touch controls (`#touch [data-tap=…]`, `[data-act=…]` and the
+    // stick, slider, strip, panel and wheel), from their layout; a hidden
+    // one is not visible, as its zero-sized box was in the DOM.
     if let Some(race) = &play.race
         && play.touch_ui
     {
-        let shown = race.touch.visible;
-        for (i, name) in crate::play::touch::TAPS.iter().enumerate() {
-            let t = race.touch.layout.taps[i];
+        use crate::play::touch::{DIRS, PEDAL_PADS, PedalKind, Rect, Steering, TAPS};
+        let t = &race.touch;
+        let lay = &t.layout;
+        let shown = t.visible;
+        let steering = t.steering.unwrap_or(Steering::Stick);
+        let slider = t.pedals == PedalKind::Slider;
+        let mut add = |name: &str, r: Rect, vis: bool| {
             nodes.insert(
                 format!("touch-{name}"),
                 serde_json::json!({
-                    "x": t.left, "y": t.top, "w": t.width(), "h": t.height(),
-                    "visible": shown, "enabled": true, "value": null, "sel": false, "z": 0,
+                    "x": r.left, "y": r.top, "w": r.width(), "h": r.height(),
+                    "visible": shown && vis, "enabled": true, "value": null, "sel": false, "z": 0,
                 }),
             );
+        };
+        for (i, name) in TAPS.iter().enumerate() {
+            add(name, lay.taps[i], true);
         }
+        for (i, h) in DIRS.iter().enumerate() {
+            add(h.name(), lay.dirs[i], steering == Steering::Buttons);
+        }
+        for (i, h) in PEDAL_PADS.iter().enumerate() {
+            add(h.name(), lay.pedals[i], !slider);
+        }
+        let stick = t.stick.map_or(lay.stick_box(), |s| {
+            let hw = lay.stick_r + 32.0;
+            Rect {
+                left: s.x0 - hw,
+                top: s.y0 - 32.0,
+                right: s.x0 + hw,
+                bottom: s.y0 + 32.0,
+            }
+        });
+        add("stick", stick, steering == Steering::Stick);
+        add("wheel", lay.wheel, steering == Steering::Tilt);
+        add("slider", lay.track, slider);
+        add("drift", lay.drift, slider);
+        add("pedal", lay.panel, slider);
     }
     *FULLSCREEN.lock().unwrap_or_else(|e| e.into_inner()) =
         (play.touch_ui && ui.settings.fullscreen, full);
+    *TILT_OPTION.lock().unwrap_or_else(|e| e.into_inner()) = tilt_option;
     let json = serde_json::Value::Object(nodes).to_string();
     if *last != json {
         if let Ok(v) = js_sys::JSON::parse(&json) {

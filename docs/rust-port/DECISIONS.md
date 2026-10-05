@@ -6575,8 +6575,8 @@ at .7, centre text 84 px for every class, which outranks `.warn`'s 54
 in the CSS). The `.pos` line is a row placed on Rajdhani's metrics
 (ascent .93, line 1.276 em: the `sup` at the line's top plus 8 px, the
 count on the baseline). `--steer-top` follows the stick, buttons or
-tilt steering (`settings.steering` here; the touch package's
-`race.touch.steering` once both are merged).
+tilt steering that steers right now (`race.touch.steering`, from the
+touch package, D840+; merged at the two packages' merge).
 
 ## D826. L4: the HUD beside the JS
 
@@ -6606,3 +6606,163 @@ with the HUD 8.0, 7.5, 4.5 ms; with `?hud=0` 8.0, 6.8, 4.2 ms, so about
 0.3 ms in the quiet pair, within the runs' spread. Per frame the HUD
 writes one 6 kB uniform each for the dial and the minimap when they
 change and a few texts, and builds no nodes.
+
+## WP 6.5–6.6 decisions: touch controls, tilt and the gesture bridge
+
+## D840. The touch controls whole
+
+2026-10-04, WP 6.5. `play::touch` now ports all of `TouchControls.js`
+(D436 had the stick and the slider): the steering `mode` (`Steering`:
+stick, buttons, tilt) and what steers right now (`steering`, `layout()`:
+tilt only once the sensor is live, the stick standing in), the pedals
+(`PedalKind`: slider, buttons), the ◂ ▸ pads and the GAS, BRAKE, DRIFT
+and N₂O pads with their 14 px slop and nearest-centre pick, the
+`pointers` map (insertion order kept, a finger moved keeps its place)
+re-hit-tested on every move so a thumb slides from pad to pad, a finger
+on a tap button also going into `pointers` as in the JS, `setPedals`
+letting go of every finger, auto gas (`autoGas && visible && !brake &&
+!slide`), the wheel's `s × 90°`, and the haptic tick (`navigator.vibrate(8)`,
+asked for with `buzz` and made by the web glue the same frame). A pad that
+is hidden (the ◂ ▸ pads unless steering is on them, the pedal pads with
+the slider) has no box, as its `display: none` gave a zero rect.
+`touch::Layout` adds the boxes `hud.css` gives `.t-steer`'s two 1.08 b
+pads (14 px apart at `--inL`, `--inB`), `.t-pedals`' grid (two b-wide
+columns 14 px apart, rows 12 px apart, items at the bottom of their row and
+centred: DRIFT and N₂O 0.74 b round over BRAKE and GAS b × 1.3 b) and
+`.t-wheel` (1.3 b at `--inL + 8`, `--inB + 8`). The settings reach the
+race's controls through `play::tilt::sync`, which reads `UiState.settings`
+each frame (as `gamepad_io` reads the rumble switch): a new race's
+controls take steering, pedals and auto gas, and after that a setting is
+applied when it changes (the JS's `onchange`s), so a test can set
+`autoGas` on the controls directly as on `__race`. The race's controls are
+set one frame after the race is built (the countdown's first frame steers
+with the defaults, which nobody can touch then).
+
+## D841. `TiltSteer` over a window trait; the promise, the timer and the events
+
+2026-10-04, WP 6.6. `play::tilt` ports `TiltSteer.js` (`screenRoll`,
+`rollToSteer`, `fullLockFor`, the seven states, `enable`, `listen`,
+`onOrientation`, `update`) through the kernel's trig, `pow` and `exp`.
+The JS's `win` is the `TiltWindow` trait: `DeviceOrientationEvent` there
+or not, `requestPermission` a function or not, ask (false if it threw),
+add or remove the one listener, `isSecureContext === false`. The web side
+(`tilt::web`) reads them with `js_sys::Reflect`; natively there is no
+sensor (`NoSensor`: tilt chosen reads 'none' and the stick steers, SPEC
+8.4). What was asynchronous in the JS comes in at the next frame, in
+order: the promise's outcome as `answer(Granted | Denied | Failed)` (the
+JS's `then` handlers, same branches), the `deviceorientation` events as
+`on_orientation(beta, gamma, angle)` with the angle read when the event
+fired, and the 2 s `setTimeout` as a deadline `poll(now)` checks on
+real time. There is one `TiltSteer` for the run, shared with each race's
+controls as `Arc<Mutex<…>>` (the JS's `Object.assign(touch, { tilt })`),
+so its state and the menu's note carry from race to race. Its smoothing
+runs per tick from the input layer (D433) where the JS ran it per frame;
+the exponential step composes exactly, so only the 1e-3 snap can land a
+tick apart. Every `tilt.test.js` case is a Rust test, with the JS's
+`pose()` helper ported, plus the 2 s wait.
+
+## D842. Drawing the controls: Bevy UI, the SVG icons with `mr_canvas`
+
+2026-10-04, WP 6.5. `play::touch_ui` draws every part of `#touch`: the
+stick (its track at .75 opacity while idle, the knob's border white when
+held and the accent at full lock), the ◂ ▸ pads, the wheel (an image
+turned by `UiTransform`'s rotation, clockwise as CSS `rotate`), the
+slider with its bands, mark, fills and knob (with its glow), the DRIFT
+strip, the four pedal pads with their colours, and the three tap
+buttons, `.on` as the CSS has it (white border, the lit background,
+`scale(.94)`). The icons are the page's SVG paths (◂ ▸, reset, camera,
+pause, the wheel) stroked with `mr_canvas` into 96 px images once, at
+the SVG's stroke width and round caps; no font has them (D431's R, C,
+II and `<` `>` are gone). Font sizes, icon sizes and border widths are
+CSS px divided by the page's scale (`css_scale`), as positions already
+were: at a pixel ratio of 1 on a 2× or 3× phone (High quality off, the
+phones' default) the labels had been drawn at half or a third of their
+size. Left out: the `drop-shadow` filter and the text shadows, and the
+letter spacing (Bevy text has none).
+
+## D843. Motion permission inside the tap
+
+2026-10-04, WP 6.6. iOS Safari grants `DeviceOrientationEvent.
+requestPermission()` only inside a user gesture, and a Bevy frame is not
+one. The JS asks in `opt-steer`'s change handler and in `startRace`. The
+page's gesture bridge (`ui::web::gesture_at`, D577) now also asks when a
+tap lands on Race, Race again or Restart while tilt is the steering
+choice on a touch screen, or on the steering drop-down's Tilt option
+(`option-tilt`); the request is the same `tilt::web::ask` that
+`TiltSteer::enable` makes from the frame, whose answer reaches the
+`TiltSteer` at the next frame. Asked from a frame (the menu's change, a
+race's `startRace` call, the start-up `enable(true)`), an iPhone rejects,
+which is the 'ask' state and the note "Tap Race to allow motion access",
+as in the JS when a page loads with tilt saved. One request is in flight
+at a time: while it waits, another `enable` does not ask again (the JS
+would have, from the menu's change and then the frame's `startRace`, a
+second prompt behind the first); and once granted, the gesture side does
+not ask again in that visit, as `granted` stops the JS asking. The motion request is made before the fullscreen request in the same
+handler: a fullscreen request uses up the tap's activation in Chrome, so
+a browser offering both would refuse the motion request after it (an
+emulated iPhone in Chrome did); the JS asked after `enterFullscreen`,
+which on an iPhone, with no element fullscreen, comes to the same.
+`startRace`'s own `tilt.enable(true)` is made once a race is shown (no
+screen up, not held), not for the menu's warm-up field behind the
+loading screen (D574), which would have asked a second time at load.
+Android Chrome has no `requestPermission` and listens at once. Checked
+with a faked `requestPermission` that says yes only while
+`navigator.userActivation.isActive`: the note at load, then granted in
+the Race tap, and granted in the tap on Tilt (`tilt.test.mjs`).
+
+## D844. Fullscreen and the landscape lock
+
+2026-10-04, WP 6.6. Unchanged from D577: the Race, Race again and
+Restart taps on a touch screen with Fullscreen on call
+`requestFullscreen({ navigationUI: 'hide' })` (or the webkit one) and
+then `screen.orientation.lock('landscape')`, all best-effort, as
+`enterFullscreen` does. iPhone Safari has no element fullscreen, so there
+`requestFullscreen` is missing and nothing happens, and it has no
+orientation lock either; the JS does the same, and shows the menu's
+"turn your phone sideways" hint in portrait (already in `ui::menu`). The
+page's viewport now has the JS's `maximum-scale=1, user-scalable=no`, so
+a double tap on the controls cannot zoom an iPhone's page.
+
+## D845. The visibility pause, latched
+
+2026-10-04, WP 6.6. `play::web` paused the race when it found
+`document.hidden` in its `Last` system. A hidden page gets no animation
+frames, so that check could miss the hide altogether, and in the first
+frame back it ran after that frame's ticks. Now the page's
+`visibilitychange` (to hidden) is latched by a listener, and a system
+before the race's frame pauses the race when the latch is set or the
+page is hidden (`if (document.hidden && mode === 'race') pause(true)`),
+so the race is paused before any tick runs on the return. The pause
+screen hides the controls, which lets go of every finger, as
+`showScreen('pause')` does. Natively focus loss still only lets go of
+the keys and fingers (D106).
+
+## D846. The controls suites against the Rust build
+
+2026-10-04, WP 6.5, 6.6. `touch-controls`, `analog-controls` and `tilt`
+are adapted in `tools/parity/e2e/` with `controls-helpers.mjs`:
+`__race` is `__mr.race`, which gains the car's `yaw`, `steerAngle`,
+`hw`, `yawToRoad`, `nitro`, `nitroActive`, `camMode`, the camera's right
+(`camRight`, `__camera.matrixWorld`'s x axis) and `touch` (the controls:
+`visible`, `mode`, `steering`, `pedals`, `autoGas`, `stickR`, `held`,
+`stick`, `lock`, `knob`, `panel` (the pedal panel's classes), `wheel`,
+`tilt`); `__mr.race.touchUi` is the old boolean. The pads are
+`__mr.ui('touch-<act>')` (`touch-left`, `touch-throttle`, …, and
+`touch-stick`, `touch-slider`, `touch-drift`, `touch-pedal`,
+`touch-wheel`), not visible when hidden. `__mr.stage` gains `place`
+(`phys.reset` and the speed, with `fromFinish`, `latFrac`, `yaw`, the
+camera snapped), `nitro` and `autogas`. A drop-down choice is two taps
+(the select, then `option-<value>`), the sensitivity slider a drag to an
+end, and the tilt suite gains a real hidden page (another tab brought to
+the front) for the visibility pause and the iPhone permission case
+(D843). `tools/parity/touch-shots.mjs` puts the JS and the Rust controls
+side by side on an emulated iPhone, sideways and upright (at rest, both
+thumbs down, the Buttons choices held, tilt turned), in
+`parity/report/touch/`. All three suites pass against the release build
+(touch-controls 10, analog-controls 5, tilt 7), as do `race-flow` and
+`race-button`. Chrome logs "Ignored attempt to
+cancel a touchstart event with cancelable=false" now and then when a CDP
+touch arrives while a frame is busy (winit cancels every touchstart on
+the canvas); the suites leave that line out of their error check, since
+the canvas is `touch-action: none` and nothing scrolls or zooms either
+way.

@@ -1,30 +1,39 @@
-//! On-screen controls for touch screens (port of the core of
-//! `src/game/TouchControls.js`, SPEC 8.2): steering with the left-thumb
-//! stick, the pedal slider for the right thumb with DRIFT beside it, and the
-//! reset, camera and pause taps at the top left. Held controls feed
-//! [`super::input::Input::update`]; taps post one-shot actions the same way
-//! the keyboard does.
+//! On-screen controls for touch screens (port of `src/game/TouchControls.js`,
+//! SPEC 8.2): steering on the left, the pedals bottom-right, reset, camera
+//! and pause at the top. Held controls feed
+//! [`super::input::Input::update`]; tap buttons post one-shot actions the
+//! same way the keyboard does.
 //!
+//! Steering ([`Steering`], `mode`) is one of:
 //! - 'stick': an analogue thumb stick. A thumb put down anywhere on the
 //!   left of the screen sets the centre there (never so near the edge that
 //!   full left lock is out of reach), and sliding it left or right steers in
 //!   proportion. Slide past full lock and the centre follows, so coming
 //!   back steers the other way at once.
+//! - 'buttons': ◂ ▸ pads, which Input ramps like keys.
+//! - 'tilt': a [`TiltSteer`](super::tilt::TiltSteer) (as `.tilt`), with a
+//!   wheel showing the lock; the stick stands in until the sensor answers.
+//!
+//! Pedals ([`PedalKind`], `pedals`) are one of:
 //! - 'slider': one vertical slider for the right thumb. From the bottom:
 //!   BRAKE (full at the bottom, lighter going up), a gap to coast in, GAS
 //!   (light just above the gap, flat out from about two thirds up) and N₂O
 //!   at the top. DRIFT is a strip beside it in the same touch space: slide
 //!   the thumb right onto it for the handbrake, still on the gas. A thumb
 //!   that starts on the slider keeps working it until it lifts.
+//! - 'buttons': GAS, BRAKE, DRIFT and N₂O pads.
 //!
-//! The DOM measured the controls; here [`Layout`] computes the same boxes
-//! from `hud.css`'s rules (`--b`, `--pedal-h`, the insets), in CSS pixels.
-//! The ◂ ▸ and pedal-button modes, tilt and auto gas wait for M6
-//! (DECISIONS D436).
+//! Fingers on the pads are hit-tested against every pad on each move, so a
+//! thumb can slide from gas to brake (or ◂ to ▸) without lifting.
+//!
+//! The DOM measured its boxes; here [`Layout`] computes the same boxes from
+//! `hud.css`'s rules (`--b`, `--pedal-h`, `--stick-r`, the insets), in CSS
+//! pixels (DECISIONS D436, D840).
 
 use mr_math::{clamp, kernel};
 
 use super::input::TouchSource;
+use super::tilt::SharedTilt;
 
 /// px of forgiveness round each button.
 pub const SLOP: f64 = 14.0;
@@ -153,6 +162,12 @@ impl Rect {
             && y >= self.top - slop
             && y <= self.bottom + slop
     }
+    fn centre(&self) -> (f64, f64) {
+        (
+            (self.left + self.right) / 2.0,
+            (self.top + self.bottom) / 2.0,
+        )
+    }
 }
 
 /// The page's safe-area insets (`env(safe-area-inset-*)`), CSS px.
@@ -166,6 +181,86 @@ pub struct Insets {
 
 /// The one-shot buttons at the top left, in their DOM order.
 pub const TAPS: [&str; 3] = ["reset", "camera", "pause"];
+
+/// The held controls (`HOLD`), in the JS order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hold {
+    Throttle,
+    Brake,
+    Left,
+    Right,
+    Handbrake,
+    Nitro,
+}
+
+impl Hold {
+    /// The pad's `data-act`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Hold::Throttle => "throttle",
+            Hold::Brake => "brake",
+            Hold::Left => "left",
+            Hold::Right => "right",
+            Hold::Handbrake => "handbrake",
+            Hold::Nitro => "nitro",
+        }
+    }
+}
+
+/// The ◂ ▸ pads (`.t-steer`), in DOM order.
+pub const DIRS: [Hold; 2] = [Hold::Left, Hold::Right];
+/// The pedal pads (`.t-pedals`), in DOM order: DRIFT, N₂O, BRAKE, GAS.
+pub const PEDAL_PADS: [Hold; 4] = [Hold::Handbrake, Hold::Nitro, Hold::Brake, Hold::Throttle];
+
+/// What steers (`mode`, and `steering`: what steers right now).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Steering {
+    #[default]
+    Stick,
+    Buttons,
+    Tilt,
+}
+
+impl Steering {
+    pub fn from_name(s: &str) -> Steering {
+        match s {
+            "buttons" => Steering::Buttons,
+            "tilt" => Steering::Tilt,
+            _ => Steering::Stick,
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            Steering::Stick => "stick",
+            Steering::Buttons => "buttons",
+            Steering::Tilt => "tilt",
+        }
+    }
+}
+
+/// The pedals chosen (`pedals`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PedalKind {
+    #[default]
+    Slider,
+    Buttons,
+}
+
+impl PedalKind {
+    pub fn from_name(s: &str) -> PedalKind {
+        if s == "buttons" {
+            PedalKind::Buttons
+        } else {
+            PedalKind::Slider
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            PedalKind::Slider => "slider",
+            PedalKind::Buttons => "buttons",
+        }
+    }
+}
 
 /// Where the controls sit for a screen (`hud.css`, `body.touch`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -186,6 +281,12 @@ pub struct Layout {
     pub drift: Rect,
     /// `.t-util`'s buttons: reset, camera, pause.
     pub taps: [Rect; 3],
+    /// `.t-steer`'s ◂ ▸ pads ([`DIRS`]).
+    pub dirs: [Rect; 2],
+    /// `.t-pedals`' pads ([`PEDAL_PADS`]).
+    pub pedals: [Rect; 4],
+    /// `.t-wheel`.
+    pub wheel: Rect,
 }
 
 impl Layout {
@@ -230,6 +331,42 @@ impl Layout {
             right: in_l + i * 54.0 + 44.0,
             bottom: ty + 44.0,
         };
+        // .t-steer: left: --inL; bottom: --inB; two 1.08 b pads 14 px apart.
+        let d = 1.08 * b;
+        let dir = |i: f64| Rect {
+            left: in_l + i * (d + 14.0),
+            top: bottom - d,
+            right: in_l + i * (d + 14.0) + d,
+            bottom,
+        };
+        // .t-pedals: right: --inR; bottom: --inB; a grid of two b-wide
+        // columns 14 px apart and two rows 12 px apart, its items at the
+        // bottom of their row and centred in their column: DRIFT and N₂O
+        // (.74 b round) over BRAKE and GAS (b by 1.3 b).
+        let c2 = w - in_r - b;
+        let c1 = c2 - 14.0 - b;
+        let row2 = bottom - 1.3 * b;
+        let small = 0.74 * b;
+        let row1 = row2 - 12.0;
+        let round = |c: f64| Rect {
+            left: c + (b - small) / 2.0,
+            top: row1 - small,
+            right: c + (b + small) / 2.0,
+            bottom: row1,
+        };
+        let tall = |c: f64| Rect {
+            left: c,
+            top: row2,
+            right: c + b,
+            bottom,
+        };
+        // .t-wheel: left: --inL + 8px; bottom: --inB + 8px; 1.3 b square.
+        let wheel = Rect {
+            left: in_l + 8.0,
+            top: bottom - 8.0 - 1.3 * b,
+            right: in_l + 8.0 + 1.3 * b,
+            bottom: bottom - 8.0,
+        };
         Layout {
             w,
             h,
@@ -241,6 +378,22 @@ impl Layout {
             track,
             drift,
             taps: [tap(0.0), tap(1.0), tap(2.0)],
+            dirs: [dir(0.0), dir(1.0)],
+            pedals: [round(c1), round(c2), tall(c1), tall(c2)],
+            wheel,
+        }
+    }
+
+    /// `.t-stick`'s box while it waits (two full locks wide plus 64 px, 64
+    /// tall, centred on its resting place).
+    pub fn stick_box(&self) -> Rect {
+        let (cx, cy) = self.stick_home;
+        let hw = self.stick_r + 32.0;
+        Rect {
+            left: cx - hw,
+            top: cy - 32.0,
+            right: cx + hw,
+            bottom: cy + 32.0,
         }
     }
 }
@@ -265,20 +418,56 @@ pub struct Slide {
     pub u: Option<f64>,
 }
 
+/// `held`: what each held control reads.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Held {
     pub throttle: bool,
     pub brake: bool,
+    pub left: bool,
+    pub right: bool,
     pub handbrake: bool,
     pub nitro: bool,
 }
 
-/// `TouchControls` in 'stick' steering and 'slider' pedals.
+impl Held {
+    pub fn get(&self, h: Hold) -> bool {
+        match h {
+            Hold::Throttle => self.throttle,
+            Hold::Brake => self.brake,
+            Hold::Left => self.left,
+            Hold::Right => self.right,
+            Hold::Handbrake => self.handbrake,
+            Hold::Nitro => self.nitro,
+        }
+    }
+    fn set(&mut self, h: Hold) {
+        match h {
+            Hold::Throttle => self.throttle = true,
+            Hold::Brake => self.brake = true,
+            Hold::Left => self.left = true,
+            Hold::Right => self.right = true,
+            Hold::Handbrake => self.handbrake = true,
+            Hold::Nitro => self.nitro = true,
+        }
+    }
+}
+
+/// `TouchControls`.
 #[derive(Clone, Debug, Default)]
 pub struct TouchControls {
     pub visible: bool,
+    pub auto_gas: bool,
+    /// The player's steering choice.
+    pub mode: Steering,
+    pub pedals: PedalKind,
+    /// The tilt sensor, shared with `play::tilt`.
+    pub tilt: Option<SharedTilt>,
+    /// What steers right now (`None` before the first `layout`).
+    pub steering: Option<Steering>,
     pub layout: Layout,
     pub stick: Option<Stick>,
+    /// Fingers on the pads: pointer id → position, in order (a JS `Map`).
+    pub pointers: Vec<(u64, f64, f64)>,
     /// Thumbs on the slider: pointer id → position, in order.
     pub sliding: Vec<(u64, f64, f64)>,
     pub slide: Option<Slide>,
@@ -287,14 +476,33 @@ pub struct TouchControls {
     pub amount_brake: f64,
     /// The last tap and how long it stays lit (`.on` for 140 ms).
     pub lit: Option<(usize, f64)>,
+    /// The wheel's turn, degrees (`rotate(s * 90deg)`).
+    pub wheel: f64,
+    /// A tap wants the haptic tick (`navigator.vibrate(8)`); the web glue
+    /// takes it.
+    pub buzz: bool,
 }
 
 impl TouchControls {
     pub fn new(layout: Layout) -> TouchControls {
-        TouchControls {
+        let mut t = TouchControls {
             layout,
             ..TouchControls::default()
-        }
+        };
+        t.lay_out(false);
+        t
+    }
+
+    pub fn set_mode(&mut self, mode: Steering) {
+        self.mode = mode;
+        self.lay_out(false);
+    }
+
+    pub fn set_pedals(&mut self, kind: PedalKind) {
+        self.pedals = kind;
+        self.sliding.clear();
+        self.pointers.clear();
+        self.lay_out(true);
     }
 
     /// `show(on)`: hiding lets go of everything.
@@ -309,6 +517,7 @@ impl TouchControls {
     }
 
     pub fn release(&mut self) {
+        self.pointers.clear();
         self.sliding.clear();
         self.stick = None;
         self.refresh();
@@ -319,19 +528,58 @@ impl TouchControls {
         self.layout = layout;
     }
 
-    /// The tap button under (x, y): the nearest centre among those whose
-    /// rect (grown by SLOP) contains the point.
-    fn pick_tap(&self, x: f64, y: f64) -> Option<usize> {
+    fn tilt_live(&self) -> bool {
+        self.tilt
+            .as_ref()
+            .is_some_and(|t| t.lock().unwrap_or_else(|e| e.into_inner()).live())
+    }
+
+    /// `layout(force)`: show the controls for whatever steers now (tilt
+    /// goes live when the sensor first answers) and for the pedals chosen.
+    pub fn lay_out(&mut self, force: bool) {
+        let s = if self.mode == Steering::Tilt && self.tilt_live() {
+            Steering::Tilt
+        } else if self.mode == Steering::Buttons {
+            Steering::Buttons
+        } else {
+            Steering::Stick
+        };
+        if Some(s) == self.steering && !force {
+            return;
+        }
+        self.steering = Some(s);
+        if s != Steering::Stick {
+            self.stick = None;
+        }
+        self.refresh(); // a thumb resting on a pad that just hid lets go
+    }
+
+    /// The held pads shown now, with their boxes (a hidden pad has no box).
+    pub fn hold_pads(&self) -> Vec<(Hold, Rect)> {
+        let mut v = Vec::new();
+        if self.steering == Some(Steering::Buttons) {
+            v.extend(DIRS.iter().copied().zip(self.layout.dirs));
+        }
+        if self.pedals == PedalKind::Buttons {
+            v.extend(PEDAL_PADS.iter().copied().zip(self.layout.pedals));
+        }
+        v
+    }
+
+    /// The button under (x, y): the nearest centre among those whose rect
+    /// (grown by SLOP) contains the point, so neighbours don't both light.
+    fn pick<T: Copy>(els: impl IntoIterator<Item = (T, Rect)>, x: f64, y: f64) -> Option<T> {
         let mut best = None;
         let mut bd = f64::INFINITY;
-        for (i, r) in self.layout.taps.iter().enumerate() {
+        for (k, r) in els {
             if !r.hit(x, y, SLOP) {
                 continue;
             }
-            let d = kernel::hypot(x - (r.left + r.right) / 2.0, y - (r.top + r.bottom) / 2.0);
+            let (cx, cy) = r.centre();
+            let d = kernel::hypot(x - cx, y - cy);
             if d < bd {
                 bd = d;
-                best = Some(i);
+                best = Some(k);
             }
         }
         best
@@ -342,11 +590,15 @@ impl TouchControls {
         if !self.visible {
             return None;
         }
-        if let Some(i) = self.pick_tap(x, y) {
+        let taps = (0..TAPS.len()).zip(self.layout.taps);
+        let tap = Self::pick(taps, x, y);
+        if let Some(i) = tap {
             self.lit = Some((i, 0.14));
-            return Some(TAPS[i]);
-        }
-        if self.stick.is_none() && x < self.layout.w * STICK_ZONE {
+            self.buzz = true;
+        } else if self.steering == Some(Steering::Stick)
+            && self.stick.is_none()
+            && x < self.layout.w * STICK_ZONE
+        {
             self.stick = Some(Stick {
                 id,
                 x0: x.max(self.layout.stick_r + 4.0),
@@ -354,12 +606,14 @@ impl TouchControls {
                 x,
             });
             return None;
-        }
-        if self.layout.panel.hit(x, y, SLOP) {
+        } else if self.pedals == PedalKind::Slider && self.layout.panel.hit(x, y, SLOP) {
             self.sliding.push((id, x, y));
             self.refresh();
+            return None;
         }
-        None
+        set_pointer(&mut self.pointers, id, x, y);
+        self.refresh();
+        tap.map(|i| TAPS[i])
     }
 
     /// `onMove`.
@@ -370,11 +624,15 @@ impl TouchControls {
             s.x0 = clamp(s.x0, s.x - r, s.x + r); // past full lock, the centre follows
             return;
         }
-        if let Some(p) = self.sliding.iter_mut().find(|p| p.0 == id) {
-            p.1 = x;
-            p.2 = y;
-            self.refresh();
-        }
+        let map = if self.sliding.iter().any(|p| p.0 == id) {
+            &mut self.sliding
+        } else if self.pointers.iter().any(|p| p.0 == id) {
+            &mut self.pointers
+        } else {
+            return;
+        };
+        set_pointer(map, id, x, y);
+        self.refresh();
     }
 
     /// `onUp` (and `pointercancel`).
@@ -383,9 +641,12 @@ impl TouchControls {
             self.stick = None;
             return;
         }
-        let n = self.sliding.len();
+        let n = self.sliding.len() + self.pointers.len();
         self.sliding.retain(|p| p.0 != id);
-        if self.sliding.len() != n {
+        if self.sliding.len() + self.pointers.len() == n {
+            self.pointers.retain(|p| p.0 != id);
+        }
+        if self.sliding.len() + self.pointers.len() != n {
             self.refresh();
         }
     }
@@ -398,12 +659,17 @@ impl TouchControls {
     }
 
     fn refresh(&mut self) {
-        self.held = Held::default();
-        self.amount_throttle = 0.0;
-        self.amount_brake = 0.0;
+        let mut h = Held::default();
+        let pads = self.hold_pads();
+        for &(_, x, y) in &self.pointers {
+            if let Some(k) = Self::pick(pads.iter().copied(), x, y) {
+                h.set(k);
+            }
+        }
+        self.amount_throttle = if h.throttle { 1.0 } else { 0.0 };
+        self.amount_brake = if h.brake { 1.0 } else { 0.0 };
         self.slide = (!self.sliding.is_empty()).then(|| self.read_slider());
         if let Some(s) = self.slide {
-            let h = &mut self.held;
             h.throttle |= s.throttle > 0.0;
             h.brake |= s.brake > 0.0;
             h.nitro |= s.nitro;
@@ -411,6 +677,7 @@ impl TouchControls {
             self.amount_throttle = self.amount_throttle.max(s.throttle);
             self.amount_brake = self.amount_brake.max(s.brake);
         }
+        self.held = h;
     }
 
     /// Every thumb on the slider: its height sets the pedals (the hardest
@@ -436,10 +703,45 @@ impl TouchControls {
             clamp(s.x - s.x0, -self.layout.stick_r, self.layout.stick_r)
         })
     }
+
+    /// The pedal panel's classes (`.t-pedal.active.gas…`), for drawing
+    /// and the tests.
+    pub fn panel_classes(&self) -> Vec<&'static str> {
+        let Some(s) = self.slide else {
+            return Vec::new();
+        };
+        let mut v = vec!["active"];
+        if s.throttle > 0.0 {
+            v.push("gas");
+        }
+        if s.brake > 0.0 {
+            v.push("brake");
+        }
+        if s.nitro {
+            v.push("nitro");
+        }
+        if s.drift {
+            v.push("drift");
+        }
+        v
+    }
+}
+
+/// `map.set(id, [x, y])`: a new key goes last, an old one keeps its place.
+fn set_pointer(map: &mut Vec<(u64, f64, f64)>, id: u64, x: f64, y: f64) {
+    match map.iter_mut().find(|p| p.0 == id) {
+        Some(p) => {
+            p.1 = x;
+            p.2 = y;
+        }
+        None => map.push((id, x, y)),
+    }
 }
 
 impl TouchSource for TouchControls {
-    /// Nitro needs throttle, so it holds the gas flat too.
+    /// Gas (or auto gas unless braking). Nitro needs throttle, so it holds
+    /// the gas flat too. A thumb on the slider sets the gas itself, so auto
+    /// gas waits while it's there.
     fn throttle(&self) -> f64 {
         if self.held.nitro {
             return 1.0;
@@ -447,7 +749,11 @@ impl TouchSource for TouchControls {
         if self.held.throttle {
             return self.amount_throttle;
         }
-        0.0
+        if self.auto_gas && self.visible && !self.held.brake && self.slide.is_none() {
+            1.0
+        } else {
+            0.0
+        }
     }
     fn brake(&self) -> f64 {
         if self.held.brake {
@@ -456,8 +762,9 @@ impl TouchSource for TouchControls {
             0.0
         }
     }
+    /// For the ◂ ▸ pads, a steering target of −1, 0 or +1.
     fn steer(&self) -> f64 {
-        0.0
+        f64::from(u8::from(self.held.right)) - f64::from(u8::from(self.held.left))
     }
     fn handbrake(&self) -> bool {
         self.held.handbrake
@@ -465,22 +772,36 @@ impl TouchSource for TouchControls {
     fn nitro(&self) -> bool {
         self.held.nitro
     }
-    fn analog_steer(&mut self, _dt: f64) -> Option<f64> {
-        if !self.visible {
+    /// This tick's analogue steering (the stick, or tilt), or `None` when
+    /// steering is on the ◂ ▸ pads.
+    fn analog_steer(&mut self, dt: f64) -> Option<f64> {
+        self.lay_out(false);
+        if !self.visible || self.steering == Some(Steering::Buttons) {
             return None;
         }
-        Some(
-            self.stick
-                .map_or(0.0, |s| stick_steer((s.x - s.x0) / self.layout.stick_r)),
-        )
+        if self.steering != Some(Steering::Tilt) {
+            return Some(
+                self.stick
+                    .map_or(0.0, |s| stick_steer((s.x - s.x0) / self.layout.stick_r)),
+            );
+        }
+        let s = self.tilt.as_ref().map_or(0.0, |t| {
+            t.lock().unwrap_or_else(|e| e.into_inner()).update(dt)
+        });
+        self.wheel = s * 90.0;
+        Some(s)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    //! `test/unit/touch.test.js`, and the controls' flow.
+    //! `test/unit/touch.test.js`, and the controls' flow
+    //! (`test/e2e/touch-controls.test.js`' and `analog-controls.test.js`'
+    //! touch logic, without a browser).
     use super::*;
     use crate::play::input::Input;
+    use crate::play::tilt::{NoSensor, TiltSteer};
+    use std::sync::{Arc, Mutex};
 
     fn near(a: f64, b: f64, eps: f64) {
         assert!((a - b).abs() <= eps, "{a} ≉ {b}");
@@ -618,6 +939,7 @@ mod tests {
             (s.throttle, s.brake, s.nitro, s.handbrake),
             (1.0, 0.0, false, false)
         );
+        assert_eq!(t.panel_classes(), ["active", "gas"]);
         // Slide down into the brake band, then right onto DRIFT.
         t.moved(3, cx, at(0.03));
         let s = input.update(1.0 / 120.0, Some(&mut t));
@@ -626,14 +948,212 @@ mod tests {
         t.moved(3, lay.drift.left + 10.0, at(0.5));
         let s = input.update(1.0 / 120.0, Some(&mut t));
         assert!(s.handbrake && s.throttle > 0.0);
+        // Wandering off to the left: still the pedal thumb.
+        t.moved(3, r.left - 70.0, at(0.72));
+        let s = input.update(1.0 / 120.0, Some(&mut t));
+        assert!(s.throttle == 1.0 && !s.handbrake);
         // Top: N₂O, which holds the gas flat.
         t.moved(3, cx, at(0.95));
         let s = input.update(1.0 / 120.0, Some(&mut t));
         assert!(s.nitro && s.throttle == 1.0);
         t.up(3);
         assert_eq!(input.update(1.0 / 120.0, Some(&mut t)).throttle, 0.0);
+        assert!(t.panel_classes().is_empty());
         // The reset button.
         let b = lay.taps[0];
         assert_eq!(t.down(4, b.left + 5.0, b.top + 5.0), Some("reset"));
+        assert!(t.buzz, "the haptic tick");
+    }
+
+    fn centre(r: Rect) -> (f64, f64) {
+        r.centre()
+    }
+
+    /// The Buttons choices: ◂ ▸ steer through the ramp; GAS, BRAKE, DRIFT
+    /// and N₂O pads; a finger slides from pad to pad; two thumbs at once.
+    #[test]
+    fn the_buttons_pads_and_sliding_between_them() {
+        for (w, h) in [(915.0, 412.0), (412.0, 915.0)] {
+            let lay = Layout::new(w, h, Insets::default());
+            let mut t = TouchControls::new(lay);
+            t.set_mode(Steering::Buttons);
+            t.set_pedals(PedalKind::Buttons);
+            t.show(true);
+            assert_eq!(t.steering, Some(Steering::Buttons));
+            // Every pad on screen, big enough, none overlapping.
+            let mut all: Vec<(String, Rect)> = t
+                .hold_pads()
+                .into_iter()
+                .map(|(k, r)| (k.name().to_string(), r))
+                .collect();
+            for (i, r) in lay.taps.iter().enumerate() {
+                all.push((TAPS[i].into(), *r));
+            }
+            for (n, r) in &all {
+                assert!(
+                    r.left >= 0.0 && r.top >= 0.0 && r.right <= w && r.bottom <= h,
+                    "{n}"
+                );
+                assert!(r.width() >= 40.0 && r.height() >= 40.0, "{n} big enough");
+            }
+            for (a, ra) in &all {
+                for (b, rb) in &all {
+                    if a < b {
+                        let apart = ra.right <= rb.left
+                            || rb.right <= ra.left
+                            || ra.bottom <= rb.top
+                            || rb.bottom <= ra.top;
+                        assert!(apart, "{a} and {b} overlap ({w}×{h})");
+                    }
+                }
+            }
+            // Each pad at its centre holds that pad and nothing else.
+            for (k, r) in t.hold_pads() {
+                let (x, y) = centre(r);
+                t.down(9, x, y);
+                let held: Vec<Hold> = [
+                    Hold::Throttle,
+                    Hold::Brake,
+                    Hold::Left,
+                    Hold::Right,
+                    Hold::Handbrake,
+                    Hold::Nitro,
+                ]
+                .into_iter()
+                .filter(|h| t.held.get(*h))
+                .collect();
+                assert_eq!(held, [k], "{w}×{h}");
+                t.up(9);
+                assert_eq!(t.held, Held::default());
+            }
+        }
+        let lay = Layout::new(915.0, 412.0, Insets::default());
+        let mut t = TouchControls::new(lay);
+        t.set_mode(Steering::Buttons);
+        t.set_pedals(PedalKind::Buttons);
+        t.show(true);
+        let mut input = Input::new();
+        // GAS is on or off; BRAKE likewise.
+        let (gx, gy) = centre(lay.pedals[3]);
+        t.down(1, gx, gy);
+        let s = input.update(0.1, Some(&mut t));
+        assert_eq!((s.throttle, s.brake), (1.0, 0.0));
+        // Slide onto BRAKE without lifting.
+        let (bx, by) = centre(lay.pedals[2]);
+        t.moved(1, (gx + bx) / 2.0, (gy + by) / 2.0);
+        t.moved(1, bx, by);
+        assert!(!t.held.throttle && t.held.brake);
+        let s = input.update(0.1, Some(&mut t));
+        assert_eq!((s.throttle, s.brake), (0.0, 1.0));
+        t.up(1);
+        // ◂ then ▸ with the same finger: the ramp, not analogue.
+        let (lx, ly) = centre(lay.dirs[0]);
+        t.down(2, lx, ly);
+        let s = input.update(0.1, Some(&mut t));
+        assert!(!s.analog);
+        near(s.steer, -0.36, 1e-9);
+        let (rx, _) = centre(lay.dirs[1]);
+        t.moved(2, rx, ly);
+        assert!(!t.held.left && t.held.right);
+        // Two thumbs: steer and gas together.
+        t.down(3, gx, gy);
+        let s = input.update(0.1, Some(&mut t));
+        assert_eq!(s.throttle, 1.0);
+        assert!(s.steer > -0.36);
+        // N₂O on its own holds the gas.
+        t.release();
+        let (nx, ny) = centre(lay.pedals[1]);
+        t.down(4, nx, ny);
+        assert!(t.held.nitro && !t.held.throttle);
+        let s = input.update(0.1, Some(&mut t));
+        assert!(s.nitro && s.throttle == 1.0);
+        t.up(4);
+        // DRIFT is the handbrake.
+        let (dx, dy) = centre(lay.pedals[0]);
+        t.down(5, dx, dy);
+        assert!(input.update(0.1, Some(&mut t)).handbrake);
+        t.up(5);
+        // No stick in Buttons mode: a thumb on the left holds nothing.
+        t.down(6, 300.0, 150.0);
+        assert!(t.stick.is_none());
+        assert_eq!(t.held, Held::default());
+    }
+
+    #[test]
+    fn auto_gas_drives_until_braking_or_a_thumb_on_the_slider() {
+        let lay = Layout::new(915.0, 412.0, Insets::default());
+        let mut t = TouchControls::new(lay);
+        t.show(true);
+        t.auto_gas = true;
+        let mut input = Input::new();
+        assert_eq!(
+            input.update(0.1, Some(&mut t)).throttle,
+            1.0,
+            "no finger down"
+        );
+        // A thumb in the slider's gap coasts.
+        let r = lay.track;
+        let cx = (r.left + r.right) / 2.0;
+        t.down(1, cx, r.bottom - 0.33 * r.height());
+        assert_eq!(input.update(0.1, Some(&mut t)).throttle, 0.0);
+        t.up(1);
+        assert_eq!(input.update(0.1, Some(&mut t)).throttle, 1.0);
+        // BRAKE overrides it (the pedal buttons).
+        t.set_pedals(PedalKind::Buttons);
+        let (bx, by) = centre(lay.pedals[2]);
+        t.down(2, bx, by);
+        let s = input.update(0.1, Some(&mut t));
+        assert_eq!((s.throttle, s.brake), (0.0, 1.0));
+        t.up(2);
+        assert_eq!(
+            input.update(0.1, Some(&mut t)).throttle,
+            1.0,
+            "back after BRAKE"
+        );
+        // Hidden controls: no auto gas.
+        t.show(false);
+        assert_eq!(input.update(0.1, Some(&mut t)).throttle, 0.0);
+    }
+
+    /// Tilt: the stick stands in until the sensor answers, then the wheel
+    /// steers; the stick and the ◂ ▸ pads can't be touched meanwhile.
+    #[test]
+    fn tilt_takes_over_from_the_stick_when_the_sensor_answers() {
+        let lay = Layout::new(915.0, 412.0, Insets::default());
+        let tilt = Arc::new(Mutex::new(TiltSteer::new()));
+        let mut t = TouchControls::new(lay);
+        t.tilt = Some(tilt.clone());
+        t.set_mode(Steering::Tilt);
+        t.show(true);
+        let mut input = Input::new();
+        tilt.lock().unwrap().enable(true, &mut NoSensor, 0.0);
+        input.update(0.1, Some(&mut t));
+        assert_eq!(t.steering, Some(Steering::Stick), "no sensor: the stick");
+        t.down(1, 200.0, 300.0);
+        t.moved(1, 240.0, 300.0);
+        assert!(
+            input.update(0.1, Some(&mut t)).steer > 0.0,
+            "the stick steers"
+        );
+        // A sensor that answers later takes over (and lets go of the stick).
+        // Sideways (angle 90), its top end lowered 20°: a left turn.
+        tilt.lock()
+            .unwrap()
+            .on_orientation(Some(-20.0), Some(-90.0), 90.0);
+        let s = input.update(1.0 / 120.0, Some(&mut t));
+        assert_eq!(t.steering, Some(Steering::Tilt));
+        assert!(t.stick.is_none());
+        assert!(s.analog && s.steer < 0.0, "the phone turned left");
+        for _ in 0..120 {
+            input.update(1.0 / 120.0, Some(&mut t));
+        }
+        let full = input.state.steer;
+        assert!(full < -0.5);
+        near(t.wheel, full * 90.0, 1e-12);
+        // A corner touch holds no pad, and no stick starts.
+        t.down(2, 4.0, 4.0);
+        t.down(3, 200.0, 300.0);
+        assert_eq!(t.held, Held::default());
+        assert!(t.stick.is_none());
     }
 }

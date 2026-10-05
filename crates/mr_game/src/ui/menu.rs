@@ -114,11 +114,11 @@ fn shown(sel: Sel, s: &Settings) -> String {
         .map_or(v, |(_, label)| label)
 }
 
-/// `TILT_NOTES[tilt.state]` when tilt is chosen. Tilt itself is WP 6.6;
-/// until then the sensor never answers, as on a desktop.
+/// `TILT_NOTES[tilt.state]` when tilt is chosen (`showTiltState`; the
+/// sensor is `play::tilt`, WP 6.6).
 fn tilt_note(s: &Settings) -> &'static str {
     if s.steering == "tilt" {
-        "No tilt sensor answered; steering with the thumb stick"
+        crate::play::tilt::note(crate::play::tilt::state())
     } else {
         ""
     }
