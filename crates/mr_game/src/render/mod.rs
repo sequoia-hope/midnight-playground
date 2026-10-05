@@ -15,6 +15,8 @@
 //! - [`post`]: UnrealBloomPass and OutputPass.
 //! - [`instancing`]: an `InstancedMesh` as one entity and one instanced
 //!   draw, as three draws it.
+//! - [`sort`]: the transparent pass in three's order (`renderOrder`, then
+//!   depth, D810).
 
 pub mod instancing;
 pub mod lighting;
@@ -22,6 +24,7 @@ pub mod material;
 pub mod pmrem;
 pub mod post;
 pub mod sky;
+pub mod sort;
 
 pub use lighting::Lighting;
 pub use material::{SharedImages, ThreeMaterial};
@@ -154,6 +157,7 @@ impl Plugin for ThreeRenderPlugin {
                 ),
             );
 
+        sort::plugin(app);
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
