@@ -26,6 +26,7 @@
 //! - [`warmup`]: every pipeline the scene needs, compiled behind the
 //!   loading screen (WP 2.6).
 //! - [`status`]: what the page and the window title show.
+//! - [`viewer`]: the level viewer, "god mode" (`?view=god`, SPEC 8.6).
 //!
 //! The web build comes in two backends, WebGPU and WebGL2 (the `mr_webgl2`
 //! cfg), one wasm file each; the page picks (WP 2.7).
@@ -45,6 +46,7 @@ pub mod render;
 pub mod stations;
 pub mod status;
 pub mod ui;
+pub mod viewer;
 pub mod warmup;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -348,6 +350,10 @@ pub fn fly_system(
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     play: Option<Res<play::Play>>,
 ) {
+    // The level viewer drives them itself (`viewer`).
+    if viewer::on(&opts.o) {
+        return;
+    }
     // The race drives the camera and the sky (`play`); without one (the
     // menu, `ui`) the attract camera flies.
     if opts.o.race_on() && play.as_ref().is_none_or(|p| p.race.is_some()) {
@@ -562,6 +568,7 @@ pub fn app(o: Options, hq: bool) -> App {
     play::plugin(&mut app);
     preview::plugin(&mut app);
     ui::plugin(&mut app);
+    viewer::plugin(&mut app);
     animate::plugin(&mut app);
     levels::plugin(&mut app);
     #[cfg(not(target_arch = "wasm32"))]
