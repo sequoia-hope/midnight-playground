@@ -1034,6 +1034,24 @@ time; the HUD's uniforms written in place (D865) about 0.12 ms of a race
 frame's wall time and the GPU objects made per frame. The race's GPU
 process went from 3.5 to 1.9 ms a frame with all of them.
 
+**Pictures.** The build after against the build before, each in turn as
+`dist/next`, through the same tools: every level's screenshot stations
+from the default (built) path on WebGPU (`rust-web-stations.mjs`, 398
+stations), 392 identical to the pixel and six with one pixel different
+(Coast 04250-high, five of Seaside's high stations); flying those again
+from both builds, the same single pixels flip between two runs of either
+build, so they are run-to-run noise, not the change. Against the JS
+shots (`cargo xtask parity shots`): 398 stations, 0 over the limits,
+worst 0.925 mean ΔE00 and 5.171 block 95 %, as before. WebGL2, three
+stations a level (18): all identical. The five staged effect scenes
+(`effects-scenes.mjs`) on WebGPU and WebGL2: all identical. The HUD
+(`hud-shots.mjs`: Sierra at 20 s desktop and iPhone portrait, Sierra at
+101.5 s, Seaside at 40 s, the Cruise at 30 s, two runs of each build):
+the dial, minimap, speed lines and texts draw the same; the scenes behind
+differ between any two runs by the race's frame timing, as D826 notes.
+The `gamepad` (8 tests) and `race-flow` (11) e2e suites pass on the
+final build.
+
 **`simd128`** (D867, the owner's call): two alternating rounds at 60 Hz,
 load 6 to 7, main thread 0.88 / 0.87 ms against 0.99 / 0.88 (Sierra), 0.75
 / 0.76 against 0.82 / 0.78 (Seaside); 8.83 against 8.99 MB after gzip.
