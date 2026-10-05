@@ -284,7 +284,7 @@ impl Overview {
 pub fn fit_height(w: f64, d: f64, aspect: f64) -> f64 {
     let t = (FOV_Y_DEG.to_radians() / 2.0).tan();
     let half = (d / 2.0).max(w / 2.0 / aspect.max(0.1));
-    (half / t * 1.08).max(100.0)
+    (half / t * 1.12).max(100.0)
 }
 
 /// The ride: the game's fly camera (`fly::fly_camera`), its speed, height,

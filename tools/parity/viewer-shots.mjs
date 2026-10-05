@@ -10,7 +10,7 @@
 //
 //   cargo xtask web --release
 //   node tools/parity/viewer-shots.mjs [--levels coast,seaside] [--device desktop|iphone]
-//       [--secs 4] [--race] [--no-shots]
+//       [--secs 4] [--race] [--no-shots] [--menu]
 //
 // Writes parity/report/viewer/<level>-<view>.png, viewer-<device>.json and
 // index.html (all devices measured so far). The working tree is answered by
@@ -70,7 +70,8 @@ async function measure(g, ms, during = async () => {}) {
 }
 
 async function shot(g, name) {
-  if (!shots) return;
+  // The review pictures are the desktop's; a phone adds its own.
+  if (!shots || (device !== 'desktop' && !name.startsWith('touch-'))) return;
   await g.frames(8);
   await g.shot(name, OUT);
 }
@@ -118,6 +119,12 @@ for (const level of levels) {
       await set(g, { folded: false });
       await shot(g, `${level}-panel.png`);
       await set(g, { folded: true });
+    } else {
+      // A phone: the panel open over the street view, and the touch
+      // controls.
+      await set(g, { mode: 'free', route: len * 0.3, folded: false });
+      await shot(g, `touch-${device}-${level}.png`);
+      await set(g, { folded: true });
     }
     // Fog off and the far plane out, beside the game's view: 120 m above
     // the road half way, looking along it.
@@ -152,6 +159,11 @@ for (const level of levels) {
     } finally { await rg.close(); }
   }
   await fs.writeFile(path.join(OUT, `viewer-${device}.json`), JSON.stringify(results, null, 1));
+}
+// The menu with its Level viewer button.
+if (shots && args.includes('--menu')) {
+  const m = await openGame(browser, { device, storage: { 'mr.level': levels[0] }, downloads: OUT });
+  try { await m.frames(10); await m.shot(`menu-${device}.png`, OUT); } finally { await m.close(); }
 }
 await browser.close();
 
@@ -196,6 +208,12 @@ for (const lv of LEVEL_IDS) {
   if (!imgs.length) continue;
   html += `<h2>${esc(lv)}</h2><div class="grid">`;
   for (const [k, cap] of imgs) html += `<figure><a href="${lv}-${k}.png"><img loading="lazy" src="${lv}-${k}.png" alt="${esc(lv)}: ${esc(cap)}"></a><figcaption>${esc(cap)}</figcaption></figure>`;
+  html += '</div>';
+}
+const extra = [...have].filter((f) => /^(touch|menu)-.*\.png$/.test(f)).sort();
+if (extra.length) {
+  html += `<h2>Touch and the menu's button</h2><div class="grid">`;
+  for (const f of extra) html += `<figure><a href="${f}"><img loading="lazy" src="${f}" alt="${esc(f)}"></a><figcaption>${esc(f.replace(/\.png$/, ''))}</figcaption></figure>`;
   html += '</div>';
 }
 html += '</body></html>\n';

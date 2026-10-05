@@ -197,13 +197,27 @@ fn frame_in(
     tr: Res<crate::TrackRes>,
     windows: Query<&Window, With<PrimaryWindow>>,
 ) {
-    if let Ok(w) = windows.single() {
-        let css =
+    // CSS px per logical px, measured as the race's controls measure it
+    // (the canvas's CSS width over the window's logical width); and the
+    // pointer's units to logical px: winit hands positions in the device's
+    // pixels over the overridden scale factor (`play::web`'s
+    // `touch_scale` takes them to CSS px).
+    let css_w = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id("game"))
+        .map_or(0, |c| c.client_width());
+    if let Ok(w) = windows.single()
+        && css_w > 0
+        && w.width() > 0.0
+    {
+        let css = f64::from(css_w) / f64::from(w.width());
+        let to_css =
             f64::from(w.resolution.scale_factor() / w.resolution.base_scale_factor().max(0.01));
         if (css - v.css).abs() > 1e-4 {
             v.css = css;
             v.dirty = true;
         }
+        v.ptr = to_css / css;
     }
     if let Some(mr) = mr()
         && let Ok(ins) = Reflect::get(&mr, &JsValue::from_str("insets"))

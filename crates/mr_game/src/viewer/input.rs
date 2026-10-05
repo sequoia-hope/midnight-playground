@@ -267,15 +267,17 @@ pub fn gather(
         .find(|(_, _, vis)| vis.get())
         .map(|(n, t, _)| rect(n, t));
     let on_panel = |p: Vec2| panel_rect.is_some_and(|r| r.contains(p));
+    let to_px = v.ptr as f32;
     let mut events: Vec<(u64, TouchPhase, Vec2)> = Vec::new();
     for t in touches.read() {
-        events.push((t.id, t.phase, t.position));
+        events.push((t.id, t.phase, t.position * to_px));
     }
     for c in cursor.read() {
-        ptr.cursor = Some(c.position);
+        let p = c.position * to_px;
+        ptr.cursor = Some(p);
         for id in [MOUSE, MOUSE_RIGHT] {
             if ptr.fingers.iter().any(|(i, _)| *i == id) {
-                events.push((id, TouchPhase::Moved, c.position));
+                events.push((id, TouchPhase::Moved, p));
             }
         }
     }
@@ -387,8 +389,7 @@ pub fn gather(
                             *scrolled = true;
                         }
                         if *scrolled && let Ok(mut s) = body.single_mut() {
-                            let k = 1.0 / v.css.max(0.01) as f32;
-                            s.0.y = (s.0.y - (p.y - last.y) * k).max(0.0);
+                            s.0.y = (s.0.y - (p.y - last.y)).max(0.0);
                         }
                         *last = p;
                     }

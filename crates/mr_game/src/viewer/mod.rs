@@ -161,6 +161,8 @@ pub struct Viewer {
     /// The view's size in logical px, and CSS px per logical px.
     pub view: (f64, f64),
     pub css: f64,
+    /// Pointer positions (Bevy's touch and cursor events) to logical px.
+    pub ptr: f64,
     /// The link as of the last settled frame.
     pub query: String,
     level: String,
@@ -230,6 +232,7 @@ impl Viewer {
             clock: 0.0,
             view: (1280.0, 800.0),
             css: 1.0,
+            ptr: 1.0,
             query: String::new(),
             level: o.level.clone(),
             touch,
@@ -250,7 +253,8 @@ impl Viewer {
         } else {
             (track.road_end() - 1.0).max(1.0)
         };
-        let n = track.n.min(track.px.len());
+        // The box of the route as far as the road goes (a point-to-point
+        // route's runout too, past its last sample).
         let mut b = [
             f64::INFINITY,
             f64::NEG_INFINITY,
@@ -258,14 +262,12 @@ impl Viewer {
             f64::NEG_INFINITY,
         ];
         let mut ground = f64::INFINITY;
-        for i in 0..n {
-            let (x, y, z) = (
-                f64::from(track.px[i]),
-                f64::from(track.py[i]),
-                f64::from(track.pz[i]),
-            );
-            b = [b[0].min(x), b[1].max(x), b[2].min(z), b[3].max(z)];
-            ground = ground.min(y);
+        let mut s = 0.0;
+        while s <= self.route_len {
+            let f = track.frame(s);
+            b = [b[0].min(f.x), b[1].max(f.x), b[2].min(f.z), b[3].max(f.z)];
+            ground = ground.min(f.y);
+            s += 5.0;
         }
         self.bounds = b;
         self.ground = if ground.is_finite() { ground } else { 0.0 };
