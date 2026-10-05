@@ -106,6 +106,8 @@ pub enum Act {
     Choose(Sel, String),
     CloseDropdown,
     MusicLink,
+    /// The level viewer on the chosen level (SPEC 8.6).
+    Viewer,
     PadSetup,
     Resume,
     EndRun,
@@ -1082,6 +1084,11 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
         Act::MusicLink => {
             #[cfg(target_arch = "wasm32")]
             web::open_music_player();
+        }
+        Act::Viewer => {
+            if ui.screen == Screen::Menu && !busy {
+                crate::viewer::open(&ui.settings.level);
+            }
         }
         Act::PadSetup => {
             if ui.screen == Screen::Menu || ui.screen == Screen::Pause {
