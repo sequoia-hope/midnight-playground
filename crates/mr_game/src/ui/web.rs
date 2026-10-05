@@ -335,11 +335,6 @@ fn take_commands(mut ui: ResMut<UiState>, mut ctx: super::ActCtx, controls: supe
                     r.touch.auto_gas = v["on"].as_bool().unwrap_or(true);
                 }
             }
-            // The pursuit suite's staging (`__pursuit.activate`, roadblocks,
-            // `pv.hurt`, `pv.say`): Hot Pursuit's client is M8's (D906).
-            Some("pursuit" | "unit" | "roadblock" | "spikes" | "hurt" | "say") => {
-                warn!("__mr.stage: {c} waits for Hot Pursuit (roadmap M8)");
-            }
             _ => warn!("__mr.stage: unknown command {c}"),
         }
     }

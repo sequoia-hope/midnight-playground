@@ -149,8 +149,46 @@ pub struct Race {
     /// (`race.phys.events.push(…)` in the JS suites: a wall impact for the
     /// rumble).
     pub inject: Vec<SimEvent>,
+    /// Hot Pursuit's radio chatter (`PursuitView.say`): the lines said this
+    /// frame ([`super::radio`]).
+    pub radio: super::radio::Radio,
+    /// Lines the test bridge says (`race.pv.say(line, now)`), said at the
+    /// next frame.
+    pub stage_say: Vec<(mr_audio::radio::lines::Line, bool)>,
+    /// Hot Pursuit's options the simulation leaves to the page
+    /// (`?cops=N`, the flash setting), set on every new field.
+    pub pursuit_opts: PursuitOpts,
+    /// Frames run (not paused): tells a frame's `radio.said` from the
+    /// last one's (the HUD shows each line once).
+    pub frames: u32,
     was_nitro: bool,
     offroad: f64,
+}
+
+/// `new PursuitView(race, { cops, flash })`: the units' cap (`?cops=N`, 6
+/// by default) and whether the lights strobe (the menu's option).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PursuitOpts {
+    pub cops: f64,
+    pub flash: bool,
+}
+
+impl Default for PursuitOpts {
+    fn default() -> PursuitOpts {
+        PursuitOpts {
+            cops: 6.0,
+            flash: true,
+        }
+    }
+}
+
+/// `new Pursuit({ maxUnits: cops, flash })` on a field the simulation made
+/// with its defaults (6 units, flashing).
+fn apply_pursuit_opts(st: &mut SimState, o: PursuitOpts) {
+    if let Some(pv) = st.pv.as_mut() {
+        pv.pursuit.max_units = mr_math::clamp(o.cops, 0.0, 6.0) as usize;
+        pv.pursuit.flash = o.flash;
+    }
 }
 
 /// Every car slot of a state: the players, the rivals, the traffic pool
@@ -192,16 +230,28 @@ impl Race {
             feel: None,
             pad_reset: None,
             inject: Vec::new(),
+            radio: Default::default(),
+            stage_say: Vec::new(),
+            pursuit_opts: PursuitOpts::default(),
+            frames: 0,
             was_nitro: false,
             offroad: 0.0,
         }
+    }
+
+    /// Hot Pursuit's page options, for this field and every restart.
+    pub fn set_pursuit_opts(&mut self, o: PursuitOpts) {
+        self.pursuit_opts = o;
+        apply_pursuit_opts(&mut self.session.curr, o);
+        apply_pursuit_opts(&mut self.session.prev, o);
     }
 
     /// `startRace` again on the same level: a new field on the grid, keys
     /// pressed before it do not carry in.
     pub fn restart(&mut self, opts: RaceOpts) {
         self.setup.opts = opts;
-        let curr = SimState::new(&self.session.lr, opts);
+        let mut curr = SimState::new(&self.session.lr, opts);
+        apply_pursuit_opts(&mut curr, self.pursuit_opts);
         self.session.prev = curr.clone();
         self.session.curr = curr;
         self.session.events.clear();
@@ -214,6 +264,7 @@ impl Race {
         self.input.enabled = true;
         self.hush_pads = true;
         self.was_nitro = false;
+        self.radio = Default::default();
         self.starts = next_start();
     }
 
@@ -257,6 +308,11 @@ impl Race {
         if self.mode == Mode::Paused {
             return;
         }
+        self.frames += 1;
+        self.radio.frame(dt);
+        for (line, force) in std::mem::take(&mut self.stage_say) {
+            self.radio.say(line, force);
+        }
         if self.input.consume("camera") {
             self.rig.cycle();
         }
@@ -295,6 +351,8 @@ impl Race {
         for e in &events {
             self.on_event(e);
         }
+        // WP 8.4: pursuit events → radio lines here.
+        self.radio.events(&mut self.audio_ticks);
         self.log = events;
         self.rumble();
         self.stuck_hint();
@@ -396,16 +454,24 @@ impl Race {
                     }
                 }
             },
-            // PursuitView's jolts for the player.
-            SimEvent::Pursuit(pe) => match pe {
-                PursuitEvent::Takedown {
-                    by_player: true, ..
-                } => self.kicks.push((0.8, 0.7, 400.0)),
-                PursuitEvent::Spiked { player: true, .. } => self.kicks.push((0.6, 0.8, 350.0)),
-                PursuitEvent::Barrier { player: true, .. } => self.kicks.push((0.5, 0.6, 250.0)),
-                PursuitEvent::Busted { player: true, .. } => self.kicks.push((0.9, 0.9, 700.0)),
-                _ => {}
-            },
+            // PursuitView's texts and camera jolts, then its rumble.
+            SimEvent::Pursuit(pe) => {
+                super::hud::pursuit::event(&mut self.hud, &mut self.rig, pe);
+                self.pursuit_kick(pe);
+            }
+            _ => {}
+        }
+    }
+
+    /// PursuitView's jolts for the player.
+    fn pursuit_kick(&mut self, pe: &PursuitEvent) {
+        match pe {
+            PursuitEvent::Takedown {
+                by_player: true, ..
+            } => self.kicks.push((0.8, 0.7, 400.0)),
+            PursuitEvent::Spiked { player: true, .. } => self.kicks.push((0.6, 0.8, 350.0)),
+            PursuitEvent::Barrier { player: true, .. } => self.kicks.push((0.5, 0.6, 250.0)),
+            PursuitEvent::Busted { player: true, .. } => self.kicks.push((0.9, 0.9, 700.0)),
             _ => {}
         }
     }
@@ -612,5 +678,90 @@ mod tests {
         race.frame(0.05);
         assert_eq!(race.mode, Mode::Race);
         assert_eq!(race.session.curr.tick, t + 6);
+    }
+
+    fn pursuit_race(level: &str) -> Race {
+        let lr = LevelRuntime::new(mr_levels::level_by_id(level)).unwrap();
+        Race::new(
+            lr,
+            Setup {
+                opts: RaceOpts {
+                    car: "sports",
+                    seed: 1,
+                    pursuit: true,
+                    heat: 2.0,
+                },
+                autodrive: true,
+                touch: false,
+            },
+            TouchControls::default(),
+        )
+    }
+
+    /// `?cops=N` and the flash option reach the pursuit, and stay over a
+    /// restart.
+    #[test]
+    fn pursuit_options_reach_the_pursuit() {
+        let mut race = pursuit_race("sierra");
+        assert_eq!(race.session.curr.pv.as_ref().unwrap().pursuit.max_units, 6);
+        race.set_pursuit_opts(PursuitOpts {
+            cops: 2.0,
+            flash: false,
+        });
+        let pu = &race.session.curr.pv.as_ref().unwrap().pursuit;
+        assert_eq!((pu.max_units, pu.flash), (2, false));
+        let opts = race.setup.opts;
+        race.restart(opts);
+        let pu = &race.session.curr.pv.as_ref().unwrap().pursuit;
+        assert_eq!((pu.max_units, pu.flash), (2, false));
+    }
+
+    /// A line the bridge says goes through the radio in the next frame,
+    /// and is gone the frame after; a second, unforced line within the
+    /// gap is not said.
+    #[test]
+    fn staged_lines_go_through_the_radio() {
+        use mr_audio::radio::lines::Line;
+        let mut race = pursuit_race("sierra");
+        let line = |t: &str| Line {
+            text: t.into(),
+            parts: vec![t.into()],
+        };
+        race.stage_say.push((line("one"), true));
+        race.stage_say.push((line("two"), false));
+        race.frame(1.0 / 60.0);
+        let said: Vec<_> = race.radio.said.iter().map(|l| l.text.as_str()).collect();
+        assert_eq!(said, ["one"]);
+        race.frame(1.0 / 60.0);
+        assert!(race.radio.said.is_empty());
+    }
+
+    /// A pursuit race, headless: the police give chase and the HUD says
+    /// so (PURSUIT), as PursuitView.events shows it.
+    #[test]
+    fn a_pursuit_shows_on_the_hud() {
+        let mut race = pursuit_race("desert");
+        let mut centers = Vec::new();
+        let mut toasts = Vec::new();
+        for _ in 0..(120.0 * 60.0) as u32 {
+            race.frame(1.0 / 60.0);
+            for e in &race.log {
+                if let SimEvent::Pursuit(_) = e {
+                    if let Some(c) = &race.hud.center {
+                        centers.push(c.clone());
+                    }
+                    if let Some(t) = &race.hud.toast {
+                        toasts.push(t.clone());
+                    }
+                }
+            }
+            if centers.iter().any(|c| c == "PURSUIT") {
+                break;
+            }
+        }
+        assert!(
+            centers.iter().any(|c| c == "PURSUIT"),
+            "{centers:?} {toasts:?}"
+        );
     }
 }

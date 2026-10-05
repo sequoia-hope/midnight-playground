@@ -7863,3 +7863,230 @@ does the same (a car past the end of the extras has no entry and shows its
 flames, no random draw), so traffic changes too. DEVIATIONS.md lists it
 with the JS's quirks; making the flames show only with nitro is a
 one-line fix on both sides and the owner's call.
+
+## WP 8.3 decisions: the pursuit HUD, results and mode switch
+
+Roadmap M8, WP 8.3 (`HUD.js`'s Hot Pursuit furniture, `hud.css`'s Hot
+Pursuit rules, `PursuitView.events`' texts, `main.js`'s pursuit setup and
+results). Decisions D960 to D979.
+
+## D960. The mode switch, end to end
+
+2026-10-05. What WP 6.2 built already holds: the level card's Race / Hot
+Pursuit control saves `mr.mode.<level>`, `ui::arm` gives the race
+`pursuit` from it (`?pursuit=1|0` forces it, levels without police never
+have it), the start button says Hot Pursuit, and the results keep the
+best time under `mr.best.<level>.pursuit`. The `pursuit: false` call sites
+are not race starts: `cars.rs` is the attract loop's stand-in cars, and
+`session.rs`, `flow.rs`, `camera.rs` and `pose.rs` have it in tests. The
+pursuit suite's menu test (toggle, remembered per level, a pursuit from
+the menu) and results test (the tiles, the `.pursuit` key) pass against
+the Rust build. Two of `startRace`'s pursuit options were missing and are
+added: `?cops=N` (`Number(params.get('cops'))`, 6 by default) and the
+menu's flash option (`settings.flash`). `mr_sim::race::SimState::new`
+makes the pursuit with 6 units and flashing lights, as the recordings do;
+the client sets `pursuit.max_units` (`clamp(cops, 0, 6)`) and `flash` on
+the new field and on every restart (`flow::PursuitOpts`,
+`Race::set_pursuit_opts`), so the simulation's `RaceOpts`, its traces and
+their hashes are unchanged. `holdControls()` (`PursuitView.js:80-84`)
+was in the simulation already (`race::hold_controls`); the busted test
+checks it (R does nothing, the throttle does nothing, the clock runs).
+
+## D961. `PursuitView.events`: who shows what
+
+2026-10-05. The JS's one switch is four parts in the port: the rules
+(the release onto the road, the barrier's slowdown, a bust's crash) are
+the simulation's (`race::pursuit_events`, WP 1.6); the centre pops,
+toasts and the camera's jolts and snap are `play/hud/pursuit.rs` (this
+package), called from `flow::Race::on_event` for each pursuit event with
+the JS's texts, durations and classes (PURSUIT, ESCAPED, TAKEDOWN,
+SPIKED!, BUSTED, WRECKED; SPOTTED, COOLDOWN — STAY OUT OF SIGHT, HEAT
+LEVEL n, (HEAVY) ROADBLOCK AHEAD, SPIKE STRIP AHEAD, X HIT THE SPIKES,
+SPIKES / ROADBLOCK DODGED, X BUSTED, BACK IN THE RACE; `cam.bump(1)`,
+`bump(1.2)`, `cam.snap`); the rumble stays in `flow` (WP 6.4); the radio
+lines, `say()` and its rate limit, and the sounds are WP 8.4's
+(`play/radio.rs`); the smoke, sparks and spike strip are WP 8.2's.
+
+## D962. The furniture's nodes, and what is approximated
+
+2026-10-05. The nodes are built only in a pursuit race (the HUD's key
+gains `pursuit`; the JS builds them hidden in every race, and
+`setPursuit` shows them), in `index.html`'s order: `#hud-pen` under the
+lap line, `#hud-pz` after the minimap, `#hud-dmg` in `.hud-br` (the
+touch speedo box grows to 74 px and its nitro bar moves up to 16 px, as
+`.hud-br.pz-on` does), `#hud-radio` and `#hud-hold` after the toast.
+What each shows is the model's (`Hud::update_pursuit`, WP 6.3, with
+`hud_in`'s `pursuit` now `pv.hudState()`: `Pursuit.hud(damage)` with
+the served penalty, the units with the parked ones last as disabled, the
+roadblock and spike marks). The sizes follow the CSS at its breakpoints
+(`PzLay`: desktop, `max-width: 720px`, touch landscape and portrait,
+`--inB` and `--thumbs-top` from the touch layout for the radio pill).
+The heat stars are the HUD material's fourth kind (`hud.wgsl` `stars`):
+the clip-path polygon as a signed distance, the `<i>` fill from the
+left with its vertical gradient (`.max`'s too), `skewX(-8deg)` undone
+per pixel, the `drop-shadow(0 2px 5px)` as the stars' alpha 2 px lower
+over a ±5 px ramp, and the patrol opacity. The transitions and
+animations run from the real clock like D824's: the stars' `opacity
+.4s` (not while hidden, where none runs), the radio pill's `opacity
+.3s, transform .3s` (slide up 10 px), `pzBlink .5s steps(1)` on the BUST
+label with flashing on, `dmgPulse .6s ease-in-out alternate` on a
+critical bar. Left out, as D822 and D573 leave such things: the hold
+title's coloured glow (its dark shadow stays), the radio pill's and the
+bust track's box shadows (Bevy draws a box shadow under a translucent
+node), and the radio line's `text-overflow: ellipsis` (Bevy text has
+none; the line is cut at the pill's edge). DEVIATIONS lists them.
+
+## D963. The radio line from the lines said
+
+2026-10-05. The HUD shows each line `race.radio.said` holds (the lines
+past the rate limit this frame, `play/radio.rs`, WP 8.4's) with
+`hud.radio(text, Math.max(3, text.length / 14))`, the length in UTF-16
+units as the JS counts it. A paused race keeps last frame's list, so the
+HUD takes a list once per race frame (`Race::frames`, counted after the
+pause check). The bridge's `pv.say(line, now)` goes into
+`Race::stage_say` and through the radio's own `say` in the next frame,
+after the radio's new frame clears the list: the HUD text and the voice
+agree, and the rate limit applies. (`play/radio.rs` is WP 8.4's, D980:
+the event table and the gap run per tick; this package built against a
+stub with the same names.)
+
+## D964. The bridge for Hot Pursuit
+
+2026-10-05, filling D906. `__mr.pursuit` is null without a pursuit (so
+`window.__pursuit` is undefined and `__race.pv` null, as the JS clears
+them) and otherwise `{available, state, heat, maxHeat, heatMeter, bust,
+evade, busts, takedowns, flash, maxUnits, units[{active, mode, siren, s,
+lat, speed, callsign, type, x, z, health, target, visible}], player{hold,
+holdReason, holdTotal, grace, bust}, pv{damage, wrecks, penalty}}`.
+`__mr.hud` gains `pz, pzBar, dmg, hold, pen, radio` (each shown as its
+`.hidden` says), `radioText`, `pzLabel` and the stars' fills;
+`rust-bridge.js` answers `#hud-pz`, `#pz-stars`, `#pz-bar`, `#pz-label`,
+`#hud-dmg`, `#hud-hold`, `#hud-pen`, `#hud-radio` (`.show`) and
+`#hud-radio-text` from them. New staging: `unit {i, s, lat, speed, mode,
+dir}` (`__pursuit.activate`), `hurt {d}` (`pv.hurt`, through
+`mr_sim::race::hurt_player`, an addition to the simulation's API: the
+same `hurt` a tick runs), `say {text, parts, force}`, `roadblock {s}`,
+`spikes {s}`, and `set` of `pursuit.state`,
+`pursuit.units.<i>.speed|s|lat|target` (`race.playerBody` is the
+player, a rival `rival:<i>`) and `pv.penalty|damage`. A unit's
+`v.model.root.visible` waits for WP 8.1's `PoliceDrawn` (one bool per
+unit from the police draw); until it merges the bridge says false.
+`__audio._radioCur` and the radio clips' requests are WP 8.4's.
+
+## D965. The pursuit suite, and the pictures
+
+2026-10-05, release build, this machine. `js-suites.mjs` skips none of
+the pursuit tests now. Before WP 8.4 merged (without WP 8.1 and 8.4): 5
+pass —
+the menu toggle, race mode (no police), busted (meter, BUST bar, hold,
+R locked, held still, the clock runs, released ahead of the police, the
+penalty under the clock), wrecked (damage bar, the wreck, repaired) and
+results (tiles, `best.<level>.pursuit`); 2 wait: the police chase (all
+but `active units are drawn`, which waits for `PoliceDrawn`) and dispatch
+(the clip preload and `__audio._radioCur` are WP 8.4's; its HUD half,
+`#hud-radio-text` after `pv.say`, was checked by hand). `hud-shots.mjs`
+gains `--stage wreck --stage-at t` (at race time t the car is wrecked
+and dispatch says a line, in both games) and lets `--query pursuit=1`
+replace its default `pursuit=0`. Desert, seed 1, heat 2, beside the JS:
+at 40 s the stars (two and a half), the EVADE bar and the damage bar;
+at 31.5 s after a wreck at 30 s the WRECKED card with its seconds and
+bar, the penalty under the clock, the critical damage bar, the
+cooldown toast and the dispatch pill, on desktop, a phone held sideways
+and upright: the same places, sizes and colours, but for D962's
+approximations (and the radio's text, whose event lines are WP 8.4's).
+With WP 8.4 merged (1995b38): 6 of 7 pass, dispatch included, and the
+wreck picture's dispatch line is the JS's ("Suspect vehicle is totalled.
+Tow it back onto the road."); the police chase waits only for WP 8.1's
+`PoliceDrawn`. The whole Rust run before the merge: as D908's table but
+for pursuit (5 pass, 2 waiting) and one `keyboard` failure that passed
+when run again (the nitro on an empty tank, a timing flake on the busy
+machine; nothing of this package's touches it).
+
+## WP 8.4 decisions (Hot Pursuit's audio)
+
+## D980. The radio half of PursuitView is `play::radio`, per tick
+
+2026-10-05, WP 8.4. `PursuitView.js`'s radio (`radioT` and its four
+seconds, `say(line, force)`, `zoneName()`, `heading()` and the table in
+`events()` of what each pursuit event says and which stinger it plays) is
+`crates/mr_game/src/play/radio.rs`. `flow::Race` gains `radio: Radio` and
+`stage_say` (the test bridge's `race.pv.say(line, now)`, said at the next
+frame), and `Race::frame` calls `radio.frame(dt)` after the pause check,
+says the staged lines, and after the frame's event loop runs
+`radio.events(&mut audio_ticks)`. A line that gets through goes into
+`race.radio.said` (cleared each frame), which the HUD (WP 8.3) shows as
+`hud.radio(text, max(3, len / 14))`, and into its tick's calls for the
+voice. JS's `RADIO_GAP` is `SAY_GAP` here: `mr_audio`'s `RADIO_GAP` is
+already the pause between a line's clips. The JS runs `events(dt)` once per
+`Race.update`, and the parity drives update once per 1/120 s tick, so the
+countdown of the gap and the events are per tick (each tick's pursuit
+events ride on its `TickAudio`), not per frame: the lines, their gating and
+their place among the audio calls are then the JS drive's exactly
+(D981). `frame(dt)` only clears the frame's lines. The zone and heading are
+read at the player's car after the tick, as `sync` reads them after the
+update; the callsign of a unit an event names is `pursuit.police(i)`'s
+(units, then the roadblock cars, as the events number them).
+
+## D981. PursuitView's audio rides on `TickAudio`; the pursuit drive's calls are the JS's
+
+2026-10-05, WP 8.4. `TickAudio` gains `pursuit: Option<PursuitTick>` (the
+tick's pursuit events, the zone, heading, callsigns and state the radio
+reads, and what `PursuitView.audio` reads: the units with their lights on,
+not disabled, held or standing down, within 360 m, with their closing
+speed and pattern, `hilo` searching, `yelp` under 60 m, else `wail`; the
+mood, off while held, after the finish and on patrol; the damage; the
+spiked tyres and the speed) and `pv: Vec<PvCall>` (`events()`' calls:
+`sirenHorn`, `escaped`, `takedown(1)`, `spikePop`, the barrier's
+`impact(0.35, 0)`, `busted`, `wrecked` and `radioLine(parts)`). The audio
+replays a tick as `Race.update` does: the race's one-shots, then
+PursuitView's calls (in `sync`), then `update`, the nitro, the rivals, then
+`setSirens` (the three nearest, panned by the camera as the rivals are),
+`setPursuitMood`, `setDamage`, `setSpikedTyres` while the sound is ready,
+then the tunnel. A takedown by the player and a wreck shake the audio's
+camera rig (`cam.bump(1)`, `cam.bump(1.2)`), which the pans hear. A race
+with a pursuit fetches its radio clips after `startRace`'s calls
+(`radioVoice.prefetch(radioClips({ zones, units, names }))`: the track's
+zones, every unit's callsign, the rivals' names), and the last race's
+pursuit is disposed of (`setSirens([])`, mood off, no damage, no spiked
+tyres) there and on the way to the menu, as `race?.dispose()` does.
+`play::audio::tests::the_scripted_pursuit_makes_the_js_calls` runs the
+client's frame loop through the reference's `pursuit` drive (Sierra, the
+sports car, seed 1, the autopilot, heat 2, 7200 ticks, two ticks a frame)
+and requires all 43,421 calls of `drive-pursuit.jsonl.gz` line for line,
+every argument bit for bit but the camera's pans (31,627 of them, within
+7.8e-16): the prefetch's 66 clip ids, 7200 each of `setSirens`,
+`setPursuitMood`, `setDamage`, `setSpikedTyres`, the nine radio lines, the
+siren horn and the takedown. The same nine lines reach `radio.said`.
+
+## D982. The pursuit drive in the browser
+
+2026-10-05, WP 8.4. `tools/parity/rust-audio-race.mjs --drive pursuit`
+runs the web release build through the same drive (`pursuit=1&heat=2`,
+7200 ticks) as D516 runs the race: before the gesture the graph is built
+on a suspended context whose clock stands at 0; a key starts it; then
+the client's 43,421 calls match the JS drive's, the startRace sequence
+with the prefetch (8 calls) included. The rivals' and the sirens' pans
+agree to 7.8e-16; 158 of the car contacts' pans differ by up to 0.014,
+D516's effect (which ticks share a rendered frame). The audio costs 0.23 ms
+a frame on the main thread on average there.
+
+## D983. `__audio._radioCur` gives the browser's own nodes
+
+2026-10-05, WP 8.4. The `pursuit` suite reads the radio transmission's
+sources off `__audio._radioCur.srcs` (`s.buffer.duration`, `s.loop`,
+`s instanceof OscillatorNode`). On the web backend those are real Web
+Audio nodes, so the client hands the page the nodes themselves, not
+stand-ins: `GameAudio::radio_cur_srcs()` lists the transmission's sources
+(the hiss, the clips or the burble's buzz and breath, in order),
+`mr_audio::wa::web::js_node` returns the browser node behind a facade node
+(a `Backend::js_node` that only the web backend answers), and
+`play::audio` publishes `{ srcs }` on `__mr.audio.radioCur` (rebuilt only
+when the transmission changes); `rust-bridge.js`'s `audioView()` returns
+it as `_radioCur`. The radio clips are fetched from `../../audio/radio/`
+relative to the page (D513), so the `performance` resource entries the
+suite counts are the browser's own. With stand-ins for the parts of the
+bridge that are WP 8.3's (`__race.pv.say`, the units' callsigns, the
+radio text), the suite's "dispatch speaks in the recorded voice" test
+passed on the Rust build: the level's clips preloaded, the intercept
+call played as two clips of the right lengths with no burble, an
+unrecorded line got the burble.
