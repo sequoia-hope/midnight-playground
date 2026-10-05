@@ -6544,3 +6544,366 @@ is behind the camera, now puts them first, as three does). Opaque
 objects still
 ignore `renderOrder` (three sorts its opaque list by it too, which
 matters only where depths tie).
+
+## WP 6.3 decisions: the race HUD
+
+## D820. The HUD: an engine-free `HUD` class, and nodes built once
+
+2026-10-04, roadmap WP 6.3 (`HUD.js`, the HUD half of `hud.css`). The
+M4 text HUD (D431, D687) is replaced. `play/hud/model.rs` is the `HUD`
+class without the DOM: `update(dt, st)` with the class's `set` (a text
+is written only when it changed), `toast`, `center`, `radio`,
+`setPursuit` and `updatePursuit`, the zone card on a zone change (once
+started; on a circuit only on lap one), the route dots, the cruise
+panel, the speed lines' opacity and which dial shows. Its `st` is
+`Race.js`'s payload (`play/hud.rs` `hud_in`: `lapS`, the standings, the
+active traffic, the rivals in standings order). `hud.test.js`'s
+thirteen cases are its tests, with the same inputs and outputs, plus
+the readouts, laps, cruise, zone card, toast timing and speed lines.
+`play/hud.rs` lays the elements out and builds the nodes once per race,
+screen size and kind (cruise, circuit, electric, touch); each frame it
+puts the model's view on them, writing a text, width, colour or
+transform only when it differs, so nothing is rebuilt and the layout is
+redone only for what moved (the nitro fill, the route dots, the
+multiplier bar). The model is a new `HUD` at each race start, with
+`mph` from the settings and `bestScore` from the store (D687). Not
+updated while paused (the JS loop skips `race.update`), shown in pause
+and results behind the screens as in the JS, hidden while the race is
+held (D574). The Hot Pursuit furniture (stars, bust and evade bar,
+damage, penalty, hold card, radio) has its state in the model already
+(tested) and `M8:` marks where its nodes go, in `index.html`'s order;
+`hud_in` gives `pursuit: None` until M8's `hudState`. `?hud=0` turns the
+HUD off (pictures and frame times without it).
+
+`play/flow.rs`'s `Hud` gains two counters, `centers` and `toasts` (a
+hook, told to its owner): each call restarts the pop or the toast. The
+centre's class follows its text, one class per text as the JS's calls
+give them (`GO!`, `n PLACE`, `WINNER!`, `ESCAPED`, `TAKEDOWN`: `pop
+go`; `WRONG WAY`, `PURSUIT`, `SPIKED!`, `BUSTED`, `WRECKED`: `warn
+pop`; the rest `pop`). The M4 controls line under the countdown and the
+hidden placeholder panel are gone: the JS HUD has neither, and the menu
+shows the controls.
+
+## D821. The canvases and the speed lines: one UI material
+
+2026-10-04. SPEC 8.1 asks for the dials and minimap as generated 2D
+meshes and the speed lines as a UI shader. Bevy UI draws no meshes, and
+a second camera rendering meshes to a texture would add a pass and its
+own render graph beside the post chain; so all three are one
+`UiMaterial` (`play/hud/material.rs`, `hud.wgsl`), told apart by a
+uniform, so one pipeline and one copy of the material plugin. The
+canvases' paths become signed distances, antialiased over a pixel:
+the dial's backplate, track, redline (or regen) zone, the fill with the
+canvas's diagonal gradient (`createLinearGradient(0, W, W, 0)`, stops
+in sRGB) and the ticks; the minimap's road (s − 500 to s + 900 every
+6 m and the runout, two strokes with round caps and joins), the finish,
+traffic, rivals, the police bars and blinking units (ready for M8), the
+clip circle and the player's arrow; the speed lines' repeating conic
+gradient and radial mask. The CPU side computes the canvas's own
+transform (`play/hud/minimap.rs`, `dials.rs`, tested: the projection,
+the road samples, culling to the circle, the dial angles, labels,
+needle and gradient) and rewrites the uniform only when it changed. The
+dial's labels are text nodes and its needle a turned node above the
+material, as the canvas draws them last. `N₂O` is N, a small low 2 and
+O (Rajdhani has no ₂); its `mix-blend-mode: difference` is a colour
+switch when the fill reaches under it. The nitro pulse is the
+gradient's brightness from the keyframes.
+
+## D822. Text shadows, glows and the minimap's shadow
+
+2026-10-04. Bevy's text shadow is a hard copy with no blur. A CSS
+`text-shadow: 0 y b rgba(0,0,0,a)` becomes a copy y px down with alpha
+`a · 2/b`: at full alpha the copy read as a second glyph on Seaside's
+light sky, where the blurred one is a soft halo. The toast's
+`0 0 14px` blue glow has no hard equivalent and is left out. The
+minimap's `box-shadow` ring is an outline; its 24 px drop shadow is left
+out (Bevy draws a box shadow under the whole node, and the disc is
+translucent, D573).
+
+## D823. Translucent colours on a linear target
+
+2026-10-04. The page composites in sRGB; Bevy blends the UI into the
+post chain's linear Rgba16Float target, where a translucent colour shows
+more of what is behind it: the minimap's dark disc came out at (95, 88,
+78) against the JS's (61, 58, 59) over the same rock. The HUD's
+translucent colours go through `hc()` (and the material's output
+through the same `lin_alpha` in `hud.wgsl`): the alpha that, blended in
+linear, lands where the sRGB blend would over a background of sRGB
+0.25, and close to it over others for the dark panels (black at 50 %
+over sRGB 0.6: 0.28 of the background's light against 0.23); after it the disc reads (76, 70, 64) and the phone's over
+the sky (57, 71, 98) against (49, 61, 85). The menus' screens (WP 6.2)
+have the same effect and do not correct it; `hc` is in `play/hud.rs`
+for them to take if wanted.
+
+## D824. The CSS animations from the real clock
+
+2026-10-04. The browser runs `pop` (.8 s), `zoneCard` (3.6 s), the
+toast's .25 s opacity transition and `nitroPulse` (.18 s alternate) on
+wall time, also while paused; the port computes them from Bevy's real
+time with the CSS timing functions (`ease`, `ease-out` per keyframe
+interval; `fill-mode: both`), tested. Opacity on an element is its
+texts' and shadows' alpha; scale and slide are `UiTransform`s, so they
+move no layout.
+
+## D825. The layout at the CSS's breakpoints
+
+2026-10-04. Desktop; `max-width: 720px` (position 44 px, minimap 120,
+the dial box scaled .7 from its corner, the route bar bottom left at
+50vw); the touch layout (`body.touch`: the small minimap at the safe
+insets, the route bar 30vw at the top in landscape and 70vw at 166 px in
+portrait, the compact speedo box at `--steer-top` + 8, the cruise panel
+at .7, centre text 84 px for every class, which outranks `.warn`'s 54
+in the CSS). The `.pos` line is a row placed on Rajdhani's metrics
+(ascent .93, line 1.276 em: the `sup` at the line's top plus 8 px, the
+count on the baseline). `--steer-top` follows the stick, buttons or
+tilt steering that steers right now (`race.touch.steering`, from the
+touch package, D840+; merged at the two packages' merge).
+
+## D826. L4: the HUD beside the JS
+
+2026-10-04. `tools/parity/hud-shots.mjs` takes the JS game (Rajdhani
+for its Google Fonts request, `?parity=1`, stopped at the tick) and the
+Rust web build (the registered server, the page shooting the first frame
+at that race time) at the same race time, seed 1, the autopilot;
+`--countdown` for the pop; `hud-crops.py` puts parts side by side.
+Pictures in `parity/report/hud/` (not in git), `index.html` there.
+Sierra 20 s on desktop 1280 × 800, iPhone portrait 390 × 844 and
+landscape 844 × 390; Sierra 101.5 s (the Old Mill Valley card and a
+NEAR MISS toast); the electric car's power meter; Seaside 40 s (the lap
+line) on desktop and phone landscape; the Cruise at 30 s (score panel,
+speed lines) on desktop and phone portrait; the countdown's 2; WebGL2 at
+Sierra 20 s desktop and phone and 101.5 s. Every element lands within a
+pixel or two of the JS's, in the same font, size, weight, spacing and
+colour; the dial, its labels and needle, the minimap and route bar match
+mark for mark. What differs: the shadows and the toast's glow (D822),
+`N₂O` in the toasts is N2O (the flow's text, D431), the touch buttons'
+icons (the touch package's), and the scene behind (the race positions
+differ by a few metres between the builds at the same time). WebGL2
+draws the same.
+
+Frame cost, Sierra at 40 s, 1280 × 800, WebGPU, uncapped (median rAF
+interval over 6 s, three alternating pairs on a machine at load 60+):
+with the HUD 8.0, 7.5, 4.5 ms; with `?hud=0` 8.0, 6.8, 4.2 ms, so about
+0.3 ms in the quiet pair, within the runs' spread. Per frame the HUD
+writes one 6 kB uniform each for the dial and the minimap when they
+change and a few texts, and builds no nodes.
+
+## WP 6.5–6.6 decisions: touch controls, tilt and the gesture bridge
+
+## D840. The touch controls whole
+
+2026-10-04, WP 6.5. `play::touch` now ports all of `TouchControls.js`
+(D436 had the stick and the slider): the steering `mode` (`Steering`:
+stick, buttons, tilt) and what steers right now (`steering`, `layout()`:
+tilt only once the sensor is live, the stick standing in), the pedals
+(`PedalKind`: slider, buttons), the ◂ ▸ pads and the GAS, BRAKE, DRIFT
+and N₂O pads with their 14 px slop and nearest-centre pick, the
+`pointers` map (insertion order kept, a finger moved keeps its place)
+re-hit-tested on every move so a thumb slides from pad to pad, a finger
+on a tap button also going into `pointers` as in the JS, `setPedals`
+letting go of every finger, auto gas (`autoGas && visible && !brake &&
+!slide`), the wheel's `s × 90°`, and the haptic tick (`navigator.vibrate(8)`,
+asked for with `buzz` and made by the web glue the same frame). A pad that
+is hidden (the ◂ ▸ pads unless steering is on them, the pedal pads with
+the slider) has no box, as its `display: none` gave a zero rect.
+`touch::Layout` adds the boxes `hud.css` gives `.t-steer`'s two 1.08 b
+pads (14 px apart at `--inL`, `--inB`), `.t-pedals`' grid (two b-wide
+columns 14 px apart, rows 12 px apart, items at the bottom of their row and
+centred: DRIFT and N₂O 0.74 b round over BRAKE and GAS b × 1.3 b) and
+`.t-wheel` (1.3 b at `--inL + 8`, `--inB + 8`). The settings reach the
+race's controls through `play::tilt::sync`, which reads `UiState.settings`
+each frame (as `gamepad_io` reads the rumble switch): a new race's
+controls take steering, pedals and auto gas, and after that a setting is
+applied when it changes (the JS's `onchange`s), so a test can set
+`autoGas` on the controls directly as on `__race`. The race's controls are
+set one frame after the race is built (the countdown's first frame steers
+with the defaults, which nobody can touch then).
+
+## D841. `TiltSteer` over a window trait; the promise, the timer and the events
+
+2026-10-04, WP 6.6. `play::tilt` ports `TiltSteer.js` (`screenRoll`,
+`rollToSteer`, `fullLockFor`, the seven states, `enable`, `listen`,
+`onOrientation`, `update`) through the kernel's trig, `pow` and `exp`.
+The JS's `win` is the `TiltWindow` trait: `DeviceOrientationEvent` there
+or not, `requestPermission` a function or not, ask (false if it threw),
+add or remove the one listener, `isSecureContext === false`. The web side
+(`tilt::web`) reads them with `js_sys::Reflect`; natively there is no
+sensor (`NoSensor`: tilt chosen reads 'none' and the stick steers, SPEC
+8.4). What was asynchronous in the JS comes in at the next frame, in
+order: the promise's outcome as `answer(Granted | Denied | Failed)` (the
+JS's `then` handlers, same branches), the `deviceorientation` events as
+`on_orientation(beta, gamma, angle)` with the angle read when the event
+fired, and the 2 s `setTimeout` as a deadline `poll(now)` checks on
+real time. There is one `TiltSteer` for the run, shared with each race's
+controls as `Arc<Mutex<…>>` (the JS's `Object.assign(touch, { tilt })`),
+so its state and the menu's note carry from race to race. Its smoothing
+runs per tick from the input layer (D433) where the JS ran it per frame;
+the exponential step composes exactly, so only the 1e-3 snap can land a
+tick apart. Every `tilt.test.js` case is a Rust test, with the JS's
+`pose()` helper ported, plus the 2 s wait.
+
+## D842. Drawing the controls: Bevy UI, the SVG icons with `mr_canvas`
+
+2026-10-04, WP 6.5. `play::touch_ui` draws every part of `#touch`: the
+stick (its track at .75 opacity while idle, the knob's border white when
+held and the accent at full lock), the ◂ ▸ pads, the wheel (an image
+turned by `UiTransform`'s rotation, clockwise as CSS `rotate`), the
+slider with its bands, mark, fills and knob (with its glow), the DRIFT
+strip, the four pedal pads with their colours, and the three tap
+buttons, `.on` as the CSS has it (white border, the lit background,
+`scale(.94)`). The icons are the page's SVG paths (◂ ▸, reset, camera,
+pause, the wheel) stroked with `mr_canvas` into 96 px images once, at
+the SVG's stroke width and round caps; no font has them (D431's R, C,
+II and `<` `>` are gone). Font sizes, icon sizes and border widths are
+CSS px divided by the page's scale (`css_scale`), as positions already
+were: at a pixel ratio of 1 on a 2× or 3× phone (High quality off, the
+phones' default) the labels had been drawn at half or a third of their
+size. Left out: the `drop-shadow` filter and the text shadows, and the
+letter spacing (Bevy text has none).
+
+## D843. Motion permission inside the tap
+
+2026-10-04, WP 6.6. iOS Safari grants `DeviceOrientationEvent.
+requestPermission()` only inside a user gesture, and a Bevy frame is not
+one. The JS asks in `opt-steer`'s change handler and in `startRace`. The
+page's gesture bridge (`ui::web::gesture_at`, D577) now also asks when a
+tap lands on Race, Race again or Restart while tilt is the steering
+choice on a touch screen, or on the steering drop-down's Tilt option
+(`option-tilt`); the request is the same `tilt::web::ask` that
+`TiltSteer::enable` makes from the frame, whose answer reaches the
+`TiltSteer` at the next frame. Asked from a frame (the menu's change, a
+race's `startRace` call, the start-up `enable(true)`), an iPhone rejects,
+which is the 'ask' state and the note "Tap Race to allow motion access",
+as in the JS when a page loads with tilt saved. One request is in flight
+at a time: while it waits, another `enable` does not ask again (the JS
+would have, from the menu's change and then the frame's `startRace`, a
+second prompt behind the first); and once granted, the gesture side does
+not ask again in that visit, as `granted` stops the JS asking. The motion request is made before the fullscreen request in the same
+handler: a fullscreen request uses up the tap's activation in Chrome, so
+a browser offering both would refuse the motion request after it (an
+emulated iPhone in Chrome did); the JS asked after `enterFullscreen`,
+which on an iPhone, with no element fullscreen, comes to the same.
+`startRace`'s own `tilt.enable(true)` is made once a race is shown (no
+screen up, not held), not for the menu's warm-up field behind the
+loading screen (D574), which would have asked a second time at load.
+Android Chrome has no `requestPermission` and listens at once. Checked
+with a faked `requestPermission` that says yes only while
+`navigator.userActivation.isActive`: the note at load, then granted in
+the Race tap, and granted in the tap on Tilt (`tilt.test.mjs`).
+
+## D844. Fullscreen and the landscape lock
+
+2026-10-04, WP 6.6. Unchanged from D577: the Race, Race again and
+Restart taps on a touch screen with Fullscreen on call
+`requestFullscreen({ navigationUI: 'hide' })` (or the webkit one) and
+then `screen.orientation.lock('landscape')`, all best-effort, as
+`enterFullscreen` does. iPhone Safari has no element fullscreen, so there
+`requestFullscreen` is missing and nothing happens, and it has no
+orientation lock either; the JS does the same, and shows the menu's
+"turn your phone sideways" hint in portrait (already in `ui::menu`). The
+page's viewport now has the JS's `maximum-scale=1, user-scalable=no`, so
+a double tap on the controls cannot zoom an iPhone's page.
+
+## D845. The visibility pause, latched
+
+2026-10-04, WP 6.6. `play::web` paused the race when it found
+`document.hidden` in its `Last` system. A hidden page gets no animation
+frames, so that check could miss the hide altogether, and in the first
+frame back it ran after that frame's ticks. Now the page's
+`visibilitychange` (to hidden) is latched by a listener, and a system
+before the race's frame pauses the race when the latch is set or the
+page is hidden (`if (document.hidden && mode === 'race') pause(true)`),
+so the race is paused before any tick runs on the return. The pause
+screen hides the controls, which lets go of every finger, as
+`showScreen('pause')` does. Natively focus loss still only lets go of
+the keys and fingers (D106).
+
+## D846. The controls suites against the Rust build
+
+2026-10-04, WP 6.5, 6.6. `touch-controls`, `analog-controls` and `tilt`
+are adapted in `tools/parity/e2e/` with `controls-helpers.mjs`:
+`__race` is `__mr.race`, which gains the car's `yaw`, `steerAngle`,
+`hw`, `yawToRoad`, `nitro`, `nitroActive`, `camMode`, the camera's right
+(`camRight`, `__camera.matrixWorld`'s x axis) and `touch` (the controls:
+`visible`, `mode`, `steering`, `pedals`, `autoGas`, `stickR`, `held`,
+`stick`, `lock`, `knob`, `panel` (the pedal panel's classes), `wheel`,
+`tilt`); `__mr.race.touchUi` is the old boolean. The pads are
+`__mr.ui('touch-<act>')` (`touch-left`, `touch-throttle`, …, and
+`touch-stick`, `touch-slider`, `touch-drift`, `touch-pedal`,
+`touch-wheel`), not visible when hidden. `__mr.stage` gains `place`
+(`phys.reset` and the speed, with `fromFinish`, `latFrac`, `yaw`, the
+camera snapped), `nitro` and `autogas`. A drop-down choice is two taps
+(the select, then `option-<value>`), the sensitivity slider a drag to an
+end, and the tilt suite gains a real hidden page (another tab brought to
+the front) for the visibility pause and the iPhone permission case
+(D843). `tools/parity/touch-shots.mjs` puts the JS and the Rust controls
+side by side on an emulated iPhone, sideways and upright (at rest, both
+thumbs down, the Buttons choices held, tilt turned), in
+`parity/report/touch/`. All three suites pass against the release build
+(touch-controls 10, analog-controls 5, tilt 7), as do `race-flow` and
+`race-button`. Chrome logs "Ignored attempt to
+cancel a touchstart event with cancelable=false" now and then when a CDP
+touch arrives while a frame is busy (winit cancels every touchstart on
+the canvas); the suites leave that line out of their error check, since
+the canvas is `touch-action: none` and nothing scrolls or zooms either
+way.
+
+## D751. Race from the menu builds the level first (the owner's D750 choice)
+
+2026-10-04, the owner's option 2 for D750: build the level before the
+race's cars and sound come up, so a race started from the menu peaks no
+higher than the same level raced from the address. The boot and the Race
+tap change, in `ui` only:
+- **No field behind the menu.** Over the menu's views no race field is
+  built at boot (`play.armed` false when `preview::wanted`), so D574's
+  warm-up field and the sound's graph built with it (D580) are gone from
+  the menu: the cars come up only for a race, after its level, behind the
+  loading screen, where Race's hold (D574: three quiet frames, at most
+  three seconds) compiles their pipelines as it does after a level switch.
+  The sound's graph is built by the first gesture, as `wakeAudio` builds
+  it in the JS (the music on the menu starts with the first tap, as
+  there).
+- **The views go first.** Race frees the views and waits four frames
+  (`Starting::Free`, `FREE_FRAMES`) for the despawned assets to be
+  released before asking for the level; the level is then built, then the
+  field and the sound's car, as from the address.
+Measured on WebGPU at load 38 to 66 with `compare.mjs` (Coast from the
+menu and from the address, alternating, three rounds each): before this,
+515 to 564 MB from the menu against 466 to 507 from the address (D749);
+with D751 to D753, 490 to 522 (median 490) against 462 to 510 (median
+462). WebGL2 at load 86 to 121: 518 to 535 (median 521) against 453 to 501
+(median 496). The menu's own high-water drops from 167 to 173 MB to 139
+to 151 (no field). `sections.test.mjs`, `level-switch.test.mjs` and
+`race-flow.test.mjs` pass on WebGPU and WebGL2 (the last two take
+`MR_BACKEND=webgl2` now); the native menu-to-race script too.
+
+## D752. The menu's glyph atlases go with the views
+
+2026-10-04. Bevy keeps a CPU copy of every glyph atlas it has drawn text
+into. The menu, drawn at up to twice the CSS resolution (D575) in many
+sizes, held about 20 MB of them (`FontAtlasSet::total_bytes`, a diagnostic
+build). When Race frees the views it clears the atlas set and marks every
+`Text` and `TextSpan` changed, so the texts that stay are laid out again
+from fresh atlases on the next frame (`preview::release_glyphs`).
+
+## D753. The page's loading screen covers Race's load; none under it
+
+2026-10-04. On the web the page's own loading screen covers the canvas
+while the client loads (D576), and the client drew its Bevy copy under it,
+whose glyphs (about 8 MB at the screens' ratio) were then held through
+the level's build. On the web the client now draws no loading screen
+(`ui::build`, `Screen::Loading`; `__mr.screen` still reads `loading`), and
+Race puts the page's up at once (`__mr.cover`, from `preview::cover`)
+while the views are freed, before `__mr.reload` keeps it up for the load.
+Natively the client's loading screen is drawn as before.
+
+What is still above the address's figure (about 25 to 30 MB at the
+median): counted with a heap-counting allocator (a diagnostic build, not
+committed), the heap in use when Coast's build starts from the menu is
+about 77 MB against about 43 MB from the address. The sound's graph (about
+12 MB) is built by the first tap, on the menu or on Race, and cannot wait
+for the level: on a phone the context must be made and resumed inside a
+gesture. The rest is what drawing the menu leaves in the renderer (the
+compiled pipelines and the shader cache for the views' materials, the
+renderer's grown buffers), which Bevy does not release. Not closed further
+here; for the owner if the remaining 25 to 30 MB matter.

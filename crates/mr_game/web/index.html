@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#05060c">
 <title>Midnight Racer (Rust build)</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111'/%3E%3Cpath d='M6 20h20l-3-6H12z' fill='%23ff3860'/%3E%3Ccircle cx='11' cy='21' r='3' fill='%23fff'/%3E%3Ccircle cx='22' cy='21' r='3' fill='%23fff'/%3E%3C/svg%3E">
@@ -305,6 +305,10 @@
       if (mr.state === 'running') { show(1, ''); $('loading').hidden = true; $('game').focus(); return; }
       requestAnimationFrame(poll);
     };
+
+    // __mr.cover(): the loading screen up at once (Race from the menu's
+    // views, while they are freed before the level is asked for, D753).
+    mr.cover = () => { $('loading').hidden = false; $('msg').className = ''; show(0.3, 'Loading…'); };
 
     // __mr.reload(level): tear the scene down and load it (or another
     // level) again, behind the loading screen; resolves when it is ready.

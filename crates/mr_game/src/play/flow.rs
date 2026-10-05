@@ -51,17 +51,23 @@ pub struct Hud {
     pub center_timer: f64,
     pub toast: Option<String>,
     pub toast_timer: f64,
+    /// `center()` and `toast()` calls so far: each restarts the HUD's pop
+    /// or toast (`play::hud`).
+    pub centers: u32,
+    pub toasts: u32,
 }
 
 impl Hud {
     pub fn center(&mut self, text: impl Into<String>, dur: f64) {
         self.center = Some(text.into());
         self.center_timer = dur;
+        self.centers += 1;
     }
 
     pub fn toast(&mut self, text: impl Into<String>, dur: f64) {
         self.toast = Some(text.into());
         self.toast_timer = dur;
+        self.toasts += 1;
     }
 
     pub fn tick(&mut self, dt: f64) {
