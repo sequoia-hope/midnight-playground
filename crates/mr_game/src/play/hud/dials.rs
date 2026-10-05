@@ -250,8 +250,14 @@ mod tests {
     #[test]
     fn the_fill_gradient_runs_along_the_diagonal() {
         let g = TACH_GRAD;
-        assert_eq!(g.at(0.0, 260.0), [0x3a as f64 / 255.0, 0xd7 as f64 / 255.0, 1.0]);
-        assert_eq!(g.at(260.0, 0.0), [1.0, 0x38 as f64 / 255.0, 0x60 as f64 / 255.0]);
+        assert_eq!(
+            g.at(0.0, 260.0),
+            [0x3a as f64 / 255.0, 0xd7 as f64 / 255.0, 1.0]
+        );
+        assert_eq!(
+            g.at(260.0, 0.0),
+            [1.0, 0x38 as f64 / 255.0, 0x60 as f64 / 255.0]
+        );
         // The middle of the canvas is half way: 0.5 / 0.7 of the first
         // stretch.
         let c = g.at(130.0, 130.0);
