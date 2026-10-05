@@ -797,8 +797,6 @@ type Placed<'w, 's> = Query<
     (With<NodeRef>, Without<Camera3d>),
 >;
 
-/// One frame of `World.update` on the drawn scene.
-#[allow(clippy::too_many_arguments)]
 /// The countdown's lamps (Seaside's start lights) the last frame of a
 /// countdown set, and how many are lit: the test bridge's stand-in for the
 /// JS's `scenery[0].lampMats` (`__mr.lamps`).
@@ -826,6 +824,8 @@ fn count_lamps(edits: &[SceneEdit]) {
     }
 }
 
+/// One frame of `World.update` on the drawn scene.
+#[allow(clippy::too_many_arguments)]
 pub fn run_animators(
     mut commands: Commands,
     wg: ResMut<WorldGen>,
