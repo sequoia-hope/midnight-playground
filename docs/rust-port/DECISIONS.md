@@ -6979,8 +6979,10 @@ switch, for devices without compute) and the camera carries
 `ClusterConfig::None`, so the CPU path that replaces it has no clusters
 to fill (WebGL2 always took that path, and now does nothing there
 either). Sierra, A/B alternating at load 40: main-thread CPU 1.71 to
-1.42 ms a frame, GPU process 2.62 to 2.10 ms. Pictures: unchanged
-(BASELINE.md, "Frame time against the JS game").
+1.42 ms a frame, GPU process 2.62 to 2.10 ms. Pictures: unchanged, as
+for D862 to D865 (BASELINE.md, "Frame time against the JS game":
+stations, WebGL2, effect scenes and HUD shots against the build
+before).
 
 ## D862. Bevy's `render_system` without its empty submission
 
@@ -7059,9 +7061,10 @@ against the JS game"). Per frame, the main thread's CPU time:
   frame work is 9 to 12 ms of the 16.7 against the JS's 3 to 9.5; Sierra
   and Seaside fell from 13.5 and 11.2 ms; Coast did not move (one run each).
 - **Uncapped**, where the slowest stage sets the pace, the Rust client
-  runs at about the JS game's frame rate on Sierra, Coast and Desert and
-  below it on the light levels (Seaside 154 against 200 fps, Streets 148
-  against 171), because its GPU-process thread is busy all the time.
+  runs at 85 to 95 % of the JS game's frame rate on Sierra, Coast and
+  Desert (105, 102, 100 against 120, 109, 115 fps) and below it on the
+  light levels (Seaside 154 against 200, Streets 148 against 171), because
+  its GPU-process thread is busy all the time.
 
 What is left, and why it is not closed here:
 
@@ -7082,9 +7085,12 @@ What is left, and why it is not closed here:
    indexed, 187 not; the JS 310 and 186), but about 1,000 WebGPU calls
    against about 3,200 WebGL calls, and Dawn validating and recording
    each draw and submission costs more than ANGLE's path: the GPU
-   process's thread is the frame's bottleneck when uncapped. Less work
-   there means fewer draws or commands (render bundles, merged draws),
-   which is a renderer redesign, not a setting.
+   process's thread is the frame's bottleneck when uncapped. It shows in
+   the page too: at 60 Hz the Rust callback takes 2.0 to 2.6 ms of wall
+   time for 0.8 to 1.0 ms of CPU, the rest spent waiting on calls into the
+   GPU process (the JS game's callback waits proportionally less). Less
+   work there means fewer draws or commands (render bundles, merged
+   draws), which is a renderer redesign, not a setting.
 3. **`RenderDevice::limits()` per draw.** Bevy's `SetMeshBindGroup` asks
    for the device limits on every draw (`skins_use_uniform_buffers`), and
    wgpu's WebGPU backend answers by reading every limit from the
