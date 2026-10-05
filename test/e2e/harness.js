@@ -145,7 +145,7 @@ export class Game {
     return this.cdp.send('Runtime.evaluate', {
       expression: `new Promise((res) => { let i = 0; const f = () => (++i >= ${n} ? res(true) : requestAnimationFrame(f)); requestAnimationFrame(f); })`,
       awaitPromise: true, returnByValue: true,
-    });
+    }).catch(() => {}); // a navigation (the menu's Music player link) ends the wait
   }
 
   // What a player would see: which screen is up, and the race and audio state.

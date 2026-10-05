@@ -1,10 +1,10 @@
-// test/e2e/race-button.test.js against the Rust build (roadmap WP 6.2): the
-// Race button starts a race on a phone (a tap), on a desktop (a click) and
-// from the keyboard (Tab to it, Enter); on a phone it goes fullscreen
-// inside the tap unless the setting is off; a second tap while the race is
-// starting starts one race; the tap, click or key unlocks the sound.
+// The Race button against the Rust build, beyond test/e2e/race-button.test.js
+// (which runs against it with `npm run test:e2e:rust`, WP 6.7): a second tap
+// while the race is starting starts one race. The JS suite's version holds
+// three's compileAsync and traps `window.__race`; here the client counts
+// its races (`__mr.races`).
 //
-//   cargo xtask web && node --test tools/parity/e2e/race-button.test.mjs
+//   cargo xtask web --release && node --test tools/parity/e2e/race-button.test.mjs
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,52 +22,6 @@ async function expectRaceStarts(game) {
   return s;
 }
 
-test('phone (landscape): tapping Race first thing starts the race', async () => {
-  const game = await openGame(browser, { device: 'phone' });
-  try {
-    assert.equal(await game.screen(), 'menu');
-    assert.ok((await game.snapshot()).touchUI, 'phone gets the touch UI');
-    await game.tap('#btn-start');
-    const s = await expectRaceStarts(game);
-    assert.equal(s.audio, 'running', 'the tap unlocks audio');
-    assert.ok(s.fullscreen, 'Race goes fullscreen on a phone');
-    await game.frames(3);
-    assert.equal((await game.ui('#touch [data-tap="pause"]'))?.visible, true, 'touch controls show');
-    assert.deepEqual(game.errors, []);
-  } finally { await game.close(); }
-});
-
-test('phone (portrait): scroll to Race and tap it', async () => {
-  const game = await openGame(browser, { device: 'phonePortrait' });
-  try {
-    await game.tap('#btn-start');
-    await expectRaceStarts(game);
-    assert.deepEqual(game.errors, []);
-  } finally { await game.close(); }
-});
-
-test('phone: Race still starts after touching other menu controls first', async () => {
-  const game = await openGame(browser, { device: 'phone' });
-  try {
-    await game.tap('#car-pick .pick:nth-child(2)');
-    assert.equal((await game.ui('#car-pick .pick:nth-child(2)')).sel, true);
-    await game.tap('#btn-start');
-    const s = await expectRaceStarts(game);
-    assert.equal(s.audio, 'running');
-    assert.deepEqual(game.errors, []);
-  } finally { await game.close(); }
-});
-
-test('phone: Race with fullscreen turned off stays windowed', async () => {
-  const game = await openGame(browser, { device: 'phone', storage: { 'mr.fullscreen': false } });
-  try {
-    assert.equal((await game.ui('#opt-fullscreen')).value, false);
-    await game.tap('#btn-start');
-    const s = await expectRaceStarts(game);
-    assert.equal(s.fullscreen, false);
-  } finally { await game.close(); }
-});
-
 test('phone: a second tap while the race is starting starts exactly one race', async () => {
   const game = await openGame(browser, { device: 'phone' });
   try {
@@ -79,29 +33,5 @@ test('phone: a second tap while the race is starting starts exactly one race', a
     await sleep(1500);
     assert.equal(await game.eval('window.__mr.races'), 1);
     assert.deepEqual(game.errors, []);
-  } finally { await game.close(); }
-});
-
-test('desktop: clicking Race starts the race, windowed', async () => {
-  const game = await openGame(browser, { device: 'desktop' });
-  try {
-    assert.equal((await game.snapshot()).touchUI, false);
-    await game.click('#btn-start');
-    const s = await expectRaceStarts(game);
-    assert.equal(s.audio, 'running');
-    assert.equal(s.fullscreen, false, 'desktop never forces fullscreen');
-    assert.equal(await game.ui('#touch [data-tap="pause"]'), null, 'no touch controls on desktop');
-    assert.deepEqual(game.errors, []);
-  } finally { await game.close(); }
-});
-
-test('desktop: Race from the keyboard (Tab to it, Enter)', async () => {
-  const game = await openGame(browser, { device: 'desktop' });
-  try {
-    for (let i = 0; i < 40 && (await game.eval('window.__mr.focus')) !== 'btn-start'; i++) await game.key('Tab');
-    assert.equal(await game.eval('window.__mr.focus'), 'btn-start');
-    await game.key('Enter');
-    const s = await expectRaceStarts(game);
-    assert.equal(s.audio, 'running');
   } finally { await game.close(); }
 });
