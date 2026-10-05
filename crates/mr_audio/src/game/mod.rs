@@ -450,6 +450,12 @@ impl GameAudio {
         self.music_on
     }
 
+    /// `musicGate.gain.value` (the music's fade in and out), 0 before the
+    /// graph is built: what the e2e tests read (`__mr.audio.musicGate`).
+    pub fn music_gate(&self) -> f64 {
+        self.g.as_ref().map_or(0.0, |g| g.music_gate.gain.value())
+    }
+
     pub fn paused(&self) -> bool {
         self.paused
     }

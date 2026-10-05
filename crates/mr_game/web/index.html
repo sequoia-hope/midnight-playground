@@ -242,6 +242,9 @@
     mr.ui = (id) => (mr.uiNodes || {})[id] ?? null;
     mr.reveal = (id) => glue.ui_reveal(String(id));
     mr.stage = (c) => glue.stage(typeof c === 'string' ? c : JSON.stringify(c));
+    // The race's road, read at once (the e2e bridge's `__race.track`).
+    mr.trackFrame = (s) => Array.from(glue.track_frame(+s));
+    mr.trackWrap = (s) => glue.track_wrap(+s);
     // __mr.flyTo(station): the fly camera to a screenshot station; then
     // __mr.flyQuiet counts settled frames (a test hook).
     // __mr.viewer (the level viewer, ?view=god): the client fills in the

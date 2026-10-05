@@ -11,6 +11,7 @@ use crate::status::Status;
 use bevy::prelude::*;
 use js_sys::{Object, Reflect};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::{JsCast, JsValue};
 
@@ -165,16 +166,90 @@ pub fn gesture_at(_kind: &str, x: f64, y: f64) {
     }
 }
 
+/// Stage commands applied so far (`__mr.staged`): the e2e harness waits for
+/// the frame that applied its writes before it reads again (WP 6.7).
+static STAGED: AtomicU32 = AtomicU32::new(0);
+
+/// The test bridge's control commands (WP 6.7): `{"cmd": "choose", "id":
+/// "opt-track", "value": v}` (a select's `value = v` and its `change`),
+/// `{"cmd": "slide", "id": "vol-music", "value": 0..100}` (a range's value
+/// and its `input`), `{"cmd": "focus", "id"}` (`el.focus()`), `{"cmd":
+/// "act", "id"}` (`el.click()`), `{"cmd": "audio", "op": "suspend"}`.
+/// Returns false for a command that is not one of these.
+fn stage_control(
+    ui: &mut UiState,
+    ctx: &mut super::ActCtx,
+    controls: &super::ControlQuery,
+    v: &serde_json::Value,
+) -> bool {
+    use super::{Act, Sel, Sl};
+    let id = v["id"].as_str().unwrap_or("");
+    match v["cmd"].as_str() {
+        Some("choose") => {
+            let sel = match id {
+                "opt-track" => Sel::Track,
+                "opt-steer" => Sel::Steer,
+                "opt-pedals" => Sel::Pedals,
+                _ => return true,
+            };
+            let value = v["value"].as_str().unwrap_or("").to_owned();
+            super::activate(ui, ctx, controls, Act::Choose(sel, value));
+        }
+        Some("slide") => {
+            let (which, key) = match id {
+                "vol-music" => (Sl::Music, "musicVol"),
+                "vol-sfx" => (Sl::Sfx, "sfxVol"),
+                "opt-tilt-sens" => (Sl::TiltSens, "tiltSens"),
+                _ => return true,
+            };
+            // `el.value` is a whole number 0..100; the setting its hundredth.
+            let x = (v["value"].as_f64().unwrap_or(0.0).clamp(0.0, 100.0)).round() / 100.0;
+            let s = &mut ui.settings;
+            let slot = match which {
+                Sl::Music => &mut s.music,
+                Sl::Sfx => &mut s.sfx,
+                Sl::TiltSens => &mut s.tilt_sens,
+            };
+            *slot = x;
+            ctx.store.set_num(key, x);
+            ui.dirty = true;
+        }
+        Some("focus") => {
+            ui.focus = Some(id.to_owned());
+            ui.dirty = true;
+        }
+        Some("act") => {
+            let act = controls
+                .iter()
+                .find(|(_, c, ..)| c.id == id)
+                .and_then(|(_, c, ..)| c.act.clone());
+            if let Some(act) = act {
+                super::activate(ui, ctx, controls, act);
+            }
+        }
+        Some("audio") => crate::play::audio::stage_ctx(v["op"].as_str().unwrap_or("")),
+        _ => return false,
+    }
+    true
+}
+
 /// Staging commands and reveals from the page.
-fn take_commands(mut ui: ResMut<UiState>, mut play: ResMut<Play>) {
+fn take_commands(mut ui: ResMut<UiState>, mut ctx: super::ActCtx, controls: super::ControlQuery) {
     if let Some(id) = REVEAL.lock().unwrap_or_else(|e| e.into_inner()).take() {
         ui.reveal = Some(id);
     }
     let cmds: Vec<String> = std::mem::take(&mut *STAGE.lock().unwrap_or_else(|e| e.into_inner()));
     for c in cmds {
+        STAGED.fetch_add(1, Ordering::Relaxed);
         let Ok(v) = serde_json::from_str::<serde_json::Value>(&c) else {
             continue;
         };
+        if stage_control(&mut ui, &mut ctx, &controls, &v)
+            || crate::play::web::stage_race(&mut ctx.play, &v)
+        {
+            continue;
+        }
+        let play = &mut ctx.play;
         match v["cmd"].as_str() {
             Some("padsetup") => {
                 if ui.screen == Screen::Menu || ui.screen == Screen::Pause {
@@ -260,6 +335,11 @@ fn take_commands(mut ui: ResMut<UiState>, mut play: ResMut<Play>) {
                     r.touch.auto_gas = v["on"].as_bool().unwrap_or(true);
                 }
             }
+            // The pursuit suite's staging (`__pursuit.activate`, roadblocks,
+            // `pv.hurt`, `pv.say`): Hot Pursuit's client is M8's (D906).
+            Some("pursuit" | "unit" | "roadblock" | "spikes" | "hurt" | "say") => {
+                warn!("__mr.stage: {c} waits for Hot Pursuit (roadmap M8)");
+            }
             _ => warn!("__mr.stage: unknown command {c}"),
         }
     }
@@ -274,6 +354,8 @@ fn publish(
     mut last: Local<String>,
 ) {
     let Some(mr) = mr() else { return };
+    set(&mr, "staged", STAGED.load(Ordering::Relaxed));
+    publish_settings(&mr, &ui.settings);
     set(&mr, "screen", ui.screen.name());
     set(&mr, "mode", mode_name(&ui, &play, &status));
     set(&mr, "races", ui.races);
@@ -376,6 +458,51 @@ fn publish(
         }
         *last = json;
     }
+}
+
+/// `__mr.settings` (the options as the menu holds them, for a control not
+/// on screen) and `__mr.selects` (each drop-down's choices, a `<select>`'s
+/// `options`), when they change.
+fn publish_settings(mr: &Object, s: &super::store::Settings) {
+    use super::Sel;
+    thread_local! {
+        static LAST: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+    }
+    let mut selects = serde_json::Map::new();
+    for (sel, id) in [
+        (Sel::Track, "opt-track"),
+        (Sel::Steer, "opt-steer"),
+        (Sel::Pedals, "opt-pedals"),
+    ] {
+        let (opts, _) = super::menu::select_options(sel, s);
+        selects.insert(
+            id.into(),
+            serde_json::Value::Array(opts.into_iter().map(|(k, _)| k.into()).collect()),
+        );
+    }
+    let json = serde_json::json!({
+        "settings": {
+            "music": s.music, "sfx": s.sfx, "mph": s.mph, "hq": s.hq, "autogas": s.autogas,
+            "steering": s.steering, "tiltSens": s.tilt_sens, "pedals": s.pedals,
+            "fullscreen": s.fullscreen, "car": s.car, "level": s.level, "track": s.track,
+            "flash": s.flash, "rumble": s.rumble,
+        },
+        "selects": selects,
+    })
+    .to_string();
+    LAST.with(|last| {
+        let mut last = last.borrow_mut();
+        if *last != json
+            && let Ok(v) = js_sys::JSON::parse(&json)
+        {
+            for k in ["settings", "selects"] {
+                if let Ok(x) = Reflect::get(&v, &JsValue::from_str(k)) {
+                    set(mr, k, x);
+                }
+            }
+            *last = json;
+        }
+    });
 }
 
 pub fn plugin(app: &mut App) {

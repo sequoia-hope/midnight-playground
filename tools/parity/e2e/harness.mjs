@@ -16,7 +16,9 @@
 // (`<level>.base.mrscene`) when the full one is over 90 MB (Seaside's
 // full export, 39 MB, passes); `{ scenes: 'base' }` always serves the
 // base ones, `'full'` never.
-// WP 6.7 turns this into the JS harness's `target: 'rust'` option.
+// The JS suites themselves run against the Rust build through the JS
+// harness's `target: 'rust'` (WP 6.7, `npm run test:e2e:rust`); this one
+// stays for the Rust-only suites here and the picture tools.
 
 import puppeteer from 'puppeteer-core';
 import fs from 'node:fs/promises';
