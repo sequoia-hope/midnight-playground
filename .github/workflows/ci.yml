@@ -27,9 +27,11 @@ jobs:
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       # The Bevy client links libwayland-client natively (DECISIONS D100),
-      # and its sound plays through ALSA (cpal; DECISIONS D513).
+      # and its sound plays through ALSA (cpal; DECISIONS D513). The smoke
+      # test below draws on a virtual X display (Xvfb) through Mesa's
+      # software Vulkan, lavapipe (WP 6.8, DECISIONS D1003).
       - name: System libraries for the native client
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libwayland-dev libxkbcommon-dev libasound2-dev
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libwayland-dev libxkbcommon-dev libasound2-dev xvfb xauth mesa-vulkan-drivers libvulkan1
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy -p mr_game --target wasm32-unknown-unknown -- -D warnings
@@ -41,6 +43,25 @@ jobs:
         run: cargo clippy -p mr_game --target wasm32-unknown-unknown --target-dir target/webgl2 -- -D warnings
       - run: cargo test --workspace
       - run: cargo xtask check-deps
+      # The native client's smoke test (roadmap WP 6.8, DECISIONS D1003):
+      # the window on Xvfb, drawn by lavapipe (no GPU here), the level built
+      # in the client (D678). The menu's first screen, then a race on
+      # Seaside Raceway, the lightest level to build. Each fails on a
+      # failed load, a logged error, or no scene in 600 s. On the dev
+      # machine's CPU they take about 7 s and 11 s, and 18 s and 31 s on
+      # four of its cores without a sound device. A store of its own, so no
+      # saved setting changes what is tested.
+      - name: Build the native client
+        run: cargo build -p mr_game --bin midnight-racer
+      - name: Smoke test, native, software Vulkan
+        timeout-minutes: 15
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+          WGPU_BACKEND: vulkan
+          MR_STORE: ${{ runner.temp }}/mr-store/storage.json
+        run: |
+          xvfb-run -a -s "-screen 0 1280x800x24" target/debug/midnight-racer --smoke-test --after 5
+          xvfb-run -a -s "-screen 0 1280x800x24" target/debug/midnight-racer --smoke-test --after 5 --query "level=seaside&autostart=sports"
       # mr_audio's backends are features (SPEC 3.2, 7.1): the native one
       # (web-audio-api, offline renders, no device) is linted and tested
       # here, the web one is linted in its target.

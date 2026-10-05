@@ -3547,6 +3547,7 @@ dependencies = [
  "tracing",
  "wasm-bindgen",
  "web-sys",
+ "winit",
 ]
 
 [[package]]

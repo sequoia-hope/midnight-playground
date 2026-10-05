@@ -489,26 +489,10 @@ pub fn app(o: Options, hq: bool) -> App {
     let materials = o.materials.clone();
     // DECISIONS D396.
     let gpu_preprocessing = o.gpu_preprocessing.unwrap_or(true);
+    // The player's window at its saved bounds; the pictures' windows as
+    // they always were (`native::window_state`, WP 6.8).
     #[cfg(not(target_arch = "wasm32"))]
-    let window = {
-        // The material test scenes are 512 × 512 (scenes.json).
-        let (w, h) = o.size.unwrap_or(if materials.is_some() {
-            (512, 512)
-        } else {
-            (1280, 800)
-        });
-        Window {
-            title,
-            resolution: bevy::window::WindowResolution::new(w, h).with_scale_factor_override(1.0),
-            // A screenshot run draws without showing a window, where the
-            // platform allows it.
-            visible: o.screenshot.is_none()
-                && o.param("shots").is_none()
-                && materials.is_none()
-                && o.stations.is_none(),
-            ..default()
-        }
-    };
+    let window = native::window_state::window(&o, title);
     #[cfg(target_arch = "wasm32")]
     let window = Window {
         title,
@@ -516,8 +500,15 @@ pub fn app(o: Options, hq: bool) -> App {
         fit_canvas_to_parent: true,
         ..default()
     };
+    let client = plugins::ClientPlugins.build();
+    // The log's warnings and errors, for `--smoke-test`'s report.
+    #[cfg(not(target_arch = "wasm32"))]
+    let client = client.set(bevy::log::LogPlugin {
+        custom_layer: native::log_tally::layer,
+        ..default()
+    });
     app.add_plugins(
-        plugins::ClientPlugins
+        client
             .set(WindowPlugin {
                 primary_window: Some(window),
                 ..default()
