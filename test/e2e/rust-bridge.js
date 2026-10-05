@@ -319,8 +319,9 @@ export function installBridge(selectorSrc) {
       musicGate: { gain: { value: a?.musicGate ?? 0 } },
       _vol: { master: a?.vol?.master ?? 1, music: a?.vol?.music ?? 0.7, sfx: a?.vol?.sfx ?? 0.85 },
       trackInfo: a?.playing ? { id: a.playing } : null,
-      // The radio voice's current line is WP 8.4's.
-      _radioCur: null,
+      // The radio transmission on the air (or the last one): `{ srcs }`,
+      // the browser's own source nodes (play/audio.rs, WP 8.4).
+      _radioCur: a?.radioCur ?? null,
     };
   }
 

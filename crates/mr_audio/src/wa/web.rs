@@ -510,6 +510,12 @@ impl Backend for WebBackend {
         self.waves.remove(&wave);
     }
 
+    fn js_node(&self, node: NodeId) -> Option<JsValue> {
+        self.nodes
+            .get(&node)
+            .map(|n| JsValue::from(n.node().clone()))
+    }
+
     fn analyser_time_domain(&mut self, node: NodeId, out: &mut [f32]) {
         match self.nodes.get(&node) {
             Some(WebNode::Analyser(a)) => a.get_float_time_domain_data(out),
@@ -556,4 +562,11 @@ pub fn context(latency_hint: Option<&str>) -> Result<super::AudioContext, JsValu
             latency_hint: latency_hint.map(str::to_owned),
         },
     ))
+}
+
+/// The browser's own node behind a facade node (`None` off the web
+/// backend), for the test bridge (`__audio._radioCur.srcs`).
+pub fn js_node(node: &super::Node) -> Option<JsValue> {
+    node.0.ctx.flush_released();
+    node.0.ctx.0.backend.borrow().js_node(node.0.id)
 }
