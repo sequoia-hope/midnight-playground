@@ -159,6 +159,7 @@ impl HudState {
     /// What the test bridge reads (`__mr.hud`): whether the HUD is up,
     /// whether it has a circuit's lap panel (`#hud-lap`), and the texts
     /// it shows (`#hud-lap-n`, `#hud-lap-best`, …).
+    #[cfg(target_arch = "wasm32")]
     pub(super) fn bridge(&self) -> (bool, bool, Option<&model::Texts>) {
         (
             self.shown && self.root.is_some(),

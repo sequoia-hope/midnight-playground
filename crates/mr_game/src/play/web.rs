@@ -342,6 +342,14 @@ fn bridge_page(mr: &Object, hud: Option<&super::hud::HudState>) {
     set(&l, "n", crate::animate::LAMPS.load(Ordering::Relaxed));
     set(&l, "lit", crate::animate::LAMPS_LIT.load(Ordering::Relaxed));
     set(mr, "lamps", l);
+    // `__pursuit`: Hot Pursuit's client is M8's; until then the snapshot
+    // says so (D906).
+    if get(mr.as_ref(), "pursuit").is_none() {
+        let pz = Object::new();
+        set(&pz, "available", false);
+        set(&pz, "waits", "roadmap M8 (Hot Pursuit)");
+        set(mr, "pursuit", pz);
+    }
 }
 
 /// The rest of `__mr.race`: what the JS suites read off `window.__race`

@@ -7145,3 +7145,285 @@ every level but the Cruise. What stays near the budget is Coast's own
 build (D678: 512 MB on reload; 456 to 504 here), not the viewer: a viewer
 run holds no race field and no sound graph. Load to ready 4.6 to 13.8 s
 (the level's build).
+
+## The test bridge and the JS suites on the Rust build (WP 6.7)
+
+Roadmap WP 6.7 and M6's exit ("the e2e suites are green against the Rust
+build, desktop and phone emulation"), SPEC 8.5. Decisions D900 to D919.
+
+## D900. The harness's `target` option: the JS suites unchanged
+
+2026-10-04. `test/e2e/harness.js` gains `target` (`openGame(browser,
+{ target })`, `launch({ target })`, default `MR_TARGET` or `'js'`). Under
+`'js'` nothing changes: every new branch is behind `target === 'rust'`,
+and the JS game's requests, flags and timing are as before (the
+JS run after the change, `--target js`, is in D908). Under `'rust'`:
+- Chrome gets the WebGPU flags of the Rust tools (`--enable-unsafe-webgpu
+  --enable-features=Vulkan`, beside the harness's own) and a long protocol
+  timeout; the working tree is answered by the same request interception,
+  with `application/wasm` and `font/ttf` added for the Rust page only. The
+  page is `dist/next/index.html` with the test's query. The 90 MB rule of
+  `tools/parity/e2e/harness.mjs` (D577) is not carried over: since D678 a
+  level is built by the client, and the page downloads no full export.
+- `center(sel)`/`tap`/`click` look the selector up as a control id
+  (`rust-bridge.js` `selectorId`: `#btn-start` is `btn-start`, `#level-pick
+  .lvl-tab:nth-child(3)` is `lvl-tab-streets`, `#touch [data-tap="pause"]`
+  is `touch-pause`, …), scroll it to the middle (`__mr.reveal`) and take
+  the centre of `__mr.ui(id)`, failing as `elementFromPoint` did when the
+  client's hit test finds another control on top.
+- The suites' page code is not rewritten. `installBridge` (run before the
+  page's scripts, on the Rust page only) defines `window.__race`, `__game`,
+  `__audio`, `__world`, `__camera`, `__stats`, `__pads`, `__pursuit` and
+  `__ready` as views over `window.__mr`, and `game.eval` runs each
+  evaluation inside `__mrShim.run`, which for its duration answers
+  `document.getElementById`, `querySelector(All)` and `getComputedStyle`
+  for the selectors the suites use with stand-ins over `__mr.uiNodes`
+  (the page's own scripts never see them). A view is built once per
+  evaluation from the last frame's snapshots.
+- A write to a view (`r.player.vx = …`, `r.phys.reset(s, lat)`,
+  `a.writePos()`, a select's `value` and `change`, `el.focus()`) becomes a
+  `__mr.stage` command, sent in order when the evaluation ends; the
+  client counts what it applied (`__mr.staged`) and the harness waits for
+  that frame before the next read, since the JS game applied writes at
+  once. Likewise every mouse, touch and key event the harness or a suite
+  sends (`page.mouse`, `page.touchscreen`, `page.keyboard`,
+  `game.touch`) waits two frames on the Rust target: the JS handles an
+  event in its handler, the client in its next frame.
+- `snapshot()` reads `__mr` (`screen`, `mode`, `race.state`,
+  `audio.context`, `touchUi`); `waitReady` waits for `__mr.ready` with
+  the menu's controls laid out (`__ready`), up to four minutes.
+- `music.html` (the `path` option, and the menu's Music player link) is
+  the JS page, which the Rust menu links to (DEVIATIONS: "The music
+  player link opens the JS page"); there the bridge is not installed and
+  evaluations run as for the JS game.
+
+`npm run test:e2e:rust` (`tools/parity/e2e/js-suites.mjs`) runs every
+suite with `MR_TARGET=rust`, one Chrome at a time, waiting before each
+suite for the GPU's memory to be under 9 GB (the machine is shared), and
+prints the suite × device table with the reason for every skip (D908).
+`--target js` runs the same table for the JS game; `--only` takes a name
+pattern. A suite skipped whole is not started (its `before` would launch
+a Chrome that no `after` closes).
+
+`test/` is outside the JS-tree key (`tools/parity/lib/jstree.mjs` hashes
+`src`, `vendor`, `index.html` and the kernel), so these edits change no
+cached parity data.
+
+## D901. `window.__mr`, complete for the suites
+
+2026-10-04, SPEC 8.5. What the client publishes, each frame unless said:
+`ready`, `state`, `screen`, `mode`, `races`, `focus`, `touchUi`,
+`uiNodes` (when it changes) and `ui(id)` (`{x, y, w, h, visible,
+enabled, value, sel, z}`, CSS px), `reveal(id)`, `stage(cmd)` and
+`staged`, and these snapshots:
+- `race`: D846's fields plus `x, y, z, along` (the car's speed along its
+  heading, `player.speed`), `prog`, `skid`, `damage`, `lap`, `lapTimes`,
+  `playerFinished`, `playerTime`, `dist`, `lastS`, `odo`, `cruise`,
+  `score`, `nearMisses`, `pursuitOn`, `traffic`, `place` and `racers`
+  (`standings()`), `ais` (each rival's `s, lat, speed, prog, finished,
+  finishTime, x, y, z, vx, vz, yaw`), `track` (`startS, finishS, n,
+  length, loop, roadEnd`), `camPos`, `input.lookBack`, `touch.u` (the
+  slider thumb's height); with the road itself as `trackFrame(s)` (`[x, y,
+  z, fx, fz, rx, rz, hw]`) and `trackWrap(s)`, read at once.
+- `audio`: as before plus `musicOn`, `musicGate` (`musicGate.gain.value`,
+  `GameAudio::music_gate`) and `vol` (`_vol`).
+- `hud`: `shown`, `laps` (`#hud-lap`), `texts` (`#hud-lap-n` is
+  `texts.lapN`, …), from `HudState::bridge`.
+- `lamps`: `{n, lit}`, the countdown lamps the last countdown frame set
+  (Seaside's start lights, `scenery[0].lampMats`; D682's open item).
+- `settings` (the menu's options, for a control not on screen) and
+  `selects` (each drop-down's values, a `<select>`'s `options`).
+- `pads`, `padsetup`, `padNav` (WP 6.4); `pursuit` is `{available:
+  false, waits: 'roadmap M8 (Hot Pursuit)'}` until M8 (D906).
+
+SPEC 8.5 writes `race()`, `pursuit()`, `audio()`, `stats()`; they are
+properties holding the last frame's snapshot, as the tools since WP 2.5
+read them (`__mr.race.state`), not functions. `stats` is `{fps}` on the
+test side: frames counted between two reads of `__mr.frames`, so the page
+adds no per-frame work (the frame-time package times the frame).
+
+`stage(cmd)` takes, beside D577's and D846's (`finish`, `cruise`,
+`padsetup`, `place`, `nitro`, `autogas`): `reset {s, lat}`
+(`phys.reset`), `set {path, value}` (`player.x|z|vx|vz|yaw|s|lat|speed|
+prog`, `phys.nitro|damage`, `lastS`, `odo`, `score`, `nearMisses`,
+`cam.snap`, `touch.autoGas`, `progS.<i>`, `ais.<i>.s|lat|speed|prog|
+finished|finishTime`), `aiWritePos {i}`, `event {type: 'impact', …}` (a
+wall impact added to the next frame's events, `flow::Race::inject`, for
+the rumble), `choose {id, value}` (a drop-down's choice), `slide {id,
+value}` (a range's value, 0 to 100), `focus {id}`, `act {id}` (a click
+by id), and `audio {op: 'suspend' | 'resume'}` (the context, as iOS
+interrupts it). Each frame's commands are applied before its ticks, and
+the race's previous state is set to the staged one (no interpolation
+across the jump).
+
+## D902. Every JS read, and what it maps to
+
+2026-10-04. The suites' reads of the JS game, through `rust-bridge.js`:
+
+| JS | Rust |
+|---|---|
+| `__ready` | `__mr.ready`, not on the loading screen, controls laid out |
+| `__game.mode` | `__mr.mode` |
+| `__race.state, time, countdown, cruise, lap, lapTimes, playerFinished, playerTime, dist, score, nearMisses, lastS, odo, pursuitOn` | `__mr.race.*` (the last race kept after Main menu, as `window.__race` is) |
+| `__race.player.{x, y, z, vx, vz, yaw, s, lat, speed, steerAngle, prog}` | `race.{x, y, z, vx, vz, yaw, s, lat, along, steerAngle, prog}`; writes: `set` |
+| `__race.phys.{locked, gear, nitro, nitroActive, skid, damage}`, `.reset(s, lat)`, `.events.push(impact)` | `race.*`; `reset`; `event` |
+| `__race.track.{startS, finishS, n, length, loop}`, `.frame(s)`, `.wrap(s)` | `race.track.*`, `__mr.trackFrame`, `__mr.trackWrap` |
+| `__race.ais[i]` (`s, lat, speed, prog, finished, finishTime`, `.v.*`, `.writePos()`) | `race.ais[i]`; `set`, `aiWritePos` |
+| `__race.input.state.*`, `.input.touch.{stickR, stick, steering, held, tilt.state, autoGas}` | `race.input`, `race.touch`; `autoGas`: `set` |
+| `__race.cam.mode`, `.cam.snap = true` | `race.camMode`; `set cam.snap` |
+| `__race.progS.set(car, s)`, `.standings()`, `.traffic` | `set progS.<i>`; `race.place`, `race.racers`; `race.traffic` |
+| `__race.__tagged` (flow-helpers' `markRace`) | `__mr.races` at the time of the mark |
+| `__race.pv`, `.playerBody`, `__pursuit` | none (M8) |
+| `__audio.ctx.state`, `.ctx.suspend()`, `.ready`, `._musicOn`, `.musicGate.gain.value`, `._vol`, `.trackInfo.id` | `__mr.audio.context` (`none`: no `ctx`), `audio` stage, `ready`, `musicOn`, `musicGate`, `vol`, `playing` |
+| `__audio._radioCur` | none (M8) |
+| `__world.level.id` | `__mr.level` |
+| `__world.scenery[0].lampMats[].emissiveIntensity` | `__mr.lamps` |
+| `__world.renderer.compileAsync` | none (the race-button double tap, D908) |
+| `__camera.matrixWorld.elements[0, 2]`, `.position` | `race.camRight`, `race.camPos` |
+| `__stats.fps` | `__mr.frames` between reads |
+| `__pads` | `__mr.pads` |
+| `#loading, #menu, #pause, #results, #padsetup` `.hidden` | `__mr.screen` |
+| `#hud`, `#hud-lap`, `#hud-lap-n`, `#hud-lap-best`, `#hud-pen` | `__mr.hud` |
+| `#touch` `.hidden` | `touchUi`, `race.touch.visible`, no screen up |
+| `#touch [data-act=x]`, `[data-tap=x]`, `.t-slider`, `.t-drift-strip` | `ui('touch-x')`, `touch-slider`, `touch-drift` |
+| `.t-stick` (`.active`, `.lock`, `style.left/top`), `.t-stick-knob` `style.transform`, `.t-pedal` (classes, `--u`, `--gas`, `--brk`), `.t-wheel` `style.transform` | `race.touch.stick`, `lock`, `knob`, `panel`, `u` (the JS's `SLIDER` bands), `wheel`, serialised as the CSSOM does |
+| Controls by id (`btn-*`, `opt-*`, `lvl-*`, `res-title`, `res-best`, `pad-*`, `link-music`, `rotate-hint`, `tilt-note`, `np-pause`, `mode-pick`): `textContent`, `checked`, `value`, `.sel`, boxes, `closest('label')` | `ui(id)` (`value`, `sel`, the box; the control is its own label); not on screen: `__mr.settings` |
+| `#level-pick .lvl-tab`, `#car-pick .pick` (`:nth-child(n)`, `:first-child`, `:last-child`, `.sel`) | `lvl-tab-<level>`, `pick-<car>` |
+| `<select>` `.value = v` + `change`, `.options`; `<input type=range>` `.value` + `input` | `choose`, `__mr.selects`; `slide` |
+| `el.focus()`, `el.click()` | `focus`, `act` |
+| `#res-table tr` (`rowIndex`, `.me`, `cells`), `#res-extra .res-stat small` | `res-table` (rows), `res-row-<i>` (`place|name|value`, `sel`), `res-stat-<i>` (`value|label`) |
+| `.pad-focus` (`id`, text, `.pad-edit`), `.pad-bind[data-act=x]` (`.on`, `.listening`, `b`), `#pad-name` | `__mr.focus` with `padNav`; `__mr.padsetup` (row labels: `Gamepad.js` `ACTIONS`) |
+| `#mode-pick .sel` `dataset.mode`, `#mode-pick [data-mode=x]` | `mode-race`, `mode-pursuit` |
+| `#pause .title` | `pause-title` |
+| `body.touch`, `body.pad` | `__mr.touchUi`, `__mr.pads.connected` (set on the real body) |
+| `#hud-pz`, `#hud-dmg`, `#pz-bar`, `#hud-hold`, `#pz-stars`, `#hud-radio-text`, the radio clips' resource entries | never shown (M8) |
+
+## D903. `?level=` picks the menu's level, as in the JS
+
+2026-10-04. Running the JS `circuit` suite showed the Rust build racing
+at once on `?level=seaside`, which D432 decided before there was a menu
+("no menu until M6"); the JS opens the menu on that level (`if
+(params.has('level')) settings.level = params.get('level')`, not saved)
+and only `autostart` races. `ui::menu_first` now follows the JS:
+`?level=` sets the menu's level, and a run races at once with
+`autostart=`, or with the Rust-only `race=1`, `car=` (D432) and the
+native `shots=`. Every Rust tool that loads a level to race passes
+`autostart`, `car=` or fly parameters already, but for
+`tools/parity/e2e/phone.cjs`, which gains `race=1`.
+
+## D904. Two fixes the suites found: `#np-pause`, `navigator.audioSession`
+
+2026-10-04.
+- The pause screen had no now-playing line (`#np-pause`, `showNowPlaying`:
+  `♪ title · style`, set on every track change). `UiState::now_playing`
+  follows the sound's `track_info()` in `sync_audio`; the pause screen
+  draws it before Next track (the ♪ as the note icon, D573), and its
+  control's value is the JS text.
+- The client read `navigator.audioSession` once at start-up; the JS's
+  `askForPlayback(navigator)` reads it when the context is made (the
+  first gesture). `mr_audio::session::web::NavigatorSession` looks it up
+  at each use; on an iPhone, where it is there from the start, nothing
+  changes.
+
+## D905. What stays in `tools/parity/e2e/`
+
+2026-10-04. With the JS suites running on the Rust build, the adapted
+copies that only repeated them are gone: `race-flow`, `touch-controls`
+and `analog-controls`, and the repeated tests of `menu`, `race-button`,
+`gamepad` and `tilt`. What the JS suites do not cover stays, Rust only:
+- `menu.test.mjs`: the volume sliders and the track picker reach the
+  sound; M shows on the pause slider.
+- `race-button.test.mjs`: a second tap while the race is starting starts
+  one race (`__mr.races`; the JS version holds three's `compileAsync`).
+- `gamepad.test.mjs`: driving with the triggers and the stick (dead zone
+  and curve), a map saved for the pad's id, rumble from a real wall hit
+  and the countdown, the Controller screen from pause.
+- `tilt.test.mjs`: an iPhone asks for motion access inside the Race tap
+  and the Tilt tap (D843); another tab pauses the race.
+- `sections`, `built-levels`, `level-switch` (the menu's sections and the
+  client-built levels, D676, D678), the phone tools (`phone.cjs`,
+  `phone-menu.mjs`), and `harness.mjs` with `controls-helpers.mjs` for
+  them and the picture tools (`touch-shots`, `ui-shots`).
+
+## D906. What waits for Hot Pursuit (M8)
+
+2026-10-04. Six of the seven `pursuit` tests need the pursuit's client
+(police on the road, the heat stars and bust bar, the radio, busts and
+wrecks, pursuit results): `js-suites.mjs` skips them marked M8. The
+bridge for them is listed so M8 can fill it: `window.__pursuit`
+(`state`, `units[]` with `active`, `mode`, `siren`, `s`, `callsign`,
+`v.model.root.visible`; `bust`; `player.hold`, `holdReason`,
+`holdTotal`, `grace`; `busts`; `activate(unit, s, lat, speed, mode)`),
+`__race.pv` (`say(line, now)`, `hurt(x)`, `penalty`, `damage`,
+`wrecks`), `__race.playerBody`, `__audio._radioCur` (`srcs`), the DOM
+`#hud-pz`, `#pz-stars`, `#pz-bar`, `#hud-dmg`, `#hud-hold`, `#hud-pen`,
+`#hud-radio-text`, `#res-extra`'s pursuit tiles, and the radio clips'
+`performance` resource entries. Until then `__mr.pursuit` says
+`{available: false, waits: 'roadmap M8 (Hot Pursuit)'}`, the stand-ins
+for those elements are never shown, and a pursuit staging command
+(`pursuit`, `unit`, `roadblock`, `spikes`, `hurt`, `say`) logs that it
+waits for M8. The seventh test (race mode: no police, no pursuit HUD)
+runs and passes.
+
+## D907. What the Rust build still shows the suites
+
+2026-10-04.
+- **A console warning on the menu** (owner: the widgets, WP 6.1; Bevy
+  UI). Chrome warns once, as the menu first draws, `Calling
+  [RenderPassEncoder "ui"].Draw with an index count of 0 is unusual.`
+  (with `?sections=0` too, not in a race: `autostart` and `hud=0` runs
+  have none). In `bevy_ui_render` (0.19.1, `prepare_uinodes`) a new batch
+  starts at an empty index range and stays empty when its nodes add no
+  quads (a clipped node, an empty text), and it is drawn anyway. The
+  `audio` suite's "a few seconds of hard driving log no warnings or
+  errors" fails on it (its `game.warnings` count from the page's load).
+  Not fixed here: it needs a patch to Bevy's batching or finding the
+  menu's node that adds no quads. Now and then the page also logs `A
+  valid external Instance reference no longer exists.` at start-up
+  (owner: the page, WP 2.1/2.7: its WebGPU probe's adapter).
+- An `autostart` race with no gesture logs Chrome's "The AudioContext
+  was not allowed to start" on every note the music schedules; the JS
+  game does the same (its context is made outside a gesture too), and no
+  suite counts warnings there.
+- Fixed here: `?level=` (D903), `#np-pause` and `navigator.audioSession`
+  (D904).
+
+## D908. The JS suites on both builds
+
+2026-10-04, release build, this machine (RTX 3060, headless Chrome, one
+Chrome at a time). `node tools/parity/e2e/js-suites.mjs` (`npm run
+test:e2e:rust`) and `--target js`. The device is the one each test opens:
+the suites name it ("phone", "phonePortrait"), the rest are desktop
+(1280 × 800).
+
+| Suite | Device | JS | Rust | Rust: why not |
+|---|---|---|---|---|
+| analog-controls | phone | 5 pass | 5 pass | |
+| audio | desktop | 6 pass | 5 pass, 1 fail | the menu's UI draw warning (D907) |
+| audio | phone | 4 pass | 3 pass, 1 skip | deviation: a tap on no control of the pause screen resumes (DEVIATIONS.md, D578); pausing's suspend and Resume are covered by `race-flow` |
+| circuit | desktop | 4 pass | 4 pass | |
+| gamepad | desktop | 5 pass | 5 pass | |
+| keyboard | desktop | 6 pass | 6 pass | |
+| levels | desktop | 6 pass | 6 pass | |
+| menu | desktop | 5 pass | 5 pass | |
+| menu | phone | 4 pass | 4 pass | |
+| music-player | desktop | 4 pass | 4 pass | the JS page, which the Rust menu links to (DEVIATIONS.md) |
+| music-player | phone | 7 pass | 7 pass | the first test goes there from the Rust menu |
+| pursuit | desktop | 7 pass | 1 pass, 6 skip | M8 (D906) |
+| race-button | desktop | 2 pass | 2 pass | |
+| race-button | phone | 5 pass | 4 pass, 1 skip | the double tap holds three's `compileAsync` and traps `window.__race`; `tools/parity/e2e/race-button.test.mjs` checks it with `__mr.races` (passes) |
+| race-flow | desktop | 8 pass | 8 pass | |
+| race-flow | phone | 3 pass | 3 pass | |
+| tilt | desktop | 1 pass | 1 pass | |
+| tilt | phone | 4 pass | 4 pass | |
+| touch-controls | desktop | 1 pass | 1 pass | |
+| touch-controls | phone | 9 pass | 9 pass | |
+| traffic-lod | desktop | 2 pass | 2 skip | three.js internals (`CarModel.setFar` and its geometry groups, `Traffic.activate`, `.lod`); the Rust far-model switch (95 m out, 85 m in, the JS's hysteresis) sits inside the draw system, with nothing to bridge |
+
+In all: the JS game 98 pass; the Rust build 87 pass, 1 fail (D907) and
+10 skip (6 for M8, 1 deviation, 1 JS-only hook, 2 three.js internals) of
+98. The Rust-only
+suites left in `tools/parity/e2e/` (D905) pass: `menu` 1, `race-button`
+1, `gamepad` 4, `tilt` 2, `level-switch` 2, `sections` 1. The full Rust
+run takes about 16 minutes (each test loads the wasm and builds its
+level), the JS one about 10, one suite at a time.
