@@ -318,14 +318,40 @@ mod web {
         }
     }
 
+    /// What [`publish`] last wrote (DECISIONS D863).
+    type Published = (
+        super::gamepad::State,
+        Option<usize>,
+        Option<&'static str>,
+        bool,
+        String,
+    );
+
+    thread_local! {
+        static PUBLISHED: RefCell<Option<Published>> = const { RefCell::new(None) };
+    }
+
     /// `window.__mr.pads` for the tests (`window.__pads` in the JS): the
     /// state of the last poll, the pad in hand, a capture in progress.
+    /// Written when it differs from what was written last: building the
+    /// object every frame cost more than the poll itself (D863).
     pub fn publish(pads: &Pads) {
+        let now: Published = (
+            pads.state.clone(),
+            pads.active.as_ref().map(|p| p.index),
+            pads.capture.as_ref().map(|c| c.action.key()),
+            pads.rumble_on,
+            pads.label(Action::Reset),
+        );
+        if PUBLISHED.with(|p| p.borrow().as_ref() == Some(&now)) {
+            return;
+        }
         let Some(w) = web_sys::window() else { return };
         let mr = get(&w.into(), "__mr");
         if !mr.is_object() {
             return;
         }
+        PUBLISHED.with(|p| *p.borrow_mut() = Some(now));
         let set = |o: &Object, k: &str, v: JsValue| {
             let _ = Reflect::set(o, &JsValue::from_str(k), &v);
         };
