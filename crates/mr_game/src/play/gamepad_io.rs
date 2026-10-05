@@ -49,6 +49,18 @@ pub fn plugin(app: &mut App) {
     app.init_resource::<native::NativePads>();
 }
 
+/// The pads alone, read and polled each frame, for a run with no race
+/// (the level viewer, `crate::viewer`, which reads `PadsRes`).
+pub fn pads_only(app: &mut App) {
+    if app.world().get_resource::<PadsRes>().is_some() {
+        return;
+    }
+    app.insert_resource(PadsRes::default())
+        .add_systems(PreUpdate, poll.after(InputSystems));
+    #[cfg(not(target_arch = "wasm32"))]
+    app.init_resource::<native::NativePads>();
+}
+
 /// Adds the Controller screen's frame (`crate::ui::pad_setup::frame`)
 /// where `main.js` ran `padSetup.escape()`: after the pads reach the race's
 /// input layer, before its ticks could take Esc or Start as un-pause.
