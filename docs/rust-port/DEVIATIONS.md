@@ -15,6 +15,7 @@ when a work package introduces one, with the package and the JS it concerns.
 | Native audio through a Rust Web Audio implementation | One graph definition; small differences in compressor and oscillator behaviour | SPEC 7.1 |
 | Music player is a screen in the game, not a second page | One wasm app | SPEC 7.3 |
 | Seaside survey data in a binary file | No base64-in-JS loader | SPEC 4.4 |
+| A "Level viewer" button on the menu's level card, opening the level viewer (`?view=god`), which the JS does not have | The owner's request to review levels from any point of view; the game itself is unchanged | SPEC 8.6, WP 6.9, DECISIONS D679 |
 | The menus' selected-tab glow, hover states and the native pickers are approximated (the ring, Chrome's control shapes, a dropdown list) | Bevy UI has no outer-only shadow under translucent nodes, no form controls | WP 6.1, DECISIONS D573 |
 | ◂ ▸ read ← →, N₂O reads N2O; ★ ⏭ ♪ are drawn pictures | The bundled faces lack those characters | WP 6.1, D573 |
 | The menu is drawn at up to 2× the CSS resolution on phones without High quality | The DOM's text was always sharp; the canvas's at 1× is not | WP 6.2, D575 |

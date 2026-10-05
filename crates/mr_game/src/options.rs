@@ -207,12 +207,21 @@ impl Options {
     }
 
     /// Whether the stand-in cars run (`cars`, else the default above). Never
-    /// beside a race, which draws its own.
+    /// beside a race, which draws its own; not in the level viewer unless
+    /// asked (`?cars=1`).
     pub fn cars_on(&self) -> bool {
         !self.race_on()
-            && self
-                .cars
-                .unwrap_or(!self.freeze && self.materials.is_none() && self.stations.is_none())
+            && self.cars.unwrap_or(
+                !self.freeze
+                    && self.materials.is_none()
+                    && self.stations.is_none()
+                    && !self.viewer(),
+            )
+    }
+
+    /// The level viewer (`?view=god`, SPEC 8.6): never a race.
+    pub fn viewer(&self) -> bool {
+        self.param("view") == Some("god")
     }
 
     /// Whether this is a race (`play`, roadmap M4): `?race=1|0`, else a
@@ -220,6 +229,7 @@ impl Options {
     /// stations are asked for (DECISIONS D432).
     pub fn race_on(&self) -> bool {
         is_level(&self.level)
+            && !self.viewer()
             && match self.param("race") {
                 Some(v) => v == "1",
                 None => {
@@ -306,6 +316,8 @@ pub fn usage() -> &'static str {
      query:  the JS game's names: level, s, h, back, lat, v, yaw, pitch, t, freeze=1; hq=0|1;\n\
      \x20       scene=<file>; mat=<names> (the material test scenes); cars=0|1 (stand-in cars);\n\
      \x20       gpupre=0|1 (Bevy's GPU preprocessing)\n\
+     viewer: view=god (the level viewer, SPEC 8.6): mode=free|orbit|over|ride, cam=x,y,z,yaw,pitch,\n\
+     \x20       orbit=x,y,z, fog=0|1, far=0|1, anim=0|1, t=<route fraction>, hide=<groups>, speed=N\n\
      race:   a level without s= is a race (race=0: the attract camera); car=<kind>, seed=N,\n\
      \x20       autodrive=1 (or --autodrive), timescale=N, pursuit=1, heat=N, touch=0|1,\n\
      \x20       shots=<dir> (save countdown, race and results PNGs, then exit)"
