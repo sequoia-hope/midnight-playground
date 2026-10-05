@@ -27,11 +27,12 @@ jobs:
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       # The Bevy client links libwayland-client natively (DECISIONS D100),
-      # and its sound plays through ALSA (cpal; DECISIONS D513). The smoke
-      # test below draws on a virtual X display (Xvfb) through Mesa's
-      # software Vulkan, lavapipe (WP 6.8, DECISIONS D1003).
+      # its sound plays through ALSA (cpal; DECISIONS D513), and gamepads are
+      # read through libudev (gilrs, WP 6.4). The smoke test below draws on
+      # a virtual X display (Xvfb) through Mesa's software Vulkan, lavapipe
+      # (WP 6.8, DECISIONS D1003).
       - name: System libraries for the native client
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libwayland-dev libxkbcommon-dev libasound2-dev xvfb xauth mesa-vulkan-drivers libvulkan1
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libwayland-dev libxkbcommon-dev libasound2-dev libudev-dev xvfb xauth mesa-vulkan-drivers libvulkan1
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy -p mr_game --target wasm32-unknown-unknown -- -D warnings
