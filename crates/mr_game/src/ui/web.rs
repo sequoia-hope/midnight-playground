@@ -128,9 +128,11 @@ pub fn stage(cmd: String) {
 /// The page's gesture handlers call this inside the event (SPEC 8.4): a
 /// tap or click on Race, Race again or Restart on a touch screen goes
 /// fullscreen and asks for landscape, as `enterFullscreen` does inside
-/// `startRace`; with tilt chosen, it then asks an iPhone for motion access
+/// `startRace`; with tilt chosen, it asks an iPhone for motion access
 /// (`startRace`'s `tilt.enable(true)`), as a tap on the steering choice's
-/// Tilt does (`opt-steer`'s change).
+/// Tilt does (`opt-steer`'s change). The motion request comes first: a
+/// fullscreen request uses the tap up, and a browser with both would then
+/// refuse the other (DECISIONS D843).
 #[wasm_bindgen]
 pub fn gesture_at(_kind: &str, x: f64, y: f64) {
     let (on, rects) = FULLSCREEN.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -141,6 +143,9 @@ pub fn gesture_at(_kind: &str, x: f64, y: f64) {
     };
     let race = inside(&rects);
     let picked_tilt = inside(&TILT_OPTION.lock().unwrap_or_else(|e| e.into_inner()));
+    if race || picked_tilt {
+        crate::play::tilt::web::ask_in_gesture(picked_tilt);
+    }
     if on && race {
         // One tap brings pointer-up, touch-end and click: ask once.
         static LAST: Mutex<f64> = Mutex::new(-1e9);
@@ -157,9 +162,6 @@ pub fn gesture_at(_kind: &str, x: f64, y: f64) {
             let _ = f.call0(&JsValue::NULL);
             *last = now;
         }
-    }
-    if race || picked_tilt {
-        crate::play::tilt::web::ask_in_gesture(picked_tilt);
     }
 }
 
@@ -218,26 +220,32 @@ fn take_commands(mut ui: ResMut<UiState>, mut play: ResMut<Play>) {
                     }
                 }
             }
-            // The controls suites' `placeCar`: on the road `ahead` m past
-            // the start at `lat`, pointing along it at `speed` m/s (its
-            // heading turned by `yaw` radians), the last tick forgotten.
+            // The controls suites' `placeCar` (and `phys.reset`): on the
+            // road `ahead` m past the start (or `fromFinish` m before the
+            // line) at `lat` (or `latFrac` of the half width), pointing
+            // along it at `speed` m/s, its heading turned by `yaw` radians.
             Some("place") => {
                 if let Some(r) = play.race.as_mut() {
                     let t = r.session.lr.track.clone();
                     let st = &mut r.session.curr;
                     let p = &mut st.players[0];
-                    let s = v["s"]
-                        .as_f64()
-                        .unwrap_or(t.start_s + v["ahead"].as_f64().unwrap_or(40.0));
-                    p.phys
-                        .reset(&mut p.v, &t, s, v["lat"].as_f64().unwrap_or(0.0));
+                    let s = match v["fromFinish"].as_f64() {
+                        Some(d) => t.finish_s - d,
+                        None => t.start_s + v["ahead"].as_f64().unwrap_or(40.0),
+                    };
                     let f = t.frame(s);
+                    let lat = v["latFrac"]
+                        .as_f64()
+                        .map_or(v["lat"].as_f64().unwrap_or(0.0), |k| k * f.hw);
+                    p.phys.reset(&mut p.v, &t, s, lat);
                     let speed = v["speed"].as_f64().unwrap_or(0.0);
                     p.v.vx = f.fx * speed;
                     p.v.vz = f.fz * speed;
                     p.v.yaw += v["yaw"].as_f64().unwrap_or(0.0);
                     p.rules.last_s = Some(s);
                     r.session.prev = r.session.curr.clone();
+                    // `window.__race.cam.snap = true`: the camera behind it now.
+                    r.rig.snap = true;
                 }
             }
             // `window.__race.phys.nitro = n`.

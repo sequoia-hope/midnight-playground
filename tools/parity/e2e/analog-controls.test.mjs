@@ -17,6 +17,7 @@ import { launch, openGame } from './harness.mjs';
 import {
   sleep, simWait, startRace, car, placeCar, cameraRight, turnFrom, press, lift, touch, choose, stickDown, stickTo,
   sliderPoint, shown,
+  pageErrors,
 } from './controls-helpers.mjs';
 import { stickSteer, sliderAt } from '../../../src/game/TouchControls.js';
 
@@ -90,7 +91,7 @@ test('phone: the thumb stick is the default, steers in proportion, and re-centre
     await sleep(80);
     assert.equal((await stick(game)).steer, -1, 'full left at the edge');
     await lift(game);
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
 
@@ -136,7 +137,7 @@ test('phone: the stick turns the car the way the thumb goes, with the gas under 
     c = await car(game);
     assert.ok(Object.values(c.held).every((h) => !h), 'the second thumb holds nothing');
     await lift(game);
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
 
@@ -194,7 +195,7 @@ test('phone: the pedal slider: brake, coast, gas and N₂O by height, with the f
     };
     const light = await pull(0.42), flat = await pull(0.72);
     assert.ok(light < flat * 0.7, `light gas pulls away slower (${light.toFixed(1)} vs ${flat.toFixed(1)} m/s)`);
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
 
@@ -233,7 +234,7 @@ test('phone: slide right onto DRIFT for the handbrake, still on the pedals; the 
     await sleep(80);
     assert.equal((await car(game)).inp.throttle, 0, 'a thumb in the gap coasts');
     await lift(game);
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
 
@@ -257,6 +258,6 @@ test('phone: the menu choices: ◂ ▸ buttons instead of the stick, pedal butto
     assert.ok(c.inp.steer > 0, 'the pads steer');
     assert.equal(c.inp.throttle, 1, 'GAS is on or off');
     await lift(game);
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });

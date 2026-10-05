@@ -37,10 +37,19 @@ export function car(game) {
 
 // Put the car on the road at rest, pointing along it, a little past the
 // grid, so every test starts the same.
-export function placeCar(game, { ahead = 40, lat = 0, speed = 0, yaw = 0 } = {}) {
-  return game.eval((c) => window.__mr.stage({ cmd: 'place', ...c }), { ahead, lat, speed, yaw })
+// Also `{ fromFinish: m }` for a place short of the line, `{ latFrac }`
+// for a share of the road's half width, `{ yaw }` to turn it.
+export function placeCar(game, { ahead = 40, lat = 0, speed = 0, ...more } = {}) {
+  return game.eval((c) => window.__mr.stage({ cmd: 'place', ...c }), { ahead, lat, speed, ...more })
     .then(() => game.frames(2));
 }
+
+// The page's errors, less Chrome's note that a touchstart could not be
+// cancelled: winit cancels every touchstart on the canvas, and Chrome
+// sends a touch as not cancelable when the main thread is busy with a
+// frame. The canvas is `touch-action: none`, so nothing scrolls or zooms
+// either way (DECISIONS D846).
+export const pageErrors = (game) => game.errors.filter((e) => !/Ignored attempt to cancel a touchstart event/.test(e));
 
 // Camera-right in the world (x, z): where "right" is on the screen.
 export function cameraRight(game) {

@@ -177,6 +177,15 @@ fn frame(
     // right (`__camera.matrixWorld`'s x axis) and `input.touch`.
     set(&o, "yaw", p.v.yaw);
     set(&o, "steerAngle", p.v.steer_angle);
+    // The road there: its half width, and the heading off it (`yawToRoad`).
+    let f = race.session.lr.track.frame(p.v.s);
+    let ang = mr_math::kernel::atan2(f.fz, f.fx) - p.v.yaw;
+    set(&o, "hw", f.hw);
+    set(
+        &o,
+        "yawToRoad",
+        mr_math::kernel::atan2(mr_math::kernel::sin(ang), mr_math::kernel::cos(ang)),
+    );
     set(&o, "vx", p.v.vx);
     set(&o, "vz", p.v.vz);
     set(&o, "nitro", p.phys.nitro);
