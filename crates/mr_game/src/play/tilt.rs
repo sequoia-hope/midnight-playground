@@ -404,6 +404,12 @@ fn sync(
     ui: Option<Res<crate::ui::UiState>>,
 ) {
     let now = time.elapsed_secs_f64();
+    // A race the player sees (not the menu's warm-up field behind the
+    // loading screen, D574, nor one held for its pipelines).
+    let shown = ui
+        .as_ref()
+        .is_none_or(|u| u.screen == crate::ui::Screen::None)
+        && !play.hold;
     let s = ui.map_or_else(TouchSettings::default, |u| TouchSettings {
         steering: u.settings.steering.clone(),
         pedals: u.settings.pedals.clone(),
@@ -451,7 +457,7 @@ fn sync(
     let touch_ui = play.touch_ui;
     if let Some(race) = play.race.as_mut() {
         // `startRace`: `if (settings.steering === 'tilt') tilt?.enable(true)`.
-        if touch_ui && race.starts != tilt.start {
+        if touch_ui && shown && race.starts != tilt.start {
             tilt.start = race.starts;
             if s.steering == "tilt" {
                 t.enable(true, tilt.win.as_mut(), now);

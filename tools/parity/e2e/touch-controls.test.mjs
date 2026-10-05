@@ -15,7 +15,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, openGame } from './harness.mjs';
-import { sleep, simWait, startRace, car, placeCar, cameraRight, turnFrom, pad, press, lift, touch } from './controls-helpers.mjs';
+import { sleep, simWait, startRace, car, placeCar, cameraRight, turnFrom, pad, press, lift, touch, pageErrors } from './controls-helpers.mjs';
 
 let browser;
 before(async () => { browser = await launch(); });
@@ -57,14 +57,15 @@ test('phone: the pads show only while racing, not on the menu, pause or results'
     await game.waitFor(() => window.__mr.mode === 'race', { what: 'Resume' });
     assert.equal(await game.eval(touchShown), true, 'back after Resume');
 
-    await game.eval(() => window.__mr.stage({ cmd: 'finish' }));
+    // Just short of the finish line at speed.
+    await placeCar(game, { fromFinish: 30, speed: 40 });
     await game.waitFor(() => window.__mr.mode === 'results', { timeout: 30000, what: 'the results screen' });
     assert.equal(await game.eval(touchShown), false, 'hidden on the results');
 
     await game.tap('#btn-menu');
     await game.waitFor(() => window.__mr.mode === 'menu', { what: 'the menu' });
     assert.equal(await game.eval(touchShown), false, 'hidden back on the menu');
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
 
@@ -120,7 +121,7 @@ test('phone: GAS, BRAKE, steering and N₂O drive the car', async () => {
     c = await car(game);
     assert.ok(c.nitro < 1, 'the nitro tank drains');
     assert.ok(c.speed > 4);
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
 
@@ -165,7 +166,7 @@ test('phone: a finger slides from GAS to BRAKE; steer and gas together', async (
     await lift(game);
     c = await car(game);
     assert.ok(Object.values(c.held).every((h) => !h));
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
 
@@ -205,19 +206,21 @@ test('phone: the reset, camera and pause pads', async () => {
     await game.waitFor(() => window.__mr.race.camMode === 2, { what: 'the next camera' });
 
     // Knock the car against the edge, sideways, then reset it.
-    await placeCar(game, { ahead: 60, lat: 4, yaw: 1.3 });
+    await placeCar(game, { ahead: 60, latFrac: 0.9, yaw: 1.3 });
     const before = await car(game);
     await sleep(100);
     await game.tap('#touch [data-tap="reset"]');
-    await game.waitFor(() => Math.abs(window.__mr.race.lat) < 2.5, { what: 'the reset pad to put the car back on the road' });
-    const c = await car(game);
-    assert.ok(c.speed < 1, 'at rest');
+    await game.waitFor(() => Math.abs(window.__mr.race.lat) <= window.__mr.race.hw * 0.5 + 0.05,
+      { what: 'the reset pad to put the car back on the road' });
+    const c = await game.eval(() => window.__mr.race);
+    assert.ok(Math.abs(c.yawToRoad) < 0.05, `pointing along the road (${c.yawToRoad.toFixed(3)} rad off)`);
+    assert.ok(c.speed < 1, `at rest (${c.speed.toFixed(2)} m/s)`);
     assert.ok(c.s < before.s && c.s > before.s - 10, `a few metres back (${before.s.toFixed(1)} → ${c.s.toFixed(1)})`);
 
     await game.tap('#touch [data-tap="pause"]');
     await game.waitFor(() => window.__mr.mode === 'paused', { what: 'the pause pad to pause' });
     assert.equal(await game.screen(), 'pause');
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
 
@@ -256,7 +259,7 @@ for (const [device, kind] of [['phone', 'buttons'], ['phonePortrait', 'buttons']
         await sleep(30);
         assert.deepEqual(Object.keys(held).filter((k) => held[k]), [n], `a touch on ${n} holds ${n} and nothing else`);
       }
-      assert.deepEqual(game.errors, []);
+      assert.deepEqual(pageErrors(game), []);
     } finally { await game.close(); }
   });
 }

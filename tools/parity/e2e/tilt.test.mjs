@@ -20,6 +20,7 @@ import assert from 'node:assert/strict';
 import { launch, openGame } from './harness.mjs';
 import {
   sleep, simWait, startRace, car, placeCar, cameraRight, turnFrom, press, lift, choose, stickDown, stickTo, sliderPoint, shown,
+  pageErrors,
 } from './controls-helpers.mjs';
 import { pose } from '../../../test/unit/support/pose.js';
 
@@ -81,7 +82,7 @@ test('phone: tilt is a Steering choice; picked, it saves, shows the slider, and 
     await game.frames(2);
     assert.equal(await shown(game, 'touch-stick'), false, 'stick hidden');
     assert.equal(await shown(game, 'touch-wheel'), true, 'wheel shown');
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
 
@@ -132,7 +133,7 @@ test('phone: turning the phone steers the car that way; gas still works; the whe
     await stickDown(game);
     assert.equal(await game.eval(() => window.__mr.race.touch.stick), null, 'no stick while tilting');
     await lift(game);
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
 
@@ -170,7 +171,7 @@ test('phone: the sensitivity slider changes how much lock a tilt gives', async (
     const low = await steerAt(false), high = await steerAt(true);
     assert.ok(low > 0.05 && high > low * 2, `10° of tilt: ${low.toFixed(2)} at the lowest, ${high.toFixed(2)} at the highest`);
     assert.equal(await game.eval(() => localStorage.getItem('mr.tiltSens')), '1', 'saved');
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
 
@@ -186,7 +187,7 @@ test('phone: the other landscape and portrait steer the right way too', async ()
     const r = await tiltTurn(game, 20, 0.6, -90);
     assert.ok(r.mid.inp.steer > 0.4, `steers right (${r.mid.inp.steer.toFixed(2)})`);
     assert.ok(r.turn > 0.1, `the car turns to screen-right (${r.turn.toFixed(2)})`);
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 
   game = await openGame(browser, { device: 'phonePortrait', query: Q, storage: TILT });
@@ -199,7 +200,50 @@ test('phone: the other landscape and portrait steer the right way too', async ()
     assert.ok(r.turn > 0.1, `the car turns to screen-right (${r.turn.toFixed(2)})`);
     const l = await tiltTurn(game, -20, 0.6, 0);
     assert.ok(l.turn < -0.1, `and left (${l.turn.toFixed(2)})`);
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
+  } finally { await game.close(); }
+});
+
+// iOS Safari's `DeviceOrientationEvent.requestPermission`, faked: it says
+// yes inside a user gesture (`navigator.userActivation.isActive`) and
+// rejects outside one, as Safari does.
+function fakeIosPermission() {
+  window.__asks = [];
+  DeviceOrientationEvent.requestPermission = () => {
+    const tap = navigator.userActivation.isActive;
+    window.__asks.push(tap);
+    return tap ? Promise.resolve('granted') : Promise.reject(new DOMException('needs a user gesture', 'NotAllowedError'));
+  };
+}
+
+test('iPhone: motion access is asked for in the Race tap and in the tap that picks Tilt', async () => {
+  let game = await openGame(browser, { device: 'iphone', query: Q, storage: TILT, wait: false });
+  try {
+    await game.page.evaluateOnNewDocument(fakeIosPermission);
+    await game.reload();
+    // At load (no tap) it can't ask: the menu says what to do.
+    await game.waitFor(() => /Tap Race to allow motion access/.test(window.__mr.ui('tilt-note')?.value || ''), { what: 'the ask note' });
+    assert.deepEqual(await game.eval('window.__asks'), [false]);
+    await startRace(game, { racing: false });
+    await game.waitFor(() => ['waiting', 'none', 'live'].includes(window.__mr.race?.touch?.tilt?.state), { what: 'motion access granted in the tap' });
+    const asks = await game.eval('window.__asks');
+    assert.ok(asks.includes(true), `asked inside the tap (${JSON.stringify(asks)})`);
+    await tiltTo(game, pose({ turn: 0 }));
+    await game.waitFor(() => window.__mr.race.touch.tilt.state === 'live', { what: 'tilt live' });
+    assert.deepEqual(pageErrors(game), []);
+  } finally { await game.close(); }
+
+  game = await openGame(browser, { device: 'iphone', query: Q, wait: false });
+  try {
+    await game.page.evaluateOnNewDocument(fakeIosPermission);
+    await game.reload();
+    await choose(game, '#opt-steer', 'tilt');
+    await game.waitFor(() => window.__asks.includes(true), { what: 'the Tilt tap to ask' });
+    await game.waitFor(() => !/Tap Race/.test(window.__mr.ui('tilt-note')?.value || ''), { what: 'no ask note once granted' });
+    await tiltTo(game, pose({ turn: 0 }));
+    await startRace(game);
+    await game.waitFor(() => window.__mr.race.touch.tilt.state === 'live', { what: 'tilt live' });
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
 
@@ -209,7 +253,7 @@ test('desktop: no steering choice or tilt option', async () => {
     assert.equal(await shown(game, 'opt-steer'), false);
     assert.equal(await shown(game, 'opt-tilt-sens'), false);
     assert.equal(await shown(game, 'tilt-note'), false);
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
 
@@ -224,6 +268,6 @@ test('phone: switching to another tab pauses the race, and it stays paused on re
     await game.waitFor(() => window.__mr.mode === 'paused', { what: 'the race to pause' });
     assert.equal(await game.screen(), 'pause');
     await other.close();
-    assert.deepEqual(game.errors, []);
+    assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
