@@ -6921,3 +6921,227 @@ addition, not a change to anything the JS does: the game, the simulation
 and the parity pictures are untouched, so it is not a deviation; the
 menu button is listed in DEVIATIONS.md as the one visible difference on
 a JS screen. Its decisions are D880 to D899.
+
+## D880. The level viewer is a run of its own
+
+2026-10-04, WP 6.9 (SPEC 8.6, D679). `?view=god` on a level (natively
+`--query "view=god&level=coast"`) is never a race (`Options::race_on`
+is false, so no menu, no race field, no sound graph) and has no stand-in
+cars unless `cars=1` (`cars_on`): the level is built whole as for the fly
+camera's runs (the client's own build, D678; `world=export` as
+elsewhere), and `crate::viewer` drives the camera instead of
+`fly_system` (which returns at once in a viewer run). Everything is in
+`crates/mr_game/src/viewer/`: `cams` (the cameras as plain math), `link`
+(the query string), `input`, `panel`, `groups`, `stats`, and `web` for
+the page. Shared files gain only additions: `options.rs` (`viewer()`),
+`lib.rs` (the module, its plugin, the early return), `animate.rs`
+(`SceneIndex::groups`), `play/gamepad_io.rs` (`pads_only`), `ui` (the
+menu's button and `Act::Viewer`) and the page (two lines). A race, the
+menu, the simulation and every parity picture are as before: none of
+this runs outside `view=god`, and the menu's button sits out of the
+layout (D881).
+
+## D881. The menu's button opens the viewer by address; Menu goes back the same way
+
+2026-10-04. "Level viewer" is a pill in the top right corner of the
+menu's level card, positioned out of the layout, so nothing else on the
+menu moves (`btn-viewer`; DEVIATIONS.md). It opens
+`?view=god&level=<chosen>` (keeping the page's own parameters such as
+`backend`, `hq`, `world`), a page load, rather than switching the running
+client from its menu views to a whole level and a free camera: the menu's
+flow (D743, D751) stays untouched, and the viewer always starts from the
+same state a link gives. The cost is the page load (the wasm is cached;
+the level is built as Race builds it). The panel's Menu goes back to the
+page without the viewer's parameters, with the viewed level saved as the
+menu's choice (`mr.level`). Natively the client starts itself again with
+`--query` and exits (no in-process switch either).
+
+## D882. The cameras and their controls
+
+2026-10-04. A pose is a position, a yaw about the world's up (0 looks
+along −Z) and a pitch, rotation `Ry(yaw)·Rx(pitch)`, no roll; the link's
+`cam=x,y,z,yaw,pitch` is that pose. Free fly moves where it looks (strafe
+level, rise and sink straight), 1 to 800 m/s on a logarithmic slider
+(25 by default), Shift ×4, Alt ×¼, its velocity eased (10/s) so a key tap
+does not jerk. Orbit circles, tilts (−89° to +34°) and zooms (2 m to 30
+km) about a centre that the keys or stick move, faster farther out. The
+overview looks straight down (a perspective camera at the game's 62°)
+from the height that shows the route's box whole, the map turned by yaw;
+a drag moves the ground with the finger. The ride is `fly::fly_camera`
+with its parameters adjusted live (speed, height, side, look, distance
+behind). Changing camera keeps the view where it can (free ↔ orbit about
+the ground point ahead, at most 3 km), and flies (an eased 1 to 1.6 s
+flight) into and out of the overview and into the ride. Mouse drags turn
+toward the motion (free, ride), as desktop viewers do; a finger grabs
+the view (Street View's way); orbit drags move the scene with the
+pointer. The bindings are in `viewer/input.rs`'s header and the panel's
+"Controls".
+
+## D883. The world's focus is the camera
+
+2026-10-04. Each frame the viewer does what the game's frame does around
+the player's car, around the camera: the focus (`CameraState::focus`,
+the sky dome's centre, the sun's ±70 m shadow box) is the camera's
+position (the ride keeps the fly camera's `frame(s − back)`, as
+`main.js`), the animators get the camera (distance-shown nodes, the city's
+fades, LOD, point sizes) and the nearest route position as their `s`
+(`World.update(dt, s, focus)`), and `Sky.update` is called with that `s`,
+so the time of day follows the camera along the route (on a loop it is
+the middle, as in the game). The nearest route position is the closest of
+every eighth sample, then the Track's own projection. Pinning the time of
+day sets `Sky`'s `override_p` (the game's `?t=`, which the link reuses).
+Animators frozen is the game's `?freeze=1` (world dt 0: the sky's clock,
+the sea, the scenery all hold).
+
+## D884. Picking a point on the ground without the terrain
+
+2026-10-04. The client keeps no terrain heights after the build (the
+world drops its `Terrain`), and a GPU depth read-back would need a hook
+in `render/`. A tap or click on the overview (and the pad's A, the middle
+of the screen) is cast onto the plane at the nearest road's height,
+refined twice with the road height nearest the hit. Seen from straight
+above the point's x and z are exact whatever the ground's height; its
+height is the road's, so the orbit it flies to (350 m out, 34° down) can
+sit a little above or below the hill there. The orbit's centre can be
+moved with the keys or the stick (Q/E down and up).
+
+## D885. Fog off, the far plane out, and the near plane
+
+2026-10-04. Fog off sets `FogExp2`'s density to 0 after `Sky.update` (the
+colour kept), outside `render/`. The far plane extended is 300 km instead
+of the game's 9 km; Bevy's perspective is infinite reversed-z, so the far
+plane only culls, and nothing in the shaders depends on it (the dome is
+drawn at the far plane by its own shader). From high up the near plane
+moves out to a thousandth of the height above the road (at most 50 m;
+0.3 m, the game's, below 300 m), for depth precision over the whole
+level. The overview turns fog off and the far plane out on the way in
+and gives back what they were on the way out, unless they were changed
+meanwhile.
+
+## D886. Scene groups
+
+2026-10-04. The panel's groups are the level's top-level scene groups:
+the children of the world's root (`world:<level>`: terrain, road, each
+scenery module's group, the sea, …) and the other drawn roots (the sky
+dome), each named by its node, or by the material kind it draws when
+unnamed. `animate::SceneIndex` records them when the loader indexes the
+scene (`viewer::groups::scene_groups`, a pass over the nodes). Hiding a
+group puts its entities on a render layer no camera or light draws
+(`RenderLayers::layer(31)`), so the animators' own visibility edits are
+left alone and showing it again restores exactly what they say. The link
+names hidden groups (`hide=terrain,sea`).
+
+## D887. The panel and overlay
+
+2026-10-04. The panel is Bevy UI through the widget module's tokens, type
+and text (`ui::widgets`), top left, folding to its header (folded at
+first on a touch screen, open on a desktop; `panel=0` in a link). It is
+rebuilt only when its shape changes (a camera, a toggle, a group, a
+note); the sliders, the route and time-of-day labels and the readout
+(four times a second) change in place. The overview's route (240
+segments) and its zone marks and names are UI nodes built once and moved
+by `UiTransform` only (no layout), and only when the overview's pose
+changes. On a touch screen the move stick (bottom left) and the ↑ ↓ rise
+and sink buttons (bottom right) are drawn and hit-tested by the viewer.
+The viewer renders at the race's pixel ratio (`hq ? min(dpr, 1.5) : 1`,
+not the menus' sharper one, D575), so its frames cost what the race's do.
+
+## D888. The link and the address
+
+2026-10-04. The link is the view's query string (`viewer/link.rs`):
+`view=god&level=…&mode=…&cam=…`, the orbit's centre, the ride's `s h back
+lat v yaw pitch`, `fog far anim`, `t`, `hide`, `speed`, `panel`, positions
+to the centimetre and angles to 10⁻⁵ rad. The page's address follows the
+view (`history.replaceState`, once the camera has been still for half a
+second), so the address bar is always the view's link; Copy link also
+puts the full URL on the clipboard, inside the tap through the page's
+gesture bridge (`viewer_gesture`, where Safari allows it) and from the
+frame otherwise. Natively the link is printed as a `--query` argument.
+
+## D889. Draw calls and triangles for the readout
+
+2026-10-04 (frame-time agreed it lives in `viewer/`). Counted in the
+render world after the queues are built (`viewer/stats.rs`): every mesh
+entity visible from the camera, and from the sun's shadow map, is a call,
+its triangles the index count over three times its instances (an
+`InstancedMesh`'s count from `render::instancing::Instances`, read only).
+That is how three's `renderer.info.render` counts, the unit of SPEC 6.6's
+budgets; Bevy may batch some of these into fewer GPU draws, and the post
+chain's passes are not counted. Counted only while the panel is open (or
+`__mr.viewer.set({count: true})`), with no allocation per frame.
+
+## D890. Pads in the viewer
+
+2026-10-04. The viewer has no race, so it adds the pads' poll alone
+(`gamepad_io::pads_only`: `PadsRes`, polled in `PreUpdate`, WP 6.4's
+maps and `__mr.pads` as before) and reads the active pad's standard
+layout directly, with the race's dead zone and curve (0.12, ^1.4): left
+stick moves, right stick looks (2.2 rad/s), LT and RT sink and rise, LB
+and RB slow down and speed up (orbit and overview: zoom), Y the next
+camera, X folds the panel, A in the overview dives to the middle, the
+D-pad goes along the route (◂ ▸ 500 m) and moves the time of day
+(▴ ▾), Start takes a screenshot.
+
+## D891. The test bridge
+
+2026-10-04. In a viewer run `__mr.screen` and `__mr.mode` are `viewer`,
+`__mr.uiNodes` holds the panel's controls (`vw-…`, as the menus' ids),
+and `__mr.viewer` reports the mode, pose, orbit, overview, ride, route
+position and zone, toggles, groups, the link, frame time, draws and
+triangles; `__mr.viewer.set({mode, cam, orbit, ride, fog, far, anim, t,
+hide, speed, route, folded, help, count})` takes a pose and the panel's
+state (with `cam`, at once, no flight). `tools/parity/e2e/viewer.test.mjs`
+drives it; `tools/parity/viewer-shots.mjs` takes the review pictures and
+the measurements into `parity/report/viewer/`.
+
+## D892. Pointer units on the web, and the panel's scale
+
+2026-10-04. With the race's pixel ratio forced (D887: 1 on a phone with
+High quality off), winit hands touch and cursor positions in the device's
+pixels over the overridden scale factor, not in the UI's logical px (the
+race's controls convert with `touch_scale`, D846). The viewer measures
+CSS px per logical px as the race does (the canvas's CSS width over the
+window's logical width) for the panel's breakpoints and the bridge's
+boxes, and takes pointer positions to logical px by `(scale /
+base scale) / css` (`Viewer::ptr`); natively both are 1. On a phone the
+panel stops above the touch stick and scrolls.
+
+## D893. What the viewer costs
+
+2026-10-04, release WebGPU build, headless Chrome on the RTX 3060, frame
+rate uncapped, `tools/parity/viewer-shots.mjs --race` (desktop 1280 × 800,
+High quality on) and `--device iphone` (844 × 390 at dpr 3, High quality
+off, so no shadows and pixel ratio 1); the machine shared (load 23 to 72),
+so the tails are other processes' as much as ours. Frame time p50 / p95 in
+ms; draws are objects (camera + shadow map) and triangles in millions,
+counted as D889; wasm is the memory's high-water mark (the same in every
+mode: the level's build sets it).
+
+| Level | Free | Orbit | Overview | Far plane out, fog off | Ride | Race (autopilot) | Draws: free / orbit / overview | M tris: free / orbit / overview | Wasm MB (race) |
+|---|---|---|---|---|---|---|---|---|---|
+| Sierra | 7.6 / 26.6 | 8.2 / 29.0 | 5.6 / 30.7 | 3.8 / 15.2 | 8.1 / 29.5 | 7.7 / 32.4 | 394 / 112 / 504 | 2.90 / 1.17 / 3.16 | 347 (370) |
+| Coast | 4.7 / 20.6 | 4.6 / 23.0 | 5.9 / 28.8 | 6.6 / 31.0 | 4.7 / 22.9 | 6.0 / 23.1 | 329 / 99 / 428 | 2.56 / 1.28 / 3.24 | 456 to 504 (461 to 493) |
+| Streets | 4.2 / 15.7 | 3.8 / 14.3 | 4.6 / 26.5 | 3.8 / 14.6 | 3.8 / 21.2 | 5.8 / 15.2 | 214 / 131 / 359 | 1.35 / 0.94 / 1.71 | 394 (398) |
+| Desert | 6.7 / 15.1 | 4.4 / 13.5 | 9.9 / 26.8 | 3.8 / 24.1 | 5.0 / 21.7 | 5.9 / 27.6 | 308 / 139 / 349 | 2.39 / 1.40 / 2.68 | 310 (315) |
+| Seaside | 5.1 / 21.4 | 4.1 / 9.5 | 4.9 / 10.6 | 4.0 / 12.1 | 8.4 / 32.0 | 4.6 / 14.7 | 125 / 129 / 166 | 1.09 / 1.10 / 1.06 | 210 (210) |
+| Cruise | 4.5 / 13.3 | 6.1 / 13.5 | 7.5 / 27.2 | 4.2 / 12.2 | 3.8 / 34.8 | 4.5 / 15.8 | 198 / 208 / 357 | 1.72 / 1.85 / 2.30 | 438 (443) |
+
+(the first desktop run; a second, at load 23 to 55, gave the same draws,
+triangles and memory and frame times within its noise, Coast's wasm 456
+MB against 504 in the first.) Free fly and orbit hold the race's budgets:
+their median frames are the race's on the same build and machine (within
+the run-to-run noise), and their draws and triangles are under the JS
+figures plus 10 % (SPEC 6.6: 833, 705, 686, 644, 404, 721 calls; 3.48,
+3.50, 1.98, 3.13, 1.18, 2.06 M triangles). The overview draws the most
+(up to 504 objects, 3.2 M triangles; the Cruise's 2.30 M is over its
+race figure, which SPEC 8.6 allows), but no shadow pass (the sun's box
+follows the camera, high above anything), so its frames cost about what a
+race's do. iPhone emulation (desktop GPU, so the frame times say little
+about a phone; the memory is the phone's): the same wasm high-water marks
+(206 to 488 MB), constant across modes, so no mode grows memory and
+nothing needed degrading for the 512 MB budget; the overview at 172 to
+484 objects and 1.1 to 3.2 M triangles is within the races' peaks on
+every level but the Cruise. What stays near the budget is Coast's own
+build (D678: 512 MB on reload; 456 to 504 here), not the viewer: a viewer
+run holds no race field and no sound graph. Load to ready 4.6 to 13.8 s
+(the level's build).

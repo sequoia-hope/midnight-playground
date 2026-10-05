@@ -213,6 +213,8 @@
         if (type === 'pointerdown' || type === 'keydown') return;
         const t = e.changedTouches ? e.changedTouches[0] : e;
         if (t && t.clientX !== undefined) glue.gesture_at(type, t.clientX, t.clientY);
+        // The level viewer's Copy link, inside the tap (SPEC 8.6).
+        if (t && t.clientX !== undefined && glue.viewer_gesture) glue.viewer_gesture(type, t.clientX, t.clientY);
       }, { capture: true, passive: true });
     }
 
@@ -245,6 +247,10 @@
     mr.trackWrap = (s) => glue.track_wrap(+s);
     // __mr.flyTo(station): the fly camera to a screenshot station; then
     // __mr.flyQuiet counts settled frames (a test hook).
+    // __mr.viewer (the level viewer, ?view=god): the client fills in the
+    // mode, pose and panel state; set({ mode, cam: [x, y, z, yaw, pitch],
+    // ... }) places the camera (a test hook, SPEC 8.6).
+    if (glue.viewer_set) mr.viewer = { set: (o) => glue.viewer_set(JSON.stringify(o)) };
     mr.flyTo = (p) => { mr.flyQuiet = 0; glue.fly_to(p.s, p.h, p.back, p.lat || 0, p.yaw || 0, p.pitch || 0); };
     glue.run();
 

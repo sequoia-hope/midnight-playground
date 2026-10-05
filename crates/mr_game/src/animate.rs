@@ -461,6 +461,9 @@ pub struct SceneIndex {
     /// The spot light the loader takes into `Lighting` (the first in the
     /// scene) and its target, the next sibling (Desert's train, D720).
     spot: Option<(u32, Option<u32>)>,
+    /// The scene's top-level groups, for the level viewer's toggles
+    /// (`crate::viewer::groups`).
+    pub groups: crate::viewer::groups::Groups,
 }
 
 /// The uniform slot (block texel 4) of a kind's animated uniform.
@@ -668,6 +671,7 @@ impl SceneIndex {
             entities: None,
             unknown: Vec::new(),
             spot,
+            groups: crate::viewer::groups::scene_groups(scene),
         }
     }
 
