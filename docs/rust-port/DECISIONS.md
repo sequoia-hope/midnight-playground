@@ -6463,3 +6463,146 @@ because every level's stations passed with it and changing it needs those
 stations run again; giving the scene materials a rank of their own (three
 breaks ties by object id, which is the scene's node order) is the fix,
 for whoever next runs the stations.
+
+## WP 6.3 decisions: the race HUD
+
+## D820. The HUD: an engine-free `HUD` class, and nodes built once
+
+2026-10-04, roadmap WP 6.3 (`HUD.js`, the HUD half of `hud.css`). The
+M4 text HUD (D431, D687) is replaced. `play/hud/model.rs` is the `HUD`
+class without the DOM: `update(dt, st)` with the class's `set` (a text
+is written only when it changed), `toast`, `center`, `radio`,
+`setPursuit` and `updatePursuit`, the zone card on a zone change (once
+started; on a circuit only on lap one), the route dots, the cruise
+panel, the speed lines' opacity and which dial shows. Its `st` is
+`Race.js`'s payload (`play/hud.rs` `hud_in`: `lapS`, the standings, the
+active traffic, the rivals in standings order). `hud.test.js`'s
+thirteen cases are its tests, with the same inputs and outputs, plus
+the readouts, laps, cruise, zone card, toast timing and speed lines.
+`play/hud.rs` lays the elements out and builds the nodes once per race,
+screen size and kind (cruise, circuit, electric, touch); each frame it
+puts the model's view on them, writing a text, width, colour or
+transform only when it differs, so nothing is rebuilt and the layout is
+redone only for what moved (the nitro fill, the route dots, the
+multiplier bar). The model is a new `HUD` at each race start, with
+`mph` from the settings and `bestScore` from the store (D687). Not
+updated while paused (the JS loop skips `race.update`), shown in pause
+and results behind the screens as in the JS, hidden while the race is
+held (D574). The Hot Pursuit furniture (stars, bust and evade bar,
+damage, penalty, hold card, radio) has its state in the model already
+(tested) and `M8:` marks where its nodes go, in `index.html`'s order;
+`hud_in` gives `pursuit: None` until M8's `hudState`. `?hud=0` turns the
+HUD off (pictures and frame times without it).
+
+`play/flow.rs`'s `Hud` gains two counters, `centers` and `toasts` (a
+hook, told to its owner): each call restarts the pop or the toast. The
+centre's class follows its text, one class per text as the JS's calls
+give them (`GO!`, `n PLACE`, `WINNER!`, `ESCAPED`, `TAKEDOWN`: `pop
+go`; `WRONG WAY`, `PURSUIT`, `SPIKED!`, `BUSTED`, `WRECKED`: `warn
+pop`; the rest `pop`). The M4 controls line under the countdown and the
+hidden placeholder panel are gone: the JS HUD has neither, and the menu
+shows the controls.
+
+## D821. The canvases and the speed lines: one UI material
+
+2026-10-04. SPEC 8.1 asks for the dials and minimap as generated 2D
+meshes and the speed lines as a UI shader. Bevy UI draws no meshes, and
+a second camera rendering meshes to a texture would add a pass and its
+own render graph beside the post chain; so all three are one
+`UiMaterial` (`play/hud/material.rs`, `hud.wgsl`), told apart by a
+uniform, so one pipeline and one copy of the material plugin. The
+canvases' paths become signed distances, antialiased over a pixel:
+the dial's backplate, track, redline (or regen) zone, the fill with the
+canvas's diagonal gradient (`createLinearGradient(0, W, W, 0)`, stops
+in sRGB) and the ticks; the minimap's road (s − 500 to s + 900 every
+6 m and the runout, two strokes with round caps and joins), the finish,
+traffic, rivals, the police bars and blinking units (ready for M8), the
+clip circle and the player's arrow; the speed lines' repeating conic
+gradient and radial mask. The CPU side computes the canvas's own
+transform (`play/hud/minimap.rs`, `dials.rs`, tested: the projection,
+the road samples, culling to the circle, the dial angles, labels,
+needle and gradient) and rewrites the uniform only when it changed. The
+dial's labels are text nodes and its needle a turned node above the
+material, as the canvas draws them last. `N₂O` is N, a small low 2 and
+O (Rajdhani has no ₂); its `mix-blend-mode: difference` is a colour
+switch when the fill reaches under it. The nitro pulse is the
+gradient's brightness from the keyframes.
+
+## D822. Text shadows, glows and the minimap's shadow
+
+2026-10-04. Bevy's text shadow is a hard copy with no blur. A CSS
+`text-shadow: 0 y b rgba(0,0,0,a)` becomes a copy y px down with alpha
+`a · 2/b`: at full alpha the copy read as a second glyph on Seaside's
+light sky, where the blurred one is a soft halo. The toast's
+`0 0 14px` blue glow has no hard equivalent and is left out. The
+minimap's `box-shadow` ring is an outline; its 24 px drop shadow is left
+out (Bevy draws a box shadow under the whole node, and the disc is
+translucent, D573).
+
+## D823. Translucent colours on a linear target
+
+2026-10-04. The page composites in sRGB; Bevy blends the UI into the
+post chain's linear Rgba16Float target, where a translucent colour shows
+more of what is behind it: the minimap's dark disc came out at (95, 88,
+78) against the JS's (61, 58, 59) over the same rock. The HUD's
+translucent colours go through `hc()` (and the material's output
+through the same `lin_alpha` in `hud.wgsl`): the alpha that, blended in
+linear, lands where the sRGB blend would over a background of sRGB
+0.25, and close to it over others for the dark panels (black at 50 %
+over sRGB 0.6: 0.28 of the background's light against 0.23); after it the disc reads (76, 70, 64) and the phone's over
+the sky (57, 71, 98) against (49, 61, 85). The menus' screens (WP 6.2)
+have the same effect and do not correct it; `hc` is in `play/hud.rs`
+for them to take if wanted.
+
+## D824. The CSS animations from the real clock
+
+2026-10-04. The browser runs `pop` (.8 s), `zoneCard` (3.6 s), the
+toast's .25 s opacity transition and `nitroPulse` (.18 s alternate) on
+wall time, also while paused; the port computes them from Bevy's real
+time with the CSS timing functions (`ease`, `ease-out` per keyframe
+interval; `fill-mode: both`), tested. Opacity on an element is its
+texts' and shadows' alpha; scale and slide are `UiTransform`s, so they
+move no layout.
+
+## D825. The layout at the CSS's breakpoints
+
+2026-10-04. Desktop; `max-width: 720px` (position 44 px, minimap 120,
+the dial box scaled .7 from its corner, the route bar bottom left at
+50vw); the touch layout (`body.touch`: the small minimap at the safe
+insets, the route bar 30vw at the top in landscape and 70vw at 166 px in
+portrait, the compact speedo box at `--steer-top` + 8, the cruise panel
+at .7, centre text 84 px for every class, which outranks `.warn`'s 54
+in the CSS). The `.pos` line is a row placed on Rajdhani's metrics
+(ascent .93, line 1.276 em: the `sup` at the line's top plus 8 px, the
+count on the baseline). `--steer-top` follows the stick, buttons or
+tilt steering (`settings.steering` here; the touch package's
+`race.touch.steering` once both are merged).
+
+## D826. L4: the HUD beside the JS
+
+2026-10-04. `tools/parity/hud-shots.mjs` takes the JS game (Rajdhani
+for its Google Fonts request, `?parity=1`, stopped at the tick) and the
+Rust web build (the registered server, the page shooting the first frame
+at that race time) at the same race time, seed 1, the autopilot;
+`--countdown` for the pop; `hud-crops.py` puts parts side by side.
+Pictures in `parity/report/hud/` (not in git), `index.html` there.
+Sierra 20 s on desktop 1280 × 800, iPhone portrait 390 × 844 and
+landscape 844 × 390; Sierra 101.5 s (the Old Mill Valley card and a
+NEAR MISS toast); the electric car's power meter; Seaside 40 s (the lap
+line) on desktop and phone landscape; the Cruise at 30 s (score panel,
+speed lines) on desktop and phone portrait; the countdown's 2; WebGL2 at
+Sierra 20 s desktop and phone and 101.5 s. Every element lands within a
+pixel or two of the JS's, in the same font, size, weight, spacing and
+colour; the dial, its labels and needle, the minimap and route bar match
+mark for mark. What differs: the shadows and the toast's glow (D822),
+`N₂O` in the toasts is N2O (the flow's text, D431), the touch buttons'
+icons (the touch package's), and the scene behind (the race positions
+differ by a few metres between the builds at the same time). WebGL2
+draws the same.
+
+Frame cost, Sierra at 40 s, 1280 × 800, WebGPU, uncapped (median rAF
+interval over 6 s, three alternating pairs on a machine at load 60+):
+with the HUD 8.0, 7.5, 4.5 ms; with `?hud=0` 8.0, 6.8, 4.2 ms, so about
+0.3 ms in the quiet pair, within the runs' spread. Per frame the HUD
+writes one 6 kB uniform each for the dial and the minimap when they
+change and a few texts, and builds no nodes.
