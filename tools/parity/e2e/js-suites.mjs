@@ -33,8 +33,8 @@ export const SKIPS = [
   // Deviations (DEVIATIONS.md).
   { suite: 'audio', name: /^phone: pausing suspends the audio, taps on the pause screen leave it/, why: 'deviation: a tap on no control of the pause screen resumes (DEVIATIONS.md, D578); suspend on pause and resume are race-flow\'s Esc test' },
   // JS-only hooks.
-  { suite: 'race-button', name: /^phone: a second tap while the race is starting/, why: 'replaces three\'s `renderer.compileAsync` and traps `window.__race` assignments; the Rust check counts `__mr.races` (tools/parity/e2e/rust-only.test.mjs)' },
-  { suite: 'traffic-lod', name: /./, why: 'reads three.js scene-graph internals (CarModel.setFar, geometry groups, Traffic.lod); the Rust far-model switch is the renderer\'s (play::FAR_OUT/FAR_IN, D)' },
+  { suite: 'race-button', name: /^phone: a second tap while the race is starting/, why: 'replaces three\'s `renderer.compileAsync` and traps `window.__race` assignments; the Rust check counts `__mr.races` (tools/parity/e2e/race-button.test.mjs)' },
+  { suite: 'traffic-lod', name: /./, why: 'drives three.js internals (CarModel.setFar and its geometry groups, Traffic.activate and .lod); the Rust switch (play::FAR_OUT 95 m, FAR_IN 85 m, the same hysteresis) is inside the draw system, with no bridge' },
 ];
 
 const args = process.argv.slice(2);
@@ -69,6 +69,18 @@ async function waitGpu() {
 // The device a test opens (its name says, but for these).
 const device = (name) => (/^(phone|phonePortrait|iPhone)\b|^rotate hint|^leaving the page/i.test(name) ? 'phone' : 'desktop');
 
+// node --test leaves the skipped tests out of its report: name them from
+// the suite's source (their names are plain strings) and add them.
+function skippedOf(suite, skip, tests) {
+  const src = fs.readFileSync(path.join(DIR, suite + '.test.js'), 'utf8');
+  for (const m of src.matchAll(/\btest\(\s*(['"])((?:\\.|(?!\1).)*)\1/g)) {
+    const name = m[2].replace(/\\(.)/g, '$1');
+    const s = skip.find((k) => k.name.test(name));
+    if (s && !tests.some((t) => t.name === name)) tests.push({ name, status: 'skip', device: device(name), why: s.why, m8: !!s.m8, detail: '' });
+  }
+  return tests;
+}
+
 // One suite: node --test with the TAP reporter, one test at a time.
 function runSuite(suite) {
   const skip = target === 'rust' ? SKIPS.filter((s) => s.suite === suite) : [];
@@ -76,6 +88,9 @@ function runSuite(suite) {
   for (const s of skip) nodeArgs.push('--test-skip-pattern=' + s.name.source);
   for (const o of only) nodeArgs.push('--test-name-pattern=' + o);
   nodeArgs.push(path.join(DIR, suite + '.test.js'));
+  // A suite skipped whole is not started: its `before` would launch a
+  // Chrome that no `after` closes.
+  if (skip.some((s) => s.name.source === '.')) return Promise.resolve({ suite, code: 0, tests: skippedOf(suite, skip, []), out: '' });
   return new Promise((resolve) => {
     const child = spawn('nice', ['-n', '10', process.execPath, ...nodeArgs], {
       cwd: ROOT, env: { ...process.env, MR_TARGET: target }, stdio: ['ignore', 'pipe', 'pipe'],
@@ -90,7 +105,7 @@ function runSuite(suite) {
       const lines = out.split('\n');
       for (let i = 0; i < lines.length; i++) {
         const m = lines[i].match(/^(not )?ok \d+ - (.+?)(?: # (SKIP|TODO).*)?$/);
-        if (!m) continue;
+        if (!m || m[2].endsWith('.test.js')) continue;
         const name = m[2];
         const status = m[3] === 'SKIP' ? 'skip' : m[1] ? 'fail' : 'pass';
         let detail = '';
@@ -102,15 +117,7 @@ function runSuite(suite) {
         const s = skip.find((k) => k.name.test(name));
         tests.push({ name, status, device: device(name), why: status === 'skip' ? (s?.why || 'skipped') : '', m8: !!s?.m8, detail });
       }
-      // node --test leaves the skipped tests out of its report: name them
-      // from the suite's source (their names are plain strings).
-      const src = fs.readFileSync(path.join(DIR, suite + '.test.js'), 'utf8');
-      for (const m of src.matchAll(/\btest\(\s*(['"])((?:\\.|(?!\1).)*)\1/g)) {
-        const name = m[2].replace(/\\(.)/g, '$1');
-        const s = skip.find((k) => k.name.test(name));
-        if (s && !tests.some((t) => t.name === name)) tests.push({ name, status: 'skip', device: device(name), why: s.why, m8: !!s.m8, detail: '' });
-      }
-      resolve({ suite, code, tests, out });
+      resolve({ suite, code, tests: skippedOf(suite, skip, tests), out });
     });
   });
 }

@@ -234,11 +234,7 @@ fn stage_control(
 }
 
 /// Staging commands and reveals from the page.
-fn take_commands(
-    mut ui: ResMut<UiState>,
-    mut ctx: super::ActCtx,
-    controls: super::ControlQuery,
-) {
+fn take_commands(mut ui: ResMut<UiState>, mut ctx: super::ActCtx, controls: super::ControlQuery) {
     if let Some(id) = REVEAL.lock().unwrap_or_else(|e| e.into_inner()).take() {
         ui.reveal = Some(id);
     }

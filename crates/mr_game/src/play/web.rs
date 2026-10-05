@@ -254,7 +254,14 @@ fn frame(
         set(&tt, "fullLock", tl.full_lock);
         set(&to, "tilt", tt);
     }
-    set(&to, "u", t.slide.as_ref().and_then(|s| s.u).map_or(JsValue::NULL, JsValue::from_f64));
+    set(
+        &to,
+        "u",
+        t.slide
+            .as_ref()
+            .and_then(|s| s.u)
+            .map_or(JsValue::NULL, JsValue::from_f64),
+    );
     set(&o, "touch", to);
     set(&o, "touchUi", touch_ui);
     bridge_race(&o, race, &cams, hud.as_deref());
