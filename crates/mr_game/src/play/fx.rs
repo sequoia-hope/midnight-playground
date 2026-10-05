@@ -67,6 +67,12 @@ pub struct Fx {
     smoke: PointsMesh,
     sparks: PointsMesh,
     skids: (Handle<Mesh>, Mesh),
+    /// The smoke's, sparks' and skids' entities, and the points three sorts
+    /// them by: their geometry's bounding-sphere centre, computed the first
+    /// time three renders them and kept (D808). The entity sits there and its
+    /// vertices are written relative to it, so Bevy sorts it by that point.
+    rings: [Entity; 3],
+    centres: [Vec3; 3],
     /// Per car slot: its pool, its flames (the outer cones).
     pools: Vec<Entity>,
     flames: Vec<Vec<Entity>>,
@@ -82,6 +88,32 @@ pub struct Fx {
     seed: u32,
     /// The player's throttle as the last tick read it (`inp.throttle`).
     throttle: f64,
+}
+
+/// Each effect's place among transparent objects at the same distance
+/// (`ThreeKey::sort_rank`, D808): three breaks such ties by object id, the
+/// order `Effects` makes them in: the smoke, the sparks, the skids, then per
+/// car its flames and its pool.
+const RANK_SMOKE: u8 = 1;
+const RANK_SPARKS: u8 = 2;
+const RANK_SKIDS: u8 = 3;
+const RANK_FLAMES: u8 = 4;
+const RANK_POOLS: u8 = 5;
+
+/// three's `computeBoundingSphere` centre of a position array: the middle of
+/// its bounding box, in `f32` as three keeps it.
+fn box_centre(pos: &[f32]) -> Vec3 {
+    let mut lo = Vec3::splat(f32::INFINITY);
+    let mut hi = Vec3::splat(f32::NEG_INFINITY);
+    for p in pos.as_chunks::<3>().0 {
+        let v = Vec3::new(p[0], p[1], p[2]);
+        lo = lo.min(v);
+        hi = hi.max(v);
+    }
+    if lo.x > hi.x {
+        return Vec3::ZERO;
+    }
+    (lo + hi) * 0.5
 }
 
 /// The effects' random stream for a race (D801): from the race's seed, so
@@ -139,6 +171,7 @@ fn skid_mesh(n: usize) -> Mesh {
 fn particles_material(
     map: Option<Handle<Image>>,
     additive: bool,
+    rank: u8,
     scale: f64,
     shared: &SharedImages,
 ) -> ThreeMaterial {
@@ -171,6 +204,7 @@ fn particles_material(
             depth_write: false,
             depth_test: true,
             patch: Patch::Particles,
+            sort_rank: rank,
             ..ThreeKey::default()
         },
     }
@@ -203,6 +237,7 @@ fn skid_material(shared: &SharedImages) -> ThreeMaterial {
             // polygonOffsetFactor -4 (D803).
             depth_slope: 4,
             patch: Patch::Skid,
+            sort_rank: RANK_SKIDS,
             ..ThreeKey::default()
         },
     }
@@ -307,7 +342,7 @@ fn kit(
         let layout = Layout::of(&mesh);
         Some((meshes.add(mesh), layout))
     };
-    let material = |mats: &mut Assets<ThreeMaterial>, id| {
+    let material = |mats: &mut Assets<ThreeMaterial>, id, rank: u8| {
         let i = handles.material(id)?;
         let mut t = three_material(
             &scene,
@@ -324,6 +359,7 @@ fn kit(
                 .unwrap_or(0.0);
             t.key.depth_slope = (-f) as i32;
         }
+        t.key.sort_rank = rank;
         let key = t.key;
         Some((mats.add(t), key))
     };
@@ -331,9 +367,9 @@ fn kit(
     Some(Kit {
         flame: mesh(meshes, node(nodes[0])?)?,
         pool: mesh(meshes, node(nodes[2])?)?,
-        flame_mat: material(mats, flame_mat)?,
-        flame_core: material(mats, flame_core)?,
-        pool_mat: material(mats, pool_mat)?,
+        flame_mat: material(mats, flame_mat, RANK_FLAMES)?,
+        flame_core: material(mats, flame_core, RANK_FLAMES)?,
+        pool_mat: material(mats, pool_mat, RANK_POOLS)?,
         smoke_tex: tex(smoke),
         glow_tex: tex(glow),
     })
@@ -400,6 +436,7 @@ impl Fx {
                     NoFrustumCulling,
                     NotShadowCaster,
                     NotShadowReceiver,
+                    FxPart,
                     crate::loader::SceneEntity,
                     Name::new(name.to_owned()),
                 ))
@@ -412,37 +449,40 @@ impl Fx {
         let mut points = |commands: &mut Commands,
                           n: usize,
                           tex: Option<Handle<Image>>,
-                          additive: bool,
+                          (additive, rank): (bool, u8),
                           name: &str,
                           combos: &mut Combos| {
             let cpu = points_mesh(n);
             let layout = Layout::of(&cpu);
             let mesh = a.meshes.add(cpu.clone());
-            let m = particles_material(tex, additive, fx.scale, a.shared);
+            let m = particles_material(tex, additive, rank, fx.scale, a.shared);
             let key = m.key;
             let material = a.mats.add(m);
             combos.note(key, &material, &layout, false);
-            part(commands, name, mesh.clone(), material.clone());
-            PointsMesh {
-                mesh,
-                cpu,
-                material,
-                was_live: false,
-            }
+            let e = part(commands, name, mesh.clone(), material.clone());
+            (
+                PointsMesh {
+                    mesh,
+                    cpu,
+                    material,
+                    was_live: false,
+                },
+                e,
+            )
         };
-        let smoke = points(
+        let (smoke, smoke_e) = points(
             commands,
             fx.smoke.max,
             kit.smoke_tex.clone(),
-            false,
+            (false, RANK_SMOKE),
             "fx smoke",
             &mut combos,
         );
-        let sparks = points(
+        let (sparks, sparks_e) = points(
             commands,
             fx.sparks.max,
             kit.glow_tex.clone(),
-            true,
+            (true, RANK_SPARKS),
             "fx sparks",
             &mut combos,
         );
@@ -453,7 +493,7 @@ impl Fx {
         let skid_key = sm.key;
         let skid_mat = a.mats.add(sm);
         combos.note(skid_key, &skid_mat, &skid_layout, false);
-        part(commands, "fx skids", skid_handle.clone(), skid_mat);
+        let skids_e = part(commands, "fx skids", skid_handle.clone(), skid_mat);
         // The pools' shared opacity (D803).
         let pool_slot = a.lights.slot(0.0);
         if let Some(k) = pool_slot
@@ -514,11 +554,13 @@ impl Fx {
         }
         let n = combos.spawn(commands, a.meshes);
         info!("race effects: {n} material × mesh-layout combinations warmed up");
-        Some(Fx {
+        let mut fx = Fx {
             fx,
             smoke,
             sparks,
             skids: (skid_handle, skid_cpu),
+            rings: [smoke_e, sparks_e, skids_e],
+            centres: [Vec3::ZERO; 3],
             pools,
             flames,
             entities,
@@ -527,7 +569,22 @@ impl Fx {
             starts: 0,
             seed: race_seed,
             throttle: 0.0,
-        })
+        };
+        // A race's first render comes before its effects' first update:
+        // three's spheres are of empty buffers, centred on the origin.
+        fx.fix_sort_centres();
+        Some(fx)
+    }
+
+    /// Fixes the points the smoke, sparks and skids sort by from what their
+    /// buffers hold now, as three's first render of them does (D808): the
+    /// race calls it at once, the staged scenes after their frames.
+    pub fn fix_sort_centres(&mut self) {
+        self.centres = [
+            box_centre(&self.fx.smoke.pos),
+            box_centre(&self.fx.sparks.pos),
+            box_centre(&self.fx.skids.pos),
+        ];
     }
 
     /// A restart: new effects for the same cars (the JS's new `Race`
@@ -563,7 +620,7 @@ impl Fx {
 }
 
 /// A particle ring's vertices into its mesh, then into the slab.
-fn write_points(p: &Particles, pm: &mut PointsMesh, writes: &MeshWrites) {
+fn write_points(p: &Particles, pm: &mut PointsMesh, c: Vec3, writes: &MeshWrites) {
     if !p.live && !pm.was_live {
         return;
     }
@@ -572,7 +629,11 @@ fn write_points(p: &Particles, pm: &mut PointsMesh, writes: &MeshWrites) {
         pm.cpu.attribute_mut(Mesh::ATTRIBUTE_POSITION)
     {
         for i in 0..p.max {
-            let q = [p.pos[i * 3], p.pos[i * 3 + 1], p.pos[i * 3 + 2]];
+            let q = [
+                p.pos[i * 3] - c.x,
+                p.pos[i * 3 + 1] - c.y,
+                p.pos[i * 3 + 2] - c.z,
+            ];
             v[i * 4..i * 4 + 4].fill(q);
         }
     }
@@ -596,11 +657,20 @@ fn write_points(p: &Particles, pm: &mut PointsMesh, writes: &MeshWrites) {
 }
 
 /// The skid marks' buffers into their mesh, then into the slab.
-fn write_skids(fx: &Effects, (handle, cpu): &mut (Handle<Mesh>, Mesh), writes: &MeshWrites) {
+fn write_skids(
+    fx: &Effects,
+    (handle, cpu): &mut (Handle<Mesh>, Mesh),
+    c: Vec3,
+    writes: &MeshWrites,
+) {
     let s = &fx.skids;
     if let Some(VertexAttributeValues::Float32x3(v)) = cpu.attribute_mut(Mesh::ATTRIBUTE_POSITION) {
         for (k, q) in v.iter_mut().enumerate() {
-            *q = [s.pos[k * 3], s.pos[k * 3 + 1], s.pos[k * 3 + 2]];
+            *q = [
+                s.pos[k * 3] - c.x,
+                s.pos[k * 3 + 1] - c.y,
+                s.pos[k * 3 + 2] - c.z,
+            ];
         }
     }
     if let Some(VertexAttributeValues::Float32x4(v)) = cpu.attribute_mut(convert::ATTRIBUTE_EXTRA) {
@@ -747,10 +817,11 @@ pub fn frame(
 impl Fx {
     /// What `update` changed into the meshes' vertex data.
     pub fn write(&mut self, writes: &MeshWrites) {
-        write_points(&self.fx.smoke, &mut self.smoke, writes);
-        write_points(&self.fx.sparks, &mut self.sparks, writes);
+        let [cs, cp, ck] = self.centres;
+        write_points(&self.fx.smoke, &mut self.smoke, cs, writes);
+        write_points(&self.fx.sparks, &mut self.sparks, cp, writes);
         if self.fx.skids.flush() {
-            write_skids(&self.fx, &mut self.skids, writes);
+            write_skids(&self.fx, &mut self.skids, ck, writes);
         }
     }
 
@@ -761,6 +832,13 @@ impl Fx {
         lights: &mut MaterialLights,
     ) {
         let fx = self;
+        for (&e, &c) in fx.rings.iter().zip(&fx.centres) {
+            if let Ok((mut t, _)) = parts.get_mut(e)
+                && t.translation != c
+            {
+                t.translation = c;
+            }
+        }
         if let Some(k) = fx.pool_slot
             && let Some(v) = lights.values.get_mut(k)
         {

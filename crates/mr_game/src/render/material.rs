@@ -237,6 +237,13 @@ pub struct ThreeKey {
     /// the camera; the race's effects, D803). Other materials keep the
     /// constant alone (D103).
     pub depth_slope: i32,
+    /// Where the material sorts among transparent objects (D808). 0: by
+    /// distance plus the constant depth bias, as the scene materials always
+    /// have (Bevy adds a material's `depth_bias` to its sort distance; three
+    /// does not sort by its polygon offset). n > 0: by distance alone,
+    /// ties broken by n, as three breaks them by creation order (the race's
+    /// effects).
+    pub sort_rank: u8,
     /// The JS patch (WP 2.4), or points.
     pub patch: Patch,
     /// A tangent-space normal map (the sea's), with three's derivative
@@ -339,6 +346,11 @@ impl From<&ThreeMaterial> for ThreeKey {
 
 const SHADER: &str = "embedded://mr_game/render/three_material.wgsl";
 
+/// The sort distance a step of `ThreeKey::sort_rank` adds (metres along the
+/// view): above f32's resolution at the distances a race sees (0.002 at
+/// 20 km), below anything that separates two objects that are not tied.
+pub const SORT_STEP: f32 = 0.01;
+
 /// The shadow pass's vertex shader for an InstancedMesh
 /// (`three_prepass_instanced.wgsl`), set in `specialize`, which has no
 /// asset server: hence a fixed handle (`render::ThreeRenderPlugin` loads it).
@@ -378,7 +390,13 @@ impl Material for ThreeMaterial {
     }
 
     fn depth_bias(&self) -> f32 {
-        self.key.depth_bias as f32
+        // Bevy uses this only to sort transparent items (the pipeline's
+        // bias is set in `specialize`).
+        if self.key.sort_rank > 0 {
+            f32::from(self.key.sort_rank) * SORT_STEP
+        } else {
+            self.key.depth_bias as f32
+        }
     }
 
     fn specialize(
@@ -988,6 +1006,7 @@ pub fn three_material(
         depth_test: flag("depthTest", true),
         depth_bias,
         depth_slope: 0,
+        sort_rank: 0,
         patch,
         normal_map,
         alpha_map,
