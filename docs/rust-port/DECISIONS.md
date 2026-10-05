@@ -6488,8 +6488,8 @@ more of what is behind it: the minimap's dark disc came out at (95, 88,
 translucent colours go through `hc()` (and the material's output
 through the same `lin_alpha` in `hud.wgsl`): the alpha that, blended in
 linear, lands where the sRGB blend would over a background of sRGB
-0.25, which is exact over any background for black and close for the
-dark panels; after it the disc reads (76, 70, 64) and the phone's over
+0.25, and close to it over others for the dark panels (black at 50 %
+over sRGB 0.6: 0.28 of the background's light against 0.23); after it the disc reads (76, 70, 64) and the phone's over
 the sky (57, 71, 98) against (49, 61, 85). The menus' screens (WP 6.2)
 have the same effect and do not correct it; `hc` is in `play/hud.rs`
 for them to take if wanted.
