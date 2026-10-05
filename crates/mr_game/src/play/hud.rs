@@ -15,14 +15,16 @@
 //! computed here from the real clock, as the browser runs them.
 //!
 //! The Hot Pursuit furniture (heat stars and the bust/evade bar, the
-//! damage bar, the penalty line, the hold card, the radio line) is M8's:
-//! the model already keeps its state (`Hud::update_pursuit`, `radio`), and
-//! the places its nodes go are marked `M8:` below, in `index.html`'s order.
+//! damage bar, the penalty line, the hold card, the radio line; WP 8.3,
+//! D962) is built in a pursuit race, in `index.html`'s order, from
+//! `pv.hudState()` (`pursuit_in`); the stars are the material's fourth
+//! kind. [`pursuit`] is `PursuitView.events`' centre pops and toasts.
 
 mod dials;
 mod material;
 mod minimap;
 pub mod model;
+pub mod pursuit;
 
 use super::Play;
 use super::flow::Mode;
@@ -38,7 +40,7 @@ use bevy::ui::{
 use bevy::ui_render::prelude::MaterialNode;
 use bevy::window::PrimaryWindow;
 use material::HudMaterial;
-use model::{CruiseIn, Dial, Dot, HudIn, LapsIn, RivalDot};
+use model::{Bar, CruiseIn, Dial, Dot, HudIn, LapsIn, PursuitIn, RivalDot, Unit};
 use mr_sim::race::{RaceStateKind, standings};
 
 pub(super) fn plugin(app: &mut App) {
@@ -84,6 +86,28 @@ pub(super) enum El {
     ZcName,
     ZcSub,
     Speedlines,
+    /// Hot Pursuit: `#hud-pen`, the penalty served.
+    Pen,
+    /// `#hud-pz`, `#pz-stars` (the material), `#pz-bar` and its parts.
+    Pz,
+    Stars,
+    PzBar,
+    PzLabel,
+    PzFill,
+    /// `#hud-dmg`, its fill and its `DMG`.
+    Dmg,
+    DmgFill,
+    DmgLabel,
+    /// `#hud-radio`: the pill, the DISPATCH tag and its text, the line.
+    Radio,
+    RadioTag,
+    RadioTagText,
+    RadioText,
+    /// `#hud-hold`: the card, BUSTED / WRECKED, the seconds, the bar.
+    Hold,
+    HoldTitle,
+    HoldSub,
+    HoldFill,
 }
 
 /// The HUD's root.
@@ -103,6 +127,10 @@ struct Key {
     steer_top: f32,
     in_l: f32,
     in_r: f32,
+    /// Hot Pursuit's furniture is built (`st.pursuit`).
+    pursuit: bool,
+    /// The touch layout's `--inB` and `--thumbs-top`, CSS px.
+    thumbs: (f32, f32),
 }
 
 /// A CSS transition's state: from, to, when it started.
@@ -147,12 +175,39 @@ pub(super) struct HudState {
     zone_seq: u32,
     toast: Fade,
     nitro_t0: Option<f64>,
-    mats: Option<[Handle<HudMaterial>; 3]>,
+    mats: Option<[Handle<HudMaterial>; material::SLOTS]>,
     last_dial: Option<dials::DialDraw>,
     last_scene: Option<minimap::Scene>,
     last_lines: f64,
     /// The touch layout's `--steer-top`, CSS px.
     shown: bool,
+    /// Hot Pursuit: the radio pill's fade and slide, the stars' patrol
+    /// opacity, when the BUST label's blink and the damage pulse started,
+    /// the stars last drawn, and the race frame whose radio lines were
+    /// shown.
+    radio: Fade,
+    stars_op: Fade,
+    blink_t0: Option<f64>,
+    dmg_t0: Option<f64>,
+    last_stars: Option<material::StarsDraw>,
+    radio_frame: u32,
+}
+
+/// What the test bridge reads of the Hot Pursuit furniture (`#hud-pz`,
+/// `#pz-bar`, `#hud-dmg`, `#hud-hold`, `#hud-pen`, `#hud-radio-text`):
+/// whether each shows, as the DOM's `.hidden` classes say.
+#[cfg(target_arch = "wasm32")]
+#[derive(Clone, Debug, Default)]
+pub(super) struct PzBridge {
+    pub pz: bool,
+    pub bar: bool,
+    pub dmg: bool,
+    pub hold: bool,
+    pub pen: bool,
+    pub radio: bool,
+    pub radio_text: String,
+    pub stars: [f64; 5],
+    pub label: String,
 }
 
 impl HudState {
@@ -166,6 +221,26 @@ impl HudState {
             self.key.as_ref().is_some_and(|k| k.laps),
             self.model.as_ref().map(|m| &m.last),
         )
+    }
+
+    /// The pursuit furniture, for the bridge.
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn bridge_pz(&self) -> PzBridge {
+        let Some(m) = &self.model else {
+            return PzBridge::default();
+        };
+        let up = self.shown && self.root.is_some();
+        PzBridge {
+            pz: up && !m.pz_hidden,
+            bar: up && !m.pz_hidden && !m.pz.bar_hidden,
+            dmg: up && !m.dmg_hidden,
+            hold: up && !m.pz.hold_hidden,
+            pen: up && !m.pz.pen_hidden,
+            radio: up && m.radio_show,
+            radio_text: m.radio_text.clone(),
+            stars: m.pz.stars,
+            label: m.last.pz_label.clone(),
+        }
     }
 }
 
@@ -184,6 +259,7 @@ pub struct Bezier(f64, f64, f64, f64);
 /// `ease` and `ease-out`.
 pub const EASE: Bezier = Bezier(0.25, 0.1, 0.25, 1.0);
 pub const EASE_OUT: Bezier = Bezier(0.0, 0.0, 0.58, 1.0);
+pub const EASE_IN_OUT: Bezier = Bezier(0.42, 0.0, 0.58, 1.0);
 
 impl Bezier {
     pub fn at(&self, x: f64) -> f64 {
@@ -277,10 +353,95 @@ struct Lay {
     center: f32,
     toast: f32,
     zc: (f32, f32),
+    pz: PzLay,
+}
+
+/// Hot Pursuit's furniture (`hud.css`'s Hot Pursuit rules and their touch
+/// and narrow variants), CSS px.
+#[derive(Clone, Copy, Debug)]
+struct PzLay {
+    /// `.hud-pz`: top, gap.
+    top: f32,
+    gap: f32,
+    /// `.pz-star`: width, height (5 px apart).
+    star: (f32, f32),
+    /// `.pz-label` (and the spacer): width, font size.
+    label: (f32, f32),
+    /// `.pz-track`: width, height.
+    track: (f32, f32),
+    /// `.time-pen`'s font size.
+    pen: f32,
+    /// `#hud-hold`: top (percent), padding top and bottom, the title's and
+    /// the seconds' font sizes, the bar's width.
+    hold: (f32, f32, f32, f32, f32, f32),
+    /// `#hud-radio`: bottom, max width, padding (top, right, bottom, left),
+    /// gap, the tag's and the line's font sizes.
+    radio: (f32, f32, [f32; 4], f32, f32, f32),
+}
+
+impl PzLay {
+    fn new(bp: &Bp, cruise: bool, in_l: f32, thumbs: (f32, f32)) -> PzLay {
+        let (touch, narrow, portrait) = (bp.touch, bp.narrow, bp.portrait);
+        let vmin = bp.w.min(bp.h) / 100.0;
+        PzLay {
+            // `.hud-pz.cruise` outranks the narrow and touch tops.
+            top: match (cruise, touch) {
+                (true, true) => 100.0,
+                (true, false) => 142.0,
+                (false, true) if portrait => 200.0,
+                (false, true) => 52.0,
+                (false, false) if narrow => 16.0,
+                _ => 50.0,
+            },
+            gap: if touch { 4.0 } else { 6.0 },
+            star: if touch { (18.0, 17.0) } else { (26.0, 25.0) },
+            label: if touch { (38.0, 11.0) } else { (46.0, 13.0) },
+            track: if touch { (120.0, 5.0) } else { (170.0, 7.0) },
+            pen: if touch { 13.0 } else { 16.0 },
+            hold: if touch {
+                (22.0, 8.0, 12.0, 56.0, 15.0, 360f32.min(bp.w * 0.6))
+            } else {
+                (
+                    28.0,
+                    14.0,
+                    18.0,
+                    if narrow { 64.0 } else { 96.0 },
+                    22.0,
+                    360f32.min(bp.w * 0.6),
+                )
+            },
+            radio: if touch {
+                let (bottom, max_w) = if portrait {
+                    (thumbs.1, bp.w * 0.86)
+                } else {
+                    let stick = (15.0 * vmin).clamp(44.0, 84.0);
+                    (thumbs.0, bp.w - 2.0 * (in_l + stick * 2.0 + 76.0))
+                };
+                (bottom, max_w, [4.0, 12.0, 4.0, 6.0], 8.0, 9.0, 13.0)
+            } else {
+                (
+                    70.0,
+                    620f32.min(bp.w * 0.7),
+                    [6.0, 16.0, 6.0, 8.0],
+                    10.0,
+                    11.0,
+                    17.0,
+                )
+            },
+        }
+    }
 }
 
 impl Lay {
-    fn new(bp: &Bp, in_l: f32, in_r: f32, top: f32, steer_top: f32) -> Lay {
+    fn new(
+        bp: &Bp,
+        in_l: f32,
+        in_r: f32,
+        top: f32,
+        steer_top: f32,
+        cruise: bool,
+        thumbs: (f32, f32),
+    ) -> Lay {
         let touch = bp.touch;
         let narrow = bp.narrow;
         Lay {
@@ -313,11 +474,23 @@ impl Lay {
             center: if touch { 84.0 } else { 120.0 },
             toast: if touch { 20.0 } else { 26.0 },
             zc: if touch { (40.0, 13.0) } else { (64.0, 18.0) },
+            pz: PzLay::new(bp, cruise, in_l, thumbs),
         }
     }
 }
 
 /// `--steer-top`: the top of the steering under the left thumb.
+/// `--inB` and `--thumbs-top: max(calc(var(--b) * 2.1 + 34px),
+/// calc(var(--pedal-h) + var(--inB) + 14px))`, from the touch layout.
+fn thumbs(lay: &Layout) -> (f32, f32) {
+    let in_b = lay.h - lay.panel.bottom;
+    let pedal_h = lay.panel.bottom - lay.panel.top;
+    (
+        in_b as f32,
+        f64::max(lay.b * 2.1 + 34.0, pedal_h + in_b + 14.0) as f32,
+    )
+}
+
 fn steer_top(lay: &Layout, steering: &str) -> f32 {
     let in_b = (lay.h - lay.stick_home.1 - 0.6 * lay.b) as f32;
     let b = lay.b as f32;
@@ -412,7 +585,7 @@ struct Build<'a> {
     track: &'a mr_track::track::Track,
     key: &'a Key,
     racer_colors: &'a [u32],
-    mats: &'a [Handle<HudMaterial>; 3],
+    mats: &'a [Handle<HudMaterial>; material::SLOTS],
     labels: &'a [dials::Label],
 }
 
@@ -552,7 +725,27 @@ fn build(commands: &mut Commands, b: &Build) -> Entity {
             ChildOf(lap),
         ));
     }
-    // M8: `#hud-pen`, the penalty served, here.
+    // #hud-pen: the penalty served, under the clock.
+    if b.key.pursuit {
+        commands.spawn((
+            txt(
+                "",
+                T::new(lay.pz.pen)
+                    .bold()
+                    .italic()
+                    .ls(0.04)
+                    .c(widgets::gold()),
+                k,
+            ),
+            sh,
+            Node {
+                display: Display::None,
+                ..default()
+            },
+            El::Pen,
+            ChildOf(tl),
+        ));
+    }
     // (On touch, the lap line takes the zone name's place.)
     if !(lay.touch && b.key.laps) {
         commands.spawn((
@@ -689,7 +882,10 @@ fn build(commands: &mut Commands, b: &Build) -> Entity {
         ));
     }
 
-    // M8: `#hud-pz` (heat stars, the bust/evade bar) here.
+    // #hud-pz: the heat stars and the bust/evade bar.
+    if b.key.pursuit {
+        build_pz(commands, b, root);
+    }
 
     // .hud-route: one segment per zone, widths following the zone lengths.
     if !b.key.cruise {
@@ -856,7 +1052,11 @@ fn build(commands: &mut Commands, b: &Build) -> Entity {
         El::Toast,
         ChildOf(toast),
     ));
-    // M8: `#hud-radio` and `#hud-hold` here.
+    // #hud-radio, #hud-hold.
+    if b.key.pursuit {
+        build_radio(commands, b, root);
+        build_hold(commands, b, root);
+    }
     // #zone-card.
     let zc = commands
         .spawn((band(Val::Percent(16.0)), El::ZoneCard, ChildOf(root)))
@@ -903,7 +1103,8 @@ fn build_br(commands: &mut Commands, b: &Build, root: Entity) {
                     left: px(lay.in_l),
                     bottom: px(lay.steer_top + 8.0),
                     width: px(176.0),
-                    height: px(64.0),
+                    // `.hud-br.pz-on` grows for the damage bar.
+                    height: px(if b.key.pursuit { 74.0 } else { 64.0 }),
                     border_radius: BorderRadius::all(px(14.0)),
                     ..abs()
                 },
@@ -911,7 +1112,6 @@ fn build_br(commands: &mut Commands, b: &Build, root: Entity) {
                 ChildOf(root),
             ))
             .id();
-        // M8: `.hud-br.pz-on` grows the box to 74 px for the damage bar.
         let num = T::new(42.0).w(800).italic().lh(1.0);
         let unit = T::new(11.0).w(800).ls(0.2).lh(1.0).c(hc(widgets::dim()));
         let sh = tshadow(k, 2.0, 10.0, 0.6);
@@ -954,7 +1154,11 @@ fn build_br(commands: &mut Commands, b: &Build, root: Entity) {
             El::Gear,
             ChildOf(br),
         ));
-        nitro(commands, b.k, br, (12.0, 12.0, 7.0, 7.0), false);
+        let nb = if b.key.pursuit { 16.0 } else { 7.0 };
+        nitro(commands, b.k, br, (12.0, 12.0, nb, 7.0), false);
+        if b.key.pursuit {
+            dmg(commands, b.k, br, (40.0, 12.0, 6.0, 5.0), (-28.0, 10.0));
+        }
         return;
     }
     // Scaled .7 from the bottom right under 720 px.
@@ -1072,7 +1276,377 @@ fn build_br(commands: &mut Commands, b: &Build, root: Entity) {
         ChildOf(gear),
     ));
     nitro(commands, k, br, (40.0, 40.0, -4.0, 10.0), true);
-    // M8: `#hud-dmg`, the damage bar, here.
+    if b.key.pursuit {
+        dmg(commands, k, br, (40.0, 40.0, 12.0, 6.0), (-32.0, 11.0));
+    }
+}
+
+/// `.dmg`: left, right, bottom, height; its `DMG` label's left and size.
+fn dmg(commands: &mut Commands, k: f32, br: Entity, g: (f32, f32, f32, f32), l: (f32, f32)) {
+    let px = |v: f32| Val::Px(v * k);
+    let bar = commands
+        .spawn((
+            Node {
+                left: px(g.0),
+                right: px(g.1),
+                bottom: px(g.2),
+                height: px(g.3),
+                border_radius: BorderRadius::all(px(3.0)),
+                display: Display::None,
+                ..abs()
+            },
+            BackgroundColor(hc(widgets::white(0.12))),
+            El::Dmg,
+            ChildOf(br),
+        ))
+        .id();
+    commands.spawn((
+        Node {
+            left: Val::Px(0.0),
+            top: Val::Px(0.0),
+            bottom: Val::Px(0.0),
+            width: Val::Percent(0.0),
+            border_radius: BorderRadius::all(px(3.0)),
+            ..abs()
+        },
+        BackgroundColor(hsl(125.0, 1.0, 0.55)),
+        BoxShadow(Vec::new()),
+        El::DmgFill,
+        ChildOf(bar),
+    ));
+    commands.spawn((
+        txt(
+            "DMG",
+            T::new(l.1).bold().italic().ls(0.12).c(hc(widgets::dim())),
+            k,
+        ),
+        tshadow(k, 1.0, 4.0, 0.7),
+        Node {
+            left: px(l.0),
+            top: px(-5.0),
+            ..abs()
+        },
+        El::DmgLabel,
+        ChildOf(bar),
+    ));
+}
+
+/// `hsl(h, s, l)`: h in degrees, s and l 0..1.
+pub fn hsl(h: f32, s: f32, l: f32) -> Color {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let hp = h.rem_euclid(360.0) / 60.0;
+    let x = c * (1.0 - (hp % 2.0 - 1.0).abs());
+    let (r, g, b) = match hp as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    let m = l - c / 2.0;
+    Color::srgb(r + m, g + m, b + m)
+}
+
+/// `.hud-pz`: the stars (the HUD material over a box with room for the
+/// skew and the shadow) over the bar (label, track, a spacer as wide as
+/// the label so the track sits centred under the stars).
+fn build_pz(commands: &mut Commands, b: &Build, root: Entity) {
+    let (k, pz) = (b.k, b.lay.pz);
+    let px = |v: f32| Val::Px(v * k);
+    let col = commands
+        .spawn((
+            Node {
+                left: Val::Percent(50.0),
+                top: px(pz.top),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: px(pz.gap),
+                display: Display::None,
+                ..abs()
+            },
+            UiTransform::from_translation(Val2::percent(-50.0, 0.0)),
+            El::Pz,
+            ChildOf(root),
+        ))
+        .id();
+    let (w, h) = stars_box(&pz);
+    let stars = commands
+        .spawn((
+            Node {
+                width: px(w),
+                height: px(h),
+                ..default()
+            },
+            ChildOf(col),
+        ))
+        .id();
+    commands.spawn((
+        Node {
+            left: px(-STARS_MARGIN),
+            top: px(-STARS_MARGIN),
+            width: px(w + 2.0 * STARS_MARGIN),
+            height: px(h + 2.0 * STARS_MARGIN),
+            ..abs()
+        },
+        MaterialNode(b.mats[3].clone()),
+        El::Stars,
+        ChildOf(stars),
+    ));
+    let bar = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(8.0),
+                display: Display::None,
+                ..default()
+            },
+            El::PzBar,
+            ChildOf(col),
+        ))
+        .id();
+    let label = commands
+        .spawn((
+            Node {
+                width: px(pz.label.0),
+                justify_content: JustifyContent::FlexEnd,
+                ..default()
+            },
+            ChildOf(bar),
+        ))
+        .id();
+    commands.spawn((
+        txt("BUST", T::new(pz.label.1).bold().italic().ls(0.2), k),
+        tshadow(k, 2.0, 6.0, 0.7),
+        El::PzLabel,
+        ChildOf(label),
+    ));
+    let track = commands
+        .spawn((
+            Node {
+                width: px(pz.track.0),
+                height: px(pz.track.1),
+                border_radius: BorderRadius::all(px(4.0)),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(hc(widgets::white(0.14))),
+            ChildOf(bar),
+        ))
+        .id();
+    commands.spawn((
+        Node {
+            height: Val::Percent(100.0),
+            width: Val::Percent(0.0),
+            ..default()
+        },
+        pz_grad(false),
+        BoxShadow(Vec::new()),
+        El::PzFill,
+        ChildOf(track),
+    ));
+    commands.spawn((
+        Node {
+            width: px(pz.label.0),
+            ..default()
+        },
+        ChildOf(bar),
+    ));
+}
+
+/// Room round the stars' box for the skew and the drop shadow, CSS px.
+const STARS_MARGIN: f32 = 8.0;
+
+/// `.pz-stars`' box: five stars 5 px apart.
+fn stars_box(pz: &PzLay) -> (f32, f32) {
+    (5.0 * pz.star.0 + 4.0 * 5.0, pz.star.1)
+}
+
+/// `.pz-fill`'s gradient: BUST red, EVADE blue.
+fn pz_grad(evade: bool) -> BackgroundGradient {
+    let c = if evade {
+        [0x1b3cff, 0x2f6bff, 0x3ad7ff]
+    } else {
+        [0xa0102a, 0xff3040, 0xff8a8a]
+    };
+    BackgroundGradient::from(
+        LinearGradient::to_right(
+            c.iter()
+                .map(|&v| ColorStop::auto(widgets::rgb(v)))
+                .collect(),
+        )
+        .in_srgb(),
+    )
+}
+
+/// `#hud-radio`: the DISPATCH pill, bottom centre.
+fn build_radio(commands: &mut Commands, b: &Build, root: Entity) {
+    let k = b.k;
+    let px = |v: f32| Val::Px(v * k);
+    let (bottom, max_w, pad, gap, tag, text) = b.lay.pz.radio;
+    let pill = commands
+        .spawn((
+            Node {
+                left: Val::Percent(50.0),
+                bottom: px(bottom),
+                max_width: px(max_w),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(gap),
+                padding: UiRect {
+                    top: px(pad[0]),
+                    right: px(pad[1]),
+                    bottom: px(pad[2]),
+                    left: px(pad[3]),
+                },
+                border: UiRect::all(px(1.0)),
+                border_radius: BorderRadius::MAX,
+                overflow: Overflow::clip(),
+                ..abs()
+            },
+            BackgroundColor(Color::NONE),
+            BorderColor::all(Color::NONE),
+            UiTransform::from_translation(Val2::new(Val::Percent(-50.0), px(10.0))),
+            El::Radio,
+            ChildOf(root),
+        ))
+        .id();
+    let t = commands
+        .spawn((
+            Node {
+                flex_shrink: 0.0,
+                padding: UiRect {
+                    top: px(2.0),
+                    right: px(8.0),
+                    bottom: px(1.0),
+                    left: px(8.0),
+                },
+                border_radius: BorderRadius::MAX,
+                ..default()
+            },
+            radio_tag_grad(0.0),
+            El::RadioTag,
+            ChildOf(pill),
+        ))
+        .id();
+    commands.spawn((
+        txt("DISPATCH", T::new(tag).bold().ls(0.2).c(Color::NONE), k),
+        El::RadioTagText,
+        ChildOf(t),
+    ));
+    commands.spawn((
+        txt("", T::new(text).w(600).italic().ls(0.03).c(Color::NONE), k),
+        // `white-space: nowrap; overflow: hidden` (no ellipsis in Bevy's
+        // text: the line is cut at the pill's edge).
+        Node {
+            overflow: Overflow::clip(),
+            min_width: Val::Px(0.0),
+            ..default()
+        },
+        El::RadioText,
+        ChildOf(pill),
+    ));
+}
+
+/// `.radio-tag`'s gradient (red to blue) at an opacity.
+fn radio_tag_grad(op: f32) -> BackgroundGradient {
+    BackgroundGradient::from(
+        LinearGradient::to_right(vec![
+            ColorStop::auto(widgets::rgba(0xff3040, op)),
+            ColorStop::auto(widgets::rgba(0x2f6bff, op)),
+        ])
+        .in_srgb(),
+    )
+}
+
+/// `#hud-hold`: the BUSTED / WRECKED card across the screen.
+fn build_hold(commands: &mut Commands, b: &Build, root: Entity) {
+    let k = b.k;
+    let px = |v: f32| Val::Px(v * k);
+    let (top, pt, pb, title, sub, bar_w) = b.lay.pz.hold;
+    let dark = hc(widgets::rgba(0x080a12, 0.55));
+    let clear = widgets::rgba(0x080a12, 0.0);
+    let card = commands
+        .spawn((
+            Node {
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                top: Val::Percent(top),
+                padding: UiRect {
+                    top: px(pt),
+                    bottom: px(pb),
+                    ..default()
+                },
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                display: Display::None,
+                ..abs()
+            },
+            BackgroundGradient::from(
+                LinearGradient::to_right(vec![
+                    ColorStop::percent(clear, 0.0),
+                    ColorStop::percent(dark, 25.0),
+                    ColorStop::percent(dark, 75.0),
+                    ColorStop::percent(clear, 100.0),
+                ])
+                .in_srgb(),
+            ),
+            El::Hold,
+            ChildOf(root),
+        ))
+        .id();
+    commands.spawn((
+        txt(
+            "BUSTED",
+            T::new(title)
+                .w(800)
+                .italic()
+                .lh(0.95)
+                .ls(0.04)
+                .c(widgets::rgb(0xff3040)),
+            k,
+        ),
+        // `text-shadow: 0 0 30px <glow>, 0 4px 18px rgba(0,0,0,.7)`: the
+        // dark one (a glow is not a hard copy, D822).
+        tshadow(k, 4.0, 18.0, 0.7),
+        El::HoldTitle,
+        ChildOf(card),
+    ));
+    commands.spawn((
+        txt("", T::new(sub).bold().ls(0.3), k),
+        tshadow(k, 2.0, 8.0, 0.7),
+        Node {
+            margin: UiRect::top(px(4.0)),
+            ..default()
+        },
+        El::HoldSub,
+        ChildOf(card),
+    ));
+    let bar = commands
+        .spawn((
+            Node {
+                margin: UiRect::top(px(10.0)),
+                width: px(bar_w),
+                height: px(4.0),
+                border_radius: BorderRadius::all(px(2.0)),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(hc(widgets::white(0.14))),
+            ChildOf(card),
+        ))
+        .id();
+    commands.spawn((
+        Node {
+            height: Val::Percent(100.0),
+            width: Val::Percent(100.0),
+            ..default()
+        },
+        BackgroundColor(widgets::rgb(0xff3040)),
+        El::HoldFill,
+        ChildOf(bar),
+    ));
 }
 
 /// `.nitro`: left, right, bottom, height; with its `N₂O` label.
@@ -1245,8 +1819,86 @@ fn hud_in(race: &super::flow::Race) -> HudIn {
             mult_timer: r.mult_timer,
             dist: r.dist,
         }),
-        // M8: `pv.hudState()`.
-        pursuit: None,
+        pursuit: st.pv.as_ref().map(|pv| pursuit_in(t, pv)),
+    }
+}
+
+/// `pv.hudState()`: `Pursuit.hud(damage)` and the penalties served (what
+/// is served of a hold counts as it runs).
+fn pursuit_in(t: &mr_track::track::Track, pv: &mr_sim::race::PursuitView) -> PursuitIn {
+    use mr_sim::police::Mode as M;
+    use mr_sim::pursuit::{HoldReason, State};
+    let pu = &pv.pursuit;
+    let p = pu.player.map(|i| &pu.racers[i]);
+    let held = p.is_some_and(|p| p.hold > 0.0);
+    let unit = |u: &mr_sim::police::PoliceDriver, disabled: bool| Unit {
+        x: u.k.v.x,
+        z: u.k.v.z,
+        disabled,
+    };
+    let mut units: Vec<Unit> = pu
+        .units
+        .iter()
+        .filter(|u| u.active && u.mode != M::Parked)
+        .map(|u| unit(u, u.mode == M::Disabled))
+        .collect();
+    units.extend(
+        pu.units
+            .iter()
+            .filter(|u| u.active && u.mode == M::Parked)
+            .map(|u| unit(u, true)),
+    );
+    // `propMark(s, lat0, lat1)`.
+    let mark = |s: f64, lat0: f64, lat1: f64| {
+        let f = t.frame(s);
+        let c = (lat0 + lat1) / 2.0;
+        Bar {
+            x: f.x + f.rx * c,
+            z: f.z + f.rz * c,
+            yaw: mr_math::kernel::atan2(f.fz, f.fx),
+            width: lat1 - lat0,
+        }
+    };
+    let hold_total = p.map_or(0.0, |p| p.hold_total);
+    PursuitIn {
+        heat: f64::from(pu.heat),
+        heat_meter: pu.heat_meter,
+        state: match pu.state {
+            State::Patrol => "patrol",
+            State::Pursuit => "pursuit",
+            State::Cooldown => "cooldown",
+        },
+        bust: pu.bust,
+        evade: pu.evade,
+        damage: pv.damage,
+        hold: if held { p.map_or(0.0, |p| p.hold) } else { 0.0 },
+        hold_reason: match p.and_then(|p| p.hold_reason) {
+            Some(HoldReason::Wrecked) => "wrecked",
+            Some(HoldReason::Busted) => "busted",
+            None => "",
+        },
+        hold_total,
+        penalties: pv.penalty
+            + if held {
+                hold_total - p.map_or(0.0, |p| p.hold)
+            } else {
+                0.0
+            },
+        units,
+        roadblocks: pu
+            .roadblock
+            .iter()
+            .map(|rb| {
+                let f = t.frame(rb.s);
+                mark(rb.s, -f.wall_l, f.wall_r)
+            })
+            .collect(),
+        spikes: pu
+            .spikes
+            .iter()
+            .map(|sp| mark(sp.s, sp.lat0, sp.lat1))
+            .collect(),
+        flash: pu.flash,
     }
 }
 
@@ -1261,6 +1913,8 @@ type Parts<'a> = (
     Option<&'a mut Visibility>,
     Option<&'a mut BackgroundGradient>,
     Option<&'a mut BackgroundColor>,
+    Option<&'a mut BoxShadow>,
+    Option<&'a mut BorderColor>,
 );
 
 fn set_text(t: &mut Option<Mut<Text>>, s: &str) {
@@ -1268,6 +1922,46 @@ fn set_text(t: &mut Option<Mut<Text>>, s: &str) {
         && t.0 != s
     {
         t.0 = s.to_string();
+    }
+}
+
+/// `.hidden` (`display: none`) off or on.
+fn set_display(n: &mut Option<Mut<Node>>, on: bool) {
+    let want = if on { Display::Flex } else { Display::None };
+    if let Some(n) = n
+        && n.display != want
+    {
+        n.display = want;
+    }
+}
+
+/// A width in percent.
+fn set_width(n: &mut Option<Mut<Node>>, pct: f64) {
+    let want = Val::Percent(pct as f32);
+    if let Some(n) = n
+        && n.width != want
+    {
+        n.width = want;
+    }
+}
+
+/// `box-shadow: 0 0 <blur> <colour>` (blur in Bevy px, the CSS's), or none.
+fn set_shadow(s: Option<Mut<BoxShadow>>, glow: Option<(Color, f32)>) {
+    let want = BoxShadow(
+        glow.map(|(color, blur)| ShadowStyle {
+            color,
+            x_offset: Val::Px(0.0),
+            y_offset: Val::Px(0.0),
+            spread_radius: Val::Px(0.0),
+            blur_radius: Val::Px(blur / 2.0),
+        })
+        .into_iter()
+        .collect(),
+    );
+    if let Some(mut s) = s
+        && *s != want
+    {
+        *s = want;
     }
 }
 
@@ -1383,6 +2077,8 @@ pub(super) fn update(
         steer_top: steer_top(&race.touch.layout, steering),
         in_l: (play.insets.left as f32).max(16.0),
         in_r: (play.insets.right as f32).max(16.0),
+        pursuit: st.pv.is_some(),
+        thumbs: thumbs(&race.touch.layout),
     };
 
     // A new race: a new `HUD` (`race.hud.mph = settings.mph`,
@@ -1404,6 +2100,15 @@ pub(super) fn update(
         hs.zone_seq = 0;
         hs.last_dial = None;
         hs.last_scene = None;
+        hs.radio = Fade::default();
+        hs.stars_op = Fade {
+            from: 1.0,
+            to: 1.0,
+            t0: f64::NEG_INFINITY,
+        };
+        hs.blink_t0 = None;
+        hs.dmg_t0 = None;
+        hs.last_stars = None;
     }
     let mats_h = hs
         .mats
@@ -1418,9 +2123,49 @@ pub(super) fn update(
                 mats.add(HudMaterial {
                     p: material::HudParams::new(material::SPEEDLINES),
                 }),
+                mats.add(HudMaterial {
+                    p: material::HudParams::new(material::STARS),
+                }),
             ]
         })
         .clone();
+
+    // `hud.update(dt, st)`: not while paused (the JS's loop skips the
+    // race's update), so the timers hold. (Before the nodes: a HUD built
+    // this frame shows next frame, but what it shows is known now.)
+    let model = hs.model.as_mut().expect("model");
+    model.mph = ui.as_ref().is_none_or(|u| u.settings.mph);
+    let h = &race.hud;
+    let dt = if race.mode == Mode::Paused {
+        0.0
+    } else {
+        time.delta_secs_f64() * play.params.timescale
+    };
+    if h.centers != hs.centers {
+        hs.centers = h.centers;
+        if let Some(c) = &h.center {
+            model.center(c, model::center_class(c), h.center_timer + dt);
+        }
+    }
+    if h.toasts != hs.toasts {
+        hs.toasts = h.toasts;
+        if let Some(t) = &h.toast {
+            model.toast(t, h.toast_timer + dt);
+        }
+    }
+    // Dispatch: each line said this frame, up as long as it takes to say
+    // (`hud.radio(line.text, Math.max(3, line.text.length / 14))`).
+    if race.frames != hs.radio_frame {
+        hs.radio_frame = race.frames;
+        for l in &race.radio.said {
+            let len = l.text.encode_utf16().count() as f64;
+            model.radio(&l.text, f64::max(3.0, len / 14.0));
+        }
+    }
+    let input = hud_in(race);
+    if race.mode != Mode::Paused {
+        model.update(dt, &input, track);
+    }
     if hs.key.as_ref() != Some(&key) {
         if let Some(r) = hs.root.take() {
             commands.entity(r).despawn();
@@ -1431,6 +2176,8 @@ pub(super) fn update(
             key.in_r,
             play.insets.top as f32,
             key.steer_top,
+            key.cruise,
+            key.thumbs,
         );
         let labels = if key.electric {
             dials::power(0.0).labels
@@ -1452,6 +2199,7 @@ pub(super) fn update(
         hs.last_dial = None;
         hs.last_scene = None;
         hs.last_lines = -1.0;
+        hs.last_stars = None;
         hs.shown = true;
         return;
     }
@@ -1462,32 +2210,7 @@ pub(super) fn update(
         hs.shown = true;
     }
 
-    // `hud.update(dt, st)`: not while paused (the JS's loop skips the
-    // race's update), so the timers hold.
-    let model = hs.model.as_mut().expect("model");
-    model.mph = ui.as_ref().is_none_or(|u| u.settings.mph);
-    let h = &race.hud;
-    let dt = if race.mode == Mode::Paused {
-        0.0
-    } else {
-        time.delta_secs_f64() * play.params.timescale
-    };
-    if h.centers != hs.centers {
-        hs.centers = h.centers;
-        if let Some(c) = &h.center {
-            model.center(c, model::center_class(c), h.center_timer + dt);
-        }
-    }
-    if h.toasts != hs.toasts {
-        hs.toasts = h.toasts;
-        if let Some(t) = &h.toast {
-            model.toast(t, h.toast_timer + dt);
-        }
-    }
-    let input = hud_in(race);
-    if race.mode != Mode::Paused {
-        model.update(dt, &input, track);
-    }
+    let model = hs.model.as_ref().expect("model");
     if model.center_seq != hs.center_seq {
         hs.center_seq = model.center_seq;
         hs.center_t0 = now;
@@ -1541,8 +2264,74 @@ pub(super) fn update(
     } else {
         1.0
     };
+    // Hot Pursuit: the stars (patrol dims them, `transition: opacity .4s`;
+    // not while hidden, where no transition runs), the BUST label's blink
+    // (`pzBlink .5s steps(1)`), the damage pulse (`dmgPulse .6s
+    // ease-in-out alternate`), the radio pill's fade and slide (`.3s`).
+    let pz = &model.pz;
+    let star_op = if pz.patrol { 0.6 } else { 1.0 };
+    if model.pz_hidden {
+        hs.stars_op = Fade {
+            from: star_op,
+            to: star_op,
+            t0: f64::NEG_INFINITY,
+        };
+    }
+    hs.stars_op.go(star_op, now, 0.4);
+    if key.pursuit {
+        let pl = PzLay::new(&key.bp, key.cruise, key.in_l, key.thumbs);
+        let (w, h) = stars_box(&pl);
+        let draw = material::StarsDraw {
+            w,
+            h,
+            margin: STARS_MARGIN,
+            star: pl.star,
+            gap: 5.0,
+            fills: pz.stars.map(|f| (f / 100.0) as f32),
+            max: pz.max,
+            opacity: hs.stars_op.at(now, 0.4) as f32,
+        };
+        if hs.last_stars != Some(draw) {
+            hs.last_stars = Some(draw);
+            if let Some(m) = mats.get(&mats_h[3]) {
+                writes.set(m, material::stars(&draw));
+            }
+        }
+    }
+    if pz.bust && pz.flash {
+        hs.blink_t0.get_or_insert(now);
+    } else {
+        hs.blink_t0 = None;
+    }
+    let blink = hs.blink_t0.map_or(1.0, |t0| {
+        if ((now - t0) / 0.5).fract() < 0.5 {
+            1.0
+        } else {
+            0.35
+        }
+    });
+    if pz.dmg_crit && pz.dmg_flash {
+        hs.dmg_t0.get_or_insert(now);
+    } else {
+        hs.dmg_t0 = None;
+    }
+    let dmg_glow = hs.dmg_t0.map_or(1.0, |t0| {
+        let p = (now - t0) / 0.6;
+        let f = p.fract();
+        let d = if (p.floor() as i64) % 2 == 0 {
+            f
+        } else {
+            1.0 - f
+        };
+        1.0 + 0.8 * EASE_IN_OUT.at(d) as f32
+    });
+    hs.radio
+        .go(if model.radio_show { 1.0 } else { 0.0 }, now, 0.3);
+    let radio_op = hs.radio.at(now, 0.3) as f32;
     let l = &model.last;
-    for (el, mut text, color, shadow, font, node, tf, mut vis, grad, _bg) in &mut parts {
+    for (el, mut text, color, shadow, font, mut node, tf, mut vis, grad, _bg, bshadow, border) in
+        &mut parts
+    {
         match *el {
             El::Pos => set_text(&mut text, &l.pos),
             El::Suf => set_text(&mut text, &l.suf),
@@ -1696,7 +2485,123 @@ pub(super) fn update(
                 fade(color, shadow, widgets::dim(), z_op as f32, 0.0);
             }
             El::Speedlines => set_vis(&mut vis, model.speedlines > 0.0),
-            El::PosRow | El::Minimap | El::Dial => {}
+            El::Pen => {
+                set_text(&mut text, &l.pen);
+                set_display(&mut node, !pz.pen_hidden);
+            }
+            El::Pz => set_display(&mut node, !model.pz_hidden),
+            El::PzBar => set_display(&mut node, !pz.bar_hidden),
+            El::PzLabel => {
+                set_text(&mut text, &l.pz_label);
+                let c = if pz.bust {
+                    widgets::rgb(0xff3040)
+                } else if pz.evade {
+                    widgets::rgb(0x6fa8ff)
+                } else {
+                    widgets::fg()
+                };
+                fade(color, shadow, c, blink, 0.7 * shadow_k(6.0));
+            }
+            El::PzFill => {
+                set_width(&mut node, pz.bar_fill);
+                if let Some(mut g) = grad {
+                    let want = pz_grad(pz.evade);
+                    if *g != want {
+                        *g = want;
+                    }
+                }
+                let glow = if pz.evade { 0x2f6bff } else { 0xff3040 };
+                set_shadow(bshadow, Some((widgets::rgb(glow), 10.0 * k)));
+            }
+            El::Dmg => set_display(&mut node, !model.dmg_hidden),
+            El::DmgFill => {
+                set_width(&mut node, pz.dmg_fill);
+                if let Some(mut b) = _bg {
+                    let c = hsl(pz.dmg_hue as f32, 1.0, 0.55).to_srgba();
+                    let want = BackgroundColor(Color::srgb(
+                        (c.red * dmg_glow).min(1.0),
+                        (c.green * dmg_glow).min(1.0),
+                        (c.blue * dmg_glow).min(1.0),
+                    ));
+                    if *b != want {
+                        *b = want;
+                    }
+                }
+                set_shadow(
+                    bshadow,
+                    pz.dmg_crit.then(|| (widgets::rgb(0xff3040), 10.0 * k)),
+                );
+            }
+            El::DmgLabel => {
+                if let Some(mut c) = color {
+                    let want = if pz.dmg_crit {
+                        widgets::rgb(0xff3040)
+                    } else {
+                        hc(widgets::dim())
+                    };
+                    if c.0 != want {
+                        c.0 = want;
+                    }
+                }
+            }
+            El::Radio => {
+                if let Some(mut b) = _bg {
+                    let want = BackgroundColor(hc(widgets::rgba(0x080a12, 0.62 * radio_op)));
+                    if *b != want {
+                        *b = want;
+                    }
+                }
+                if let Some(mut b) = border {
+                    let want = BorderColor::all(hc(widgets::white(0.14 * radio_op)));
+                    if *b != want {
+                        *b = want;
+                    }
+                }
+                if let Some(mut t) = tf {
+                    let want = UiTransform::from_translation(Val2::new(
+                        Val::Percent(-50.0),
+                        Val::Px(10.0 * (1.0 - radio_op) * k),
+                    ));
+                    if *t != want {
+                        *t = want;
+                    }
+                }
+            }
+            El::RadioTag => {
+                if let Some(mut g) = grad {
+                    let want = radio_tag_grad(radio_op);
+                    if *g != want {
+                        *g = want;
+                    }
+                }
+            }
+            El::RadioTagText => fade(color, shadow, Color::WHITE, radio_op, 0.0),
+            El::RadioText => {
+                set_text(&mut text, &model.radio_text);
+                fade(color, shadow, widgets::rgb(0xdbe6ff), radio_op, 0.0);
+            }
+            El::Hold => set_display(&mut node, !pz.hold_hidden),
+            El::HoldTitle => {
+                set_text(&mut text, &l.hold_title);
+                if let Some(mut c) = color {
+                    let want = widgets::rgb(if pz.wrecked { 0xff9a3c } else { 0xff3040 });
+                    if c.0 != want {
+                        c.0 = want;
+                    }
+                }
+            }
+            El::HoldSub => set_text(&mut text, &l.hold_sub),
+            El::HoldFill => {
+                set_width(&mut node, pz.hold_fill);
+                if let Some(mut b) = _bg {
+                    let want =
+                        BackgroundColor(widgets::rgb(if pz.wrecked { 0xff9a3c } else { 0xff3040 }));
+                    if *b != want {
+                        *b = want;
+                    }
+                }
+            }
+            El::PosRow | El::Minimap | El::Dial | El::Stars => {}
         }
     }
 }
@@ -1813,6 +2718,37 @@ mod tests {
         assert!(lin_alpha(1.0, 0.12) < 0.12);
         assert_eq!(lin_alpha(1.0, 1.0), 1.0);
         assert_eq!(lin_alpha(0.3, 0.0), 0.0);
+    }
+
+    /// `hsl(h, 100%, 55%)`, the damage bar's colour, as the browser
+    /// turns it into sRGB.
+    #[test]
+    fn hsl_as_css() {
+        let c = |h: f32| {
+            let s = hsl(h, 1.0, 0.55).to_srgba();
+            [s.red, s.green, s.blue].map(|v| (v * 255.0).round() as u8)
+        };
+        assert_eq!(c(125.0), [26, 255, 45]);
+        assert_eq!(c(0.0), [255, 26, 26]);
+        assert_eq!(c(63.0), [244, 255, 26]);
+    }
+
+    /// The heat stars' box and the radio's place on a phone held sideways
+    /// and upright (`--thumbs-top`).
+    #[test]
+    fn pursuit_layout() {
+        let bp = Bp::new(844.0, 390.0, 1.0, true, 0.0);
+        let p = PzLay::new(&bp, false, 16.0, (14.0, 236.0));
+        assert_eq!(stars_box(&p), (110.0, 17.0));
+        assert_eq!((p.top, p.radio.0), (52.0, 14.0));
+        let bp = Bp::new(390.0, 844.0, 1.0, true, 0.0);
+        let p = PzLay::new(&bp, false, 16.0, (14.0, 236.0));
+        assert_eq!((p.top, p.radio.0, p.radio.1), (200.0, 236.0, 390.0 * 0.86));
+        let bp = Bp::new(1280.0, 800.0, 1.0, false, 0.0);
+        let p = PzLay::new(&bp, false, 16.0, (14.0, 236.0));
+        assert_eq!(stars_box(&p), (150.0, 25.0));
+        assert_eq!((p.top, p.radio.0, p.radio.1), (50.0, 70.0, 620.0));
+        assert_eq!(p.hold.3, 96.0);
     }
 
     #[test]

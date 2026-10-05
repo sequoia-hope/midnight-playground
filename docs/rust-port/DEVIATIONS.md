@@ -23,6 +23,7 @@ when a work package introduces one, with the package and the JS it concerns.
 | A tap on no control of the pause screen resumes | The M4 phone flow, kept | WP 6.2, D578 |
 | The logo's gradients and glow are flat colours per line and letter | No gradient text in Bevy UI; drawing it in software cost 0.3 MB of wasm | WP 6.1, D573 |
 | A level tab only selects: the menu flies over a simplified view of that level (its land, road, sky, time of day and sea, with invented stand-ins for its scenery: trees, poles, lit blocks, hoodoos, barriers, a skyline; the first 500 m from `startS + 60`, starting over at the end), prepared for every level when the menu opens; Race builds the level whole behind the loading screen (`main.js` `loadLevel` rebuilds the whole world on a tab, and the attract camera drifts along the whole first zone with the real scenery). Main menu after a race keeps the raced level for its tab, as the JS does | The owner (D676, D746): instant switching, no full level per tab, simplified views | D676, D740–D750 |
+| Hot Pursuit HUD: the hold title's coloured glow, the radio pill's and the bust track's drop shadows are left out; the heat stars' drop shadow is an approximate blur; a radio line too long for its pill is cut at the edge, with no `…` | Bevy UI has no blurred text shadow, draws a box shadow under a translucent node, and has no `text-overflow: ellipsis` | WP 8.3, DECISIONS D962 |
 
 ## Known JS quirks reproduced, not fixed
 

@@ -4,6 +4,12 @@
 //   node tools/parity/hud-shots.mjs --side js|rust --level sierra --time 20
 //       --device desktop|iphone|iphone-land [--car sports] [--dist next]
 //       [--backend webgpu|webgl2] [--perf secs] [--out dir] [--query k=v&…]
+//       (a `pursuit=…` in --query replaces the default pursuit=0)
+//       [--stage wreck --stage-at t]  (Hot Pursuit, WP 8.3: at race time t
+//                         the car is wrecked and dispatch says a line, for
+//                         the hold card, the damage bar and the radio;
+//                         the Rust side stages it from the page's frame
+//                         loop, a frame or two late)
 //       [--countdown c]  (instead of --time: the countdown at c seconds, for
 //                         the centre pop; the JS shot is then taken at once)
 //   node tools/parity/hud-shots.mjs --index [--out dir]
@@ -76,7 +82,18 @@ const backend = opt('--backend', 'webgpu');
 const perfSecs = Number(opt('--perf', 0));
 const query = opt('--query', '');
 const timeoutMs = Number(opt('--timeout', 300000));
-const name = `${level}-${time}-${car}-${device}-${side}${side === 'rust' && backend === 'webgl2' ? '-gl' : ''}.png`;
+const stage = opt('--stage', '');
+const stageAt = Number(opt('--stage-at', 0));
+// The staged scenes: what the JS calls, and the Rust staging commands.
+const LINE = { text: 'Unit 12, speeder on Red Rock Canyon, moving to intercept.', parts: ['Unit 12.', 'Speeder on Red Rock Canyon, moving to intercept.'] };
+const STAGES = {
+  wreck: {
+    js: (race, line) => { race.pv.hurt(1.0); race.pv.say(line, true); },
+    rust: (line) => [{ cmd: 'hurt', d: 1.0 }, { cmd: 'say', text: line.text, parts: line.parts, force: true }],
+  },
+};
+if (stage && !STAGES[stage]) throw new Error(`no stage ${stage}`);
+const name = `${level}-${time}${stage ? '-' + stage : ''}-${car}-${device}-${side}${side === 'rust' && backend === 'webgl2' ? '-gl' : ''}.png`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function baseUrl() {
@@ -132,8 +149,10 @@ try {
       req.respond({ status: 200, contentType: TYPES[path.extname(file)] || 'application/octet-stream', body: fs.readFileSync(file) });
     });
     // Stop exactly at `time`.
-    await page.evaluateOnNewDocument((stopAt) => {
+    await page.evaluateOnNewDocument((stopAt, stageSrc, at, line) => {
       window.__tk = 0;
+      // eslint-disable-next-line no-new-func
+      const staged = stageSrc ? new Function('return (' + stageSrc + ')')() : null;
       let p;
       Object.defineProperty(window, '__parity', {
         configurable: true,
@@ -142,13 +161,14 @@ try {
           p = v;
           v.onTick = (race) => {
             window.__tk++;
+            if (staged && !window.__staged && race.time >= at) { window.__staged = true; staged(race, line); }
             const done = typeof stopAt === 'number' ? race.time >= stopAt : race.state === 'countdown' && race.countdown <= Number(stopAt.slice(2));
             if (done) { window.__stopped = true; v.fixed.ticks = 0; }
           };
         },
       });
-    }, time);
-    await page.goto(`${ORIGIN}/index.html?level=${level}&autostart=${car}&autodrive=1&parity=1&seed=1&ticks=16&pursuit=0${query ? `&${query}` : ''}`);
+    }, time, stage ? String(STAGES[stage].js) : '', stageAt, LINE);
+    await page.goto(`${ORIGIN}/index.html?level=${level}&autostart=${car}&autodrive=1&parity=1&seed=1&ticks=16${/(^|&)pursuit=/.test(query) ? '' : '&pursuit=0'}${query ? `&${query}` : ''}`);
     for (;;) {
       const s = await ev(() => ({ tk: window.__tk, stopped: window.__stopped }));
       if (s.stopped) break;
@@ -163,10 +183,17 @@ try {
     console.log(JSON.stringify({ file: path.join(OUT, name), ...info, perf }));
   } else {
     await cdp.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: OUT });
-    const url = `${baseUrl()}dist/${dist}/index.html?level=${level}&autostart=${car}&autodrive=1&seed=1&pursuit=0${query ? `&${query}` : ''}`;
+    const url = `${baseUrl()}dist/${dist}/index.html?level=${level}&autostart=${car}&autodrive=1&seed=1${/(^|&)pursuit=/.test(query) ? '' : '&pursuit=0'}${query ? `&${query}` : ''}`;
     console.error(url);
     await page.goto(url);
     let perf = null;
+    if (stage) {
+      // Staged from the page's own frames, the first one at race time `at`.
+      await ev((at, cmds) => {
+        const f = () => { const r = window.__mr?.race; if (r && r.time >= at) { for (const c of cmds) window.__mr.stage(c); } else requestAnimationFrame(f); };
+        requestAnimationFrame(f);
+      }, stageAt, STAGES[stage].rust(LINE));
+    }
     for (;;) {
       const s = await ev(() => ({ st: window.__mr?.state, err: window.__mr?.error, tk: window.__mr?.race?.time }));
       if (s.err || s.st === 'failed') throw new Error(`rust: ${s.err}`);

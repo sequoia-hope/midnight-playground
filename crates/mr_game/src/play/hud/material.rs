@@ -1,5 +1,5 @@
-//! The HUD's one UI material (`hud.wgsl`): the dial, the minimap and the
-//! speed lines, told apart by `head.x`. One type, so Bevy builds one
+//! The HUD's one UI material (`hud.wgsl`): the dial, the minimap, the
+//! speed lines and Hot Pursuit's heat stars, told apart by `head.x`. One type, so Bevy builds one
 //! pipeline and the wasm carries one copy of the material plugin.
 //!
 //! The uniforms change most frames (the dial with the revs, the minimap
@@ -29,6 +29,7 @@ use std::sync::Mutex;
 pub const DIAL: f32 = 1.0;
 pub const MINIMAP: f32 = 2.0;
 pub const SPEEDLINES: f32 = 3.0;
+pub const STARS: f32 = 4.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, ShaderType)]
 pub struct HudParams {
@@ -64,9 +65,13 @@ struct HudLayout {
     _p: HudParams,
 }
 
-/// The material's slot (0 dial, 1 minimap, 2 speed lines) from its kind.
+/// The materials, one per kind.
+pub const SLOTS: usize = 4;
+
+/// The material's slot (0 dial, 1 minimap, 2 speed lines, 3 heat stars)
+/// from its kind.
 fn slot(p: &HudParams) -> usize {
-    (p.head.x as usize).clamp(1, 3) - 1
+    (p.head.x as usize).clamp(1, SLOTS) - 1
 }
 
 /// The uniforms' bytes, as the derive writes them.
@@ -79,7 +84,7 @@ fn bytes(p: &HudParams) -> Vec<u8> {
 /// Render world: the materials' uniform buffers, one per slot, made when
 /// the material is first prepared.
 #[derive(Resource, Default)]
-pub struct HudBuffers(Mutex<[Option<Buffer>; 3]>);
+pub struct HudBuffers(Mutex<[Option<Buffer>; SLOTS]>);
 
 impl AsBindGroup for HudMaterial {
     type Data = ();
@@ -262,5 +267,30 @@ pub fn minimap(sc: &Scene) -> HudParams {
 pub fn speedlines(opacity: f64) -> HudParams {
     let mut p = HudParams::new(SPEEDLINES);
     p.head.y = opacity as f32;
+    p
+}
+
+/// The heat stars (`#pz-stars`): the box (`w` by `h` CSS px) with a margin
+/// round it for the skew and the shadow, each star `star` (w, h) `gap`
+/// apart, their fills (0..1), `.max`, and the stars' opacity.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StarsDraw {
+    pub w: f32,
+    pub h: f32,
+    pub margin: f32,
+    pub star: (f32, f32),
+    pub gap: f32,
+    pub fills: [f32; 5],
+    pub max: bool,
+    pub opacity: f32,
+}
+
+/// The heat stars' uniforms.
+pub fn stars(d: &StarsDraw) -> HudParams {
+    let mut p = HudParams::new(STARS);
+    p.v[0] = Vec4::new(d.w, d.h, d.margin, d.star.0);
+    p.v[1] = Vec4::new(d.star.1, d.gap, if d.max { 1.0 } else { 0.0 }, d.opacity);
+    p.v[2] = Vec4::new(d.fills[0], d.fills[1], d.fills[2], d.fills[3]);
+    p.v[3] = Vec4::new(d.fills[4], 0.0, 0.0, 0.0);
     p
 }
