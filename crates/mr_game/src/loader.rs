@@ -387,6 +387,10 @@ fn spawn_node(
             if !node.frustum_culled {
                 e.insert(NoFrustumCulling);
             }
+            // three sorts its transparent list by `renderOrder` first (D810).
+            if let Some(o) = crate::render::sort::RenderOrder::of(node.render_order) {
+                e.insert(o);
+            }
         };
         if mode == StandIn::Sky {
             let Some(m) = b.mesh(key, meshes) else {
