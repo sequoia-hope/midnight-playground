@@ -6464,6 +6464,87 @@ stations run again; giving the scene materials a rank of their own (three
 breaks ties by object id, which is the scene's node order) is the fix,
 for whoever next runs the stations.
 
+Fixed in D810.
+
+## D810. The transparent pass in three's order, for every material
+
+2026-10-04, fixing what D809 left open (a divergence is a port bug, SPEC
+4.2's rule). three sorts its transparent list by `renderOrder`, then by
+`z` (the sort point through `projScreenMatrix`, far first), then by
+object id. The port now does the same for every material:
+
+- **No polygon offset in the sort.** `ThreeMaterial::depth_bias`, which
+  Bevy adds to the sort distance and uses for nothing else, is the sort
+  rank alone (0 for scene materials, D808's ranks for the effects); the
+  offset stays in the pipeline (`specialize`).
+- **`renderOrder`.** The scene carries each node's `render_order` (the
+  JS's 24 settings: sea 1, surf rings and foam 2, Beach's transparent
+  ribbons 3, the desert's pools 2 and beams 3, the car glass 1 and
+  siren glow 2, the city's pools, glows and haze, the waterfall's
+  layers...), and the client ignored it. Drawn entities whose order is
+  not 0 carry `render::sort::RenderOrder` (loader, `play::models`), and
+  a render-world system after Bevy's `Transparent3d` sort sorts each
+  view's items again, stably, by order, then by distance. A phase item
+  names its main-world entity (its render entity is a placeholder), so
+  the orders are looked up by that.
+- **Behind the camera.** three's divide by w, negative behind the
+  camera, puts a sort point there past the far plane (NDC z = (f + n)/(f
+  − n) + 2fn/((f − n) z) > 1), so such an object draws before everything
+  in front, nearer behind first. Bevy's view depth draws it last. The
+  same system gives those items keys below every in-front one, in three's
+  order (`sort::three_key`). In front, three's NDC depth orders as the
+  view depth does, so Bevy's distance stands. Ties keep Bevy's order, the
+  order the items were queued in, which is the scene's, as three's ids
+  are.
+
+The constant bias had been doing renderOrder's job by accident: it put
+the surf and foam (polygon offset, order 2 or 3) after the sea (order 1).
+Taking the bias out alone (the first try) sank the surf rings round
+Coast's sea stacks under the sea at 01750 to 02750-high (mean ΔE00 0.156
+to 0.365); with the orders and the behind-camera rule they are back.
+
+All the L4 stations from the default (built) path, WebGPU, 1280 × 800,
+frozen, against the JS shots (`rust-web-stations.mjs`; the JS tree key
+changed with D807, which no fly-camera station draws, so the shots of
+the key before it serve): 398 stations, all within the limits before and
+after, median mean ΔE00 0.245 both. Two runs of the old build are
+identical to the pixel, so every change is the sort's. 191 stations
+change at all, 180 of them by under 0.005 mean (the largest change
+against the JS among those 0.0045). The 11 that move more:
+
+| Station | before | after (mean ΔE00 against the JS; 95 % block) |
+|---|---|---|
+| coast/00750-high | 0.393; 0.368 | 0.145; 0.297 |
+| coast/00500-high | 0.258; 0.335 | 0.145; 0.286 |
+| coast/00250-high | 0.161; 0.311 | 0.126; 0.279 |
+| desert/07250-high | 0.183; 0.400 | 0.171; 0.373 |
+| sierra/02000-chase | 0.216; 0.512 | 0.200; 0.480 |
+| sierra/02000-high | 0.276; 0.708 | 0.270; 0.685 |
+| coast/attract | 0.134; 0.327 | 0.129; 0.309 |
+| desert/07000-high | 0.161; 0.364 | 0.161; 0.358 |
+| desert/07000-chase | 0.134; 0.253 | 0.134; 0.253 |
+| coast/00750-chase | 0.124; 0.312 | 0.139; 0.384 |
+| desert/06250-chase | 0.127; 0.218 | 0.156; 0.340 |
+
+Eight closer, three further. The big gains are Coast's lighthouse beam
+(additive), which the sea (order 1) now covers where it passes over the
+water, as in the JS; before, the beam drew over the sea out to the left
+edge. The two that went further are small and local: Coast's 00750-chase
+at the frame's left edge, and the campfire halos and ground pools of
+Desert's 06250-chase (brighter than the JS by about 7/255 in 3,168
+pixels); pools, points, sprites and beams there are all additive, so
+the cause is the order against something normal-blended there, not
+found yet. A WebGL2 spot check (Coast and Desert, 130 stations) gives
+the same numbers as WebGPU (within 0.008 mean). The effects' staged scenes
+(WebGPU) stay within and come a little closer: launch 0.235 to 0.127
+mean, skid-smoke 0.965 to 0.954, the others within 0.004; Coast's night
+race reads as before (0.0185, 0.0140 against the JS's 0.0184, 0.0134; in
+a race the smoke, sparks and skids sort by the origin, which, when it
+is behind the camera, now puts them first, as three does). Opaque
+objects still
+ignore `renderOrder` (three sorts its opaque list by it too, which
+matters only where depths tie).
+
 ## WP 6.3 decisions: the race HUD
 
 ## D820. The HUD: an engine-free `HUD` class, and nodes built once
