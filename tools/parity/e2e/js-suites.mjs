@@ -21,15 +21,9 @@ import path from 'node:path';
 import { ROOT } from '../lib/jstree.mjs';
 
 // What does not run against the Rust build, and why. Matched against the
-// test's name; `m8` marks what waits for Hot Pursuit (roadmap M8).
+// test's name. (`m8` marked what waited for Hot Pursuit, roadmap M8; the
+// pursuit suite runs since WP 8.3.)
 export const SKIPS = [
-  // Hot Pursuit (M8): the police, the pursuit HUD, the radio, busts and wrecks.
-  { suite: 'pursuit', name: /^menu: the Race \/ Hot Pursuit toggle/, m8: true, why: 'starts a pursuit (`__pursuit`, `#hud-pz`): M8' },
-  { suite: 'pursuit', name: /^the police chase you/, m8: true, why: 'police units, heat stars and the siren: M8' },
-  { suite: 'pursuit', name: /^dispatch speaks/, m8: true, why: 'the radio voice and `race.pv.say`: M8' },
-  { suite: 'pursuit', name: /^busted/, m8: true, why: 'busts, the hold and the penalty: M8' },
-  { suite: 'pursuit', name: /^wrecked/, m8: true, why: 'damage and wrecks: M8' },
-  { suite: 'pursuit', name: /^results: the pursuit stats/, m8: true, why: 'pursuit results and the pursuit best time: M8' },
   // Deviations (DEVIATIONS.md).
   { suite: 'audio', name: /^phone: pausing suspends the audio, taps on the pause screen leave it/, why: 'deviation: a tap on no control of the pause screen resumes (DEVIATIONS.md, D578); suspend on pause and resume are race-flow\'s Esc test' },
   // JS-only hooks.
