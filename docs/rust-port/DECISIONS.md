@@ -6392,6 +6392,18 @@ with the JS's other quirks. Making them show is a one-line change on both
 sides (the side, or the index order) and the owner's call; the marks are
 otherwise ported and checked (`SkidMarks` tests, the shader).
 
+## D807. The skid marks show, in both games
+
+2026-10-04, the owner ("yes make skid marks visible"), on D806. A bug
+fix the owner reported, so the frozen JS game takes it too (CLAUDE.md):
+`SkidMarks`' index order becomes (b, b+2, b+1, b+1, b+2, b+3) in
+`src/game/Effects.js` and `play::fx::skid_mesh`, so each quad's
+triangles wind counter-clockwise seen from above, face up, and survive
+three's FrontSide culling. Nothing else changes: same quads, alpha,
+colour, blending and polygon offset. The two games still match each
+other; the JS-tree key changes with the edit, so the parity cache
+regenerates on demand. D806's entry in DEVIATIONS.md is removed.
+
 ## WP 6.3 decisions: the race HUD
 
 ## D820. The HUD: an engine-free `HUD` class, and nodes built once

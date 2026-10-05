@@ -114,8 +114,9 @@ fn points_mesh(n: usize) -> Mesh {
     m
 }
 
-/// The skid marks' mesh: four corners a quad (`b, b+1, b+2, b+1, b+3, b+2`)
-/// with the alpha in the extra attribute.
+/// The skid marks' mesh: four corners a quad (`b, b+2, b+1, b+1, b+2, b+3`,
+/// wound to face up as the JS now is, D807) with the alpha in the extra
+/// attribute.
 fn skid_mesh(n: usize) -> Mesh {
     let mut m = Mesh::new(
         PrimitiveTopology::TriangleList,
@@ -126,7 +127,7 @@ fn skid_mesh(n: usize) -> Mesh {
     let idx: Vec<u32> = (0..n as u32)
         .flat_map(|i| {
             let b = i * 4;
-            [b, b + 1, b + 2, b + 1, b + 3, b + 2]
+            [b, b + 2, b + 1, b + 1, b + 2, b + 3]
         })
         .collect();
     m.insert_indices(Indices::U32(idx));
