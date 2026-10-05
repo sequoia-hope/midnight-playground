@@ -89,7 +89,7 @@ pub struct Unit {
 }
 
 /// `st.pursuit`: `Pursuit.hud(damage)` with `PursuitView.hudState`'s
-/// `penalties` (M8 fills it in).
+/// `penalties` (`play::hud::pursuit_in`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct PursuitIn {
     pub heat: f64,
@@ -244,7 +244,7 @@ pub fn center_class(text: &str) -> CenterCls {
     }
 }
 
-/// `HUD`. (The radio line and the level's kind are read by M8's nodes.)
+/// `HUD`.
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct Hud {
@@ -358,7 +358,6 @@ impl Hud {
 
     /// A line of police radio chatter, bottom centre. Rate limiting is the
     /// caller's job; a new line replaces the current one.
-    #[allow(dead_code)]
     pub fn radio(&mut self, text: &str, dur: f64) {
         self.radio_text = text.to_string();
         self.radio_show = true;

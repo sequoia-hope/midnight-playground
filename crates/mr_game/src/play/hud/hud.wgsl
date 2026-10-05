@@ -9,6 +9,8 @@
 //   kind 3: the speed lines: `repeating-conic-gradient(from 0deg at 50% 55%,
 //           transparent 0 3deg, rgba(255,255,255,.07) 3deg 3.4deg)` masked
 //           by `radial-gradient(circle at 50% 55%, transparent 32%, #000 75%)`.
+//   kind 4: the heat stars (`#pz-stars`, Hot Pursuit): five clip-path
+//           stars with their fills, skewed, with their drop shadow.
 // Shapes are signed distances, antialiased over a pixel as the canvas
 // does; colours are composited in sRGB as the canvas composites them, and
 // the result is handed to the UI pass in linear.
@@ -232,11 +234,91 @@ fn speedlines(uv: vec2<f32>, size: vec2<f32>) -> vec4<f32> {
     return vec4<f32>(1.0, 1.0, 1.0, lin_alpha(1.0, a));
 }
 
+// One `.pz-star` at `o` (its top left), `w` by `h`: its clip-path polygon's
+// signed distance.
+fn sd_star(q: vec2<f32>, o: vec2<f32>, w: f32, h: f32) -> f32 {
+    var pts = array<vec2<f32>, 10>(
+        vec2<f32>(0.5, 0.0), vec2<f32>(0.618, 0.35), vec2<f32>(0.98, 0.355), vec2<f32>(0.69, 0.575),
+        vec2<f32>(0.795, 0.92), vec2<f32>(0.5, 0.715), vec2<f32>(0.205, 0.92), vec2<f32>(0.31, 0.575),
+        vec2<f32>(0.02, 0.355), vec2<f32>(0.382, 0.35));
+    let r = q - o;
+    let sz = vec2<f32>(w, h);
+    var d2 = 1e9;
+    var sg = 1.0;
+    for (var i = 0; i < 10; i = i + 1) {
+        let j = (i + 9) % 10;
+        poly_edge(r, pts[i] * sz, pts[j] * sz, &d2, &sg);
+    }
+    return sg * sqrt(d2);
+}
+
+// `linear-gradient(180deg, a, b 45%, c)` at u (0 top, 1 bottom).
+fn star_grad(u: f32, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> vec3<f32> {
+    if (u <= 0.45) {
+        return mix(a, b, clamp(u / 0.45, 0.0, 1.0));
+    }
+    return mix(b, c, clamp((u - 0.45) / 0.55, 0.0, 1.0));
+}
+
+// The heat stars (`#pz-stars`): five `.pz-star`s `w` by `h`, `gap` apart,
+// each `rgba(255,255,255,.2)` with its `<i>` fill from the left, clipped to
+// the star; `skewX(-8deg)`, `drop-shadow(0 2px 5px rgba(0,0,0,.7))` and the
+// patrol's opacity over the whole. v[0] = (box w, box h, margin, star w),
+// v[1] = (star h, gap, max, opacity), v[2].xyzw and v[3].x the fills (0..1).
+fn stars(uv: vec2<f32>) -> vec4<f32> {
+    let bw = p.v[0].x;
+    let bh = p.v[0].y;
+    let m = p.v[0].z;
+    let w = p.v[0].w;
+    let h = p.v[1].x;
+    let gap = p.v[1].y;
+    let q0 = uv * vec2<f32>(bw + 2.0 * m, bh + 2.0 * m) - vec2<f32>(m);
+    let aa = max(fwidth(q0.x), 0.0001);
+    // Undo the skew about the box's centre.
+    let q = vec2<f32>(q0.x + 0.14054083 * (q0.y - bh * 0.5), q0.y);
+    var fills = array<f32, 5>(p.v[2].x, p.v[2].y, p.v[2].z, p.v[2].w, p.v[3].x);
+    var ca = vec3<f32>(255.0, 241.0, 184.0) / 255.0;
+    var cb = vec3<f32>(255.0, 207.0, 77.0) / 255.0;
+    var cc = vec3<f32>(255.0, 154.0, 60.0) / 255.0;
+    if (p.v[1].z > 0.5) {
+        ca = vec3<f32>(255.0, 208.0, 192.0) / 255.0;
+        cb = vec3<f32>(255.0, 122.0, 60.0) / 255.0;
+        cc = vec3<f32>(255.0, 48.0, 64.0) / 255.0;
+    }
+    // The shadow: the stars' alpha 2 px lower, blurred (sigma 2.5 px).
+    var sh = 0.0;
+    var acc = vec4<f32>(0.0);
+    for (var i = 0; i < 5; i = i + 1) {
+        let o = vec2<f32>(f32(i) * (w + gap), 0.0);
+        let fx = fills[i] * w;
+        let qs = q - vec2<f32>(0.0, 2.0);
+        let ds = sd_star(qs, o, w, h);
+        let inside = 1.0 - smoothstep(-5.0, 5.0, ds);
+        let solid = select(0.2, 1.0, qs.x - o.x < fx);
+        sh = max(sh, inside * solid);
+    }
+    acc = over(acc, vec3<f32>(0.0), 0.7 * sh);
+    for (var i = 0; i < 5; i = i + 1) {
+        let o = vec2<f32>(f32(i) * (w + gap), 0.0);
+        let c = cov(sd_star(q, o, w, h), aa);
+        if (c <= 0.0) {
+            continue;
+        }
+        acc = over(acc, vec3<f32>(1.0), 0.2 * c);
+        let f = clamp((fills[i] * w - (q.x - o.x)) / aa + 0.5, 0.0, 1.0);
+        acc = over(acc, star_grad(q.y / h, ca, cb, cc), c * f);
+    }
+    return acc * p.v[1].w;
+}
+
 @fragment
 fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     let kind = i32(p.head.x + 0.5);
     if (kind == 3) {
         return speedlines(in.uv, in.size);
+    }
+    if (kind == 4) {
+        return done(stars(in.uv));
     }
     let canvas = select(220.0, 260.0, kind == 1);
     let q = in.uv * canvas;

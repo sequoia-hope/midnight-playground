@@ -1160,6 +1160,14 @@ fn hurt(st: &mut SimState, d: f64, t: &Track) {
     }
 }
 
+/// `PursuitView.hurt(d)` called from outside a tick (the client's test
+/// bridge, `race.pv.hurt(x)` in the e2e suites); nothing without a pursuit.
+pub fn hurt_player(lr: &LevelRuntime, st: &mut SimState, d: f64) {
+    if st.pv.is_some() {
+        hurt(st, d, &lr.track);
+    }
+}
+
 /// PursuitView.onHit: the pursuit's hit rules (unit health, PIT push), then
 /// damage to the player's car.
 fn pursuit_on_hit(
