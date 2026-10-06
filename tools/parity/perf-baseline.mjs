@@ -25,7 +25,7 @@ const browser = await puppeteer.launch({
   headless: 'new',
   // As the e2e harness, plus no vsync and no frame cap, so frame times mean
   // something (headless is otherwise held at 60 fps).
-  args: ['--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-gpu-vsync', '--disable-frame-rate-limit', '--enable-precise-memory-info'],
+  args: ['--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist', '--mute-audio', '--disable-gpu-vsync', '--disable-frame-rate-limit', '--enable-precise-memory-info'],
 });
 const rows = [];
 try {
