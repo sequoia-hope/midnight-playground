@@ -168,7 +168,8 @@ pub fn line_steer(inp: &Input, v: &Vehicle, ph: &CarPhysics, t: &Track) -> f64 {
 
 /// How much the car needs help, 0..1: heading off the road (its edge
 /// within 2 m of the road's at the projected place, or already past it),
-/// or far off the line (from 2 to 6 m off, counted half).
+/// or far off the line (from 4 to 8 m off, counted half: in the middle of
+/// a two-lane road with the line on one side the car is left alone).
 pub fn assist_need(v: &Vehicle, t: &Track) -> f64 {
     let f = t.frame(v.s);
     let across = v.vx * f.rx + v.vz * f.rz;
@@ -176,7 +177,7 @@ pub fn assist_need(v: &Vehicle, t: &Track) -> f64 {
     let room = |lat: f64| f.hw - lat.abs() - v.half_w;
     let edge = 1.0 - smoothstep(0.2, 2.0, js::min(room(lat_p), room(v.lat) + 0.8));
     let off = (v.lat - t.racing_line[t.idx(v.s)] as f64).abs();
-    js::max(edge, 0.5 * smoothstep(2.0, 6.0, off))
+    js::max(edge, 0.5 * smoothstep(4.0, 8.0, off))
 }
 
 /// The steering assist: `inp.steer` blended toward [`line_steer`] by the

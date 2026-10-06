@@ -1,7 +1,8 @@
 //! The steering assist's effect on a poor driver (DECISIONS D1082): scripted
 //! "bad drivers" race with the assist off, Light and Strong, and the
 //! time off the road and the race time are compared. The quick test runs
-//! one driver for a minute of Sierra; the full table is
+//! one driver for a minute of Sierra; the full table (Sierra and Coast, or
+//! the levels in `ASSIST_LEVELS=sierra,coast,desert,streets`) is
 //!
 //!   cargo test --release -p mr_sim --test assist -- --ignored --nocapture
 
@@ -58,7 +59,7 @@ fn run(level: &str, driver: Driver, assist: Assist, limit_s: f64) -> Run {
     let dt = 1.0 / 120.0;
     let mut stuck_reset = false;
     while st.race.time < limit_s && st.race.state != RaceStateKind::Finished {
-        if st.tick % 30 == 0 {
+        if st.tick.is_multiple_of(30) {
             noise = (rng.next() * 2.0 - 1.0) * 0.7;
         }
         let p = &st.players[0];
@@ -82,36 +83,9 @@ fn run(level: &str, driver: Driver, assist: Assist, limit_s: f64) -> Run {
         if p.rules.stuck.is_some_and(|s| s > 3.0) && !stuck_reset {
             f.flags |= RESET;
             out.resets += 1;
-            if std::env::var("ASSIST_DEBUG").is_ok() {
-                eprintln!(
-                    "reset at s {:.0} lat {:.1} t {:.1}",
-                    p.v.s, p.v.lat, st.race.time
-                );
-            }
             stuck_reset = true;
         } else if p.rules.stuck.is_none_or(|s| s < 1.0) {
             stuck_reset = false;
-        }
-        if std::env::var("ASSIST_TRACE").is_ok_and(|w| {
-            let mut it = w.split(',').map(|x| x.parse::<f64>().unwrap_or(0.0));
-            let (a, b) = (it.next().unwrap_or(0.0), it.next().unwrap_or(0.0));
-            st.race.time >= a && st.race.time <= b && st.tick % 12 == 0
-        }) {
-            let fr = t.frame(p.v.s);
-            eprintln!(
-                "t {:.1} s {:.1} lat {:.2} hw {:.1} sp {:.1} rel {:.2} steer {:.2} thr {:.2} brk {:.2} line {:.1} ev {:?}",
-                st.race.time,
-                p.v.s,
-                p.v.lat,
-                fr.hw,
-                mr_math::kernel::hypot(p.v.vx, p.v.vz),
-                mr_math::wrap_angle(p.v.yaw - mr_math::kernel::atan2(fr.fz, fr.fx)),
-                inp.steer,
-                inp.throttle,
-                inp.brake,
-                t.racing_line[t.idx(p.v.s)],
-                ev.len()
-            );
         }
         step(&lr, &mut st, &[f], &mut ev);
         ev.clear();
