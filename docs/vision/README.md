@@ -5,6 +5,7 @@
 | `WORLD.md` | The vision: what the game becomes |
 | `ROADMAP.md` | The order of work after the port, as milestones M12 onward |
 | `sound.md` | Engines and music: the sound milestone (draft) |
+| `radio.md` | Stations and DJs in the game (draft) |
 | `../vehicle-dynamics/SPEC.md` | Sim handling, soft-body tyres, the force-feedback wheel |
 
 ## How this is kept
@@ -96,3 +97,6 @@ these documents:
   opener, fake local ads, raves, camping. Scripts and the listening page:
   `tools/dj-voice/`, `tools/dj-voice.html`; the owner's local agent
   records them.
+- **Radio integration:** asked for the basic plan to put radio in the
+  game. → `radio.md`: stations over the existing songs first (R1, right
+  after cutover), then context, player memory, and real stations.
