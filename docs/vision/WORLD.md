@@ -25,6 +25,41 @@ in the browser on WebGPU and native on Linux, and it runs on phones.
 The risk with range is an unapproachable mess, a "nerdy, weird simulator".
 The answer is the principle in section 2.
 
+### 1.1 Who you are
+
+**Someone still becoming who they are.** The owner's own driving on these
+roads was like that: working jobs, going from place to place, already
+someone but not yet who they would become, with no idea yet what was
+coming. So the player gets **no set backstory**. Who they are comes from
+how and where they drive, and the world never tells them who to be.
+
+- Endless roads, jobs and night drives with the radio on carry the theme.
+  Becoming is the story; there is no plot to finish.
+- A garage in the coastal town can still be a home base (jobs, cars,
+  gadgets, the crawler project) without defining the player.
+- **The radio carries the voices,** as Burnout Paradise's DJ did, voiced
+  like the Hot Pursuit police radio (WORLD 5.2). No cutscenes.
+- **Depth from memory, not from script.** Detailed narrative is not
+  wanted, and chatter that tries to be deep can show no depth. What
+  carries weight cheaply is the game remembering the player: the DJ
+  mentions that someone just took the Skyline record in a red Firebird;
+  a rival who lost to you last week remembers it; fans wear your colours
+  once you are known. Lines are about what this player actually did.
+- **The risk is chatter that falls flat:** the police radio's "I saw this
+  driver at this time" wears thin if stretched. So: little and good.
+  Short lines, mostly reacting to what the player just did, never on a
+  loop, long silences between. Tested on the owner before more is built.
+- Interstate 76 (open world, missions, a garage, the Sidewinder Force
+  Feedback joystick in the box) is the spirit; its outlaw violence is not.
+
+### 1.2 The name
+
+**Midnight Playground** (proposed by the owner) fits the sandbox: a
+literal playground for driving and simulation. One way to keep both
+names: *Midnight Playground* is the game, and *Midnight Racer* is its
+street-racing event series. This answers port SPEC open question 6 once
+the owner decides; crate names keep `mr_` either way.
+
 ## 2. The principle: the world is the menu
 
 - **One easy way in.** Press Drive and you are on the coast highway in a
@@ -92,7 +127,7 @@ Peninsula has proved the format.
 
 1. Keep a coarse world plan: where the regions are and which roads
    connect them. It starts as the table above; it becomes a map file in
-   the level tools (vision ROADMAP M12).
+   the level tools (vision ROADMAP M13).
 2. Build each new level as a corridor of that plan. The **redwood level**
    the owner wants is the Skyline-and-redwoods stretch, not a level that
    stands on its own.
@@ -137,6 +172,8 @@ player:
 - **Generated radio stations with DJ chatter,** voiced the way the Hot
   Pursuit police radio is (generated with a Qwen voice-design model), which
   the owner was pleased with.
+- **Sound comes first** (vision ROADMAP M12, `docs/vision/sound.md`):
+  engines with a deep rumble and music with real depth.
 - **The generated music system needs much more depth** to carry stations.
   In-game generated audio is the focus; "bring your own music" is not
   needed, since players can mute the game and play their own.
@@ -185,6 +222,30 @@ traps, a drag strip, a hill climb.
 For the simulation this means **breakable props are simulation state**
 (deterministic, in `SimState`, so replays, rollback and RL see them),
 with debris that doesn't affect play left to the client.
+
+### 7.1 Contact without violence
+
+Vehicle combat in the spirit of Interstate 76 and Mario Kart, made adult
+but not violent. Splatoon (aiming is ink, the score is ground covered) and
+Rocket League (cars, contact and skill, no harm) prove it works. The rule:
+**cars get disabled, people never get hurt.** The tools are gadgets:
+
+- **Winch and tow hook:** yank a rival's bumper, or anchor to a tree on a
+  crawler trail.
+- **EMP and jamming:** for a few seconds a rival's engine cuts, lights die,
+  or nitro won't fire.
+- **Drones** that drop oil, smoke or a spike strip ahead (Hot Pursuit's
+  spike strip, turned around).
+- **Hacking the world:** lights to red ahead of a rival, a bridge raised,
+  sprinklers on a roundabout.
+- **Possession games:** carry the package; a bumper tap steals it.
+  Keep-away with cars, and delivery jobs in multiplayer.
+- **Paint tags:** tag a car and it's "it", or score by painting rivals.
+
+- **Glitching the world:** a meta gadget that tears the game's own
+  fabric. Textures corrupt, a stretch of road drops to wireframe, a
+  rival's car stutters a few frames or clips out of the world for a
+  moment. Hacking taken one level up: the player hacks the game itself.
 
 ## 8. Cars
 

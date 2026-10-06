@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DJ Chatter</title>
+<link rel="icon" href="data:,">
+<style>
+:root { --bg: #0d0f14; --card: #161a22; --line: #262c36; --fg: #e6e9ee; --muted: #8b94a3; --accent: #ff3d7f; --ok: #4dff8a; --tide: #5ec8ff; --ridge: #ffb03d; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; padding: 16px; }
+h1 { font-size: 1.25rem; margin: 0 0 6px; }
+h2 { font-size: 1.05rem; margin: 26px 0 4px; }
+h3 { font-size: 0.95rem; margin: 18px 0 2px; color: var(--muted); font-weight: 600; }
+p { color: var(--muted); margin: 0 0 10px; max-width: 780px; }
+code { color: var(--fg); font-size: 13px; }
+button, select { background: #222834; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; font: inherit; font-size: 14px; white-space: nowrap; }
+button:hover { border-color: var(--accent); }
+button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.yes.picked { background: #1d4d2c; border-color: var(--ok); }
+button.no.picked { background: #4d1d24; border-color: #ff6b6b; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#status { position: sticky; top: 0; z-index: 2; margin: 10px -16px 0; padding: 8px 16px; background: var(--bg); border-bottom: 1px solid var(--line); color: var(--muted); }
+#status.err { color: #ff8a8a; }
+#status b { color: var(--fg); font-weight: 600; }
+.djs { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); max-width: 1200px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.card.marisol { border-top: 3px solid var(--tide); }
+.card.kit { border-top: 3px solid var(--ridge); }
+.card b { font-size: 17px; }
+.card .station { color: var(--muted); margin-left: 6px; }
+.card p { margin: 6px 0 10px; font-size: 13px; }
+.cand { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.cand span { flex: 1; min-width: 120px; }
+.cand .tag { color: var(--ok); font-size: 12px; }
+.line { display: flex; align-items: center; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); max-width: 1200px; }
+.line .text { flex: 1; white-space: pre-line; }
+.line small { color: var(--muted); display: block; }
+.line .who { font-size: 12px; font-weight: 600; width: 64px; flex: none; }
+.who.marisol { color: var(--tide); }
+.who.kit { color: var(--ridge); }
+input[type=search] { background: #11141b; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font: inherit; width: min(320px, 100%); }
+@media (max-width: 640px) { .line { flex-wrap: wrap; } .line .text { flex-basis: 100%; order: -1; } .line .who { width: auto; } }
+</style>
+</head>
+<body>
+<h1>DJ chatter</h1>
+<p>Sample radio talk from two stations, to hear whether it lands before any of it goes in the game.
+The script is <code>tools/dj-voice/lines.json</code>; the voices were made with Qwen3-TTS (<code>tools/dj-voice/README.md</code>).
+<b>Clean</b> plays the recording as it is; <b>Car stereo</b> plays it the way a car radio would.
+Mark lines 👍 or 👎 as you go, then <b>Copy my notes</b> and paste them to Claude.</p>
+<div id="status">Tap any ▶ button to listen.</div>
+
+<h2>The DJs</h2>
+<p>Each DJ has a few candidate voices. The one marked <span style="color:var(--ok)">● chosen</span> recorded the lines below;
+to switch, set <code>"chosen"</code> in <code>tools/dj-voice/voices.json</code> and run <code>render.py</code> again (or ask your agent).</p>
+<div class="djs" id="djs"></div>
+
+<h2>The lines</h2>
+<div class="row" style="margin:6px 0">
+  <select id="dj"><option value="">Both DJs</option></select>
+  <select id="topic"><option value="">Every topic</option></select>
+  <input type="search" id="filter" placeholder="Search lines…">
+</div>
+<div class="row" style="margin:6px 0 4px">
+  <button id="mode">Playing: Clean</button>
+  <button id="break">▶ A random radio break</button>
+  <button id="copy">Copy my notes</button>
+  <button id="clear">Clear my notes</button>
+</div>
+<p id="count"></p>
+<div id="lines"></div>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const status = (html, err = false) => { $('status').innerHTML = html; $('status').classList.toggle('err', err); };
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+
+const [data, voices, index] = await Promise.all([
+  fetch('dj-voice/lines.json').then((r) => r.json()),
+  fetch('dj-voice/voices.json').then((r) => r.json()),
+  fetch('../audio/dj/index.json').then((r) => (r.ok ? r.json() : { clips: {} })).catch(() => ({ clips: {} })),
+]);
+
+// The same ids render.py gives: <dj>-<topic>-<n>, n from 1 in lines.json order.
+const clips = [];
+for (const [dj, d] of Object.entries(data.djs)) {
+  for (const topic of Object.keys(data.topics)) {
+    (d.lines[topic] || []).forEach((line, i) => {
+      const text = typeof line === 'string' ? line : line.text;
+      const template = typeof line === 'string' ? null : line.template;
+      clips.push({ id: `${dj}-${topic}-${i + 1}`, dj, topic, text, template });
+    });
+  }
+}
+const file = (id, take) => `../audio/dj/${id}${take > 1 ? '.' + take : ''}.mp3`;
+
+// ── Playback: decoded buffers through either a clean path or a car stereo.
+let ctx = null, clean = null, stereo = null, carMode = false;
+function audioReady() {
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    clean = ctx.createGain(); clean.connect(ctx.destination);
+    // Car stereo: no deep bass or air, a forward midrange, a little drive and squash.
+    const hp = Object.assign(ctx.createBiquadFilter(), { type: 'highpass' }); hp.frequency.value = 110;
+    const lp = Object.assign(ctx.createBiquadFilter(), { type: 'lowpass' }); lp.frequency.value = 7000;
+    const mid = Object.assign(ctx.createBiquadFilter(), { type: 'peaking' }); mid.frequency.value = 2400; mid.gain.value = 4; mid.Q.value = 0.8;
+    const drive = ctx.createWaveShaper();
+    const curve = new Float32Array(1024);
+    for (let i = 0; i < 1024; i++) { const x = (i / 1023) * 2 - 1; curve[i] = Math.tanh(1.6 * x) / Math.tanh(1.6); }
+    drive.curve = curve;
+    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 4;
+    const out = ctx.createGain(); out.gain.value = 0.9;
+    hp.connect(mid); mid.connect(drive); drive.connect(lp); lp.connect(comp); comp.connect(out); out.connect(ctx.destination);
+    stereo = hp;
+  }
+  if (ctx.state !== 'running') ctx.resume();
+}
+const decoded = new Map();
+function buffer(url) {
+  if (!decoded.has(url)) {
+    decoded.set(url, fetch(url).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); })
+      .then((b) => ctx.decodeAudioData(b)).catch((e) => { decoded.delete(url); throw e; }));
+  }
+  return decoded.get(url);
+}
+let now = null; // { button, src, cancelled }
+function stop() {
+  if (!now) return;
+  now.cancelled = true;
+  try { now.src?.stop(); } catch {}
+  now.button?.classList.remove('on');
+  now = null;
+}
+// Plays one url; resolves when it ends (or is stopped).
+async function playUrl(url, me) {
+  const b = await buffer(url);
+  if (me.cancelled) return;
+  const src = ctx.createBufferSource();
+  src.buffer = b;
+  src.connect(carMode ? stereo : clean);
+  me.src = src;
+  await new Promise((res) => { src.onended = res; src.start(); });
+}
+async function play(button, list, label) {
+  if (now?.button === button) { stop(); status('Stopped.'); return; }
+  stop();
+  audioReady();
+  const me = { button, cancelled: false };
+  now = me;
+  button.classList.add('on');
+  try {
+    for (const [i, item] of list.entries()) {
+      if (me.cancelled) return;
+      status(`Playing <b>${item.label ?? label}</b>${list.length > 1 ? ` (${i + 1} of ${list.length})` : ''}${carMode ? ' on the car stereo' : ''}.`);
+      await playUrl(item.url, me);
+      if (list.length > 1 && i < list.length - 1) await new Promise((r) => setTimeout(r, 700));
+    }
+    if (now === me) { button.classList.remove('on'); now = null; status('Done. Tap any ▶ button to listen.'); }
+  } catch (e) {
+    if (now === me) { button.classList.remove('on'); now = null; }
+    status(`Couldn't play <b>${label}</b>: ${e.message || e}`, true);
+  }
+}
+$('mode').onclick = () => { carMode = !carMode; $('mode').textContent = `Playing: ${carMode ? 'Car stereo' : 'Clean'}`; $('mode').classList.toggle('on', carMode); };
+
+// ── The DJs and their candidate voices.
+for (const [dj, d] of Object.entries(data.djs)) {
+  const v = voices.djs[dj];
+  const card = el('div', { className: `card ${dj}` }, el('b', { textContent: d.name }), el('span', { className: 'station', textContent: d.station }), el('p', { textContent: d.about }));
+  for (const [cand, desc] of Object.entries(v?.candidates ?? {})) {
+    const row = el('div', { className: 'cand' }, el('span', { textContent: cand }));
+    if (cand === v.chosen) row.append(el('span', { className: 'tag', textContent: '● chosen' }));
+    row.title = desc;
+    const b = el('button', { textContent: '▶ Voice' });
+    b.onclick = () => play(b, [{ url: `dj-voice/voices/${cand}.flac` }], `the ${cand} voice`);
+    row.append(b);
+    card.append(row);
+  }
+  $('djs').append(card);
+  $('dj').append(el('option', { value: dj, textContent: d.name }));
+}
+for (const [t, label] of Object.entries(data.topics)) $('topic').append(el('option', { value: t, textContent: label }));
+
+// ── Notes: 👍 / 👎 per line, kept in this browser.
+const KEY = 'dj-voice-notes';
+let notes = {};
+try { notes = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch {}
+const saveNotes = () => { try { localStorage.setItem(KEY, JSON.stringify(notes)); } catch {} };
+
+// ── The lines, grouped by topic.
+const rows = [];
+const recordedText = (c) => index.clips[c.id];
+for (const [t, label] of Object.entries(data.topics)) {
+  const head = el('h3', { textContent: label });
+  $('lines').append(head);
+  const mine = clips.filter((c) => c.topic === t);
+  for (const c of mine) {
+    const rec = recordedText(c);
+    const takes = rec && rec.text === c.text ? rec.takes : 0;
+    const text = el('div', { className: 'text', textContent: c.text });
+    if (c.template) text.append(el('small', { textContent: `template: ${c.template}` }));
+    if (!rec) text.append(el('small', { textContent: '(not recorded yet)' }));
+    else if (rec.text !== c.text) text.append(el('small', { textContent: '(script changed since recording: run render.py)' }));
+    const div = el('div', { className: 'line' }, el('span', { className: `who ${c.dj}`, textContent: data.djs[c.dj].name }), text);
+    for (let k = 1; k <= takes; k++) {
+      const b = el('button', { textContent: takes > 1 ? `▶ ${k}` : '▶' });
+      b.onclick = () => play(b, [{ url: file(c.id, k) }], `${data.djs[c.dj].name}: “${c.text.slice(0, 60)}${c.text.length > 60 ? '…' : ''}”`);
+      div.append(b);
+    }
+    const yes = el('button', { className: 'yes', textContent: '👍' }), no = el('button', { className: 'no', textContent: '👎' });
+    const paint = () => { yes.classList.toggle('picked', notes[c.id] === 'yes'); no.classList.toggle('picked', notes[c.id] === 'no'); };
+    yes.onclick = () => { notes[c.id] = notes[c.id] === 'yes' ? undefined : 'yes'; saveNotes(); paint(); };
+    no.onclick = () => { notes[c.id] = notes[c.id] === 'no' ? undefined : 'no'; saveNotes(); paint(); };
+    paint();
+    div.append(yes, no);
+    $('lines').append(div);
+    rows.push({ c, div, head, takes });
+  }
+}
+const recorded = rows.filter((r) => r.takes).length;
+function filter() {
+  const dj = $('dj').value, topic = $('topic').value, q = $('filter').value.toLowerCase();
+  let n = 0;
+  const shownHeads = new Set();
+  for (const r of rows) {
+    const on = (!dj || r.c.dj === dj) && (!topic || r.c.topic === topic) && r.c.text.toLowerCase().includes(q);
+    r.div.hidden = !on; n += on;
+    if (on) shownHeads.add(r.head);
+  }
+  for (const r of rows) r.head.hidden = !shownHeads.has(r.head);
+  $('count').textContent = `${n} of ${clips.length} lines shown · ${recorded} recorded`;
+}
+for (const id of ['dj', 'topic']) $(id).onchange = filter;
+$('filter').oninput = filter;
+filter();
+
+// A random break: a station ID, then two other lines from the same DJ.
+$('break').onclick = function () {
+  const have = rows.filter((r) => r.takes && (!$('dj').value || r.c.dj === $('dj').value));
+  if (!have.length) { status('Nothing recorded yet: run tools/dj-voice/render.py.', true); return; }
+  const dj = have[Math.floor(Math.random() * have.length)].c.dj;
+  const pick = (f) => { const a = have.filter((r) => r.c.dj === dj && f(r)); return a[Math.floor(Math.random() * a.length)]; };
+  const first = pick((r) => r.c.topic === 'ident');
+  const others = [];
+  for (let i = 0; i < 2; i++) { const r = pick((r) => r.c.topic !== 'ident' && !others.includes(r)); if (r) others.push(r); }
+  const list = [first, ...others].filter(Boolean).map((r) => ({ url: file(r.c.id, 1 + Math.floor(Math.random() * r.takes)), label: `${data.djs[dj].name}: “${r.c.text.slice(0, 50)}…”` }));
+  play(this, list, `a ${data.djs[dj].name} break`);
+};
+
+$('copy').onclick = async () => {
+  const lines = clips.filter((c) => notes[c.id]).map((c) => `${notes[c.id] === 'yes' ? '👍' : '👎'} ${c.id}: ${c.text.replace(/\n+/g, ' ')}`);
+  const text = lines.length ? `DJ chatter notes (${lines.length} lines):\n${lines.join('\n')}` : 'No notes yet.';
+  try { await navigator.clipboard.writeText(text); status(`Copied notes on <b>${lines.length}</b> lines. Paste them to Claude.`); }
+  catch { status('Copying was blocked; here they are in the console.', true); console.log(text); }
+};
+$('clear').onclick = () => { if (confirm('Clear every 👍 and 👎?')) { notes = {}; saveNotes(); location.reload(); } };
+</script>
+</body>
+</html>

@@ -4,6 +4,7 @@
 |---|---|
 | `WORLD.md` | The vision: what the game becomes |
 | `ROADMAP.md` | The order of work after the port, as milestones M12 onward |
+| `sound.md` | Engines and music: the sound milestone (draft) |
 | `../vehicle-dynamics/SPEC.md` | Sim handling, soft-body tyres, the force-feedback wheel |
 
 ## How this is kept
@@ -61,3 +62,36 @@ these documents:
   track editor, extra sim hardware until requested. Level tools for the
   owner and Claude come first.
 - **Process:** push straight to main.
+- **Later the same session:** Interstate 76 (open world, missions, a
+  garage, vehicle combat; bought with a Sidewinder Force Feedback
+  joystick) is a favourite, but the owner doesn't like violence. Wants
+  combat that is adult without being violent, and a higher-level
+  narrative: who the player is and why they drive. The current menu stays
+  until there is an open world. Thinking of renaming the game **Midnight
+  Playground**. → WORLD 1.1, 1.2, 7.1.
+- **Then:** "who you are" should be someone still becoming who they
+  are, with no set backstory, drawn from the owner's own years of driving
+  these roads. Worried that radio chatter stretched too far falls flat:
+  keep it sparse and reactive, and test it. New gadget idea: glitching
+  the game world itself. → WORLD 1.1, 7.1.
+- **Then, on story and sound:** reluctant to write detailed narrative, but
+  wants something there; chatter that tries to be deep may show no depth.
+  → WORLD 1.1 (depth from memory). **Sound is high priority, ahead of the
+  open world:** engines are whiny and should have a deep rumble (a V8, a
+  V12); music has a nice vibe but sounds like generic generated
+  synthwave and needs richer, more real sound and more range. Loves
+  electronic dance music, house and techno. Suggested Mutable
+  Instruments' open-source modules (deterministic, the code is the
+  instrument) and classic machines like the 808. No "bring your own
+  music". → `sound.md`, ROADMAP M12.
+- **DJ chatter side quest:** two DJs, both women, both kind, both plugged
+  into the street racing scene (you listen because you race).
+  **Marisol** (The Tide, 88.1): mid-forties, warm, understated, into
+  cycling and film photography; goes to the forest rave and still runs
+  Monday; tired from other people's nonsense. **Kit** (Ridgeline Radio, a
+  pirate van on Skyline): late twenties, creative, into plants, hiking and
+  camping; brash, sometimes combative, wants to be kind and doesn't always
+  manage it; wrecked after a rave. The classic long "Goooood morning"
+  opener, fake local ads, raves, camping. Scripts and the listening page:
+  `tools/dj-voice/`, `tools/dj-voice.html`; the owner's local agent
+  records them.
