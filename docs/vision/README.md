@@ -87,9 +87,10 @@ these documents:
 - **DJ chatter side quest:** two DJs, both women, both kind, both plugged
   into the street racing scene (you listen because you race).
   **Marisol** (The Tide, 88.1): mid-forties, warm, understated, into
-  cycling and film photography; goes to the forest rave and still runs
-  Monday; tired from other people's nonsense. **Kit** (Ridgeline Radio, a
-  pirate van on Skyline): late twenties, creative, into plants, hiking and
+  cycling and film photography; stays to the end of the forest rave, naps, then
+  helps with strike and load-out; a leader who never says so and never
+  brags; in at eleven, ten if she has to; tired from other people's nonsense. **Kit** (Ridgeline Radio, a
+  pirate van on Skyline): late twenties, vegan, creative, into plants, hiking and
   camping; brash, sometimes combative, wants to be kind and doesn't always
   manage it; wrecked after a rave. The classic long "Goooood morning"
   opener, fake local ads, raves, camping. Scripts and the listening page:
