@@ -8475,3 +8475,42 @@ drives a race by keys through the client's frame loop (ragged frames,
 steering, handbrake, reset, a pause), writes its lines as the recorder
 does, and replays them to the same hash at every checkpoint. A recording
 replays on the code it was made with: the `start` line has the commit.
+
+## D1009. Natively, finished one-shots are let go of
+
+2026-10-06. The owner heard buffer underruns natively "well into level
+play" (web-audio-api's `buffer underrun or overrun`, many a second).
+Measured with the render thread's load report (`RUST_LOG=mr_game::play::
+audio=debug`, D1005's companion in `play::audio`): on Coast with the
+autopilot the load was 0.27 in the first ten seconds and 4 to 6 after two
+and a half minutes, every device callback underrunning from then on. It
+grew only while driving (parked: flat at 0.07), only with the effects on
+(music alone: flat), and only with the exhaust pops (`shots::pop`'s noise
+burst: a buffer source through a band-pass, a wave shaper and a gain into
+the effects bus; without it, flat at 0.12). web-audio-api's own graph
+report (its `diagnostics` feature) showed the render graph at 846 nodes
+at the start and 4,790 two minutes in: finished pop chains, their handles
+dropped and their source ended, still processing every quantum. A
+reproduction against the crate alone (no facade) strands about one chain
+in eight, and one plain source-gain-gain chain in thirty, so the cause is
+in web-audio-api 1.7.0's freeing, not in the port; the exact path was not
+found.
+
+A browser collects such a chain once nothing references it. The native
+backend now does the same for live contexts (`wa::native::Sweep`): a
+processing node the facade lets go of is held instead of dropped; once
+every node feeding it is gone (a released buffer source that has ended,
+by its `onended`; a released oscillator past its stop time; or another
+released node already let go of) for 4 s, past any filter's or reverb's
+tail, it is disconnected and dropped, and the crate frees it. A node fed
+by anything the facade still holds is never touched, and the links of
+what is let go of leave `ins` (which before grew without end on the
+effects bus). Offline contexts, which render the parity scenarios, keep
+the crate's behaviour, so every audio golden is unchanged.
+
+After: the same race holds 0.15 to 0.35 throughout (0.22 to 1.85 before at
+the same machine load), underruns 1 to 2 % in 24 of 250 seconds (100 %
+before). The `buffer underrun` messages the owner saw also turned the pops
+into a rattle; the owner's report that the exhaust burble "sounds like
+aluminum cans dragging behind the car" is to be judged again on this
+build.
