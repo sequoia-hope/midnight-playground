@@ -50,9 +50,10 @@ fn level_by_id_finds_each_level_and_falls_back_to_the_first() {
     for l in levels() {
         assert_eq!(level_by_id(l.id).id, l.id);
     }
-    // A stale saved id, a bad ?level= or nothing at all: Level 1.
+    // A stale saved id, a bad ?level= or nothing at all: Level 1 (Coast in
+    // the Rust menu, D1102).
     for bad in ["nope", "", "SIERRA"] {
-        assert_eq!(level_by_id(bad).id, "sierra");
+        assert_eq!(level_by_id(bad).id, "coast");
     }
 }
 
