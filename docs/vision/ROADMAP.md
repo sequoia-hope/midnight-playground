@@ -122,13 +122,15 @@ plan exists as data.
   soft tyres.
 - Design docs: `docs/vision/off-road.md` and the vehicle-dynamics spec.
 
-## M19. Damage and destruction
+## M19. Damage, destruction and gadgets
 
 **Goal:** crashing is part of the fun.
 
 - Breakable props as simulation state; more shortcuts through them.
 - Crash junctions scored in dollars; takedowns.
 - Visible car damage, and with sim handling, damage that changes the car.
+- Gadgets, not guns (WORLD 7.1): winch, EMP, drones, world hacking,
+  possession games, paint tags.
 - **Gate:** a crash junction the owner wants to replay.
 - Design doc: `docs/vision/damage.md`.
 

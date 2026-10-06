@@ -25,6 +25,34 @@ in the browser on WebGPU and native on Linux, and it runs on phones.
 The risk with range is an unapproachable mess, a "nerdy, weird simulator".
 The answer is the principle in section 2.
 
+### 1.1 Who you are
+
+Light story, carried by the radio, as Burnout Paradise's DJ carried it.
+No cutscenes.
+
+- **You are the new driver at a small garage in the coastal town.** By
+  night it is a racing crew; by day it builds odd vehicles: rally cars,
+  crawlers, prototypes, robots.
+- That one premise explains the game's range. Sim handling is testing a
+  setup, the crawler is this week's project, deliveries pay the rent, and
+  the RL robots are the shop's side business.
+- **Rivals** are other crews, and a slick corporate outfit buying up the
+  coast gives the story someone to beat.
+- **The radio tells it:** DJ chatter and calls from the crew, voiced like
+  the Hot Pursuit police radio (WORLD 5.2). Reputation, not a scripted
+  plot, opens up regions, cars and jobs.
+- Draft, for the owner to shape. Interstate 76 (the owner's favourite:
+  open world, missions, a garage, the Sidewinder Force Feedback joystick
+  in the box) is the spirit; its outlaw violence is not.
+
+### 1.2 The name
+
+**Midnight Playground** (proposed by the owner) fits the sandbox: a
+literal playground for driving and simulation. One way to keep both
+names: *Midnight Playground* is the game, and *Midnight Racer* is its
+street-racing event series. This answers port SPEC open question 6 once
+the owner decides; crate names keep `mr_` either way.
+
 ## 2. The principle: the world is the menu
 
 - **One easy way in.** Press Drive and you are on the coast highway in a
@@ -185,6 +213,27 @@ traps, a drag strip, a hill climb.
 For the simulation this means **breakable props are simulation state**
 (deterministic, in `SimState`, so replays, rollback and RL see them),
 with debris that doesn't affect play left to the client.
+
+### 7.1 Contact without violence
+
+Vehicle combat in the spirit of Interstate 76 and Mario Kart, made adult
+but not violent. Splatoon (aiming is ink, the score is ground covered) and
+Rocket League (cars, contact and skill, no harm) prove it works. The rule:
+**cars get disabled, people never get hurt.** The tools are gadgets:
+
+- **Winch and tow hook:** yank a rival's bumper, or anchor to a tree on a
+  crawler trail.
+- **EMP and jamming:** for a few seconds a rival's engine cuts, lights die,
+  or nitro won't fire.
+- **Drones** that drop oil, smoke or a spike strip ahead (Hot Pursuit's
+  spike strip, turned around).
+- **Hacking the world:** lights to red ahead of a rival, a bridge raised,
+  sprinklers on a roundabout.
+- **Possession games:** carry the package; a bumper tap steals it.
+  Keep-away with cars, and delivery jobs in multiplayer.
+- **Paint tags:** tag a car and it's "it", or score by painting rivals.
+
+Gadgets fit the garage of section 1.1: the shop builds them.
 
 ## 8. Cars
 

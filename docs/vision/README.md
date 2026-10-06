@@ -61,3 +61,10 @@ these documents:
   track editor, extra sim hardware until requested. Level tools for the
   owner and Claude come first.
 - **Process:** push straight to main.
+- **Later the same session:** Interstate 76 (open world, missions, a
+  garage, vehicle combat; bought with a Sidewinder Force Feedback
+  joystick) is a favourite, but the owner doesn't like violence. Wants
+  combat that is adult without being violent, and a higher-level
+  narrative: who the player is and why they drive. The current menu stays
+  until there is an open world. Thinking of renaming the game **Midnight
+  Playground**. → WORLD 1.1, 1.2, 7.1.
