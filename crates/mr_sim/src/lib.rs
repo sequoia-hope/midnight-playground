@@ -6,6 +6,7 @@
 #![allow(clippy::needless_range_loop)]
 
 pub mod ai;
+pub mod assist;
 pub mod autopilot;
 pub mod body;
 pub mod collisions;

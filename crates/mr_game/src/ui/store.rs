@@ -334,6 +334,11 @@ pub fn car_kinds() -> impl Iterator<Item = &'static str> {
 pub const STEERING: [&str; 3] = ["stick", "buttons", "tilt"];
 /// Pedal choices (`#opt-pedals`).
 pub const PEDALS: [&str; 2] = ["slider", "buttons"];
+/// Guide line choices (Rust only, D1083): the whole line, only where it
+/// says brake, none.
+pub const GUIDE: [&str; 3] = ["full", "brake", "off"];
+/// Steering assist choices (Rust only, D1083).
+pub const ASSIST: [&str; 3] = ["off", "light", "strong"];
 
 /// `main.js`'s `settings`, read from the store at start.
 #[derive(Clone, Debug, PartialEq)]
@@ -360,6 +365,12 @@ pub struct Settings {
     pub flash: bool,
     /// Gamepad rumble.
     pub rumble: bool,
+    /// `mr.guideLine` (Rust only): `full`, `brake` or `off`; on (`full`)
+    /// by default on a touch screen (D1083).
+    pub guide: String,
+    /// `mr.steerAssist` (Rust only): `off`, `light` or `strong`; `light` by
+    /// default on a touch screen (D1083).
+    pub assist: String,
 }
 
 impl Settings {
@@ -386,7 +397,15 @@ impl Settings {
             track: store.string("track", "auto"),
             flash: store.bool("flash", true),
             rumble: store.bool("rumble", true),
+            guide: store.string("guideLine", if touch_ui { "full" } else { "off" }),
+            assist: store.string("steerAssist", if touch_ui { "light" } else { "off" }),
         };
+        if !GUIDE.contains(&s.guide.as_str()) {
+            s.guide = if touch_ui { "full" } else { "off" }.into();
+        }
+        if !ASSIST.contains(&s.assist.as_str()) {
+            s.assist = if touch_ui { "light" } else { "off" }.into();
+        }
         if touch_ui && !STEERING.contains(&s.steering.as_str()) {
             s.steering = "stick".into();
         }
@@ -498,10 +517,15 @@ mod tests {
                 track: "auto".into(),
                 flash: true,
                 rumble: true,
+                guide: "off".into(),
+                assist: "off".into(),
             }
         );
-        // Touch screens get lighter rendering by default.
-        assert!(!Settings::load(&store, true).hq);
+        // Touch screens get lighter rendering by default, and the guide
+        // line and the steering assist (D1083).
+        let t = Settings::load(&store, true);
+        assert!(!t.hq);
+        assert_eq!((t.guide.as_str(), t.assist.as_str()), ("full", "light"));
 
         let store = seeded(&[
             ("mr.musicVol", "0.25"),
@@ -518,6 +542,8 @@ mod tests {
             ("mr.track", "\"neon-rush\""),
             ("mr.flash", "false"),
             ("mr.rumble", "false"),
+            ("mr.guideLine", "\"brake\""),
+            ("mr.steerAssist", "\"off\""),
         ]);
         let s = Settings::load(&store, true);
         assert_eq!(
@@ -537,8 +563,14 @@ mod tests {
                 track: "neon-rush".into(),
                 flash: false,
                 rumble: false,
+                guide: "brake".into(),
+                assist: "off".into(),
             }
         );
+        // A choice the menu does not offer falls back to the default.
+        let store = seeded(&[("mr.guideLine", "\"rainbow\""), ("mr.steerAssist", "3")]);
+        let s = Settings::load(&store, false);
+        assert_eq!((s.guide.as_str(), s.assist.as_str()), ("off", "off"));
     }
 
     /// `store.get(k, d)` gives `d` for a value that does not parse, as the
