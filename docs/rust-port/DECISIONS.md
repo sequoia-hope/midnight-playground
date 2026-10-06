@@ -8341,3 +8341,20 @@ and wrote `index.html` last, minutes later. It now builds in
 backend first) and renames it into place when everything is written; a
 failed build leaves `dist/next/` as it was. Checked: the URL polled every
 0.3 s through a release build (694 requests) served the game every time.
+
+## D1060. A Quit button on the native menu
+
+2026-10-05. The owner: "native game could use a quit button in the menu."
+The native client's main menu ends with a QUIT button (`btn-exit`,
+`Act::Exit`), a secondary `.btn` as the pause screen's: under the keyboard
+or touch help, centred, and in the phone-landscape grid on a row of its own
+across both columns (`touch=1` natively shows the touch layout). It leaves
+the game as Ctrl+Q does (D1002): `AppExit::Success`, and `window_state`'s
+`on_exit` saves the window on the way out. The web build has no such button
+(the page cannot close itself), so the JS's menu and the web e2e suites
+are unchanged. The gamepad reaches it with ↓ from the options row
+(`ui::nav::nearest`, factored out of `mv_in` for a unit test); `uiscript=
+btn-exit` presses it in a native run (checked: logs "Quit: exit", exit
+code 0). `ActCtx` now carries the `AppExit` writer, which `ui_script` uses
+too. Pictures: `parity/report/ev-audio/menu-quit-*.png` (native
+`--screenshot` at 1280 × 1500 and, with `touch=1`, 1000 × 480).
