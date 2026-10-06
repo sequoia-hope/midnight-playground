@@ -1782,7 +1782,33 @@ fn cruise_score(r: &mut PlayerRules, dt: f64, speed: f64) {
 
 /// A 64-bit hash of the state, for determinism and desync checks (SPEC 4.3).
 /// It is the FNV-1a 64 of the trace record without inputs, which covers
-/// every field that affects later ticks.
+/// every field that affects later ticks in a single-player race. A
+/// multiplayer race adds what the JS trace format has no place for: the
+/// finish window and every player's start and scoring state (so a desync
+/// in them is caught at the next hash check). One human still hashes as
+/// single-player does: the extension is only there with two or more.
 pub fn hash(st: &SimState) -> u64 {
-    crate::trace::fnv1a64(&crate::trace::race_record(st, &[]))
+    let mut rec = crate::trace::race_record(st, &[]);
+    if let Some(m) = st.race.multi.as_ref().filter(|_| st.players.len() > 1) {
+        let f = |rec: &mut Vec<u8>, x: f64| rec.extend_from_slice(&x.to_bits().to_le_bytes());
+        let o = |rec: &mut Vec<u8>, x: Option<f64>| match x {
+            Some(x) => {
+                rec.push(1);
+                f(rec, x);
+            }
+            None => rec.push(0),
+        };
+        rec.extend_from_slice(b"multi");
+        rec.push(u8::from(m.rubber_band) | u8::from(m.ghost) << 1 | u8::from(m.reported) << 2);
+        o(&mut rec, m.end_timer);
+        f(&mut rec, m.end_delay);
+        for p in &st.players {
+            o(&mut rec, p.rules.throttle_at);
+            for &x in &p.rules.passed {
+                o(&mut rec, x);
+            }
+            rec.extend(p.rules.near_miss_hit.iter().map(|&b| u8::from(b)));
+        }
+    }
+    crate::trace::fnv1a64(&rec)
 }
