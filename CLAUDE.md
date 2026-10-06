@@ -110,8 +110,11 @@ relative, because the game is always served under a sub-path.
    compare with the reference.
 4. Commit and push straight to `main` (no branches): imperative subject, a
    prose body. Build output (`dist/`, `target/`, `parity/report/`) stays out
-   of git. GitHub Pages keeps serving the JS game until cutover (M9); never
-   deploy the Rust build there or change the Pages source.
+   of git. GitHub Pages serves the JS game at the root until cutover (M9),
+   and since D1101 the Rust build beside it at `dist/next/`, built and
+   published by `.github/workflows/pages.yml` on every push to `main`. Never
+   publish the Rust build at the root or move the JS game before the swap
+   (WP 9.5).
 
 **Parallel work.** Packages run in parallel only with disjoint files. A
 shared module has one owner; everyone else may add exports to it but not

@@ -1,0 +1,82 @@
+# GitHub Pages: the JS game at the site root, as it always was, and the
+# Rust build (Midnight Playground) beside it at `dist/next/`, the same path
+# the registered server and the tailnet use (DECISIONS D1101). The site is
+# the commit's tracked files plus the fresh web build, so the root is what
+# the old "deploy from branch main" served. A failed Rust build still
+# publishes the JS game; `dist/next/` then says which commit failed.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a newer push waits for the running one, and only
+# the newest waiting push is kept.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Site (the JS game and the Rust web build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: wasm-bindgen version from Cargo.lock
+        id: bindgen
+        run: echo "version=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')" >> "$GITHUB_OUTPUT"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@${{ steps.bindgen.outputs.version }}
+      - name: wasm-opt (binaryen 116)
+        run: |
+          curl -sSL https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz | tar xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/binaryen-version_116/bin" >> "$GITHUB_PATH"
+      - name: Rust web build
+        id: web
+        continue-on-error: true
+        run: cargo xtask web --release
+      # Tracked files only (as the branch deploy served them), then the
+      # build. Pages compresses on the fly, so the .br and .gz copies stay
+      # out.
+      - name: Assemble the site
+        env:
+          WEB_OK: ${{ steps.web.outcome == 'success' }}
+        run: |
+          mkdir -p _site
+          git archive HEAD | tar -x -C _site
+          mkdir -p _site/dist/next
+          if [ "$WEB_OK" = true ]; then
+            cp -r dist/next/. _site/dist/next/
+            find _site/dist/next \( -name '*.br' -o -name '*.gz' \) -delete
+          else
+            cat > _site/dist/next/index.html <<EOF
+          <!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+          <title>Midnight Playground</title>
+          <p style="font:16px system-ui;margin:2em">The Rust build failed for commit ${GITHUB_SHA::7}, so there is nothing to play here until the next push. <a href="../../">Midnight Racer</a> is unaffected.</p>
+          EOF
+          fi
+          du -sh _site _site/dist/next
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

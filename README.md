@@ -197,17 +197,18 @@ where each corner's shape says they should.
 ## Run it
 
 Play it online at **https://sequoia-hope.github.io/midnight-racer/**. GitHub Pages
-serves `main` as-is (there is no build step), so every push to `main` goes live
-within a minute or two. Links to it unfurl with a picture in Slack, iMessage,
+serves `main`'s files as they are (the JS game has no build step), so every
+push to `main` goes live within a few minutes. Links to it unfurl with a picture in Slack, iMessage,
 Discord and the like (the `og:` tags in `index.html`).
 
 **Midnight Playground**, the Rust port in progress (plan in
 `docs/rust-port/`), is at
-**https://loaf.cama-minor.ts.net/midnight-racer/dist/next/**. That address
-is on the owner's tailnet, so it opens only on devices in the tailnet or
-ones the machine has been shared with. It serves that machine's working
-tree, so it's whatever `cargo xtask web --release` last built there. It
-needs a browser with WebGPU.
+**https://sequoia-hope.github.io/midnight-racer/dist/next/**. Every push to
+`main` rebuilds it and publishes it there, next to the JS game, a few
+minutes after the push (`.github/workflows/pages.yml`). It needs a browser
+with WebGPU. The owner's tailnet serves the working tree live at
+`https://loaf.cama-minor.ts.net/midnight-racer/dist/next/`, as built by
+the last local `cargo xtask web --release`.
 
 To run it locally:
 
