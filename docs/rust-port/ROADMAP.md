@@ -307,7 +307,7 @@ existing levels (SPEC 9).
 
 | WP | Work | Gate |
 |---|---|---|
-| 10.1 | Design note: rubber-banding with several humans, grid order, AI fill, drop-outs, results | Owner approves |
+| 10.1 | Design note: rubber-banding with several humans, grid order, AI fill, drop-outs, results (draft: `MULTIPLAYER.md`) | Owner approves |
 | 10.2 | Protocol, the transport trait, loopback and the lossy test transport | Unit tests |
 | 10.3 | Session: lobby, authoritative stepping, input relay, snapshots | Eight headless clients for an hour with latency and jitter: no desync that a snapshot does not repair |
 | 10.4 | Client: prediction, rollback, clock sync, correction smoothing | Two cars side by side at 50 ms simulated latency: contact looks the same on both |
