@@ -493,7 +493,13 @@ pub fn button(
             ..default()
         },
         BorderColor::all(white(0.25)),
-        ctl.value(Value::Text(label.to_owned())),
+        // The label, unless the control carries a value of its own (a
+        // toggle such as the lobby's Ready).
+        if ctl.value == Value::None {
+            ctl.value(Value::Text(label.to_owned()))
+        } else {
+            ctl
+        },
     ));
     if primary {
         e.insert((

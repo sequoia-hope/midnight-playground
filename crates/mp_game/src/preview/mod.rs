@@ -1292,3 +1292,11 @@ mod web {
         app.add_systems(Last, publish);
     }
 }
+
+#[cfg(test)]
+pub(crate) mod tests {
+    /// The menu's sections, none built, for the screens' tests.
+    pub(crate) fn previews(level: &str) -> super::Previews {
+        super::Previews::new(level)
+    }
+}

@@ -342,3 +342,332 @@ pub fn lobby(p: &mut ChildSpawnerCommands, cx: &mut Cx, _ui: &UiState, net: &Net
         );
     })
 }
+
+#[cfg(test)]
+mod tests {
+    //! The lobby's labels, and the screen built headless from a
+    //! `NetView`: which controls it has for the leader and the others,
+    //! the players' rows and tags, the status line, the points table.
+
+    use super::super::screens::Cx;
+    use super::super::tests::{lobby_of_two, ui_state};
+    use super::super::widgets::{Bp, Focused, Icons};
+    use super::super::{Act, Screen};
+    use super::*;
+    use mp_net::proto::{PointsRow, Settings};
+
+    struct Built {
+        /// The controls and whether each has the focus ring, in no order.
+        controls: Vec<(Control, bool)>,
+        /// The focus order the build recorded.
+        order: Vec<String>,
+        /// Every text node's whole string (its spans joined).
+        texts: Vec<String>,
+    }
+
+    impl Built {
+        fn get(&self, id: &str) -> Option<&Control> {
+            self.controls.iter().map(|(c, _)| c).find(|c| c.id == id)
+        }
+
+        fn text(&self, id: &str) -> String {
+            match self.get(id).map(|c| &c.value) {
+                Some(Value::Text(t)) => t.clone(),
+                other => panic!("{id}: {other:?}"),
+            }
+        }
+
+        fn has(&self, id: &str) -> bool {
+            self.get(id).is_some()
+        }
+    }
+
+    fn build(net: &NetView, focus: Option<&str>) -> Built {
+        let mut w = World::new();
+        let icons = Icons {
+            check: Handle::default(),
+            star: Handle::default(),
+            next: Handle::default(),
+            note: Handle::default(),
+            chevron: Handle::default(),
+        };
+        let ui = ui_state(Screen::Lobby);
+        let mut cx = Cx {
+            bp: Bp::new(1280.0, 800.0, 1.0, false, 0.0),
+            icons: &icons,
+            focus: focus.map(str::to_string),
+            order: Vec::new(),
+        };
+        {
+            let mut c = w.commands();
+            c.spawn(Node::default()).with_children(|p| {
+                lobby(p, &mut cx, &ui, net);
+            });
+        }
+        w.flush();
+        let controls = w
+            .query::<(&Control, Has<Focused>)>()
+            .iter(&w)
+            .map(|(c, f)| (c.clone(), f))
+            .collect();
+        let mut texts = Vec::new();
+        let mut q = w.query::<(&Text, Option<&Children>)>();
+        for (t, kids) in q.iter(&w) {
+            let mut s = t.0.clone();
+            for k in kids.into_iter().flatten() {
+                if let Some(span) = w.get::<TextSpan>(*k) {
+                    s.push_str(&span.0);
+                }
+            }
+            texts.push(s);
+        }
+        Built {
+            controls,
+            order: cx.order,
+            texts,
+        }
+    }
+
+    #[test]
+    fn the_labels() {
+        let ai = [AiFill::None, AiFill::To6, AiFill::To8].map(ai_label);
+        assert_eq!(ai, ["No AI rivals", "AI fills to 6", "AI fills to 8"]);
+        let grid = [GridRule::Random, GridRule::Reverse, GridRule::Same].map(grid_label);
+        assert_eq!(
+            grid,
+            [
+                "Grid: random",
+                "Grid: reverse of last race",
+                "Grid: order of last race"
+            ]
+        );
+        assert_eq!(races_label(0), "Races: open-ended");
+        assert_eq!(races_label(3), "Races: 3");
+        assert_eq!(races_label(255), "Races: 255");
+        for (kind, spec) in mp_sim::physics::CAR_SPECS {
+            assert_eq!(car_label(kind), spec.label);
+        }
+        assert_eq!(car_label("hovercraft"), "?");
+        assert_eq!(car_label(""), "?");
+        let coast = mp_levels::level_by_id("coast");
+        assert_eq!(level_title("coast"), coast.title);
+        assert_eq!(level_title("moon"), "moon", "an unknown level by its id");
+    }
+
+    /// Every car's own colour is in the palette (a player joins in it, and
+    /// the colour button steps on from it), and no colour is there twice.
+    #[test]
+    fn the_palette_starts_with_the_cars_colours() {
+        for (kind, spec) in mp_sim::physics::CAR_SPECS {
+            assert!(COLORS.contains(&spec.color), "{kind}: {:06x}", spec.color);
+        }
+        for (i, c) in COLORS.iter().enumerate() {
+            assert!(!COLORS[i + 1..].contains(c), "{c:06x} twice");
+        }
+    }
+
+    /// The leader gets this player's buttons, every race setting, Start
+    /// and Leave, in that focus order, labelled from the settings.
+    #[test]
+    fn the_leader_sees_the_settings_and_start() {
+        let b = build(&lobby_of_two(0), None);
+        assert_eq!(
+            b.order,
+            [
+                "mp-name",
+                "mp-car",
+                "mp-color",
+                "mp-ready",
+                "mp-level",
+                "mp-ai",
+                "mp-ghost",
+                "mp-rubber",
+                "mp-grid",
+                "mp-races",
+                "mp-go",
+                "mp-leave"
+            ]
+        );
+        assert_eq!(b.text("mp-name"), "Name: Ann");
+        assert_eq!(b.text("mp-car"), format!("Car: {}", car_label("sports")));
+        assert_eq!(b.text("mp-level"), level_title("coast"));
+        assert_eq!(b.text("mp-ai"), "AI fills to 6");
+        assert_eq!(b.text("mp-ghost"), "Contact on");
+        assert_eq!(b.text("mp-rubber"), "Rubber-banding on");
+        assert_eq!(b.text("mp-grid"), "Grid: reverse of last race");
+        assert_eq!(b.text("mp-races"), "Races: open-ended");
+        assert_eq!(b.text("mp-go"), "Start race");
+        assert_eq!(b.get("mp-ready").unwrap().value, Value::Bool(false));
+        assert!(b.texts.iter().any(|t| t == "READY?"));
+        let act = |id: &str| b.get(id).unwrap().act.clone();
+        assert_eq!(act("mp-level"), Some(Act::Mp(MpAct::Level(1))));
+        assert_eq!(act("mp-car"), Some(Act::Mp(MpAct::Car(1))));
+        assert_eq!(act("mp-go"), Some(Act::Mp(MpAct::Go)));
+        assert_eq!(act("mp-leave"), Some(Act::Mp(MpAct::Leave)));
+        assert!(!b.has("mp-settings"));
+
+        let mut v = lobby_of_two(0);
+        v.lobby.settings = Some(Settings {
+            ghost: true,
+            rubber_band: false,
+            races: 4,
+            ..Settings::default()
+        });
+        let b = build(&v, None);
+        assert_eq!(b.text("mp-ghost"), "Ghost cars");
+        assert_eq!(b.text("mp-rubber"), "Rubber-banding off");
+        assert_eq!(b.text("mp-races"), "Races: 4");
+    }
+
+    /// Everyone else sees the settings as a line, and no way to change
+    /// them or start.
+    #[test]
+    fn the_others_see_the_settings_but_cannot_change_them() {
+        let b = build(&lobby_of_two(1), None);
+        assert_eq!(
+            b.order,
+            ["mp-name", "mp-car", "mp-color", "mp-ready", "mp-leave"]
+        );
+        for id in [
+            "mp-level",
+            "mp-ai",
+            "mp-ghost",
+            "mp-rubber",
+            "mp-grid",
+            "mp-races",
+            "mp-go",
+        ] {
+            assert!(!b.has(id), "{id}");
+        }
+        assert_eq!(
+            b.text("mp-settings"),
+            format!(
+                "{} · AI fills to 6 · contact on · Races: open-ended",
+                level_title("coast")
+            )
+        );
+        assert!(
+            b.texts
+                .iter()
+                .any(|t| t == "The first player starts the race.")
+        );
+        assert_eq!(b.text("mp-name"), "Name: Bob");
+    }
+
+    /// One row per player, this player's selected; the tags say who leads
+    /// (the connected player with the lowest slot), who is ready and who is
+    /// away.
+    #[test]
+    fn the_players_and_their_tags() {
+        let mut v = lobby_of_two(1);
+        v.lobby.players[1].ready = true;
+        let b = build(&v, None);
+        assert_eq!(b.get("lobby-players").unwrap().value, Value::Num(2.0));
+        assert_eq!(b.text("lobby-player-0"), "Ann|sports|leads");
+        assert_eq!(b.text("lobby-player-1"), "Bob|rally|ready");
+        assert!(!b.get("lobby-player-0").unwrap().sel);
+        assert!(b.get("lobby-player-1").unwrap().sel);
+        assert_eq!(b.get("mp-ready").unwrap().value, Value::Bool(true));
+        assert!(b.texts.iter().any(|t| t == "READY ✓"));
+
+        // Ann drops: Bob leads, Ann is away.
+        v.lobby.players[0].connected = false;
+        v.leader = true;
+        let b = build(&v, None);
+        assert_eq!(b.text("lobby-player-0"), "Ann|sports|away");
+        assert_eq!(b.text("lobby-player-1"), "Bob|rally|leads,ready");
+        assert!(b.has("mp-go"));
+    }
+
+    /// The ready button carries this player's ready state (the test
+    /// bridge's `value`), as the checkboxes carry theirs.
+    #[test]
+    fn the_ready_button_carries_the_state() {
+        let mut v = lobby_of_two(1);
+        v.lobby.players[1].ready = true;
+        let b = build(&v, None);
+        assert_eq!(b.get("mp-ready").unwrap().value, Value::Bool(true));
+    }
+
+    /// The status line: "Connecting…" until the host answers, then only
+    /// what there is to say; a race already on is said too.
+    #[test]
+    fn the_status_line() {
+        let mut v = NetView {
+            active: true,
+            ..NetView::default()
+        };
+        let b = build(&v, None);
+        assert_eq!(b.text("lobby-status"), "Connecting…");
+        assert_eq!(b.order, ["mp-leave"], "only Leave before the welcome");
+        v.status = "The host said no: the lobby is full".into();
+        assert_eq!(
+            build(&v, None).text("lobby-status"),
+            "The host said no: the lobby is full"
+        );
+        let mut v = lobby_of_two(1);
+        assert!(!build(&v, None).has("lobby-status"));
+        v.lobby.racing = true;
+        let race_on = "A race is on: you'll join the next one.";
+        assert!(build(&v, None).texts.iter().any(|t| t == race_on));
+        v.pending_level = Some("coast".into());
+        assert!(
+            !build(&v, None).texts.iter().any(|t| t == race_on),
+            "not when that race is this player's"
+        );
+    }
+
+    /// The session's points, in order, this player's row in bold, with
+    /// the places moved since the last race.
+    #[test]
+    fn the_points_table() {
+        let mut v = lobby_of_two(1);
+        assert!(!build(&v, None).has("mp-points"));
+        v.lobby.raced = 2;
+        v.lobby.points = vec![
+            PointsRow {
+                slot: Some(1),
+                name: "Bob".into(),
+                points: 18,
+                moved: 1,
+            },
+            PointsRow {
+                slot: None,
+                name: "VIPER".into(),
+                points: 16,
+                moved: 0,
+            },
+            PointsRow {
+                slot: Some(0),
+                name: "Ann".into(),
+                points: 14,
+                moved: -2,
+            },
+        ];
+        let b = build(&v, None);
+        assert_eq!(b.get("mp-points").unwrap().value, Value::Num(3.0));
+        assert_eq!(b.text("mp-points-0"), "Bob|18");
+        assert_eq!(b.text("mp-points-2"), "Ann|14");
+        for want in [
+            "Points after 2 races",
+            "1. Bob  18 pts ▲1",
+            "2. VIPER  16 pts",
+            "3. Ann  14 pts ▼2",
+        ] {
+            assert!(b.texts.iter().any(|t| t == want), "{want}: {:?}", b.texts);
+        }
+    }
+
+    /// The focus ring goes on the control that has the focus, only.
+    #[test]
+    fn the_focus_ring_follows_the_focus() {
+        let b = build(&lobby_of_two(0), Some("mp-ai"));
+        let ringed: Vec<&str> = b
+            .controls
+            .iter()
+            .filter(|(_, f)| *f)
+            .map(|(c, _)| c.id.as_str())
+            .collect();
+        assert_eq!(ringed, ["mp-ai"]);
+    }
+}

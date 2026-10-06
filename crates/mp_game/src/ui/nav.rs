@@ -504,4 +504,101 @@ mod tests {
             "back up to the row above, the control in line first"
         );
     }
+
+    /// A screen opens on its own control when it has it (the lobby's Start
+    /// for the leader), else on the first of the build's focus order that
+    /// is there, else on the first control.
+    #[test]
+    fn a_screen_opens_on_its_first_control() {
+        let c = |id: &str| {
+            (
+                id.to_string(),
+                Act::Mp(super::super::lobby::MpAct::Go),
+                (0.0, 0.0, 10.0, 10.0),
+            )
+        };
+        let order: Vec<String> = ["mp-name", "mp-car", "mp-go", "mp-leave"]
+            .map(String::from)
+            .to_vec();
+        let leader: List = vec![c("mp-leave"), c("mp-name"), c("mp-go")];
+        assert_eq!(
+            default_for(Screen::Lobby, &leader, &order).as_deref(),
+            Some("mp-go")
+        );
+        let other: List = vec![c("mp-leave"), c("mp-car"), c("mp-name")];
+        assert_eq!(
+            default_for(Screen::Lobby, &other, &order).as_deref(),
+            Some("mp-name"),
+            "the first in focus order, not in the list"
+        );
+        assert_eq!(
+            default_for(Screen::Lobby, &other, &[]).as_deref(),
+            Some("mp-leave")
+        );
+        assert_eq!(default_for(Screen::Lobby, &Vec::new(), &order), None);
+        for (screen, id) in [
+            (Screen::Menu, "btn-start"),
+            (Screen::Pause, "btn-resume"),
+            (Screen::Results, "btn-again"),
+            (Screen::PadSetup, "pad-bind-left"),
+        ] {
+            let list: List = vec![c("x"), c(id)];
+            assert_eq!(default_for(screen, &list, &[]).as_deref(), Some(id));
+        }
+    }
+
+    /// Right and left on a slider step it by five of its hundred steps,
+    /// within 0–100, and save it; at an end nothing changes.
+    #[test]
+    fn a_slider_steps_by_five_and_stops_at_the_ends() {
+        use super::super::tests::world;
+        use bevy::ecs::system::RunSystemOnce;
+        let mut w = world(
+            Screen::Menu,
+            crate::net::NetView::default(),
+            crate::options::Options::default(),
+        );
+        let step = |w: &mut World, sl: Sl, side: f64| -> (f64, bool) {
+            w.resource_mut::<UiState>().dirty = false;
+            w.run_system_once(move |mut ui: ResMut<UiState>, mut ctx: ActCtx| {
+                step_range(&mut ui, &mut ctx, sl, side)
+            })
+            .unwrap();
+            let ui = w.resource::<UiState>();
+            let v = match sl {
+                Sl::Music => ui.settings.music,
+                Sl::Sfx => ui.settings.sfx,
+                Sl::TiltSens => ui.settings.tilt_sens,
+            };
+            (v, ui.dirty)
+        };
+        // The default 0.7 up to 1, then no further.
+        assert_eq!(step(&mut w, Sl::Music, 1.0), (0.75, true));
+        for _ in 0..5 {
+            step(&mut w, Sl::Music, 1.0);
+        }
+        assert_eq!(step(&mut w, Sl::Music, 1.0), (1.0, false));
+        assert_eq!(
+            w.resource::<super::super::store::Store>()
+                .num("musicVol", 0.0),
+            1.0
+        );
+        // 0.85 down by fives: never below 0.
+        for _ in 0..30 {
+            step(&mut w, Sl::Sfx, -1.0);
+        }
+        assert_eq!(step(&mut w, Sl::Sfx, -1.0), (0.0, false));
+        assert_eq!(
+            w.resource::<super::super::store::Store>()
+                .raw("sfxVol")
+                .as_deref(),
+            Some("0")
+        );
+        assert_eq!(step(&mut w, Sl::TiltSens, 1.0), (0.55, true));
+        assert_eq!(
+            w.resource::<super::super::store::Store>()
+                .num("tiltSens", 0.0),
+            0.55
+        );
+    }
 }

@@ -1682,3 +1682,539 @@ pub fn snapshot(
 pub fn race_state(play: &Play) -> Option<RaceStateKind> {
     play.race.as_ref().map(|r| r.state())
 }
+
+#[cfg(test)]
+pub(crate) mod tests {
+    //! The screens' logic without a window: the lobby's buttons
+    //! (`multiplayer`) and what they ask of the connection, and the results
+    //! table (`show_results`) offline and online.
+
+    use super::*;
+    use crate::net::{NetCmd, NetCmds, NetView};
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::math::DVec3;
+    use lobby::MpAct;
+    use mp_net::client::LobbyView;
+    use mp_net::proto::{AiFill, GridRule, PlayerInfo, Settings as MpSettings};
+    use mp_sim::race::ResultRow;
+
+    /// The front end's state on `screen`, with the default settings.
+    pub(crate) fn ui_state(screen: Screen) -> UiState {
+        UiState {
+            settings: Settings::load(&Store::memory(), false),
+            menu_first: true,
+            preview: false,
+            screen,
+            pad_return: Screen::Menu,
+            starting: None,
+            dirty: false,
+            bp: None,
+            built: None,
+            scroll: 0.0,
+            focus: None,
+            focus_order: Vec::new(),
+            dropdown: None,
+            results: None,
+            press: None,
+            races: 0,
+            reveal: None,
+            clicks: Vec::new(),
+            audio_level: None,
+            next_track: false,
+            to_menu: false,
+            pads: false,
+            inset_top: 0.0,
+            now_playing: String::new(),
+        }
+    }
+
+    pub(crate) fn player(slot: u8, name: &str, car: &str, color: u32) -> PlayerInfo {
+        PlayerInfo {
+            slot,
+            name: name.into(),
+            car: car.into(),
+            color,
+            ready: false,
+            connected: true,
+        }
+    }
+
+    /// Ann (slot 0, leads) and Bob (slot 1) in the lobby, seen from `me`.
+    pub(crate) fn lobby_of_two(me: u8) -> NetView {
+        NetView {
+            active: true,
+            connected: true,
+            slot: Some(me),
+            leader: me == 0,
+            lobby: LobbyView {
+                settings: Some(MpSettings::default()),
+                players: vec![
+                    player(0, "Ann", "sports", 0xd81e36),
+                    player(1, "Bob", "rally", 0x1f4fd8),
+                ],
+                ..LobbyView::default()
+            },
+            ..NetView::default()
+        }
+    }
+
+    /// Everything the actions change (`ActCtx`), with no race.
+    pub(crate) fn world(screen: Screen, net: NetView, o: Options) -> World {
+        let mut w = World::new();
+        w.insert_resource(ui_state(screen));
+        w.insert_resource(crate::play::tests::bare_play());
+        w.insert_resource(Store::memory());
+        w.insert_resource(Opts { o, hq: false });
+        w.insert_resource(CameraState {
+            fly: None,
+            attract: crate::fly::Attract::default(),
+            focus: DVec3::ZERO,
+        });
+        w.init_resource::<TrackRes>();
+        w.init_resource::<Status>();
+        w.insert_resource(crate::preview::tests::previews("coast"));
+        w.init_resource::<crate::play::gamepad_io::PadsRes>();
+        w.init_resource::<pad_setup::PadSetup>();
+        w.init_resource::<bevy::ecs::message::Messages<bevy::app::AppExit>>();
+        w.insert_resource(net);
+        w.init_resource::<NetCmds>();
+        w
+    }
+
+    /// Presses a lobby button; what it asked of the connection.
+    fn press(w: &mut World, m: MpAct, busy: bool) -> Vec<NetCmd> {
+        w.run_system_once(move |mut ui: ResMut<UiState>, mut ctx: ActCtx| {
+            multiplayer(&mut ui, &mut ctx, m.clone(), busy)
+        })
+        .unwrap();
+        std::mem::take(&mut w.resource_mut::<NetCmds>().0)
+    }
+
+    fn set_me(w: &mut World, f: impl FnOnce(&mut PlayerInfo)) {
+        let mut v = w.resource_mut::<NetView>();
+        let s = v.slot.unwrap();
+        f(v.lobby.players.iter_mut().find(|p| p.slot == s).unwrap());
+    }
+
+    fn configured(cmds: Vec<NetCmd>) -> MpSettings {
+        match cmds.as_slice() {
+            [NetCmd::Configure(s)] => s.clone(),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// The menu's Multiplayer joins with the saved name and colour (or
+    /// "Driver" and the car's own), the chosen car, and `?join=`; only from
+    /// the menu, and not while a race is starting.
+    #[test]
+    fn multiplayer_joins_from_the_menu_only() {
+        let o = Options {
+            query: vec![("join".into(), "ws://host/ws".into())],
+            ..Options::default()
+        };
+        let mut w = world(Screen::Menu, NetView::default(), o);
+        assert!(press(&mut w, MpAct::Open, true).is_empty(), "busy");
+        assert_eq!(w.resource::<UiState>().screen, Screen::Menu);
+        let car = w.resource::<UiState>().settings.car.clone();
+        let color = mp_sim::physics::car_spec(&car).unwrap().color;
+        assert_eq!(
+            press(&mut w, MpAct::Open, false),
+            [NetCmd::Join {
+                url: Some("ws://host/ws".into()),
+                name: "Driver".into(),
+                car: car.clone(),
+                color,
+            }]
+        );
+        assert_eq!(w.resource::<UiState>().screen, Screen::Lobby);
+        assert!(
+            press(&mut w, MpAct::Open, false).is_empty(),
+            "not again from the lobby"
+        );
+
+        let mut w = world(Screen::Menu, NetView::default(), Options::default());
+        w.resource_mut::<Store>().set_str("mpName", "Ann");
+        w.resource_mut::<Store>()
+            .set_num("mpColor", f64::from(0x2e8b57u32));
+        assert_eq!(
+            press(&mut w, MpAct::Open, false),
+            [NetCmd::Join {
+                url: None,
+                name: "Ann".into(),
+                car,
+                color: 0x2e8b57,
+            }]
+        );
+    }
+
+    /// The car button steps through every car and wraps both ways; the
+    /// choice is this player's car offline too, and the name and colour
+    /// are remembered.
+    #[test]
+    fn the_car_button_wraps_over_the_cars() {
+        let kinds: Vec<&str> = store::car_kinds().collect();
+        let mut w = world(Screen::Lobby, lobby_of_two(0), Options::default());
+        let last = *kinds.last().unwrap();
+        set_me(&mut w, |p| p.car = last.into());
+        assert_eq!(
+            press(&mut w, MpAct::Car(1), false),
+            [NetCmd::SetMe {
+                name: "Ann".into(),
+                car: kinds[0].into(),
+                color: 0xd81e36,
+            }]
+        );
+        assert_eq!(w.resource::<UiState>().settings.car, kinds[0]);
+        let st = w.resource::<Store>();
+        assert_eq!(st.string("car", ""), kinds[0]);
+        assert_eq!(st.string("mpName", ""), "Ann");
+        assert_eq!(st.num("mpColor", 0.0), f64::from(0xd81e36u32));
+
+        set_me(&mut w, |p| p.car = kinds[0].into());
+        match press(&mut w, MpAct::Car(-1), false).as_slice() {
+            [NetCmd::SetMe { car, .. }] => assert_eq!(car, last),
+            other => panic!("{other:?}"),
+        }
+        // A car the client doesn't know steps from the first.
+        set_me(&mut w, |p| p.car = "hovercraft".into());
+        match press(&mut w, MpAct::Car(1), false).as_slice() {
+            [NetCmd::SetMe { car, .. }] => assert_eq!(car, kinds[1 % kinds.len()]),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// The colour button steps through the palette and wraps; a colour not
+    /// in it starts the palette.
+    #[test]
+    fn the_colour_button_cycles_the_palette() {
+        let c = lobby::COLORS;
+        let mut w = world(Screen::Lobby, lobby_of_two(1), Options::default());
+        let mut seen = Vec::new();
+        for _ in 0..c.len() {
+            match press(&mut w, MpAct::Color, false).as_slice() {
+                [NetCmd::SetMe { name, car, color }] => {
+                    assert_eq!((name.as_str(), car.as_str()), ("Bob", "rally"));
+                    seen.push(*color);
+                    let color = *color;
+                    set_me(&mut w, |p| p.color = color);
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+        // From the second colour (Bob's) round to it again.
+        let mut want: Vec<u32> = c[2..].to_vec();
+        want.extend_from_slice(&c[..2]);
+        assert_eq!(seen, want);
+        set_me(&mut w, |p| p.color = 0x123456);
+        match press(&mut w, MpAct::Color, false).as_slice() {
+            [NetCmd::SetMe { color, .. }] => assert_eq!(*color, c[0]),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// Ready toggles this player's own flag; the buttons about this player
+    /// do nothing before the host has said who that is.
+    #[test]
+    fn ready_toggles_and_nothing_without_a_slot() {
+        let mut w = world(Screen::Lobby, lobby_of_two(1), Options::default());
+        assert_eq!(press(&mut w, MpAct::Ready, false), [NetCmd::Ready(true)]);
+        set_me(&mut w, |p| p.ready = true);
+        assert_eq!(press(&mut w, MpAct::Ready, false), [NetCmd::Ready(false)]);
+        assert_eq!(press(&mut w, MpAct::Go, false), [NetCmd::Go(true)]);
+        // Natively there is no name prompt.
+        assert!(press(&mut w, MpAct::Name, false).is_empty());
+
+        let mut w = world(
+            Screen::Lobby,
+            NetView {
+                active: true,
+                ..NetView::default()
+            },
+            Options::default(),
+        );
+        for m in [MpAct::Car(1), MpAct::Color, MpAct::Name] {
+            assert!(press(&mut w, m.clone(), false).is_empty(), "{m:?}");
+        }
+        assert!(
+            press(&mut w, MpAct::Ai, false).is_empty(),
+            "no settings yet"
+        );
+    }
+
+    /// The leader's settings: the level steps over every known level and
+    /// wraps both ways; the AI fill, grid and race count go round their
+    /// choices; ghost and rubber-banding toggle. Each press sends the
+    /// whole settings with one thing changed.
+    #[test]
+    fn the_leaders_settings_cycle() {
+        let ids: Vec<&str> = mp_levels::levels().iter().map(|l| l.id).collect();
+        let mut w = world(Screen::Lobby, lobby_of_two(0), Options::default());
+        let set = |w: &mut World, s: MpSettings| {
+            w.resource_mut::<NetView>().lobby.settings = Some(s);
+        };
+        let base = MpSettings::default();
+        let mut seen = Vec::new();
+        for _ in 0..ids.len() {
+            let s = configured(press(&mut w, MpAct::Level(1), false));
+            assert_eq!(
+                MpSettings {
+                    level: base.level.clone(),
+                    ..s.clone()
+                },
+                base
+            );
+            seen.push(s.level.clone());
+            set(&mut w, s);
+        }
+        assert_eq!(seen.last().map(String::as_str), Some(base.level.as_str()));
+        let mut sorted = seen.clone();
+        sorted.sort();
+        let mut want: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
+        want.sort();
+        assert_eq!(sorted, want, "every level once");
+        set(
+            &mut w,
+            MpSettings {
+                level: ids[0].into(),
+                ..base.clone()
+            },
+        );
+        assert_eq!(
+            configured(press(&mut w, MpAct::Level(-1), false)).level,
+            *ids.last().unwrap()
+        );
+
+        let mut cycle = |m: MpAct, n: usize| -> Vec<MpSettings> {
+            set(&mut w, base.clone());
+            (0..n)
+                .map(|_| {
+                    let s = configured(press(&mut w, m.clone(), false));
+                    set(&mut w, s.clone());
+                    s
+                })
+                .collect()
+        };
+        let ai: Vec<AiFill> = cycle(MpAct::Ai, 3).iter().map(|s| s.ai).collect();
+        assert_eq!(ai, [AiFill::To8, AiFill::None, AiFill::To6]);
+        let grid: Vec<GridRule> = cycle(MpAct::Grid, 3).iter().map(|s| s.grid).collect();
+        assert_eq!(grid, [GridRule::Random, GridRule::Same, GridRule::Reverse]);
+        let races: Vec<u8> = cycle(MpAct::Races, 4).iter().map(|s| s.races).collect();
+        assert_eq!(races, [3, 4, 6, 0]);
+        let ghost: Vec<bool> = cycle(MpAct::Ghost, 2).iter().map(|s| s.ghost).collect();
+        assert_eq!(ghost, [true, false]);
+        let rb: Vec<bool> = cycle(MpAct::RubberBand, 2)
+            .iter()
+            .map(|s| s.rubber_band)
+            .collect();
+        assert_eq!(rb, [false, true]);
+        // A race count the menu doesn't offer starts over at open-ended.
+        set(
+            &mut w,
+            MpSettings {
+                races: 5,
+                ..base.clone()
+            },
+        );
+        assert_eq!(configured(press(&mut w, MpAct::Races, false)).races, 0);
+    }
+
+    /// Leave goes back to the menu and ends an online race in hand; Back
+    /// (from a finished race's results) ends it and shows the lobby.
+    #[test]
+    fn leave_and_back() {
+        let mut w = world(Screen::Lobby, lobby_of_two(1), Options::default());
+        assert_eq!(press(&mut w, MpAct::Leave, false), [NetCmd::Leave]);
+        let ui = w.resource::<UiState>();
+        assert_eq!(ui.screen, Screen::Menu);
+        assert!(ui.to_menu);
+        let play = w.resource::<Play>();
+        assert!(!play.stop && play.armed, "no race: nothing to stop");
+
+        let mut w = world(Screen::Pause, lobby_of_two(1), Options::default());
+        w.resource_mut::<Play>().race = Some(crate::play::flow::tests::second_of_two());
+        assert_eq!(press(&mut w, MpAct::Leave, false), [NetCmd::Leave]);
+        let play = w.resource::<Play>();
+        assert!(play.stop && !play.armed, "the online race ends");
+        assert_eq!(w.resource::<UiState>().screen, Screen::Menu);
+
+        let mut w = world(Screen::Results, lobby_of_two(1), Options::default());
+        assert!(press(&mut w, MpAct::Back, false).is_empty());
+        let play = w.resource::<Play>();
+        assert!(play.stop && !play.armed);
+        assert_eq!(w.resource::<UiState>().screen, Screen::Lobby);
+    }
+
+    // ── showResults ────────────────────────────────────────────────────
+
+    fn row(place: usize, name: &'static str, human: Option<usize>, time: f64) -> ResultRow {
+        ResultRow {
+            place,
+            name,
+            player: human.is_some(),
+            human,
+            color: 0x808080 + place as u32,
+            time,
+            estimated: false,
+        }
+    }
+
+    /// Online: the humans' lobby names, this player's row marked (as the
+    /// second human), back to the lobby, and no best time saved.
+    #[test]
+    fn online_results_use_the_lobby_names_and_save_nothing() {
+        let mut race = crate::play::flow::tests::second_of_two();
+        race.results = Some(vec![
+            row(1, "YOU", Some(0), 100.0),
+            row(2, "VIPER", None, 101.0),
+            row(3, "P2", Some(1), 102.5),
+        ]);
+        let mut net = lobby_of_two(1);
+        net.humans = net.lobby.players.clone();
+        let mut store = Store::memory();
+        let settings = Settings::load(&store, false);
+        let v = show_results(&mut store, &settings, "coast", &race, &net);
+        assert_eq!(v.title, "3rd place");
+        let names: Vec<&str> = v.rows.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, ["Ann", "VIPER", "Bob"]);
+        let me: Vec<bool> = v.rows.iter().map(|r| r.me).collect();
+        assert_eq!(me, [false, false, true]);
+        assert_eq!(v.rows[2].value, "1:42.50");
+        assert!(v.online);
+        assert_eq!(v.best, "");
+        assert!(v.tiles.is_empty());
+        assert_eq!(store.num_or_null("best.coast"), None);
+        assert_eq!(store.num_or_null("bestLap.coast"), None);
+
+        // Without the lobby's names, the simulation's.
+        let v = show_results(&mut store, &settings, "coast", &race, &NetView::default());
+        let names: Vec<&str> = v.rows.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, ["YOU", "VIPER", "P2"]);
+    }
+
+    fn offline_race() -> crate::play::flow::Race {
+        let lr = mp_sim::race::LevelRuntime::new(mp_levels::level_by_id("sierra")).unwrap();
+        crate::play::flow::Race::new(
+            lr,
+            crate::play::flow::Setup {
+                opts: mp_sim::race::RaceOpts {
+                    car: "sports",
+                    seed: 1,
+                    pursuit: false,
+                    heat: 1.0,
+                },
+                autodrive: false,
+                touch: false,
+            },
+            crate::play::touch::TouchControls::default(),
+        )
+    }
+
+    /// Offline, a win sets the best time when it beats the saved one (or
+    /// there is none, or it is 0), and only a win does.
+    #[test]
+    fn offline_a_win_saves_a_better_best_only() {
+        let mut race = offline_race();
+        let mut store = Store::memory();
+        let settings = Settings::load(&store, false);
+        let net = NetView::default();
+        race.results = Some(vec![
+            row(1, "VIPER", None, 90.0),
+            row(2, "YOU", Some(0), 95.0),
+        ]);
+        let v = show_results(&mut store, &settings, "sierra", &race, &net);
+        assert_eq!(v.title, "2nd place");
+        assert_eq!(v.best, "Win the race to set a best time");
+        assert_eq!(store.num_or_null("best.sierra"), None);
+        assert!(!v.online);
+        assert_eq!(v.rows.iter().filter(|r| r.me).count(), 1);
+
+        race.results = Some(vec![
+            row(1, "YOU", Some(0), 95.0),
+            row(2, "VIPER", None, 96.0),
+        ]);
+        let v = show_results(&mut store, &settings, "sierra", &race, &net);
+        assert_eq!(v.title, "You win!");
+        assert_eq!(store.num_or_null("best.sierra"), Some(95.0));
+        assert_eq!(v.best, "Best winning time: 1:35.00");
+
+        race.results = Some(vec![row(1, "YOU", Some(0), 97.0)]);
+        show_results(&mut store, &settings, "sierra", &race, &net);
+        assert_eq!(store.num_or_null("best.sierra"), Some(95.0), "slower: kept");
+        race.results = Some(vec![row(1, "YOU", Some(0), 94.0)]);
+        show_results(&mut store, &settings, "sierra", &race, &net);
+        assert_eq!(store.num_or_null("best.sierra"), Some(94.0));
+        store.set_num("best.sierra", 0.0);
+        race.results = Some(vec![row(1, "YOU", Some(0), 99.0)]);
+        show_results(&mut store, &settings, "sierra", &race, &net);
+        assert_eq!(store.num_or_null("best.sierra"), Some(99.0), "0 is no time");
+
+        // Estimated times are marked.
+        let mut r = row(2, "VIPER", None, 120.0);
+        r.estimated = true;
+        race.results = Some(vec![row(1, "YOU", Some(0), 99.0), r]);
+        let v = show_results(&mut store, &settings, "sierra", &race, &net);
+        assert_eq!(v.rows[1].value, "~2:00.00");
+        // No row of this player: nothing to show.
+        race.results = Some(vec![row(1, "VIPER", None, 90.0)]);
+        let v = show_results(&mut store, &settings, "sierra", &race, &net);
+        assert_eq!(v, ResultsView::default());
+    }
+
+    // ── Boot and the bridge's mode ─────────────────────────────────────
+
+    fn opts(q: &str) -> Options {
+        Options {
+            query: crate::options::parse_query(q),
+            ..Options::default()
+        }
+    }
+
+    /// A race page opens on the menu unless the query asks to race at
+    /// once (`autostart`, `race`, `car`, `shots`); `?touch=` decides the
+    /// touch UI natively.
+    #[test]
+    fn what_opens_first() {
+        assert!(menu_first(&opts("")));
+        assert!(menu_first(&opts("level=sierra")), "a level only picks");
+        for q in ["autostart=1", "race=1", "car=rally", "shots=a"] {
+            assert!(!menu_first(&opts(q)), "{q}");
+        }
+        assert!(!menu_first(&opts("race=0")), "no race at all");
+        assert!(touch_ui(&opts("touch=1")));
+        assert!(!touch_ui(&opts("touch=0")));
+        assert!(!touch_ui(&opts("touch=yes")));
+        #[cfg(not(target_arch = "wasm32"))]
+        assert!(!touch_ui(&opts("")));
+    }
+
+    /// `__game.mode`: loading until ready and while a Race tap waits for
+    /// its level, the race's mode while one is shown, else the menu.
+    #[test]
+    fn the_bridges_mode() {
+        let mut ui = ui_state(Screen::Menu);
+        let mut play = crate::play::tests::bare_play();
+        let mut status = Status::default();
+        assert_eq!(mode_name(&ui, &play, &status), "loading");
+        status.ready = true;
+        assert_eq!(mode_name(&ui, &play, &status), "menu");
+        play.race = Some(crate::play::flow::tests::second_of_two());
+        assert_eq!(mode_name(&ui, &play, &status), "race");
+        play.race.as_mut().unwrap().mode = Mode::Paused;
+        assert_eq!(mode_name(&ui, &play, &status), "paused");
+        play.race.as_mut().unwrap().mode = Mode::Results;
+        assert_eq!(mode_name(&ui, &play, &status), "results");
+        ui.preview = true;
+        assert_eq!(mode_name(&ui, &play, &status), "menu", "the warm-up race");
+        ui.preview = false;
+        ui.starting = Some(Starting::Level);
+        assert_eq!(mode_name(&ui, &play, &status), "loading");
+        ui.starting = Some(Starting::Free(1));
+        assert_eq!(mode_name(&ui, &play, &status), "loading");
+        ui.starting = Some(Starting::Build {
+            frames: 0,
+            quiet: 0,
+            t: 0.0,
+        });
+        assert_eq!(mode_name(&ui, &play, &status), "menu");
+    }
+}
