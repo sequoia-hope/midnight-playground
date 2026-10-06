@@ -239,6 +239,16 @@
     // 4. Start the app: its first frame draws while the scene downloads.
     // __mr.screenshot(name) saves the next frame as a download (test hook).
     mr.screenshot = (n) => glue.screenshot(String(n));
+    // ?record=1: the run recording so far (JSON lines, D1021), as text, or
+    // saved as a download.
+    mr.recording = () => glue.recording_text();
+    mr.saveRecording = (name) => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([glue.recording_text()], { type: 'application/x-ndjson' }));
+      a.download = name || `midnight-racer-${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
     mr.ui = (id) => (mr.uiNodes || {})[id] ?? null;
     mr.reveal = (id) => glue.ui_reveal(String(id));
     mr.stage = (c) => glue.stage(typeof c === 'string' ? c : JSON.stringify(c));

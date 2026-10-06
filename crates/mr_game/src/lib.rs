@@ -26,6 +26,8 @@
 //! - [`warmup`]: every pipeline the scene needs, compiled behind the
 //!   loading screen (WP 2.6).
 //! - [`status`]: what the page and the window title show.
+//! - [`debug_overlay`]: the frame-time overlay (`debug=1`, F3).
+//! - [`recording`]: the run recording (`record=1`).
 //! - [`viewer`]: the level viewer, "god mode" (`?view=god`, SPEC 8.6).
 //!
 //! The web build comes in two backends, WebGPU and WebGL2 (the `mr_webgl2`
@@ -34,6 +36,7 @@
 pub mod animate;
 pub mod cars;
 pub mod convert;
+pub mod debug_overlay;
 pub mod fly;
 pub mod levels;
 pub mod loader;
@@ -42,6 +45,7 @@ pub mod options;
 pub mod play;
 pub mod plugins;
 pub mod preview;
+pub mod recording;
 pub mod render;
 pub mod stations;
 pub mod status;
@@ -578,6 +582,8 @@ pub fn app(o: Options, hq: bool) -> App {
     viewer::plugin(&mut app);
     animate::plugin(&mut app);
     levels::plugin(&mut app);
+    debug_overlay::plugin(&mut app);
+    recording::plugin(&mut app);
     #[cfg(not(target_arch = "wasm32"))]
     native::plugin(&mut app);
     #[cfg(target_arch = "wasm32")]

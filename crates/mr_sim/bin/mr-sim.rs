@@ -11,6 +11,7 @@
 //!   cargo run --release -p mr_sim --bin mr-sim -- race --level desert --fuzz 1 --ticks 21600
 //!   cargo run --release -p mr_sim --bin mr-sim -- race --level sierra --state-at 6000
 //!   cargo run --release -p mr_sim --bin mr-sim -- bench
+//!   cargo run --release -p mr_sim --bin mr-sim -- replay recordings/run.jsonl --trace out.trace
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -31,12 +32,19 @@ const USAGE: &str = "usage:
   mr-sim race [--level ID] [--car KIND] [--seed N] [--pursuit HEAT] [--fuzz SEED]
               [--ticks N] [--trace FILE] [--state-at TICK] [--survey FILE]
   mr-sim bench [--runs N] [--ticks N]
+  mr-sim replay FILE [--race N] [--trace FILE] [--state-at TICK] [--survey FILE]
 
 race: runs until the results (or --ticks), driving with the autopilot
 (or random controls from --fuzz), and prints the results, the tick count
 and the final state hash. --trace writes the trace record of every tick
 (parity/trace-format.md); --state-at prints the whole state after that
-tick. Seaside needs its survey (default assets/seaside/survey.bin).";
+tick. Seaside needs its survey (default assets/seaside/survey.bin).
+
+replay: steps every race of a client run recording (record=1,
+docs/rust-port/RECORDING.md), or race N, with its recorded inputs, checks
+the state hash at each recorded checkpoint, and prints the results; it
+fails at the first checkpoint that differs. --trace (the last race
+replayed) and --state-at as for race.";
 
 fn arg(args: &[String], name: &str) -> Option<String> {
     args.iter()
@@ -179,6 +187,125 @@ fn race(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// `replay FILE`: the recording's races, stepped with their inputs and
+/// checked against the recorded hashes.
+fn replay(args: &[String]) -> Result<(), String> {
+    let path = args
+        .first()
+        .filter(|a| !a.starts_with("--"))
+        .ok_or("replay: which recording?")?;
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+    let only: Option<u32> = arg(args, "--race")
+        .map(|s| s.parse())
+        .transpose()
+        .map_err(|e| format!("--race: {e}"))?;
+    let state_at: Option<u32> = arg(args, "--state-at")
+        .map(|s| s.parse())
+        .transpose()
+        .map_err(|e| format!("--state-at: {e}"))?;
+    let survey = arg(args, "--survey").unwrap_or_else(|| "assets/seaside/survey.bin".into());
+    let trace_out = arg(args, "--trace");
+    let races: Vec<_> = mr_sim::replay::parse(&text)?
+        .into_iter()
+        .filter(|r| only.is_none_or(|n| r.race == n))
+        .collect();
+    if races.is_empty() {
+        let which = only.map(|n| format!(" {n}")).unwrap_or_default();
+        return Err(format!("{path}: no race{which}"));
+    }
+    let mut failed = 0;
+    let mut last_trace = None;
+    for r in &races {
+        let lr = LevelRuntime::new(level(&r.level, &survey)?)?;
+        let mut st = r.start(&lr)?;
+        let mut trace = trace_out.as_ref().map(|_| {
+            TraceFile::new(format!(
+                "{{\"id\":\"replay-{}\",\"level\":\"{}\",\"car\":\"{}\",\"seed\":{},\"source\":\"rust\"}}",
+                r.race, r.level, r.car, r.seed
+            ))
+        });
+        let mut events = Vec::new();
+        let mut checks = r.checks.iter().peekable();
+        let mut ok = 0;
+        let mut bad = None;
+        for f in &r.inputs {
+            step(&lr, &mut st, &[*f], &mut events);
+            events.clear();
+            if let Some(tr) = &mut trace {
+                tr.add(st.tick, race_record(&st, &[f.input()]));
+            }
+            if state_at == Some(st.tick) {
+                println!("{st:#?}");
+            }
+            while let Some(&&(tick, h)) = checks.peek() {
+                if tick > st.tick {
+                    break;
+                }
+                checks.next();
+                if tick == st.tick && hash(&st) == h {
+                    ok += 1;
+                } else if bad.is_none() {
+                    bad = Some((tick, h, hash(&st)));
+                }
+            }
+            if bad.is_some() {
+                break;
+            }
+        }
+        let head = format!(
+            "race {} ({} in the {} car, seed {}{}): {} ticks ({:.1} s of race)",
+            r.race,
+            r.level,
+            r.car,
+            r.seed,
+            if r.pursuit { ", pursuit" } else { "" },
+            st.tick,
+            st.race.time
+        );
+        match bad {
+            None if r.gaps == 0 => println!(
+                "{head}, {ok} checkpoints match, final hash {:016x}",
+                hash(&st)
+            ),
+            None => {
+                failed += 1;
+                println!("{head}: the recording has {} gap(s) in its inputs", r.gaps);
+            }
+            Some((tick, want, got)) => {
+                failed += 1;
+                println!(
+                    "{head}: DIFFERS at tick {tick} (recorded {want:016x}, replayed {got:016x}) \
+                     after {ok} matching checkpoints"
+                );
+            }
+        }
+        if bad.is_none() && lr.level.mode != Mode::Cruise && st.players[0].rules.finished {
+            for row in results(&st) {
+                println!(
+                    "  {:>2}. {:<8} {:>9.3} s{}{}",
+                    row.place,
+                    row.name,
+                    row.time,
+                    if row.estimated { " (est.)" } else { "" },
+                    if row.player { "  <- you" } else { "" }
+                );
+            }
+        }
+        last_trace = trace;
+    }
+    if let (Some(tr), Some(path)) = (last_trace, trace_out) {
+        std::fs::write(&path, tr.finish()).map_err(|e| format!("{path}: {e}"))?;
+        eprintln!("wrote {path}");
+    }
+    if failed > 0 {
+        return Err(format!(
+            "{failed} of {} race(s) did not replay",
+            races.len()
+        ));
+    }
+    Ok(())
+}
+
 /// The JS baseline's field (`tools/parity/sim-bench.mjs`): the player
 /// (sports, autopilot), Sierra's five rivals and 22 traffic cars,
 /// collisions; no Race rules, no trace. Median of `runs` runs.
@@ -229,6 +356,7 @@ fn main() -> ExitCode {
     let r = match args.first().map(String::as_str) {
         Some("race") => race(&args[1..]),
         Some("bench") => bench(&args[1..]),
+        Some("replay") => replay(&args[1..]),
         _ => Err(USAGE.to_string()),
     };
     match r {
