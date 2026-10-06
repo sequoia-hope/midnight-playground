@@ -33,6 +33,13 @@ pub struct InputFrame {
 pub const HANDBRAKE: u8 = 1;
 pub const NITRO: u8 = 2;
 pub const ANALOG: u8 = 4;
+/// Multiplayer: this player's car is driven by the autopilot (they dropped
+/// out; MULTIPLAYER 2.7). The host sets it in the inputs it relays, so
+/// every device drives the car the same way.
+pub const AUTOPILOT: u8 = 16;
+/// Multiplayer: the player has the menu open (hands off; MULTIPLAYER 2.9).
+/// The simulation ignores it; the client shows them as away.
+pub const AWAY: u8 = 32;
 pub const RESET: u8 = 8;
 
 fn c(x: f64, lo: f64, hi: f64) -> f64 {

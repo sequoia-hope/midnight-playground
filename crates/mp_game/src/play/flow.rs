@@ -384,7 +384,7 @@ impl Race {
                 self.hud.center("GO!", 1.0);
                 self.kicks.push((0.3, 0.6, 200.0));
             }
-            SimEvent::PerfectStart => self.hud.toast("PERFECT START", 1.6),
+            SimEvent::PerfectStart { .. } => self.hud.toast("PERFECT START", 1.6),
             SimEvent::Bonus {
                 text,
                 nitro,

@@ -7,4 +7,5 @@ publish.workspace = true
 
 [dependencies]
 mp_math.workspace = true
+mp_levels.workspace = true
 mp_sim.workspace = true

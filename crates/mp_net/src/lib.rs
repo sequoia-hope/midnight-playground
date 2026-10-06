@@ -5,8 +5,12 @@
 //! - [`proto`]: the messages and their binary encoding.
 //! - [`transport`]: the `Transport` trait and the in-process network the
 //!   tests and the single-player loopback use.
+//! - [`host`]: the lobby, the authoritative race and the points table.
+//! - [`client`]: a player's session: prediction, rollback, the clock.
 
 #![forbid(unsafe_code)]
 
+pub mod client;
+pub mod host;
 pub mod proto;
 pub mod transport;

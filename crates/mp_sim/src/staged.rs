@@ -216,7 +216,7 @@ impl Sim {
             let list = self.field().traffic_agents(&agents);
             let dist = if t.is_loop { odo } else { ps };
             if let Some(tr) = &mut self.traf {
-                tr.update(&t, DT, ps, &list, 0.0, dist, &mut self.streams.traffic);
+                tr.update(&t, DT, ps, &list, 0.0, dist, ps, &mut self.streams.traffic);
             }
         }
         if self.pu.is_some() {

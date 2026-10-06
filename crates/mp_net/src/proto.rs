@@ -148,6 +148,8 @@ pub enum Msg {
         points: Vec<PointsRow>,
         /// Races run in this session.
         raced: u32,
+        /// A race is on; a newcomer waits for the next.
+        racing: bool,
     },
     Start(RaceStart),
     /// The authoritative inputs for ticks `first..first + n`, each tick's
@@ -392,6 +394,7 @@ impl Msg {
                 players,
                 points,
                 raced,
+                racing,
             } => {
                 w.u8(22);
                 w.settings(settings);
@@ -407,6 +410,7 @@ impl Msg {
                     w.u8(r.moved as u8);
                 }
                 w.u32(*raced);
+                w.bool(*racing);
             }
             Msg::Start(s) => {
                 w.u8(23);
@@ -487,6 +491,7 @@ impl Msg {
                     })
                 })?,
                 raced: r.u32()?,
+                racing: r.bool()?,
             },
             23 => Msg::Start(RaceStart {
                 race: r.u32()?,
@@ -591,6 +596,7 @@ mod tests {
                     },
                 ],
                 raced: 2,
+                racing: true,
             },
             Msg::Start(RaceStart {
                 race: 1,
