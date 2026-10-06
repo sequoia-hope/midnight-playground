@@ -8342,6 +8342,140 @@ backend first) and renames it into place when everything is written; a
 failed build leaves `dist/next/` as it was. Checked: the URL polled every
 0.3 s through a release build (694 requests) served the game every time.
 
+## D1020. A debug overlay: `debug=1` and F3
+
+2026-10-05, the owner's request: a panel over the game, on a flag or a
+key, with the frame rate, sliding minimum and maximum over 5 s, 30 s and
+all the time since it was turned on, small graphs of the frame times over
+those spans, dark grey and nearly opaque with orange text and graphs.
+`debug_overlay` (DEVIATIONS: the JS has only `?stats=1`).
+
+- **Turning it on.** A new key, `debug=1` (natively also `--debug`), not
+  `stats=1`: `stats=1` is SPEC 8.4's hook, already the native window
+  title's status line (D1001) and the web page's HTML panel, and the
+  measurement runs and pictures that pass it must not change. F3 shows and
+  hides it in every run: nothing binds F3 (`play::input::dom_code` has no
+  F keys, the menus read Tab, Enter, Space, Escape and P, the viewer no F
+  key, the window F11), so the key reaches nothing else; on the web the
+  canvas's key handler keeps the browser's own F3 (find) from it. A phone
+  has no F3; there it is `?debug=1`. Turning it on starts the all-time span
+  afresh.
+- **What it measures.** Per frame, in ms: `frame`, the interval since the
+  last frame (`Time<Real>`'s delta, the wall clock, after Bevy's time
+  update: the virtual clock caps a delta at 250 ms); `main`, the main
+  world's CPU time from the start of `First` to the end of `Last`; and
+  `render`, the render world's `Render` schedule (natively pipelined beside
+  the main world; it includes the wait for the display, so it reads about a
+  frame at vsync). `debug_overlay::FrameTimes` holds them for the run
+  recording too; `status::Status` keeps its own smoothed frame time and its
+  debug log of slow frames (D1005), which the panel's fps line uses.
+- **The spans.** The last 30 s of samples stay in a ring (always, so both
+  windows are full when it is turned on; capped at 30 000 samples); the 5 s
+  and 30 s rows (min, mean, p99, max of `frame`, mean and max of `main`) are
+  computed from it at each redraw. The all-time row keeps running min, max
+  and mean, a histogram of 0.25 ms bins to 250 ms for its p99 (">250" past
+  it), and 200 buckets of min/max/mean that merge in pairs when full, so its
+  memory is fixed however long it runs. Every frame counts but the first
+  two (start-up), so an 800 ms frame shows in the max and as a white-capped
+  column in the graphs.
+- **The graphs.** Three 200 × 34 images (nearest sampling), one column per
+  1/200 of the span: the mean as a solid orange bar, the spread up to the
+  max dim above it, the main world's mean as a pale dot, guides at 16.7 and
+  33.3 ms. The top is the first of 20, 34, 50, 100, 200, 500, 1000 ms at or
+  over 1.25 × the span's p99, so one hitch does not flatten the rest; a
+  column over the top is drawn to it with a white cap and counted in the
+  label ("3 over").
+- **The rest.** Mode and screen (`ui::mode_name`), level, car; in a race the
+  tick, race time and state, speed, lap and gear; the backend and adapter,
+  the window's size and scale; the entity count, pipelines waiting and late
+  frames; on the web the wasm memory; the overlay's own cost.
+- **Look and place.** Dark grey at 90 % opacity, orange text in Bevy's
+  bundled Fira Mono (the `default_font` feature's bytes, registered once:
+  the client's default font is Rajdhani, and Arimo's letters are not fixed
+  width), 11 px. Bottom-left on the desktop, a corner the HUD leaves empty;
+  with the touch controls (which take both bottom corners and the buttons
+  under the place and time) centred under the progress bar. Scaled with the
+  window from 1100 × 760 logical px down to 0.7 (text no smaller than
+  8 px). `GlobalZIndex(i32::MAX)`: over the menus, the race, pause, results
+  and the native loading screen; on the web the page's HTML loading screen
+  covers the canvas until the scene is up.
+- **Cost.** Text and graphs are redrawn four times a second, in place (the
+  images' buffers reused, no allocation per frame but the text strings).
+  Measured by itself in a release build on the RTX 3060, a race on Coast:
+  0.005 ms a frame on average, 0.07 ms on a redraw frame (debug build 0.04
+  and 0.5). Bevy's own share (relaying out a dozen lines of text and
+  uploading three 27 KB images four times a second) is too small to see
+  next to the machine's noise: two 45 s release races with and without the
+  overlay gave main-world means of 6.6 and 10.0 ms, the difference the
+  other agents' load (116 against 38 slow frames).
+
+## D1021. The run recording: `record=1`, JSON lines
+
+2026-10-05, the owner's request: "a more in depth game logging option so I
+can record runs for you to examine". `recording`, the format in
+`docs/rust-port/RECORDING.md` (DEVIATIONS).
+
+- **On.** `record=1` (natively also `--record`) writes
+  `recordings/<UTC date>-<time>Z-<level>.jsonl` under the repository root,
+  where the agents work (git ignores it); `record=<dir>` or
+  `record=<file.jsonl>` writes elsewhere. The path is printed at the start
+  and, with the size, at the end. On the web the lines stay in memory for
+  `__mr.recording()` and `__mr.saveRecording()` (a download); the native
+  file is the priority, and a phone has no easy way to fetch a download,
+  which is left open.
+- **Format.** JSON lines, each with `t` (seconds since the start) and
+  `type`: easy to grep by type, to read a line at a time, and to append to
+  without a closing bracket, so a crash leaves a usable file (flushed every
+  second). Written on change, not every frame: the status, mode and screen,
+  settings, window, focus, pads, sound, overlay. Frame timing as one
+  summary a second (count, fps, mean, min, p99, max of the interval; the
+  main and render worlds' means and maxima; pipelines waiting) plus a
+  `slow_frame` line for every frame over 50 ms (the D1005 threshold) with
+  its number, the three times, the mode and pipelines waiting, so a stall
+  is timestamped against what the client was doing. Natively the log's
+  warnings and errors and the client's own (`mr_*`) info lines come
+  through the tally layer (D1003), at most 1000 a frame; the web has no
+  layer.
+- **Races.** The start (seed, car, pursuit and heat, the units' cap,
+  autodrive, timescale), pause, resume, results (with the table, lap times,
+  pursuit or cruise stats) and the race going away. Every tick's input in
+  `ticks` lines of 120 ticks (`Session::inputs`, added for it: the
+  `InputFrame`s the session fed `race::step`, whichever device made them),
+  run-length coded, about 12 bytes a tick; each line also carries the
+  state's hash after its last tick, the player's car and the simulation's
+  events (Debug text). A three-lap Seaside race at `timescale=3` (33 000
+  ticks, 108 s) made 572 KB, 536 KB of it `ticks` (391 KB inputs, 70 KB
+  events); racing costs about 1.5 KB a second, the rest a few hundred bytes
+  a second.
+- **Not recorded.** Raw key, pad and touch events (the inputs as the
+  simulation saw them are, and they are what a replay needs), the camera,
+  the effects, the sound's calls; per-frame timing (summarised per second;
+  the overlay's graphs are for live looking).
+
+## D1022. A recorded race replays in `mr-sim`
+
+2026-10-05. The simulation is deterministic and a race is its options and
+its inputs, so `mr-sim replay <file> [--race N] [--trace F] [--state-at T]`
+steps each recorded race from a new `SimState` with the recorded inputs and
+checks the hash at every `ticks` line (`mr_sim::replay`: the parser reads
+only the flat fields of `race_start` and `ticks`, by hand, since the
+simulation has no JSON dependency; the input coding is beside it, so the
+client and the replay share it). It prints how many checkpoints matched (or
+the first that did not, and fails) and the results; `--trace` writes the
+trace of the race (`parity/trace-format.md`) and `--state-at` dumps the
+state, which together give an agent everything the summary lines leave
+out. The units' cap the client sets on a pursuit field
+(`flow::apply_pursuit_opts`) is applied as there.
+
+Checked: an autodrive race on Coast in a debug build (1802 ticks, 15
+checkpoints) and a whole three-lap Seaside race at `timescale=3` (33 086
+ticks, 270 checkpoints) replayed with every checkpoint matching and the
+results the client showed; `recording::tests::a_recorded_race_replays`
+drives a race by keys through the client's frame loop (ragged frames,
+steering, handbrake, reset, a pause), writes its lines as the recorder
+does, and replays them to the same hash at every checkpoint. A recording
+replays on the code it was made with: the `start` line has the commit.
+
 ## D1040. The bumper view does not draw the player's own car
 
 2026-10-05, the owner: "the in car views ... are occluded by the car".

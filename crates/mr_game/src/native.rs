@@ -263,12 +263,21 @@ pub mod log_tally {
     impl Layer<Registry> for Tally {
         fn on_event(&self, event: &Event<'_>, _: Context<'_, Registry>) {
             let meta = event.metadata();
-            if *meta.level() > Level::WARN {
+            // The run recording keeps the client's own info lines too
+            // (`crate::recording`, D1021).
+            let keep = crate::recording::wants_log(*meta.level(), meta.target());
+            if *meta.level() > Level::WARN && !keep {
                 return;
             }
             let mut m = Message::default();
             event.record(&mut m);
-            note(*meta.level(), m.1.as_deref().unwrap_or(meta.target()), &m.0);
+            let target = m.1.as_deref().unwrap_or(meta.target());
+            if keep {
+                crate::recording::log(*meta.level(), target, &m.0);
+            }
+            if *meta.level() <= Level::WARN {
+                note(*meta.level(), target, &m.0);
+            }
         }
     }
 

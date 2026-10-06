@@ -38,7 +38,7 @@ const browser = await puppeteer.launch({
   executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
   headless: 'new',
   args: [
-    '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist',
+    '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist', '--mute-audio',
     '--autoplay-policy=document-user-activation-required',
     // Frame rate uncapped, as the baselines are measured.
     '--disable-gpu-vsync', '--disable-frame-rate-limit',

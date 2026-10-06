@@ -234,8 +234,18 @@ pub struct NativeBackend<C: NativeContext> {
     detached: HashMap<NodeId, NativeNode>,
 }
 
+/// Live contexts render without an output device (`set_silent`).
+static SILENT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Makes the next live contexts render their graph without an output device
+/// (web-audio-api's `"none"` sink): the same work, nothing heard. For runs
+/// nobody listens to (pictures, smoke tests, agents' checks).
+pub fn set_silent(on: bool) {
+    SILENT.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// A live context's options: the latency hint, and the default device
-/// (`native-device`) or none.
+/// (`native-device`, unless silent) or none.
 fn live_options(latency_hint: Option<&str>) -> AudioContextOptions {
     AudioContextOptions {
         latency_hint: match latency_hint {
@@ -243,7 +253,9 @@ fn live_options(latency_hint: Option<&str>) -> AudioContextOptions {
             Some("interactive") => AudioContextLatencyCategory::Interactive,
             _ => AudioContextLatencyCategory::Balanced,
         },
-        sink_id: if cfg!(feature = "native-device") {
+        sink_id: if cfg!(feature = "native-device")
+            && !SILENT.load(std::sync::atomic::Ordering::Relaxed)
+        {
             String::new()
         } else {
             "none".into()
@@ -252,19 +264,49 @@ fn live_options(latency_hint: Option<&str>) -> AudioContextOptions {
     }
 }
 
+/// What the render thread reports each second: its average and peak load
+/// (the share of each render quantum's time spent rendering) and the share
+/// of the device's callbacks that underran.
+pub type CapacityHook = Box<dyn FnMut(f64, f64, f64) + Send>;
+
+static CAPACITY_HOOK: std::sync::Mutex<Option<CapacityHook>> = std::sync::Mutex::new(None);
+
+/// Reports the next live context's render load to `hook`, once a second
+/// (web-audio-api's `AudioRenderCapacity`).
+pub fn on_render_capacity(hook: CapacityHook) {
+    *CAPACITY_HOOK.lock().unwrap_or_else(|e| e.into_inner()) = Some(hook);
+}
+
+fn watch_capacity(ctx: &WaContext) {
+    let Some(mut hook) = CAPACITY_HOOK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+    else {
+        return;
+    };
+    let cap = ctx.render_capacity();
+    cap.set_onupdate(move |e| hook(e.average_load, e.peak_load, e.underrun_ratio));
+    cap.start(web_audio_api::AudioRenderCapacityOptions {
+        update_interval: 1.0,
+    });
+}
+
 impl NativeBackend<WaContext> {
     /// A live context. Without the `native-device` feature it processes the
     /// graph without an output device (the `"none"` sink).
     pub fn live(latency_hint: Option<&str>) -> Self {
-        Self::with(WaContext::new(live_options(latency_hint)))
+        let ctx = WaContext::new(live_options(latency_hint));
+        watch_capacity(&ctx);
+        Self::with(ctx)
     }
 
     /// [`NativeBackend::live`], or `None` where the output stream cannot be
     /// made (no audio device): a game without sound rather than a panic.
     pub fn try_live(latency_hint: Option<&str>) -> Option<Self> {
-        WaContext::try_new(live_options(latency_hint))
-            .ok()
-            .map(Self::with)
+        let ctx = WaContext::try_new(live_options(latency_hint)).ok()?;
+        watch_capacity(&ctx);
+        Some(Self::with(ctx))
     }
 }
 

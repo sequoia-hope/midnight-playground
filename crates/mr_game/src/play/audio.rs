@@ -1058,8 +1058,29 @@ fn platform() -> Platform {
     }
 }
 
+/// The audio render thread's last second, natively: average and peak load
+/// (1 = the whole quantum's time) and the share of callbacks that underran,
+/// in thousandths (`RUST_LOG=mr_game::play::audio=debug` logs each second).
+#[cfg(not(target_arch = "wasm32"))]
+pub static RENDER_LOAD: [std::sync::atomic::AtomicU32; 3] =
+    [const { std::sync::atomic::AtomicU32::new(0) }; 3];
+
 #[cfg(not(target_arch = "wasm32"))]
 fn platform() -> Platform {
+    mr_audio::wa::native::on_render_capacity(Box::new(|avg, peak, under| {
+        use std::sync::atomic::Ordering;
+        for (slot, v) in RENDER_LOAD.iter().zip([avg, peak, under]) {
+            slot.store((v * 1000.0) as u32, Ordering::Relaxed);
+        }
+        if under > 0.0 {
+            debug!(
+                "audio render: load {avg:.2} average, {peak:.2} peak, {:.1} % underruns",
+                under * 100.0
+            );
+        } else {
+            debug!("audio render: load {avg:.2} average, {peak:.2} peak");
+        }
+    }));
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(1, |d| d.subsec_nanos());
@@ -1127,6 +1148,15 @@ fn settings() -> Settings {
 
 pub fn plugin(app: &mut App) {
     let record = app.world().resource::<Opts>().o.param("audiolog") == Some("1");
+    // Natively, the runs nobody listens to render their sound without an
+    // output device: the pictures and checks (`window_state::headless`),
+    // and any run with `MR_MUTE=1` (agents trying the game on a desktop
+    // someone is using).
+    #[cfg(not(target_arch = "wasm32"))]
+    mr_audio::wa::native::set_silent(
+        crate::native::window_state::headless(&app.world().resource::<Opts>().o)
+            || std::env::var_os("MR_MUTE").is_some_and(|v| v != "0"),
+    );
     let shared = Rc::new(RefCell::new(RaceAudio::new(platform(), settings(), record)));
     #[cfg(target_arch = "wasm32")]
     GESTURE.with(|g| *g.borrow_mut() = Some(shared.clone()));
