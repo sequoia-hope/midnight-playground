@@ -11,6 +11,7 @@
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "node --test 'test/unit/*.test.js'",
     "test:unit:kernel": "NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node --test 'test/unit/*.test.js'",
+    "test:lab": "node --test 'tools/engine-lab/test/*.test.js'",
     "test:e2e": "node --test --test-concurrency=2 'test/e2e/*.test.js'",
     "test:e2e:rust": "node tools/parity/e2e/js-suites.mjs"
   },
