@@ -529,17 +529,23 @@ fn walk_segments(level: &Level, segs: &[Segment], tags: &mut Vec<Tag>) -> Raw {
         while k < len {
             let t = (k + 0.5) / len;
             let kap = k_peak * trapezoid(t, r);
-            kappa[i] = kap as f32;
-            grade_raw[i] = (rise / len) as f32;
-            zone[i] = cur_zone;
-            road_type[i] = road;
-            elev_raw[i] = u8::from(extra.elevated);
+            // A fractional length walks one metre past the n samples; the
+            // JS's typed arrays ignore stores out of range, and so do these.
+            if i < n {
+                kappa[i] = kap as f32;
+                grade_raw[i] = (rise / len) as f32;
+                zone[i] = cur_zone;
+                road_type[i] = road;
+                elev_raw[i] = u8::from(extra.elevated);
+            }
             h += kap;
             x += kernel::cos(h - kap * 0.5);
             z += kernel::sin(h - kap * 0.5);
             i += 1;
-            px[i] = x as f32;
-            pz[i] = z as f32;
+            if i < n {
+                px[i] = x as f32;
+                pz[i] = z as f32;
+            }
             k += 1.0;
         }
     }
