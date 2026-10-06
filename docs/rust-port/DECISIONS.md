@@ -9049,3 +9049,14 @@ source moves to GitHub Actions) without the swap.
   tailnet (D1100).
 - Still the owner's to decide at M9: the swap itself, `/legacy/`, and the
   repository rename.
+
+## D1102. Coast Highway is the first level
+
+The owner (2026-10-06): the game is Midnight Playground, and its first
+level should start in the dark. Coast Highway leaves before dawn and drives
+into sunrise over Seabright; Sierra starts at sunset. `mp_levels::levels()`
+now lists Coast first and Sierra second, their badges swap (LEVEL 1 and
+LEVEL 2), and a new player's stored level defaults to `coast`. Players who
+already have `level` stored keep their choice. `level_by_id` still falls
+back to the first entry, now Coast. Everything that walks the list finds
+the same levels; only the order changed. The JS game keeps Sierra first.

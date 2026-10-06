@@ -34,7 +34,7 @@ fn the_menu_lists_six_levels_with_unique_ids_in_order() {
     let ids: Vec<_> = ls.iter().map(|l| l.id).collect();
     assert_eq!(
         ids,
-        ["sierra", "coast", "streets", "desert", "seaside", "cruise"]
+        ["coast", "sierra", "streets", "desert", "seaside", "cruise"]
     );
     let nums: Vec<_> = ls.iter().map(|l| l.num).collect();
     assert_eq!(
