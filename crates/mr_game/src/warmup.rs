@@ -198,6 +198,46 @@ pub fn spawn_glyphs(commands: &mut Commands) {
     }
 }
 
+/// A menu node, off screen, during the warm-up: a background colour, a
+/// gradient and a box shadow, the three Bevy UI pipelines the menu's
+/// screens draw with (`ui::widgets`). Bevy compiles each the first time
+/// one is drawn, so the menu's first frames queued them after the warm-up
+/// (DECISIONS D1005): the box shadow natively, all three on the web, whose
+/// loading screen is the page's and draws no Bevy UI. Bevy draws a node
+/// wherever it is; the keys are the window's format, the shadow samples and
+/// the gradient's colour space (sRGB, as every gradient here), the same for
+/// every node. Spawned with the first scene's warm-up, a level's or the
+/// menu's first section's; the pipelines stay compiled after that.
+pub fn spawn_ui(commands: &mut Commands) {
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(-100_000.0),
+            width: Val::Px(4.0),
+            height: Val::Px(4.0),
+            ..default()
+        },
+        BackgroundColor(Color::BLACK),
+        BackgroundGradient::from(
+            LinearGradient::to_right(vec![
+                ColorStop::auto(Color::BLACK),
+                ColorStop::auto(Color::WHITE),
+            ])
+            .in_srgb(),
+        ),
+        BoxShadow(vec![ShadowStyle {
+            color: Color::BLACK,
+            x_offset: Val::Px(0.0),
+            y_offset: Val::Px(0.0),
+            spread_radius: Val::Px(0.0),
+            blur_radius: Val::Px(2.0),
+        }]),
+        WarmUp,
+        crate::loader::SceneEntity,
+        Name::new("warm-up menu node"),
+    ));
+}
+
 /// Once every pipeline has compiled, the stand-ins go.
 pub fn end_warm_up(mut commands: Commands, status: Res<Status>, q: Query<Entity, With<WarmUp>>) {
     if !status.ready || q.is_empty() {

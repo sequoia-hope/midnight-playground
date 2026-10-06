@@ -1134,6 +1134,34 @@ pub fn plugin(app: &mut App) {
         Update,
         frame.after(super::draw).run_if(in_state(AppState::Running)),
     );
+    #[cfg(not(target_arch = "wasm32"))]
+    app.add_systems(PreUpdate, native_gesture.after(bevy::input::InputSystems));
+}
+
+/// Natively, the page's gesture handlers (`gesture`): a mouse button, a
+/// key or a touch, in any state, wakes the audio (`wakeAudio`), so the
+/// menu's buttons click and a level tab plays its music, as on the web
+/// after the first click. Without it the sound woke only with a race
+/// (DECISIONS D1007).
+#[cfg(not(target_arch = "wasm32"))]
+fn native_gesture(
+    shared: NonSend<Shared>,
+    mut keys: MessageReader<KeyboardInput>,
+    mut mouse: MessageReader<bevy::input::mouse::MouseButtonInput>,
+    mut touches: MessageReader<bevy::input::touch::TouchInput>,
+) {
+    let key = keys
+        .read()
+        .any(|k| k.state == ButtonState::Pressed && !k.repeat);
+    let click = mouse.read().any(|m| m.state == ButtonState::Pressed);
+    let touch = touches
+        .read()
+        .any(|t| t.phase == bevy::input::touch::TouchPhase::Ended);
+    if (key || click || touch)
+        && let Ok(mut a) = shared.0.try_borrow_mut()
+    {
+        a.wake();
+    }
 }
 
 /// The test bridge's context calls (`__audio.ctx.suspend()`, as iOS

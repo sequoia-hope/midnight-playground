@@ -4,6 +4,11 @@
 //! git-ignored; the registered dev server serves the repo root, so the build
 //! is at `/dist/next/` there and on the tailnet https front. Nothing here
 //! knows or writes a port.
+//!
+//! The build is made in `dist/next.staging/` and swapped in whole once it
+//! is done, so `dist/next/` keeps serving the last complete build for the
+//! minutes a build takes (a phone opening it meanwhile used to find a
+//! directory listing, or one backend's new files beside the other's old).
 
 use crate::{Result, cargo, exec, output, root};
 use std::path::Path;
@@ -76,12 +81,16 @@ pub fn run(args: &[String]) -> Result {
 
     check_bindgen_version()?;
 
-    let out = root.join("dist").join("next");
-    // `--only` replaces one build's files and keeps the other's.
-    if out.exists() && only.is_none() {
+    let live = root.join("dist").join("next");
+    let out = root.join("dist").join("next.staging");
+    if out.exists() {
         std::fs::remove_dir_all(&out).map_err(|e| format!("clearing {}: {e}", out.display()))?;
     }
     std::fs::create_dir_all(&out).map_err(|e| format!("creating {}: {e}", out.display()))?;
+    // `--only` replaces one build's files and keeps the other's.
+    if only.is_some() && live.is_dir() {
+        copy_dir(&live, &out)?;
+    }
 
     let mut built = Vec::new();
     for b in BACKENDS
@@ -112,6 +121,7 @@ pub fn run(args: &[String]) -> Result {
         ),
     )
     .map_err(|e| format!("writing build.json: {e}"))?;
+    swap_in(&out, &live)?;
     if !root.join(&scenes_rel).is_dir() {
         println!(
             "web: no scene exports for this JS tree yet ({scenes_rel}); make them with\n\
@@ -273,6 +283,24 @@ fn precompress(out: &Path, names: &[&str]) -> Result {
         brotli::BrotliCompress(&mut &bytes[..], &mut br, &params).map_err(|e| e.to_string())?;
         let dest = out.join(format!("{name}.br"));
         std::fs::write(&dest, br).map_err(|e| format!("writing {}: {e}", dest.display()))?;
+    }
+    Ok(())
+}
+
+/// Puts the finished build in place: two renames, so `dist/next/` is
+/// missing for a moment rather than incomplete for minutes.
+fn swap_in(staging: &Path, live: &Path) -> Result {
+    let old = live.with_extension("old");
+    if old.exists() {
+        std::fs::remove_dir_all(&old).map_err(|e| format!("clearing {}: {e}", old.display()))?;
+    }
+    if live.exists() {
+        std::fs::rename(live, &old).map_err(|e| format!("moving {} aside: {e}", live.display()))?;
+    }
+    std::fs::rename(staging, live)
+        .map_err(|e| format!("moving {} into place: {e}", staging.display()))?;
+    if old.exists() {
+        std::fs::remove_dir_all(&old).map_err(|e| format!("removing {}: {e}", old.display()))?;
     }
     Ok(())
 }

@@ -6,7 +6,7 @@ use crate::loader::Counts;
 use bevy::prelude::*;
 use bevy::render::render_resource::PipelineCache;
 use bevy::render::renderer::RenderQueue;
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
 #[derive(Resource, Default, Debug, Clone)]
 pub struct Status {
@@ -55,6 +55,11 @@ pub struct Status {
 /// Pipelines waiting in the render world's cache, published each frame.
 pub static PIPELINES_WAITING: AtomicUsize = AtomicUsize::new(0);
 
+/// The warm-up is done (`Status::ready`), for the render world: a render
+/// pipeline queued after it is logged by its label, unless a background
+/// menu section's stand-ins queued it (`preview::section_warming`).
+static READY: AtomicBool = AtomicBool::new(false);
+
 /// The GPU fence of the warm-up: the main world asks (a new number), the
 /// render world hands the number to the queue after this frame's
 /// submission, and the queue sets `FENCE_DONE` to it once that work is done.
@@ -77,8 +82,13 @@ pub fn gpu_fence(queue: Res<RenderQueue>) {
 /// update" compute pipeline although the device has no compute, and it
 /// waits for ever for a shader that is never loaded (DECISIONS D392). The
 /// client has no compute pipelines of its own. A pipeline still waiting
-/// after 600 frames is logged once, with its state.
-pub fn count_pipelines(cache: Res<PipelineCache>, mut stuck: Local<u32>) {
+/// after 600 frames is logged once, with its state, and one queued after
+/// the warm-up once, with its label (its shader defs at debug level).
+pub fn count_pipelines(
+    cache: Res<PipelineCache>,
+    mut stuck: Local<u32>,
+    mut late: Local<Vec<usize>>,
+) {
     use bevy::render::render_resource::PipelineDescriptor;
     let waiting: Vec<usize> = cache.waiting_pipelines().collect();
     if waiting.is_empty() {
@@ -94,6 +104,26 @@ pub fn count_pipelines(cache: Res<PipelineCache>, mut stuck: Local<u32>) {
         let label = match &p.descriptor {
             PipelineDescriptor::RenderPipelineDescriptor(d) => {
                 render += 1;
+                if READY.load(Ordering::Relaxed)
+                    && !crate::preview::section_warming()
+                    && !late.contains(&i)
+                {
+                    late.push(i);
+                    let label = d.label.as_deref().unwrap_or("?");
+                    info!("pipeline {i} queued after the warm-up: {label}");
+                    // `RUST_LOG=mr_game::status=debug`: which material and
+                    // mesh layout it is for.
+                    debug!(
+                        "pipeline {i}: vertex {:?} {:?}, fragment {:?}",
+                        d.vertex.shader_defs,
+                        d.vertex
+                            .buffers
+                            .iter()
+                            .map(|b| b.attributes.len())
+                            .collect::<Vec<_>>(),
+                        d.fragment.as_ref().map(|f| &f.shader_defs),
+                    );
+                }
                 &d.label
             }
             PipelineDescriptor::ComputePipelineDescriptor(d) => &d.label,
@@ -148,11 +178,13 @@ pub fn tick(time: Res<Time>, mut status: ResMut<Status>) {
             }
         }
     }
+    READY.store(status.ready, Ordering::Relaxed);
     if status.ready {
         status.ready_frames += 1;
         // A pipeline queued after the warm-up is one it missed (each costs
-        // a hitch on the web).
-        if status.pipelines_waiting > 0 {
+        // a hitch on the web); a background menu section's own warm-up is
+        // not.
+        if status.pipelines_waiting > 0 && !crate::preview::section_warming() {
             status.late_frames += 1;
             if status.late_frames == 1 {
                 warn!(
@@ -163,6 +195,14 @@ pub fn tick(time: Res<Time>, mut status: ResMut<Status>) {
         }
     }
     let ms = time.delta_secs() * 1000.0;
+    // `RUST_LOG=mr_game::status=debug`: the frames a player would see as a
+    // hitch.
+    if ms > 50.0 && status.frames > 2 {
+        debug!(
+            "slow frame {ms:.0} ms (frame {}, {}, {} pipeline(s) waiting)",
+            status.frames, status.state, status.pipelines_waiting
+        );
+    }
     status.frame_ms = if status.frame_ms == 0.0 {
         ms
     } else {

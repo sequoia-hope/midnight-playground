@@ -110,6 +110,9 @@ pub struct Build {
     /// The entity every spawned entity goes under (a menu section's root,
     /// `crate::preview`); none for a level, whose entities have no parent.
     parent: Option<Entity>,
+    /// The scene's textures already converted, by index (a menu section's,
+    /// on its build thread); empty when they are converted here.
+    converted: Vec<Option<Image>>,
 }
 
 impl Build {
@@ -157,6 +160,7 @@ impl Build {
             },
             hidden: Vec::new(),
             parent: None,
+            converted: Vec::new(),
             step: Step::Textures,
             cursor: 0,
             scene,
@@ -166,6 +170,13 @@ impl Build {
     /// Spawns the scene under `parent` (a menu section's root, D742).
     pub fn under(mut self, parent: Entity) -> Build {
         self.parent = Some(parent);
+        self
+    }
+
+    /// The scene's textures, converted elsewhere (`convert::build_image`
+    /// of each, in order); none to convert them here.
+    pub fn with_images(mut self, converted: Vec<Option<Image>>) -> Build {
+        self.converted = converted;
         self
     }
 
@@ -747,6 +758,7 @@ pub fn build_step(
         // The warm-up (SPEC 6.3): one off-screen stand-in per material ×
         // mesh-layout combination, until every pipeline has compiled.
         let n = b.combos.spawn(&mut commands, &mut meshes);
+        crate::warmup::spawn_ui(&mut commands);
         info!("warm-up: {n} material × mesh-layout combinations");
         status.warm_up = n;
         // What the scenery's animators address (`crate::animate`).
@@ -798,8 +810,11 @@ pub fn step_section(
         match b.step {
             Step::Textures => {
                 if let Some(t) = b.scene.textures.get(b.cursor) {
-                    let img = convert::build_image(&b.scene, t).map(|i| images.add(i));
-                    b.images.push(img);
+                    let img = match b.converted.get_mut(b.cursor) {
+                        Some(img) => img.take(),
+                        None => convert::build_image(&b.scene, t),
+                    };
+                    b.images.push(img.map(|i| images.add(i)));
                     b.cursor += 1;
                 } else {
                     b.step = Step::Nodes;
