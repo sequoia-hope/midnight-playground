@@ -174,6 +174,38 @@ repeated so one lost packet costs nothing.
 - **End to end** (WP 10.7): four browser tabs complete a race.
 - **Owner:** a race with real people over the tailnet.
 
+## 6.1 Direction for M11: join by link, own signalling server
+
+Decided with the owner (2026-10-06). The first test is with coworkers on
+one LAN and tailnet, which M10's native host covers as specified. M11 then
+targets the owner's main interest, **a browser tab as host, joined by a
+link** shared in Slack, Signal, Discord or a stream's chat:
+
+- **The link is an invitation, not the handshake.** It opens the game from
+  GitHub Pages with a room code and a secret after the `#`
+  (`…/#join=<room>.<secret>`). Host and guests swap their WebRTC offer
+  and answer through a signalling server, automatically; the guest sees
+  only "Joining…".
+- **The secret encrypts and authenticates every signalling message**, so
+  the signalling server sees only ciphertext under an opaque room id, and
+  nobody without the link can join or tamper. Browsers never send the `#`
+  part to a server.
+- **The owner runs the signalling server**, rather than using public
+  relays (Nostr, MQTT, BitTorrent trackers), for control over logs and
+  reliability. First choice: `matchbox_server` behind Caddy (automatic
+  https) on the owner's existing cloud Linux machine, keeping no logs.
+  Alternative: a Cloudflare Worker with a Durable Object per room.
+- **Players see each other's network addresses**, as in any peer-to-peer
+  game (guests see the host's, the host sees each guest's). The lobby says
+  so in one line. A TURN relay that hides addresses, and that rescues
+  connections across strict networks, is measured before it is decided.
+- **A public link means strangers can join:** the lobby gets a player cap,
+  kick, and an "approve each join" option. The game has no text or voice
+  chat, which keeps moderation small.
+- **Guests can only send their own controls**, which the host validates;
+  the host is the authority and could cheat, which is acceptable among
+  friends.
+
 ## 7. Open points
 
 The rules in section 2 are approved as proposed. Still open:
