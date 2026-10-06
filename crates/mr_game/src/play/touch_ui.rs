@@ -548,13 +548,15 @@ pub(super) fn update(
                 let r = lay.stick_r;
                 let (cx, cy) = t.stick.map_or(lay.stick_home, |st| (st.x0, st.y0));
                 let w = 2.0 * r + 64.0;
+                // 48 px tall in the JS; with the knob (D1084).
+                let th = (lay.knob - 8.0).max(48.0) / 2.0;
                 place(
                     &mut n,
                     Rect {
                         left: cx - w / 2.0,
-                        top: cy - 24.0,
+                        top: cy - th,
                         right: cx + w / 2.0,
-                        bottom: cy + 24.0,
+                        bottom: cy + th,
                     },
                     k,
                 );
@@ -571,13 +573,15 @@ pub(super) fn update(
                 show(vis, steering == Steering::Stick);
                 let (cx, cy) = t.stick.map_or(lay.stick_home, |st| (st.x0, st.y0));
                 let x = cx + t.stick_offset();
+                // 56 px in the JS (D1084).
+                let kr = lay.knob.max(56.0) / 2.0;
                 place(
                     &mut n,
                     Rect {
-                        left: x - 28.0,
-                        top: cy - 28.0,
-                        right: x + 28.0,
-                        bottom: cy + 28.0,
+                        left: x - kr,
+                        top: cy - kr,
+                        right: x + kr,
+                        bottom: cy + kr,
                     },
                     k,
                 );

@@ -26,6 +26,7 @@ mod fx;
 mod fx_stage;
 pub mod gamepad;
 pub mod gamepad_io;
+pub mod guide;
 mod hud;
 pub mod input;
 mod models;
@@ -80,6 +81,10 @@ pub struct Params {
     pub shots: Option<String>,
     /// `?fx=0`: the race without its effects (a measurement switch).
     pub fx: bool,
+    /// `?line=full|brake|off`: the guide line, over the setting (D1083).
+    pub line: Option<guide::GuideMode>,
+    /// `?assist=0|1|2`: the steering assist, over the setting (D1083).
+    pub assist: Option<mr_sim::assist::Assist>,
 }
 
 impl Params {
@@ -112,6 +117,8 @@ impl Params {
             touch: get("touch").map(|v| v == "1"),
             shots: get("shots").map(str::to_owned),
             fx: get("fx") != Some("0"),
+            line: get("line").and_then(guide::GuideMode::parse),
+            assist: get("assist").and_then(mr_sim::assist::Assist::parse),
         }
     }
 
@@ -237,6 +244,7 @@ pub fn plugin(app: &mut App) {
             .before(crate::render::lighting::pack_globals),
     );
     audio::plugin(app);
+    guide::plugin(app);
     hud::plugin(app);
     gamepad_io::plugin(app);
     tilt::plugin(app);
