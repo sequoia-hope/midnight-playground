@@ -111,3 +111,9 @@ these documents:
   being built (`tools/engine-lab.html`). **A living world matters more than
   cars and classes**: ROADMAP M14 and M15 swapped; Seaside Raceway first,
   with people, activity and birds.
+- **Engine lab follow-ups:** the owner liked the engines; heard some
+  crackle, and remembered the S4's AWE aftermarket exhaust (throatier).
+  The crackle was the lab's peak limiter clipping peaks (fixed with a
+  look-ahead); the AWE cat-back is a preset beside the stock S4, the
+  first stock-vs-aftermarket pair → `sound.md` 2.1. Asked for a major
+  pass of tests across the workspace and tools.
