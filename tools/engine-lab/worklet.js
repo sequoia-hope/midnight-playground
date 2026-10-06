@@ -120,6 +120,10 @@ class Rng {
 
 const MAX_CYL = 16;
 const MAX_POPS = 10;
+// The limiter's look-ahead (samples, ~1.5 ms at 48 kHz) and its attack: a
+// one-pole that closes 99.9 % of a step inside the look-ahead.
+const LIM_AHEAD = 72;
+const LIM_ATTACK = 1 - Math.exp(-7 / LIM_AHEAD);
 
 class EngineLab extends AudioWorkletProcessor {
   constructor(opts) {
@@ -156,6 +160,8 @@ class EngineLab extends AudioWorkletProcessor {
     this.pbOutLp = new Biquad().set('lowpass', 700, 0.7);
     this.pbEnv = 0;
     this.limitCut = false;
+    this.limL = new Float32Array(LIM_AHEAD); this.limR = new Float32Array(LIM_AHEAD);
+    this.limW = 0; this.limG = 1; this.limHold = 0; this.limHoldN = 0;
     this.setParams(o.params || {});
     if (o.state) this.setState(o.state, true);
     if (o.psycho !== undefined) this.psycho = o.psycho;
@@ -458,10 +464,22 @@ class EngineLab extends AudioWorkletProcessor {
       const envDb = 10 * Math.log10(this.compEnv + 1e-12), over = envDb - P.compThresh;
       const cg = over > 0 ? Math.pow(10, (-over * (1 - 1 / P.compRatio)) / 20) : 1;
       l *= cg * P.makeup; rr *= cg * P.makeup;
-      // Peak limiter (instant attack, ~60 ms release), as the game's master has.
+      // Peak limiter with look-ahead (~60 ms release). The output is delayed
+      // LIM_AHEAD samples and the gain glides down over that time, so a peak
+      // meets a gain already lowered. An instant-attack limiter instead
+      // flattened every peak onto the ceiling, a short clip each time: the
+      // crackle heard on launches and pops.
       const pk = Math.max(Math.abs(l), Math.abs(rr));
-      this.limEnv = pk > this.limEnv ? pk : this.limEnv + (pk - this.limEnv) * 0.00035;
-      if (this.limEnv > 0.84) { const lg = 0.84 / this.limEnv; l *= lg; rr *= lg; }
+      if (pk >= this.limHold) { this.limHold = pk; this.limHoldN = LIM_AHEAD; }
+      else if (this.limHoldN > 0) this.limHoldN--;
+      else this.limHold += (pk - this.limHold) * 0.00035;
+      const lt = this.limHold > 0.84 ? 0.84 / this.limHold : 1;
+      this.limG += (lt - this.limG) * (lt < this.limG ? LIM_ATTACK : 0.00035);
+      const w = this.limW;
+      const dl = this.limL[w], dr = this.limR[w];
+      this.limL[w] = l; this.limR[w] = rr;
+      this.limW = (w + 1) % LIM_AHEAD;
+      l = dl * this.limG; rr = dr * this.limG;
       // Safety: soft knee above 0.9 so a bad tweak can't blast.
       L[i] = Math.abs(l) > 0.9 ? Math.sign(l) * (0.9 + 0.1 * Math.tanh((Math.abs(l) - 0.9) * 10)) : l;
       R[i] = Math.abs(rr) > 0.9 ? Math.sign(rr) * (0.9 + 0.1 * Math.tanh((Math.abs(rr) - 0.9) * 10)) : rr;
@@ -473,7 +491,6 @@ EngineLab.prototype.intakeKick = 0;
 EngineLab.prototype.tickKick = 0;
 EngineLab.prototype.liftBurst = 0;
 EngineLab.prototype.compEnv = 0;
-EngineLab.prototype.limEnv = 0;
 registerProcessor('engine-lab', EngineLab);
 
 // What the target speaker does to the sound: its low-frequency cut (steep,

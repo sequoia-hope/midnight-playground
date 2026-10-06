@@ -117,6 +117,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:unit
+      - name: Engine Sound Lab tests
+        run: npm run test:lab
       - name: Unit tests with the parity kernel
         run: NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs npm run test:unit
       - name: Module traces reproduce the committed goldens
