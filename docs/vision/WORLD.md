@@ -39,6 +39,12 @@ how and where they drive, and the world never tells them who to be.
   gadgets, the crawler project) without defining the player.
 - **The radio carries the voices,** as Burnout Paradise's DJ did, voiced
   like the Hot Pursuit police radio (WORLD 5.2). No cutscenes.
+- **Depth from memory, not from script.** Detailed narrative is not
+  wanted, and chatter that tries to be deep can show no depth. What
+  carries weight cheaply is the game remembering the player: the DJ
+  mentions that someone just took the Skyline record in a red Firebird;
+  a rival who lost to you last week remembers it; fans wear your colours
+  once you are known. Lines are about what this player actually did.
 - **The risk is chatter that falls flat:** the police radio's "I saw this
   driver at this time" wears thin if stretched. So: little and good.
   Short lines, mostly reacting to what the player just did, never on a
@@ -121,7 +127,7 @@ Peninsula has proved the format.
 
 1. Keep a coarse world plan: where the regions are and which roads
    connect them. It starts as the table above; it becomes a map file in
-   the level tools (vision ROADMAP M12).
+   the level tools (vision ROADMAP M13).
 2. Build each new level as a corridor of that plan. The **redwood level**
    the owner wants is the Skyline-and-redwoods stretch, not a level that
    stands on its own.
@@ -166,6 +172,8 @@ player:
 - **Generated radio stations with DJ chatter,** voiced the way the Hot
   Pursuit police radio is (generated with a Qwen voice-design model), which
   the owner was pleased with.
+- **Sound comes first** (vision ROADMAP M12, `docs/vision/sound.md`):
+  engines with a deep rumble and music with real depth.
 - **The generated music system needs much more depth** to carry stations.
   In-game generated audio is the focus; "bring your own music" is not
   needed, since players can mute the game and play their own.
