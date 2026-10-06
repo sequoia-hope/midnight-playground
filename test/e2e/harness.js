@@ -62,7 +62,7 @@ export function launch({ target = TARGET } = {}) {
     executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
     headless: process.env.MR_HEADFUL ? false : 'new',
     args: [
-      '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist',
+      '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist', '--mute-audio',
       '--autoplay-policy=document-user-activation-required',
     ],
   });

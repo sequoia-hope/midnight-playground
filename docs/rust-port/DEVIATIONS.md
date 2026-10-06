@@ -27,6 +27,8 @@ when a work package introduces one, with the package and the JS it concerns.
 | Hot Pursuit HUD: the hold title's coloured glow, the radio pill's and the bust track's drop shadows are left out; the heat stars' drop shadow is an approximate blur; a radio line too long for its pill is cut at the edge, with no `…` | Bevy UI has no blurred text shadow, draws a box shadow under a translucent node, and has no `text-overflow: ellipsis` | WP 8.3, DECISIONS D962 |
 | The bumper view does not draw the player's own car while the eye is inside it (the JS draws the inside of the body: the GT's wheel-arch liner fills the lower half of the view) | The owner's bug report; the same JS change is proposed, until it is made | D1040 |
 | The headlight pools lie 1 cm over the road at their centre, tilted with it, without the polygon offset's slope term (the JS's are level quads 6 cm over their car's height, drawn over the bottom of nearby cars' tyres) | The owner's bug report (tyres sunk into the road at the start); the same JS change is proposed, until it is made | D1042 |
+| A debug overlay (`debug=1`, F3): frame times over 5 s, 30 s and since it was turned on, with graphs, and the client's state; the JS has only its `?stats=1` panel | The owner's request, 2026-10-05 | DECISIONS D1020 |
+| A run recording (`record=1`): a JSON-lines log of the session with every race's per-tick inputs, replayable headless by `mr-sim replay` | The owner's request, 2026-10-05 | DECISIONS D1021, `RECORDING.md` |
 
 ## Known JS quirks reproduced, not fixed
 
