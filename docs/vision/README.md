@@ -84,3 +84,14 @@ these documents:
   Instruments' open-source modules (deterministic, the code is the
   instrument) and classic machines like the 808. No "bring your own
   music". → `sound.md`, ROADMAP M12.
+- **DJ chatter side quest:** two DJs, both women, both kind, both plugged
+  into the street racing scene (you listen because you race).
+  **Marisol** (The Tide, 88.1): mid-forties, warm, understated, into
+  cycling and film photography; goes to the forest rave and still runs
+  Monday; tired from other people's nonsense. **Kit** (Ridgeline Radio, a
+  pirate van on Skyline): late twenties, creative, into plants, hiking and
+  camping; brash, sometimes combative, wants to be kind and doesn't always
+  manage it; wrecked after a rave. The classic long "Goooood morning"
+  opener, fake local ads, raves, camping. Scripts and the listening page:
+  `tools/dj-voice/`, `tools/dj-voice.html`; the owner's local agent
+  records them.
