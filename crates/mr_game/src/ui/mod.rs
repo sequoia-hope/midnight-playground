@@ -574,6 +574,10 @@ fn sync_audio(
     if let Some(l) = ui.audio_level.take() {
         a.menu_level(&l);
     }
+    if ui.screen == Screen::Menu {
+        let level = ui.settings.level.clone();
+        a.menu_music(&level);
+    }
     if std::mem::take(&mut ui.next_track) {
         a.next_track();
     }
