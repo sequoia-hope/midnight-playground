@@ -289,11 +289,13 @@ pub fn lobby(p: &mut ChildSpawnerCommands, cx: &mut Cx, _ui: &UiState, net: &Net
 
         // The session's points.
         if !net.lobby.points.is_empty() {
-            p.spawn(w::text(
-                format!("Points after {} races", net.lobby.raced),
-                T::new(16.0).ls(0.15).c(w::dim()),
-                bp.k,
-            ));
+            let races = net.lobby.settings.as_ref().map_or(0, |s| s.races);
+            let heading = if races > 0 && net.lobby.raced >= u32::from(races) {
+                "Final standings: Start begins a new session".to_string()
+            } else {
+                format!("Points after {} races", net.lobby.raced)
+            };
+            p.spawn(w::text(heading, T::new(16.0).ls(0.15).c(w::dim()), bp.k));
             p.spawn((
                 Node {
                     flex_direction: FlexDirection::Column,
@@ -656,6 +658,11 @@ mod tests {
         ] {
             assert!(b.texts.iter().any(|t| t == want), "{want}: {:?}", b.texts);
         }
+        // A session of two races is over after two: the final standings.
+        v.lobby.settings.as_mut().unwrap().races = 2;
+        let b = build(&v, None);
+        let want = "Final standings: Start begins a new session";
+        assert!(b.texts.iter().any(|t| t == want), "{:?}", b.texts);
     }
 
     /// The focus ring goes on the control that has the focus, only.
