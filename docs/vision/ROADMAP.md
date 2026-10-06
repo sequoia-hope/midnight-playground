@@ -96,8 +96,11 @@ plan exists as data.
 - Stations by genre on M12's music system (sound.md S5).
 - DJ chatter and station identities voiced like the police radio (Qwen
   voice design): sparse, and about what this player did (WORLD 1.1).
+- **Radio v0 comes early:** two stations over the existing songs, DJ
+  breaks at song changes (radio.md R1). It needs only cutover, so it can
+  land right after it, alongside multiplayer.
 - **Gate:** the owner leaves it on for a whole session.
-- Design doc: `docs/vision/radio.md`.
+- Design doc: `docs/vision/radio.md` (draft written).
 
 ## M17. Sim handling
 
