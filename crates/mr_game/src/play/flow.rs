@@ -5,6 +5,7 @@
 //! bumps and body-spring kicks — then countdown → race → finish → results.
 //! The Bevy systems ([`super`]) draw it; [`smoke_race`] runs it headless.
 
+use mr_sim::assist::{Assist, steer_assist};
 use mr_sim::autopilot::autopilot;
 use mr_sim::input::{InputFrame, RESET};
 use mr_sim::physics::PhysEvent;
@@ -161,6 +162,9 @@ pub struct Race {
     /// Frames run (not paused): tells a frame's `radio.said` from the
     /// last one's (the HUD shows each line once).
     pub frames: u32,
+    /// The steering assist on the player's controls (Rust only, D1082),
+    /// from the settings (`play::guide`); never with the autopilot.
+    pub assist: Assist,
     was_nitro: bool,
     offroad: f64,
 }
@@ -234,6 +238,7 @@ impl Race {
             stage_say: Vec::new(),
             pursuit_opts: PursuitOpts::default(),
             frames: 0,
+            assist: Assist::Off,
             was_nitro: false,
             offroad: 0.0,
         }
@@ -322,9 +327,11 @@ impl Race {
             touch,
             setup,
             audio_ticks,
+            assist,
             ..
         } = self;
         let autodrive = setup.autodrive;
+        let assist = *assist;
         let track = session.lr.track.clone();
         let mut first = true;
         session.advance_observed(
@@ -334,6 +341,11 @@ impl Race {
                 let mut inp = s.sim();
                 if autodrive {
                     autopilot(&mut inp, &st.players[0].v, &track);
+                } else if assist != Assist::Off {
+                    // Before quantising: the frame carries the assisted
+                    // steering, so a recording replays it exactly.
+                    let p = &st.players[0];
+                    steer_assist(&mut inp, &p.v, &p.phys, &track, assist);
                 }
                 let mut f = InputFrame::quantise(&inp);
                 // The reset key is read once a frame, by its first tick.

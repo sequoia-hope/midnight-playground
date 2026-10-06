@@ -190,6 +190,8 @@ fn stage_control(
                 "opt-track" => Sel::Track,
                 "opt-steer" => Sel::Steer,
                 "opt-pedals" => Sel::Pedals,
+                "opt-guide" => Sel::Guide,
+                "opt-assist" => Sel::Assist,
                 _ => return true,
             };
             let value = v["value"].as_str().unwrap_or("").to_owned();
@@ -468,6 +470,8 @@ fn publish_settings(mr: &Object, s: &super::store::Settings) {
         (Sel::Track, "opt-track"),
         (Sel::Steer, "opt-steer"),
         (Sel::Pedals, "opt-pedals"),
+        (Sel::Guide, "opt-guide"),
+        (Sel::Assist, "opt-assist"),
     ] {
         let (opts, _) = super::menu::select_options(sel, s);
         selects.insert(
@@ -481,6 +485,7 @@ fn publish_settings(mr: &Object, s: &super::store::Settings) {
             "steering": s.steering, "tiltSens": s.tilt_sens, "pedals": s.pedals,
             "fullscreen": s.fullscreen, "car": s.car, "level": s.level, "track": s.track,
             "flash": s.flash, "rumble": s.rumble,
+            "guide": s.guide, "assist": s.assist,
         },
         "selects": selects,
     })

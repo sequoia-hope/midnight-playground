@@ -8675,3 +8675,240 @@ the quaternion from the basis (x = y × z, y = (A × T) normalised with T =
 `Vehicle.sync` builds the car's; and `polygonOffsetFactor: 0` on
 `poolMat` (`tailPoolMat` is never drawn). Until then DEVIATIONS.md lists it; the
 staged effects scenes (D804) differ from the JS's by it.
+
+## Driving aids for phones (Rust only): the guide line, the steering assist, bigger touch controls
+
+The owner, 2026-10-05: "the game is really fun with a gamepad, but it's
+pretty rough on mobile. In vertical mode the controls are just too small,
+and it is still hard with the phone in landscape. can we add options, on
+by default on mobile, for steering assist and on-road indicators for the
+best line, which change from green to orange to red based on your current
+speed to signal when to slow down?" The JS game has none of this; each is
+a row in DEVIATIONS.md.
+
+## D1080. The guide line's colour: how soon you have to brake
+
+2026-10-05. The line is the track's `racing_line` (the lateral offset per
+metre the rivals follow), and each point on it has a target speed, the
+track's `speed_profile`: the speed a well-driven car carries through
+there, already limited by braking for what follows (`build_racing_line`:
+`sqrt(15.5 / |curvature|)`, capped at 69.5 m/s, then a pass from the end
+backwards holding each metre to `sqrt(v_next² + 2 × 11)`, twice round a
+loop). So a point's target speed already says "slow down here for the
+corner after it"; the colour only has to compare it with the player's
+speed and the room left.
+
+What the car can do comes from `mr_sim`'s physics, read off its code:
+full brake is `a -= 15 × brake` for every car (above 0.8 m/s), plus the
+drag `0.00115 v|v| + 0.01 v`; `mr_sim::assist::BRAKE_DECEL` and
+`full_brake_decel` hold these, and a test steps the physics one tick at
+full brake and checks the deceleration (less the slope) against them.
+`brake_distance(v0, v1, frac)` is the distance to slow from v0 to v1 with
+`frac` of the brake and the whole drag, ∫ u / a(u) du by Simpson's rule
+over eight steps (flat road; the grade is left out).
+
+The rule (`mr_sim::assist::brake_urgency(v, vt, d)`, for a point d metres
+ahead along the road with target speed vt, the car at v):
+
+- at or under the point's speed (v ≤ vt), or nearly still (v < 1 m/s):
+  green;
+- otherwise D = `brake_distance(v, vt, 0.75)` is the distance needed
+  braking firmly (three quarters of the pedal, about the profile's own
+  11 m/s², with a quarter in hand), and t = (d − D) / v is the time left
+  before the car must start braking for that point;
+- t ≥ 1.5 s: green (comfortably reachable); from 1.5 s to 0.75 s it turns
+  orange; orange to 0.25 s ("brake soon"); from 0.25 s to 0 it turns red;
+  t ≤ 0: red ("brake now"; further past it the point cannot be made even
+  on full brakes, which is still red: there is nothing redder).
+
+As a number: urgency u = clamp((1.5 − t) / 0.75, 0, 1) + clamp((0.25 −
+t) / 0.25, 0, 1), 0 green, 1 orange, 2 red, with the colours between
+interpolated in linear RGB (green #28E15F, orange #FF9614, red #FF2323).
+Unit tests pin the bands, monotonicity in distance and speed, and green at
+or under the target. Each chevron is coloured by its own point, so
+approaching a corner too fast the line turns red from the corner back
+towards the car; once the car is slow enough the far side of the corner,
+where the profile rises, stays green.
+
+Braking only shows a chevron with its urgency as its opacity up to 1 (so
+nothing while green, fading in as it turns orange); Full shows every
+chevron.
+
+## D1081. Drawing the guide line
+
+2026-10-05. `play::guide`: one mesh of 102 chevrons, six vertices and four
+triangles each (a ">" pointing down the road, 1.5 m across, the tip
+0.9 m ahead of the arms' ends, the arms 1.5 m long along the road),
+with positions, an up normal and RGBA vertex colours; an unlit (`Model::Basic`)
+transparent material, both sides drawn, no depth write, fog on, and the
+skid marks' polygon offset (constant 256, slope 4, as `skid_material`); 5 cm over the
+road surface (`Track::point_at`'s height, which includes the bank; the
+skid marks sit 3 cm up). The chevrons sit every 3 m of arc length at
+fixed places on the road, so they do not crawl as the car moves; each
+frame the ones within reach are placed along the racing line
+(interpolated between samples) and bent with the road, and the others
+collapse to nothing. Reach: 5.5 s of road at the car's speed, 140 to
+300 m; opacity 0.9, faded in from 3 to 9 m ahead (under the car and the
+bumper camera) and out over the last 45 % of the reach. The first try had
+arms 0.32 m thick: from the chase camera, 1.5 m up, a flat shape on the
+road shows about a tenth of its length 15 m away, and they drew as green
+hairlines; the arms are now as long as the chevron is wide, with 1.5 m
+gaps, which reads as a row of arrows.
+
+The vertices go into the mesh's place in the vertex slab once a frame
+(`animate::MeshWrites`, as the smoke and sparks, D701); no asset edit, no
+new mesh. The CPU copy is reused; the write itself packs a vertex buffer
+(24 KB), as the particles' writes do. The entity sits at the middle of
+the line's reach and the vertices are written relative to it, so the
+transparent sort uses that point (D808's way); its sort rank is 6, after
+the effects, so where it ties with the skid marks it draws over them. Its
+pipeline joins the race's warm-up (D458). Hidden when Off, on the
+results, after the player's finish, and before the race has started
+drawing. The speed and place are the player's as drawn (between the last
+two ticks).
+
+`__mr.aids` (web) gives `guide`, `assist`, `shown` (chevrons drawn last
+frame) and `maxUrgency` for the tests.
+
+## D1082. The steering assist
+
+2026-10-05. `mr_sim::assist::steer_assist(inp, vehicle, phys, track,
+Assist)`, a pure function through the kernel. The client calls it on the
+player's controls each tick before quantising them into the tick's
+`InputFrame` (`flow::Race::frame`), so the frame (and so any recording or
+trace) carries the assisted steering and replays exactly; the simulation
+itself never calls it, so the race, its traces and every parity test are
+untouched, and with the assist Off it is not called (and is the identity
+if it is: a test). The autopilot never gets it.
+
+- **Where the line wants to go**: the turn that arcs the car from its
+  place and heading onto the racing line `8 + 0.5 × speed` metres ahead
+  (the circle tangent to the heading through that point: curvature
+  2 sin α / L), as a yaw rate, then the wheel angle physics would need for
+  it (`atan(yawRate × wheelBase / speed)`), as a steering input for these
+  controls: divided by the lock physics allows at this speed for this
+  kind of input (`steerMax`, including the analogue scaling to the grip),
+  clamped to ±1.
+- **How much help is needed**, 0..1: heading off the road (the car's
+  edge, at the place its drift across the road takes it in 0.7 s, within
+  2 m of the road's edge rises to 1 at 0.2 m; the present place counts with
+  0.8 m less), or far off the line (4 to 8 m off, counted half; the first
+  try started at 2 m, which nudged a car going straight down the middle
+  of a two-lane road, and so changed the field it raced in).
+- **Blend**: steer ← steer + (line − steer) × strength × need × (1 − 0.8 ×
+  deliberate), where deliberate = smoothstep(0.5, 0.95, |steer|): a hard
+  steer of the player's own keeps at least four fifths of its way.
+  Strength: Light 0.5, Strong 0.85.
+- **Never**: slower than 4 m/s, in the air, in the countdown, or facing
+  more than 1.2 rad off the road (spun, or the wrong way). No braking or
+  throttle: only the steering changes.
+
+Measured headlessly (`cargo test --release -p mr_sim --test assist --
+--ignored --nocapture`): a scripted driver uses the autopilot's pedals
+(93 % of the profile, no nitro) with the stick flagged analogue, and
+steers as one of: Good (the autopilot's steering), Lazy (half of it),
+Noisy (it plus a random ±0.7 held for a quarter second), Pulling (70 % of
+it plus 0.2 to the right); a reset after 3 s stuck. Off-road is the car's
+centre outside the road's half-width while racing; Sports car, seed 1,
+the whole race:
+
+| Level | Driver | Race time off / Light / Strong (s) | Off-road off / Light / Strong (s) | Resets off / Light / Strong |
+|---|---|---|---|---|
+| Sierra | Good | 208.6 / 198.4 / 209.4 | 5.1 / 0.6 / 1.2 | 0 / 0 / 0 |
+| Sierra | Lazy | 233.8 / 227.5 / 260.2 | 29.6 / 10.4 / 2.2 | 0 / 0 / 9 |
+| Sierra | Noisy | 227.3 / 226.5 / 203.7 | 17.7 / 3.6 / 2.5 | 0 / 2 / 0 |
+| Sierra | Pulling | 217.7 / 217.1 / 210.1 | 21.0 / 5.8 / 1.0 | 0 / 1 / 1 |
+| Coast | Good | 150.4 / 157.8 / 148.6 | 4.0 / 0.0 / 0.0 | 0 / 0 / 0 |
+| Coast | Lazy | 165.8 / 147.7 / 161.7 | 15.4 / 4.3 / 0.8 | 0 / 0 / 1 |
+| Coast | Noisy | 151.7 / 146.0 / 146.3 | 7.9 / 2.9 / 0.4 | 0 / 0 / 0 |
+| Coast | Pulling | 163.8 / 156.6 / 169.5 | 11.4 / 3.2 / 0.1 | 0 / 0 / 1 |
+| Desert | Good | 136.9 / 140.1 / 147.5 | 2.7 / 0.5 / 4.1 | 0 / 0 / 1 |
+| Desert | Lazy | 162.4 / 139.0 / 142.7 | 19.6 / 5.8 / 1.8 | 0 / 0 / 0 |
+| Desert | Noisy | 139.7 / 144.5 / 144.6 | 12.4 / 3.8 / 2.7 | 0 / 0 / 0 |
+| Desert | Pulling | 172.0 / 173.3 / 152.9 | 16.9 / 2.5 / 0.7 | 5 / 4 / 0 |
+| Streets | Good | 164.3 / 156.4 / 154.0 | 0.0 / 0.0 / 0.0 | 1 / 0 / 0 |
+| Streets | Lazy | 192.9 / 168.0 / 165.1 | 0.0 / 0.0 / 0.0 | 4 / 0 / 0 |
+| Streets | Noisy | 163.1 / 171.0 / 159.7 | 0.0 / 0.0 / 0.0 | 1 / 2 / 0 |
+| Streets | Pulling | 161.8 / 163.0 / 169.2 | 0.0 / 0.0 / 0.0 | 0 / 0 / 0 |
+
+Off-road time falls by 63 to 85 % with Light and by 78 to 99 % with
+Strong for every poor driver on the three levels with open road edges.
+Race times move by a few seconds either way: the field's contacts differ
+from run to run, and most resets are the car pinned against another one
+(Sierra's Lazy and Strong run: nine resets behind a car stopped at 4.7 km,
+which the scripted driver never steers round, hence its 260 s). A good
+driver's times move as the others' do (Light: Sierra −10 s, Coast +7 s);
+with Strong, Desert's good run spent 1.4 s more off the road than
+without (not looked into further), one reason for Light as the default. Streets has walls at the road's edge, so nobody
+leaves it; there the assist saves the bounces (Lazy 193 → 168 → 165 s).
+
+Unit tests: Off is the identity; heading for either edge with the stick
+at rest it steers back, Strong more than Light; on the line it leaves the
+steering; full lock toward the edge keeps most of its way; nothing when
+spun, crawling or airborne.
+
+## D1083. The settings, the defaults and the hooks
+
+2026-10-05. Two drop-downs join the menu's options, on every device:
+**Guide line** (Full, Braking only, Off; `mr.guideLine` = `"full"`,
+`"brake"`, `"off"`) and **Steer assist** (Off, Light, Strong;
+`mr.steerAssist` = `"off"`, `"light"`, `"strong"`), saved as the other
+settings are (JSON strings under `mr.`), ids `opt-guide` and
+`opt-assist`. Defaults: on a touch screen (the same decision as the touch
+controls, `ui::touch_ui`) Full and Light; with a keyboard or gamepad, Off
+and Off. Light rather than Strong so the player still steers (the owner
+asked for help, not a driver). A saved value the menu does not offer
+falls back to the default. `__mr.settings` gains `guide` and `assist`;
+`__mr.selects` the two lists.
+
+Query hooks (D1004's pattern, natively through `--query`): `line=full|
+brake|off` (also `1`, `0`) and `assist=0|1|2` (also `off|light|strong`),
+which override the setting for the run. `play::guide::settings` hands the
+setting (or the hook) to the race each frame before its ticks, so a
+change in the menu reaches the next race and a running one.
+
+## D1084. Bigger touch controls
+
+2026-10-05. Looked at on the emulated iPhone (390 × 844, both ways up):
+the JS's sizes (D436, D840) are the same in CSS px both ways up, sized by
+the short side, so upright, with twice the height, they look small and
+use little of the screen, and the stick's full lock is 58 px of thumb.
+Rust only:
+
+- Sideways: `--b` 14vmin + 26 px (60 to 104; was 12vmin + 26, 58 to 96):
+  72.8 → 80.6 px on the iPhone; the slider 66vmin (200 to 320; was 62vmin):
+  242 → 257 px; full lock 0.17 of the short side (was 0.15): 58.5 → 66 px.
+- Upright: `--b` a fifth of the width, held to (w − 62) / 4.16 so the
+  Buttons choices' ◂ ▸ and pedal pads still share the bottom row (78 px);
+  the ◂ ▸ pads and the GAS and BRAKE pads 1.4 times as tall (118 and 142
+  px), DRIFT and N₂O 0.84 b round (was 0.74 b); the slider panel's unit
+  0.22 of the width (86 px: slider 81.5, strip 60, was 69 and 51) and the
+  slider 0.36 of the height (304 px, was 242); full lock 0.185 of the
+  width (72 px), the most that keeps the stick at rest clear of the panel.
+- The knob is the full-lock distance across, 56 to 72 px (56 in the JS),
+  and its track is 8 px shorter than the knob (48 in the JS).
+- The HUD's `--steer-top` for the Buttons choice (what keeps the speed
+  box above the ◂ ▸ pads) is now the pads' own top, so the taller pads
+  push it up; sideways it is the same number as before.
+
+The suites against the release build (`js-suites.mjs`): touch-controls
+10 of 10, tilt 5 of 5, race-flow 11 of 11, menu 9 of 9 (the new options
+included), analog-controls 4 of 5. The one that fails, "the pedal
+slider ...", fails on its last check ("light gas pulls away slower"): it
+resets the car 40 m past the start at rest at about 4 s of race time
+(`timescale=2`), in the path of the field, and a rival running into it
+gives the "light gas" pull 12 to 15 m/s. Replaying the test's steps by
+script, main's build is hit the same way; whether the real test is hit
+depends on how much race time its wall-clock steps take, which this
+build shifts (it fails here also with the guide line and the assist
+off, once in two). Left for the owner's call: the test is the frozen JS
+game's.
+
+Pictures (rest, both thumbs, the Buttons choices; before = main's build,
+after = this one), the guide line on Sierra (day) and Streets (night)
+into a hairpin flat out, sideways and upright, every camera mode, Braking
+only, the menu's new options, and the native countdown with the line (lavapipe under Xvfb: the
+race shot 20 s in did not come within 15 minutes on the loaded machine):
+`parity/report/driving-aids/index.html` of the branch's worktree (build
+output, not in git; `tools/parity/e2e/guide-line.mjs` and
+`tools/parity/touch-shots.mjs --side rust` make them again).

@@ -104,6 +104,22 @@ pub fn select_options(sel: Sel, s: &Settings) -> (Vec<(String, String)>, String)
             ],
             s.pedals.clone(),
         ),
+        Sel::Guide => (
+            vec![
+                ("full".into(), "Full".into()),
+                ("brake".into(), "Braking only".into()),
+                ("off".into(), "Off".into()),
+            ],
+            s.guide.clone(),
+        ),
+        Sel::Assist => (
+            vec![
+                ("off".into(), "Off".into()),
+                ("light".into(), "Light".into()),
+                ("strong".into(), "Strong".into()),
+            ],
+            s.assist.clone(),
+        ),
     }
 }
 
@@ -676,6 +692,30 @@ fn options(
         s.flash,
         "Police lights flash",
     );
+    // The driving aids (Rust only, D1083), on every device.
+    for (sel, label, value) in [
+        (Sel::Guide, "Guide line", &s.guide),
+        (Sel::Assist, "Steer assist", &s.assist),
+    ] {
+        let id = super::sel_id(sel);
+        let f = cx.f(id);
+        p.spawn(Node {
+            align_items: AlignItems::Center,
+            column_gap: bp.px(4.0),
+            ..default()
+        })
+        .with_children(|p| {
+            p.spawn(w::text(label, ot, bp.k));
+            w::select(
+                p,
+                &bp,
+                Control::act(id, Act::Open(sel)).value(Value::Text(value.clone())),
+                &shown(sel, s),
+                cx.icons,
+                f,
+            );
+        });
+    }
     if touch {
         check(p, cx, "opt-autogas", Opt::Autogas, s.autogas, "Auto gas");
         for (sel, label) in [(Sel::Steer, "Steering"), (Sel::Pedals, "Pedals")] {

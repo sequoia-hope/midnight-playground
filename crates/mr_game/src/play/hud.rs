@@ -496,7 +496,8 @@ fn steer_top(lay: &Layout, steering: &str) -> f32 {
     let b = lay.b as f32;
     match steering {
         // body.touch:has(#touch.buttons) / :has(#touch.tilt)
-        "buttons" => in_b + b * 1.08,
+        // The ◂ ▸ pads' top: `--inB` + 1.08 b, taller upright (D1084).
+        "buttons" => (lay.h - lay.dirs[0].top) as f32,
         "tilt" => in_b + b * 1.3 + 8.0,
         _ => in_b + b * 0.6 + 32.0,
     }
