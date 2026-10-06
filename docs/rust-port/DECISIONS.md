@@ -8358,3 +8358,16 @@ btn-exit` presses it in a native run (checked: logs "Quit: exit", exit
 code 0). `ActCtx` now carries the `AppExit` writer, which `ui_script` uses
 too. Pictures: `parity/report/ev-audio/menu-quit-*.png` (native
 `--screenshot` at 1280 × 1500 and, with `touch=1`, 1000 × 480).
+
+## D1062. The gamepad's camera button is Y, as it was
+
+2026-10-05. The owner was not sure the pad had the camera view and asked
+for a face button or RB. It has: the JS's `DEFAULT_MAP` binds `camera` to
+Y (button 3; gilrs's North natively), the one-shot that C is on the
+keyboard, and the Controller screen lists it (Camera: Y) and remaps it
+like the others. RB (button 5) is the handbrake's second button (X / RB),
+so moving the camera there would take it from the handbrake. No binding
+changed, so saved maps (`mr.padMaps`) load as before. A unit test pins it
+(`the_camera_is_y_by_default_and_rb_stays_the_handbrakes`: the default
+map, the label, one camera press per Y press, RB the handbrake's, no
+button bound twice, a saved map keeping its own camera button).
