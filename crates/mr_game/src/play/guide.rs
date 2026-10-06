@@ -71,15 +71,18 @@ fn reach(speed: f64) -> f64 {
     (speed * 5.5).clamp(140.0, 300.0)
 }
 /// A chevron: its width across the road, how far its tip leads its arms'
-/// ends, and its arms' thickness along the road (metres).
-const WIDTH: f64 = 1.1;
-const TIP: f64 = 0.55;
-const THICK: f64 = 0.32;
+/// ends, and its arms' thickness along the road (metres). Long along the
+/// road: seen from a chase camera a metre and a half up, a flat shape on
+/// the road shows only a tenth of its length 15 m away, and 0.3 m arms
+/// drew as hairlines.
+const WIDTH: f64 = 1.5;
+const TIP: f64 = 0.9;
+const THICK: f64 = 1.5;
 /// Over the road surface, as the skid marks are (`Effects.js`: +0.03), a
 /// little more because a chevron spans more of a bend.
 const LIFT: f64 = 0.05;
 /// The line's opacity at its strongest.
-const OPACITY: f32 = 0.82;
+const OPACITY: f32 = 0.9;
 
 /// The colours, as sRGB bytes: green (fine), orange (brake soon), red
 /// (brake now).
@@ -255,14 +258,23 @@ fn spawn(
     shared: Res<SharedImages>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut mats: ResMut<Assets<ThreeMaterial>>,
+    lines: Query<(), With<GuideLine>>,
 ) {
     if play.race.is_none() {
-        if let Some(d) = guide.drawn.take() {
+        if let Some(d) = guide.drawn.take()
+            && lines.contains(d.entity)
+        {
             commands.entity(d.entity).despawn();
         }
         return;
     }
-    if guide.drawn.is_some() {
+    // Made last frame (its spawn applied since), or taken away with the
+    // level's scene (a `SceneEntity`): then a new one.
+    if guide
+        .drawn
+        .as_ref()
+        .is_some_and(|d| lines.contains(d.entity))
+    {
         return;
     }
     let cpu = guide_mesh();
