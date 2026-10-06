@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Engine Sound Lab</title>
+<link rel="icon" href="data:,">
+<!--
+  Engine Sound Lab: a listening prototype of the physical exhaust model in
+  docs/vision/sound.md 2.1-2.2 (combustion pulses with cycle-to-cycle
+  variation, header / pipe / tailpipe waveguides, muffler resonances, intake,
+  mechanical ticks, overrun pops, turbo; psychoacoustic bass and a speaker
+  simulation). The model runs per sample in engine-lab/worklet.js; presets in
+  engine-lab/presets.js; the rev and drive patterns in engine-lab/drive.js;
+  offline measurements in engine-lab/measure.js. The A/B button plays the
+  current game engine (src/game/Audio.js, used read-only) driven the same way.
+-->
+<style>
+:root { --bg: #0d0f14; --card: #161a22; --line: #262c36; --fg: #e6e9ee; --muted: #8b94a3; --accent: #ff3d7f; --ok: #4dff8a; --low: #ffb84d; --high: #6fb7ff; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; padding: 16px; }
+h1 { font-size: 1.25rem; margin: 0 0 6px; }
+h2 { font-size: 1rem; margin: 0 0 8px; }
+p { color: var(--muted); margin: 0 0 10px; max-width: 760px; }
+code { color: var(--fg); font-size: 13px; }
+button, select { background: #222834; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; font: inherit; font-size: 14px; white-space: nowrap; }
+select { max-width: 100%; }
+button:hover, select:hover { border-color: var(--accent); }
+button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.big { padding: 10px 18px; font-size: 16px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#status { position: sticky; top: 0; z-index: 2; margin: 10px -16px 12px; padding: 8px 16px; background: var(--bg); border-bottom: 1px solid var(--line); color: var(--muted); }
+#status.err { color: #ff8a8a; }
+#status b { color: var(--fg); font-weight: 600; }
+.grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); max-width: 1200px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+.card.wide { grid-column: 1 / -1; }
+.card p { font-size: 13px; margin: 4px 0 8px; }
+label.sl { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(90px, 2fr) 56px; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); padding: 2px 0; }
+label.sl output { color: var(--fg); text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.tweaks { display: grid; gap: 0 18px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.read { display: flex; flex-wrap: wrap; gap: 14px; font-variant-numeric: tabular-nums; font-size: 14px; margin: 6px 0; }
+.read span { color: var(--muted); }
+.read b { color: var(--fg); font-weight: 600; }
+canvas { width: 100%; height: 140px; background: #0a0c10; border: 1px solid var(--line); border-radius: 8px; display: block; }
+textarea { width: 100%; height: 140px; background: #11141b; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: 12px/1.4 ui-monospace, monospace; }
+table { border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+th, td { padding: 3px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+.scroll { overflow-x: auto; max-width: 100%; }
+.good { color: var(--ok); }
+.k-low { color: var(--low); } .k-high { color: var(--high); }
+label.sl.spk { grid-template-columns: minmax(120px, 1fr) minmax(90px, 2fr); }
+@media (max-width: 600px) { label.sl.spk { grid-template-columns: 1fr; } label.sl.spk select { grid-column: 1; grid-row: 2; } label.sl { grid-template-columns: 1fr 64px; } label.sl input { grid-column: 1 / -1; grid-row: 2; } }
+</style>
+</head>
+<body>
+<h1>Engine Sound Lab</h1>
+<p>A prototype of the physical exhaust model from <code>docs/vision/sound.md</code>: every cylinder fires its own pulse
+(never two alike) into its own header pipe, the headers merge and ring through the exhaust, muffler and tailpipe.
+<b>B</b> is this new model; <b>A</b> is the engine in the game today, driven the same way, for comparison.
+Headphones first, then try the <b>Listen on</b> setting to hear what a phone or laptop would make of it.</p>
+<div id="status">Tap <b>▶ Play</b> to start.</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Engine</h2>
+    <div class="row" style="margin-bottom:8px">
+      <select id="preset" aria-label="Engine preset"></select>
+    </div>
+    <p id="presetNote"></p>
+    <div class="row">
+      <button id="play" class="big">▶ Play</button>
+      <button id="srcB" class="on" title="Key: B">B · new model</button>
+      <button id="srcA" title="Key: A">A · current game engine</button>
+    </div>
+    <p id="abNote" style="margin-top:8px"></p>
+  </div>
+
+  <div class="card">
+    <h2>Drive</h2>
+    <div class="row" style="margin-bottom:8px">
+      <button id="mManual" class="on">Manual</button>
+      <button id="mRev">Auto rev</button>
+      <button id="mDrive">Drive (a pull)</button>
+    </div>
+    <label class="sl">rpm <input type="range" id="rpm" min="700" max="9000" step="10" value="900"><output></output></label>
+    <label class="sl">Throttle <input type="range" id="thr" min="0" max="1" step="0.01" value="0"><output></output></label>
+    <div class="read">
+      <div><span>rpm </span><b id="rRpm">–</b></div>
+      <div><span>throttle </span><b id="rThr">–</b></div>
+      <div><span>gear </span><b id="rGear">–</b></div>
+      <div><span>km/h </span><b id="rSpeed">–</b></div>
+      <div id="boostBox"><span>boost </span><b id="rBoost">–</b></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Listen on</h2>
+    <label class="sl spk">Speaker <select id="speaker">
+      <option value="headphones">Headphones (as is)</option>
+      <option value="big">Big speakers</option>
+      <option value="laptop">Laptop (cut below ~170 Hz)</option>
+      <option value="phone">Phone (cut below ~330 Hz, mono)</option>
+    </select></label>
+    <label class="sl">Psychoacoustic bass <input type="range" id="psycho" min="0" max="1" step="0.01" value="0"><output></output></label>
+    <label class="sl">Master volume <input type="range" id="vol" min="0" max="1" step="0.01" value="0.7"><output></output></label>
+    <p>The speaker setting simulates the target speaker on whatever you are wearing, for both A and B. Psychoacoustic
+    bass (B only) adds harmonics of the rumble so a speaker that can't play it still implies it.</p>
+  </div>
+
+  <div class="card wide">
+    <h2>Spectrum <small style="color:var(--muted);font-weight:400">(what you hear, after the speaker setting)</small></h2>
+    <canvas id="spec" width="1200" height="280"></canvas>
+    <div class="read"><div><span class="k-low">rumble 40–150 Hz </span><b id="eLow">–</b></div><div><span class="k-high">whine 1–4 kHz </span><b id="eHigh">–</b></div><div><span>rumble − whine </span><b id="eRatio">–</b></div></div>
+  </div>
+
+  <div class="card wide">
+    <h2>Tweak the model</h2>
+    <p>Live changes to the selected preset (B). <b>Copy preset JSON</b> captures the numbers for Claude to put back into
+    <code>tools/engine-lab/presets.js</code>.</p>
+    <div class="tweaks" id="tweaks"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="copy">Copy preset JSON</button>
+      <button id="reset">Reset preset</button>
+      <span id="copyNote" style="color:var(--muted);font-size:13px"></span>
+    </div>
+    <textarea id="json" readonly hidden style="margin-top:8px"></textarea>
+  </div>
+
+  <div class="card wide">
+    <h2>Measure (offline, no ears)</h2>
+    <p>Renders every preset at a few rpm / throttle points, new model vs the game's comparable car, and compares the energy in the
+    rumble band (40–150 Hz) with the whine band (1–4 kHz), and <b>cycle corr.</b>: how alike one 720° cycle is to the next
+    (1 = perfectly periodic, the "synth whine"; a real engine wanders, most at idle and on overrun).</p>
+    <div class="row"><button id="measure">Measure all presets</button><span id="mNote" style="color:var(--muted);font-size:13px"></span></div>
+    <div class="scroll"><table id="mTable" style="margin-top:8px"></table></div>
+  </div>
+</div>
+
+<script type="module" src="engine-lab/main.js"></script>
+</body>
+</html>

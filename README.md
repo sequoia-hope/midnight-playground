@@ -369,7 +369,8 @@ vendor/three/          three.js r180 (the build plus the few add-ons used)
 tools/                 check-track.js, car-test.html, audio-test.html, serve.py,
                        og-image.mjs, radio-voice.html and radio-voice/ (the police
                        radio voice: design, record, audition), dj-voice.html and
-                       dj-voice/ (sample DJ chatter, the same way), seaside/build.py
+                       dj-voice/ (sample DJ chatter, the same way), engine-lab.html
+                       and engine-lab/ (the exhaust model prototype), seaside/build.py
                        (Level 5's data from OpenStreetMap and USGS)
 test/unit/, test/e2e/  the tests (see Tests below)
 music.html             the soundtrack player
@@ -399,6 +400,11 @@ grade, and any place where two parts of the road overlap.
 The link-preview picture, `og-image.png`, is a shot from the game (Hot Pursuit
 on Interstate 9) with the logo on it. `node tools/og-image.mjs` renders it
 again, in headless Chrome with no server, like the tests.
+
+`tools/engine-lab.html` (on the dev server, over https or localhost) is the
+Engine Sound Lab: a listening prototype of the physical exhaust model in
+`docs/vision/sound.md`, with presets, rev and drive patterns, live tweaks, an
+A/B against the current game engine and offline measurements.
 
 ## Music player
 
