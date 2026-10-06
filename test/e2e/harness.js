@@ -394,7 +394,11 @@ async function openRust(browser, { device, query, storage, path: page_, init, in
   }
   if (target === 'rust') await page.evaluateOnNewDocument(installBridge, String(selectorId));
   if (init) await page.evaluateOnNewDocument(init, ...initArgs);
-  const q = [query.replace(/^\?/, ''), process.env.MR_QUERY || ''].filter(Boolean).join('&');
+  // These suites test the JS game's behaviour: the Rust build's driving
+  // aids, on by default on a touch screen (DECISIONS D1083), start off
+  // unless a test asks for them.
+  const aids = ['assist=0', 'line=off'].filter((kv) => !new RegExp('(^|[?&])' + kv.split('=')[0] + '=').test(query));
+  const q = [query.replace(/^\?/, ''), ...aids, process.env.MR_QUERY || ''].filter(Boolean).join('&');
   await page.goto(ORIGIN + '/' + (page_ || RUST_PAGE) + (q ? '?' + q : ''));
   await game.waitReady();
   return game;
