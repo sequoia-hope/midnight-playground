@@ -8912,3 +8912,17 @@ race shot 20 s in did not come within 15 minutes on the loaded machine):
 `parity/report/driving-aids/index.html` of the branch's worktree (build
 output, not in git; `tools/parity/e2e/guide-line.mjs` and
 `tools/parity/touch-shots.mjs --side rust` make them again).
+
+## D1010. The menu's music plays at once
+
+2026-10-06. The owner, natively: no game sound on the menu until a volume
+slider was moved (that applies the volumes and turns the music on). The
+JS menu is the same: `wakeAudio` builds the sound on the first gesture,
+but nothing picks a track until a level tab (`if (audio.ready)
+pickMusic()`) or Race (`startRace`: `pickMusic(); applyVolume()`). The
+owner wants the music at once. On the main menu, once the sound is up,
+`play::audio::RaceAudio::menu_music` picks the selected level's track and
+applies the volumes, as `startRace` does; natively, where nothing needs a
+gesture, it also wakes the sound itself, so the music starts with the
+menu. On the web the sound still waits for the first tap or key (the
+browser's autoplay rule). A deviation (DEVIATIONS.md).

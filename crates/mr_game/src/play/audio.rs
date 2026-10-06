@@ -804,6 +804,22 @@ impl RaceAudio {
         }
     }
 
+    /// The menu's music as soon as the sound is up (DECISIONS D1010): the
+    /// selected level's track and the volumes, as `startRace` sets them. The
+    /// JS menu stays silent until a level tab or a race asks for music; the
+    /// owner wants it at once. Natively, where no gesture is needed, the
+    /// sound is woken for it.
+    pub fn menu_music(&mut self, level: &str) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if !self.audio.ready() {
+            self.wake();
+        }
+        if self.audio.ready() && self.music_key.is_none() {
+            self.pick_music(level);
+            self.apply_volume();
+        }
+    }
+
     /// A level tab: `if (audio.ready) pickMusic()`.
     pub fn menu_level(&mut self, level: &str) {
         if self.audio.ready() {
