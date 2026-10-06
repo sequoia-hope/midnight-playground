@@ -9024,3 +9024,39 @@ Kept, and why:
   `https://midnight-racer.test`. A repository rename moves the Pages
   address, and GitHub does not redirect a project site, so it is done once,
   with the swap (WP 9.5).
+
+## D1101. Pages publishes the Rust build beside the JS game
+
+2026-10-06. The owner, so friends can try the Rust build while
+multiplayer is built: "yes, side by side deploy", having been offered
+this or a full cutover and noting they "never did comprehensive testing"
+of the Rust version. This brings forward part of WP 9.5 (the Pages
+source moves to GitHub Actions) without the swap.
+
+- `.github/workflows/pages.yml` runs on every push to `main` (cloud
+  workers push there too) and publishes the commit's tracked files, so
+  the site root is what "deploy from branch main" served, plus
+  `cargo xtask web --release` at `dist/next/`: the same path as on the
+  registered server and the tailnet, so the client's relative URLs
+  (`../../audio/radio/`, `../../music.html`) resolve as they do there.
+  The `.br` and `.gz` copies are left out, since Pages compresses on the
+  fly.
+- A failed Rust build still publishes the JS game. `dist/next/` is then
+  a one-line page naming the commit that failed. Deploys queue one at a
+  time, and only the newest waiting push is kept.
+- The JS game stays at the root, frozen as before. Both games share the
+  origin, and so the `mr.*` storage keys, as they always have on the
+  tailnet (D1100).
+- Still the owner's to decide at M9: the swap itself, `/legacy/`, and the
+  repository rename.
+
+## D1102. Coast Highway is the first level
+
+The owner (2026-10-06): the game is Midnight Playground, and its first
+level should start in the dark. Coast Highway leaves before dawn and drives
+into sunrise over Seabright; Sierra starts at sunset. `mp_levels::levels()`
+now lists Coast first and Sierra second, their badges swap (LEVEL 1 and
+LEVEL 2), and a new player's stored level defaults to `coast`. Players who
+already have `level` stored keep their choice. `level_by_id` still falls
+back to the first entry, now Coast. Everything that walks the list finds
+the same levels; only the order changed. The JS game keeps Sierra first.

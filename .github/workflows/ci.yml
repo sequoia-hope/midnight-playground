@@ -1,6 +1,6 @@
 # CI for the Rust port and the JS game's unit tests (roadmap WP 0.2).
-# No deploy: GitHub Pages serves main as it is (the JS game) until cutover
-# (roadmap M9). The browser suites need a GPU and run on the dev machine.
+# No deploy here: pages.yml publishes the site (DECISIONS D1101). The
+# browser suites need a GPU and run on the dev machine.
 name: CI
 
 on:
