@@ -119,6 +119,9 @@ pub enum Act {
     PadBind(&'static str),
     PadDefaults,
     PadDone,
+    /// Natively: leave the game, as Ctrl+Q does (D1002); the window state
+    /// is saved on the way out (D1060).
+    Exit,
 }
 
 /// Frames between freeing the menu's views and asking for the level: the
@@ -943,6 +946,7 @@ struct ActCtx<'w, 's> {
     pads: ResMut<'w, crate::play::gamepad_io::PadsRes>,
     pad_setup: ResMut<'w, pad_setup::PadSetup>,
     windows: Query<'w, 's, &'static mut Window, With<PrimaryWindow>>,
+    exit: MessageWriter<'w, bevy::app::AppExit>,
 }
 
 /// A slider follows the pointer: `el.value` from where it is along the
@@ -984,6 +988,7 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
             | Act::PadDefaults
             | Act::PadBind(_)
             | Act::NextTrack
+            | Act::Exit
     ) {
         ui.clicks.push("click");
     }
@@ -1152,6 +1157,14 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
             let level = ctx.opts.o.level.clone();
             ctx.previews.back_to_menu(&level);
         }
+        Act::Exit => {
+            // Only the native menu has the button; the page cannot close
+            // itself.
+            if cfg!(not(target_arch = "wasm32")) && ui.screen == Screen::Menu && !busy {
+                info!("Quit: exit");
+                ctx.exit.write(bevy::app::AppExit::Success);
+            }
+        }
     }
     let _ = &ctx.status;
 }
@@ -1177,7 +1190,6 @@ fn ui_script(
     mut ctx: ActCtx,
     mut step: Local<usize>,
     mut wait: Local<u32>,
-    mut exit: MessageWriter<bevy::app::AppExit>,
 ) {
     let steps: Vec<String> = ctx
         .opts
@@ -1197,7 +1209,7 @@ fn ui_script(
             && ui.starting.is_none()
         {
             info!("uiscript: racing on {}; done", ctx.opts.o.level);
-            exit.write(bevy::app::AppExit::Success);
+            ctx.exit.write(bevy::app::AppExit::Success);
         }
         return;
     }
@@ -1218,7 +1230,7 @@ fn ui_script(
         .and_then(|(_, c, ..)| c.act.clone());
     let Some(act) = act else {
         error!("uiscript: no control {id}");
-        exit.write(bevy::app::AppExit::error());
+        ctx.exit.write(bevy::app::AppExit::error());
         return;
     };
     info!(

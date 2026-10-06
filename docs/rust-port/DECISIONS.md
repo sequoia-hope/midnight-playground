@@ -8514,3 +8514,69 @@ before). The `buffer underrun` messages the owner saw also turned the pops
 into a rattle; the owner's report that the exhaust burble "sounds like
 aluminum cans dragging behind the car" is to be judged again on this
 build.
+
+## D1060. A Quit button on the native menu
+
+2026-10-05. The owner: "native game could use a quit button in the menu."
+The native client's main menu ends with a QUIT button (`btn-exit`,
+`Act::Exit`), a secondary `.btn` as the pause screen's: under the keyboard
+or touch help, centred, and in the phone-landscape grid on a row of its own
+across both columns (`touch=1` natively shows the touch layout). It leaves
+the game as Ctrl+Q does (D1002): `AppExit::Success`, and `window_state`'s
+`on_exit` saves the window on the way out. The web build has no such button
+(the page cannot close itself), so the JS's menu and the web e2e suites
+are unchanged. The gamepad reaches it with ↓ from the options row
+(`ui::nav::nearest`, factored out of `mv_in` for a unit test); `uiscript=
+btn-exit` presses it in a native run (checked: logs "Quit: exit", exit
+code 0). `ActCtx` now carries the `AppExit` writer, which `ui_script` uses
+too. Pictures: `parity/report/ev-audio/menu-quit-*.png` (native
+`--screenshot` at 1280 × 1500 and, with `touch=1`, 1000 × 480).
+
+## D1061. The Ion Arc's motor is hushed and its wind is louder
+
+2026-10-05. The owner: "the ion arc engine sound is really annoying at full
+speed. I have seen other games make EVs silent and play up car wind noise."
+`update_electric` scales the motor's tonal voices (f1, f2, f3, the gear
+mesh, the regen whine and the filtered saw) by `ev_hush(motor)`: 0.45
+(−7 dB) up to 10 % of the motor's top speed, falling linearly to 0.125
+(−18 dB) at 60 % and above. The idle hum at a standstill, the boost growl
+and the rotor-air noise are as before. `update_environment` multiplies the
+wind bed and the high wind beds by `ev_wind(speed)` for the electric car:
+1 at a standstill rising to 2.25 (+7 dB) at 60 m/s and beyond, and the road
+rumble by its square root (half as many dB). Every other car multiplies by
+1 (exactly), so their sound and the call logs are the JS's.
+
+Measured offline (`render_scenarios` on the native backend, SFX 0.85, RMS
+over 0.5–1.5 s of a steady state at full throttle, power 450 kW, motor =
+speed / 71): the motor alone (speed 0) goes from −15.9 / −16.2 / −16.3 /
+−16.3 / −16.3 dB at 5 / 15 / 30 / 50 / 71 m/s to −22.7 / −24.5 / −28.5 /
+−34.2 / −34.2 (−6.8 to −17.9 dB); the wind and road alone go from −53.2 /
+−43.0 / −36.1 / −30.3 / −27.4 to −52.7 / −41.8 / −33.6 / −26.1 / −21.5 (up
+to +5.9 dB). At top speed the motor was 11 dB over the wind and is now
+12.7 dB under it. A 12 s run from 0 to the limiter: −16.4 dB overall before
+(the motor's, constant), −24.1 after, rising with speed from −27.6 (28–43
+m/s) to −21.5 at the limiter. The sports car's renders are bit-identical
+before and after. Renders to listen to: `parity/report/ev-audio/`.
+
+The audio golden is Chrome's render of the JS, so the ten
+`engine-electric-*` scenarios now differ from it on purpose (−6.9 to −18.1
+dB RMS). `tools/parity/audio-bands.mjs` holds them (its `DEVIATED` list) to
+the Rust render's own bands in `parity/golden/audio/rust-deviated.json`,
+written with `--update-deviated`, at the same 1.5 dB; the other 101 are
+still compared with Chrome (110 of 111 pass; the one left is D259's
+`engine-rally-6500-1` at 25 Hz, as before). The JS game is unchanged: the
+same change in `src/game/Audio.js` (`_updateElectric`,
+`_updateEnvironment`) would bring it to GitHub Pages if the owner wants.
+
+## D1062. The gamepad's camera button is Y, as it was
+
+2026-10-05. The owner was not sure the pad had the camera view and asked
+for a face button or RB. It has: the JS's `DEFAULT_MAP` binds `camera` to
+Y (button 3; gilrs's North natively), the one-shot that C is on the
+keyboard, and the Controller screen lists it (Camera: Y) and remaps it
+like the others. RB (button 5) is the handbrake's second button (X / RB),
+so moving the camera there would take it from the handbrake. No binding
+changed, so saved maps (`mr.padMaps`) load as before. A unit test pins it
+(`the_camera_is_y_by_default_and_rb_stays_the_handbrakes`: the default
+map, the label, one camera press per Y press, RB the handbrake's, no
+button bound twice, a saved map keeping its own camera button).

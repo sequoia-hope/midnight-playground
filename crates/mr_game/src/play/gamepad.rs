@@ -1051,6 +1051,46 @@ mod tests {
     }
 
     #[test]
+    fn the_camera_is_y_by_default_and_rb_stays_the_handbrakes() {
+        // The owner asked for a face button or RB for the camera
+        // (2026-10-05): Y has it in the JS's DEFAULT_MAP already; RB is the
+        // handbrake's second button, so nothing moves (D1062).
+        assert_eq!(bindings(&default_map(), "camera"), &[Binding::Button(3)]);
+        assert_eq!(
+            bindings(&default_map(), "handbrake"),
+            &[Binding::Button(2), Binding::Button(5)]
+        );
+        assert_eq!(Pads::default().label(Action::Camera), "Y");
+        // Every default button is one action's, so a press does one thing.
+        let mut seen = Vec::new();
+        for (_, list) in default_map() {
+            for b in list {
+                assert!(!seen.contains(&b), "{b:?} bound twice");
+                seen.push(b);
+            }
+        }
+        let mut p = pad();
+        let mut pads = Pads::default();
+        poll(&mut pads, 0.0, &[&p]);
+        btn(&mut p, 3, true);
+        let s = poll(&mut pads, 16.0, &[&p]);
+        assert_eq!(s.edges, vec![Action::Camera], "Y: one camera press");
+        assert!(!s.held(Action::Handbrake));
+        btn(&mut p, 3, false);
+        btn(&mut p, 5, true);
+        let s = poll(&mut pads, 32.0, &[&p]);
+        assert!(s.held(Action::Handbrake), "RB: handbrake");
+        assert!(s.edges.is_empty());
+        // A map saved before (`mr.padMaps`) keeps its own camera button.
+        let saved = r#"{"Pad":{"camera":[{"button":4}],"handbrake":[{"button":5}]}}"#;
+        let pads = Pads::new(maps_from_json(&serde_json::from_str(saved).unwrap()));
+        assert_eq!(
+            bindings(pads.map_for(&pad()), "camera"),
+            &[Binding::Button(4)]
+        );
+    }
+
+    #[test]
     fn the_menu_buttons_dpad_left_stick_a_b_start_from_any_pad() {
         let mut a = pad();
         let mut b = make_pad("Pad", 1, "standard", 4);

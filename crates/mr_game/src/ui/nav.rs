@@ -174,47 +174,51 @@ impl MenuNav {
 
     fn mv_in(&mut self, ui: &mut UiState, list: &List, dir: Nav) {
         let Some(cur) = &self.cur else { return };
-        let Some((_, _, from)) = list.iter().find(|(i, ..)| i == cur) else {
-            return;
-        };
-        let (fl, ft, fw, fh) = *from;
-        let (fr, fb) = (fl + fw, ft + fh);
-        let fx = fl + fw / 2.0;
-        let fy = ft + fh / 2.0;
-        let vert = matches!(dir, Nav::Up | Nav::Down);
-        let sign = if matches!(dir, Nav::Up | Nav::Left) {
-            -1.0
-        } else {
-            1.0
-        };
-        let mut best: Option<&String> = None;
-        let mut best_score = f32::INFINITY;
-        for (id, _, r) in list {
-            if id == cur || *r == *from {
-                continue;
-            }
-            let cx = r.0 + r.2 / 2.0;
-            let cy = r.1 + r.3 / 2.0;
-            let along = (if vert { cy - fy } else { cx - fx }) * sign;
-            if along <= 1.0 {
-                continue;
-            }
-            // How far off to the side it is, 0 where the two overlap.
-            let off = if vert {
-                0f32.max(r.0 - fr).max(fl - (r.0 + r.2))
-            } else {
-                0f32.max(r.1 - fb).max(ft - (r.1 + r.3))
-            };
-            let score = along + off * 3.0;
-            if score < best_score {
-                best = Some(id);
-                best_score = score;
-            }
-        }
-        if let Some(b) = best.cloned() {
+        if let Some(b) = nearest(list, cur, dir).cloned() {
             self.set_cur(ui, Some(b));
         }
     }
+}
+
+/// The control `dir` of `cur`: the nearest whose middle lies that way,
+/// preferring ones in line.
+fn nearest<'a>(list: &'a List, cur: &str, dir: Nav) -> Option<&'a String> {
+    let (_, _, from) = list.iter().find(|(i, ..)| i == cur)?;
+    let (fl, ft, fw, fh) = *from;
+    let (fr, fb) = (fl + fw, ft + fh);
+    let fx = fl + fw / 2.0;
+    let fy = ft + fh / 2.0;
+    let vert = matches!(dir, Nav::Up | Nav::Down);
+    let sign = if matches!(dir, Nav::Up | Nav::Left) {
+        -1.0
+    } else {
+        1.0
+    };
+    let mut best: Option<&String> = None;
+    let mut best_score = f32::INFINITY;
+    for (id, _, r) in list {
+        if id == cur || *r == *from {
+            continue;
+        }
+        let cx = r.0 + r.2 / 2.0;
+        let cy = r.1 + r.3 / 2.0;
+        let along = (if vert { cy - fy } else { cx - fx }) * sign;
+        if along <= 1.0 {
+            continue;
+        }
+        // How far off to the side it is, 0 where the two overlap.
+        let off = if vert {
+            0f32.max(r.0 - fr).max(fl - (r.0 + r.2))
+        } else {
+            0f32.max(r.1 - fb).max(ft - (r.1 + r.3))
+        };
+        let score = along + off * 3.0;
+        if score < best_score {
+            best = Some(id);
+            best_score = score;
+        }
+    }
+    best
 }
 
 /// `stepRange`: a slider by five of its steps (its value is 0–100, the
@@ -459,4 +463,44 @@ fn publish(nav: &MenuNav) {
     let _ = Reflect::set(&o, &"shown".into(), &nav.shown.into());
     let _ = Reflect::set(&o, &"editing".into(), &nav.editing.into());
     let _ = Reflect::set(&mr, &"padNav".into(), &o);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn down_from_the_menus_last_row_reaches_quit() {
+        // The native menu's bottom at 1280 × 1500 (CSS px, as laid out):
+        // the Race button, the options row, then Quit (D1060).
+        let c = |id: &str, act: Act, r: (f32, f32, f32, f32)| (id.to_string(), act, r);
+        let list: List = vec![
+            c("btn-start", Act::Start, (530.0, 899.0, 220.0, 50.0)),
+            c(
+                "vol-music",
+                Act::Slide(Sl::Music),
+                (190.0, 972.0, 110.0, 16.0),
+            ),
+            c(
+                "opt-mph",
+                Act::Toggle(super::super::Opt::Mph),
+                (638.0, 972.0, 50.0, 16.0),
+            ),
+            c("btn-pad", Act::PadSetup, (967.0, 965.0, 168.0, 32.0)),
+            c("btn-exit", Act::Exit, (530.0, 1149.0, 220.0, 52.0)),
+        ];
+        for from in ["vol-music", "opt-mph", "btn-pad"] {
+            assert_eq!(
+                nearest(&list, from, Nav::Down).map(String::as_str),
+                Some("btn-exit"),
+                "down from {from}"
+            );
+        }
+        assert_eq!(nearest(&list, "btn-exit", Nav::Down), None, "the last");
+        assert_eq!(
+            nearest(&list, "btn-exit", Nav::Up).map(String::as_str),
+            Some("opt-mph"),
+            "back up to the row above, the control in line first"
+        );
+    }
 }
