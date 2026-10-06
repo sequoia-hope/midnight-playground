@@ -8190,8 +8190,13 @@ state. Not checked: F11 under a window manager by key. XWayland here
 passes XTEST through the input-capture portal (`-enable-ei-portal`) and
 Wayland has no injection, so the key was not pressed on the real desktop;
 the same mode change, made at start for a saved fullscreen, was checked
-there (D1000). The owner can press F11 and Ctrl+Q once in a native
-window. Cmd+Q on macOS and Windows are untested.
+there (D1000). Cmd+Q on macOS and Windows are untested.
+
+Checked by the owner, 2026-10-05, on the real desktop (GNOME on Wayland,
+`cargo run -p mr_game`, the menu): F11 by key went fullscreen ("F11:
+fullscreen on"), Ctrl+Q quit, and `window-state.json` was saved as
+`{"width":1600,"height":900,"fullscreen":true,"maximized":false}`: the
+normal bounds under the fullscreen, and no position, as Wayland tells none.
 
 ## D1003. The native smoke test in CI: Xvfb and lavapipe
 
