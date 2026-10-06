@@ -308,7 +308,7 @@ rate, steering angle, lateral acceleration), so they read as real systems.
 The chassis, suspension (usually solid axles), drivetrain and wheels are
 Tier 1's. Only the `Tyre` changes: `Tyre::Soft`. The first target is a
 plain **balloon tyre**: large, low pressure, no tread blocks. After that
-comes the owner's own tyre and vehicle model (open question 3).
+comes the owner's own tyre, designed in Onshape (section 13).
 
 ### 5.2 Structure
 
@@ -453,11 +453,36 @@ stiff, direct-drive wheel to feel good. The split is:
 `mr_game`'s `Rumble` trait becomes a `Feedback` trait with a rumble channel
 (as now) and a force channel. Backends:
 
-- **Native:** the owner's controller over USB (serial or HID: open
-  question 2), and standard wheels through SDL or gilrs force feedback where
-  they support it.
-- **Web:** WebHID or Web Serial on desktop Chrome. Both are secure-context
-  only, which the tailnet front already provides.
+- **Native:** the owner's controller through hidapi (7.3), and standard
+  wheels through SDL or gilrs force feedback where they support it.
+- **Web:** WebHID on desktop Chrome. It is secure-context only, which the
+  tailnet front already provides.
+
+### 7.3 The owner's wheel
+
+The owner's wheel is their own design: a motor on their own motor
+controller, driven by an **RP2350**. Its firmware lives in **a separate
+repository**; this repo only owns the game's side of the protocol. The
+firmware presents one composite USB HID device with two faces:
+
+- **Standard HID PID force feedback** (the USB "Physical Interface Device"
+  usage page): a steering axis, pedal axes and buttons, and the standard
+  effects (constant force, spring, damper, friction, periodic). Windows
+  DirectInput and Linux's `hid-pidff` driver then treat it as an ordinary
+  force-feedback wheel, so other games (Assetto Corsa under Proton, for
+  example) work with it. The PID report descriptor is large and fussy, and
+  getting it to compile and enumerate is what has made this hard before.
+  OpenFFBoard's descriptor is the reference to start from. Check
+  `hid-pidff`'s behaviour on the owner's kernel early: its support for
+  direct-drive wheels improved recently but has a history of quirks.
+- **A vendor-defined report** for this game: per tick, the target column
+  torque and the effect parameters of 7.2, versioned. The game uses it
+  through WebHID in the browser and hidapi natively, with no driver. It
+  also reports the wheel angle at full sensor resolution.
+
+The firmware's own loop closes the torque and effect loop at 1 kHz or
+more. The game never depends on the PID face, and the PID face never
+depends on the game.
 
 ## 8. How it fits the existing simulation
 
@@ -595,20 +620,30 @@ chassis.
 - **VD-6. Tier 1 is player-only to start.** Rivals stay arcade until V4's
   measurements say otherwise.
 
-## 13. Open questions for the owner
+## 13. Owner's answers and open questions
 
-1. **Rivals on Tier 1:** after V4's measurements, is it player-only on
-   every platform, or Tier 1 rivals on the desktop? And should AI drivers
-   see the same assists?
-2. **The force-feedback controller's link:** USB serial, HID or something
-   else? Which parameters can it take (spring, damper, friction,
-   feed-forward torque), and at what rate does its loop run?
-3. **The owner's tyre and vehicle model** (for V6): what form is it in
-   (CAD, mesh, a parameter set, a BeamNG jbeam)? The soft tyre builder
-   should be able to take it.
-4. **Sim mode as a setting or as cars:** a "Sim handling" toggle on every
-   car (this document's assumption), or a separate garage of sim cars with
-   their own physical specs?
-5. **Fairness in races:** in a mixed field (player on Tier 1, rivals on
+Answered (2026-10-06):
+
+- **Tier 1 is player-only first**, rivals on arcade. Tier 1 rivals are to
+  be tried on the desktop to measure the cost, behind a flag (V4).
+- **The force-feedback wheel** is the owner's own RP2350 controller, made
+  into a proper HID device in a separate firmware repository (7.3).
+- **The owner's tyre model is in Onshape (CAD).** For V6 the soft tyre
+  builder takes a cross-section profile (tread, shoulder and sidewall
+  outline, exported from Onshape as a sketch or a section), plus width, rim
+  size and tread layout, and sweeps the profile round the rim to place its
+  node rings.
+- **Sim handling is a toggle on every car**, with each car getting a
+  physical `VehicleDef` and a "racing tune" of assists by default (4.8).
+- **Crawlers** use soft tyres on a rigid chassis (Tier 2 as written).
+- **Timing:** nothing here starts before the port's cutover.
+
+Still open:
+
+1. **AI and assists:** if rivals ever run on Tier 1, do they drive through
+   the same assists?
+2. **The wheel's loop:** which effect parameters can the firmware take,
+   and at what rate does its loop run? (Settles the vendor report in 7.3.)
+3. **Fairness in races:** in a mixed field (player on Tier 1, rivals on
    arcade), should the rivals' pace be set from the sim car's measured lap
    times on each track?

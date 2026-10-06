@@ -333,7 +333,9 @@ decide how guests outside the tailnet join (SPEC 9.5).
 ## M12 and beyond: expansion tracks
 
 Each needs its own design document before work starts. They are listed to
-show what the architecture is keeping room for.
+show what the architecture is keeping room for. The owner's wider vision
+(an open world, activities, damage, crawlers) is parked in
+`docs/vision/WORLD.md`.
 
 | Track | What | Builds on |
 |---|---|---|
