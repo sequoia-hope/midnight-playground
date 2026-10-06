@@ -823,6 +823,10 @@ fn describe(s: &mut String, info: &Info) {
         "native"
     };
     match &info.adapter {
+        // A browser's WebGPU names no adapter.
+        Some(a) if a.name.is_empty() => {
+            let _ = write!(s, "\n{backend} ({:?})", a.backend);
+        }
         Some(a) => {
             let _ = write!(s, "\n{backend}: {} ({:?})", a.name, a.backend);
         }
