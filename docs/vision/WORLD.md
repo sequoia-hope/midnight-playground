@@ -1,14 +1,11 @@
 # Where the game is going: worlds, activities and range
 
-Status: **a vision and a parking lot, not a plan.** Nothing here is
-scheduled. The Rust port finishes first (ROADMAP M0–M9), with no new levels
-or modes before cutover. This document exists so ideas are written down
-once and not lost, and so work done in the meantime doesn't close doors.
-When something here becomes work, it gets its own design document (as
-ROADMAP "M12 and beyond" asks) and a pointer from here.
-
-Written from a conversation with the owner on 2026-10-06. The vehicle side
-of the same conversation is `docs/vehicle-dynamics/SPEC.md`.
+Status: **the vision: what the game becomes.** The order of work is in
+`docs/vision/ROADMAP.md`, and the owner's notes that feed both are logged in
+`docs/vision/README.md`. The Rust port finishes first (port ROADMAP M0–M9),
+then multiplayer (M10–M11). No new levels or modes start before cutover.
+When something here becomes work, it gets its own design document and a
+pointer from the vision roadmap.
 
 ## 1. What kind of game
 
@@ -38,16 +35,20 @@ The answer is the principle in section 2.
   - a race starts at an intersection;
   - a crawler waits at a trailhead in the hills;
   - a crash junction is a junction;
+  - a delivery starts at a garage;
   - the Skyline time trial starts at the summit;
   - a shortcut is a fence you can break through.
   A feature that cannot answer gets parked, not built.
 - **Depth is opt-in.** The extra depth is there to find, never in the way:
-  - arcade handling by default, sim handling as a toggle;
+  - arcade handling by default, sim handling as a toggle on every car;
   - soft-body tyres only on the vehicles and terrain that need them;
   - a Ferrari stuck in the sand is a joke, and a hint that something else
     belongs there.
 - **No mode explosion.** Single levels stay, as quick races from the menu.
   The open world is where everything else lives.
+- **Scope is reined in on purpose.** Some things the owner loves are
+  deliberately parked (section 11): trucking in the spirit of Euro Truck
+  Simulator 2, getting out of the car on foot, a track editor for players.
 
 ## 3. The first world: the Peninsula
 
@@ -57,11 +58,13 @@ not surveys. Seaside Raceway is the exception that proves the rule.
 
 | Region | Character | Real inspiration |
 |---|---|---|
-| **The coast** | A beautiful coastal highway, a big sweeping beach, farms and fields, fog in the mornings | Highway 1 at Half Moon Bay |
+| **The coast** | A beautiful coastal highway, a big sweeping beach, farms and fields, fog in the mornings, pelicans flying alongside | Highway 1 at Half Moon Bay |
 | **The coastal city** | The sleepy town grown into a real city by the beach, with harbour, downtown and surface streets | Half Moon Bay, stretched toward a San Francisco |
+| **North up the coast** | Highway 1 on to the next town, the drive home | Half Moon Bay to Pacifica |
 | **Over the hill** | The climb inland, a reservoir on the far side | Highway 92, Crystal Springs |
-| **The summit** | A ridge road at the top, fog rolling over the crest | Skyline Boulevard |
+| **The summit** | A ridge road in fog so dense the redwoods drip with it, so it feels like rain | Skyline Boulevard |
 | **The redwoods** | A twisty, turning descent through redwood forest, looping back down to the coast | Highway 84 with the character of Highway 9 in the Santa Cruz Mountains |
+| **The state park** | Dirt roads and clearings in the mountains: a rallycross loop and a rally sandbox | The state parks between the coast and the peninsula |
 | **The bay side** | Highways and surface streets down the other side of the hills | Redwood City |
 | **Crawler hills** | Steep, rocky hills north of the coastal city, trails and trailheads | The hills around Pacifica |
 
@@ -75,7 +78,7 @@ not surveys. Seaside Raceway is the exception that proves the rule.
 
 The first connected piece worth building (the "vertical slice") is the
 loop **coast → 92 → Skyline → the redwoods → back to the coast**, with the
-coastal town.
+coastal town and Highway 1 north.
 
 ### 3.1 A second world, later
 
@@ -88,21 +91,57 @@ Peninsula has proved the format.
 **Every new level is a stretch of the future map.**
 
 1. Keep a coarse world plan: where the regions are and which roads
-   connect them. It starts as the table above; later it becomes a map
-   file.
+   connect them. It starts as the table above; it becomes a map file in
+   the level tools (vision ROADMAP M12).
 2. Build each new level as a corridor of that plan. The **redwood level**
    the owner wants is the Skyline-and-redwoods stretch, not a level that
    stands on its own.
 3. Each level stays playable on its own, as now.
 4. The open world is made later by stitching corridors into a road
-   network, with world streaming (ROADMAP expansion tracks b and d). The
-   levels become its content; nothing is thrown away.
+   network, with world streaming. The levels become its content; nothing
+   is thrown away.
 
 The current levels (Coast Highway, Sierra to the City, Downtown Streets,
 Night City Cruise, Desert Run, Seaside Raceway) predate the plan. They stay
 as they are; future corridors can borrow their generators and look.
 
-## 5. Things to do in the world
+## 5. A living world
+
+Today the game feels too static. The world should be busy and react to the
+player:
+
+- **Crowds at Seaside Raceway:** people in the stands, fans leaning on the
+  fence waving and cheering, camera operators on the bridge as the cars go
+  by, drones flying over.
+- **Birds everywhere,** above all pelicans flying alongside the car on the
+  coast, like the ending of the first Jurassic Park.
+- **Traffic that reacts:** pulls over for police, brakes, honks, swerves.
+- **Pedestrians and wildlife** who always get out of the way. People step
+  back or run; deer and other animals scamper off. Nobody is ever hit.
+- **Places that make the world feel lived in:** gas stations, car washes and
+  garages. Garages also anchor jobs (section 6) and could later carry
+  GTA-like play.
+
+### 5.1 Weather, light and atmosphere
+
+- **Day and night** as a cycle, and **weather** as world state.
+- **Rain changes grip,** wets the windscreen, and puts reflections on the
+  road.
+- **Headlights that matter at night,** with high beams.
+- **Fog on Skyline:** so heavy in the redwoods that the trees drip and it
+  feels like rain, without rain falling. This one the owner especially
+  wants.
+
+### 5.2 Sound and radio
+
+- **Generated radio stations with DJ chatter,** voiced the way the Hot
+  Pursuit police radio is (generated with a Qwen voice-design model), which
+  the owner was pleased with.
+- **The generated music system needs much more depth** to carry stations.
+  In-game generated audio is the focus; "bring your own music" is not
+  needed, since players can mute the game and play their own.
+
+## 6. Things to do in the world
 
 A catalogue to choose from. Burnout Paradise's model: stop at any marked
 intersection and hold gas and brake to start an event.
@@ -113,9 +152,12 @@ intersection and hold gas and brake to start an event.
   (`docs/hot-pursuit.md`).
 - **Time trials** on the great roads: Skyline at dawn, the redwood
   descent, the coast at sunset.
+- **Rallycross:** a dirt loop in the state park, wanted early.
+- **Delivery jobs** from garages: anything from food to dodgy technology,
+  against the clock or the police.
 - **Crash junctions:** Burnout's Crash Mode. Launch into a busy junction
   and score the damage in dollars. Needs car damage and destructible props
-  (section 6).
+  (section 7).
 - **Takedowns and survival:** Burnout's Road Rage and Marked Man.
 - **Stunt runs:** chain jumps, drifts, near misses and air (drift and
   near-miss bonuses exist already).
@@ -127,7 +169,10 @@ intersection and hold gas and brake to start an event.
   (`docs/vehicle-dynamics/SPEC.md`).
 - **Free roam,** including the wrong car in the wrong place.
 
-## 6. Damage and destruction
+Lower interest, not opposed: drift zones and Forza Horizon style speed
+traps, a drag strip, a hill climb.
+
+## 7. Damage and destruction
 
 - **Shortcuts through things**, as in Need for Speed: the road winds, and
   a dirt path through an old wooden fence cuts the corner with some air.
@@ -141,28 +186,17 @@ For the simulation this means **breakable props are simulation state**
 (deterministic, in `SimState`, so replays, rollback and RL see them),
 with debris that doesn't affect play left to the client.
 
-## 7. Vehicles in the world
+## 8. Cars
 
-- **Road cars:** the current garage, with arcade or sim handling.
-- **Off-road and crawlers:** found at trailheads or garages in the world,
-  not only picked in a menu.
-- **Old trucks, electric cars and other kinds** as the vehicle definitions
-  grow (`VehicleDef`, vehicle-dynamics SPEC 8.2).
-- **Robots** for RL, sharing the world's terrain.
-
-Surfaces tell you which vehicle belongs where: sand, mud and rock that
-strand a sports car are part of the design, not a bug.
-
-### 7.1 Car classes and the stable
+### 8.1 Classes and the stable
 
 Balance comes from **matching cars, not slowing them down.** Today the
 Ion Arc is the most fun partly because it is faster than the rest, which
 makes races easy. Racing games solve this with classes of a similar era
 and performance, and a larger stable to fill them:
 
-- **Classes** such as classic, 90s Japanese, modern sports, supercar,
-  electric and off-road. A race is run within a class, so every car in
-  it can be as strong as it really would be.
+- **Classes** of a similar era and pace. A race is run within a class, so
+  every car in it can be as strong as it really would be.
 - **A performance index** per car, computed from its specs (power,
   weight, grip), as a check that a class is fair. Within a class, cars
   differ in character (grip against power, launch against top speed),
@@ -171,13 +205,75 @@ and performance, and a larger stable to fill them:
   proportions and era, with original bodywork and names. The usual trick
   of one car's front and another's rear is a starting point, not the
   rule.
-- **Owner's favourites** to start the classic and modern classes: a 1991
-  3000GT VR-4 type (black, white leather interior), and a 2008 Saturn
-  Sky Redline type (black, red and black leather interior).
 
-## 8. How levels get designed together
+A first draft of the stable. The owner's own cars are marked ★; their
+colours are the owner's, and red and black recur for a reason.
 
-A collaborative level design process:
+| Class (draft) | Cars |
+|---|---|
+| **American muscle and classics** | Brawler 69 (existing); ★ an '88 Firebird type in red with black interior and T-tops (the owner had the Formula; the hero version is probably the Trans Am GTA, to confirm) |
+| **90s heroes** | ★ a '91 3000GT VR-4 type, black with white leather |
+| **Modern sports** | Vento GT (existing); ★ an '04 Audi S4 type; ★ an '08 Saturn Sky Redline type, black with red and black leather |
+| **Supercars** | Stiletto R (existing); a Lamborghini Diablo type (the Need for Speed cars the owner grew up on); a Porsche GT type |
+| **Rally and off-road** | Kestrel RS (existing); later the crawlers |
+| **Electric** | Ion Arc (existing), with electric rivals to race |
+
+### 8.2 Garage, tuning and looks
+
+- A **garage**: tuning (gear ratios, suspension, tyre pressure) and looks
+  (paint, liveries, interior colour).
+- With sim handling, a tune becomes a **setup sheet**: the car's settings
+  saved as a file that can be shared.
+
+### 8.3 Cameras, replays and photos
+
+- More cameras: cockpit with a working dash, bonnet, chase, and free
+  choice of view.
+- **Replays** (determinism makes them nearly free), a **photo mode**, and
+  **ghost cars** of your own or a friend's best run.
+
+### 8.4 Vehicles in the world
+
+- **Road cars:** the stable, with arcade or sim handling.
+- **Off-road and crawlers:** found at trailheads or garages in the world,
+  not only picked in a menu.
+- **Robots** for RL, sharing the world's terrain.
+
+Surfaces tell you which vehicle belongs where: sand, mud and rock that
+strand a sports car are part of the design, not a bug.
+
+## 9. People together
+
+- **Multiplayer comes right after the port** (port ROADMAP M10–M11): the
+  current game is already great to race together and needs no expansion
+  first. Its gate is stability: the audio bugs and frame stutters being
+  worked on now must be gone, and a friend's Android phone tried.
+- **Car meets:** park up somewhere scenic with other players (the open
+  world).
+- **Spectating and streaming:** spectator mode, and the streaming support
+  being added now, which sends the game to the owner's Android projector.
+- **Leaderboards and sharing results** without the owner having to run a
+  server, if possible: for example storing results and records in the
+  player's own Bluesky (AT Protocol) repository, linked to friends. A
+  small server stays an option.
+
+## 10. Tools, telemetry, accessibility and robots
+
+- **Level tools first:** the owner and Claude need tools to build levels
+  together (section 10.1). A track editor for players comes much later.
+- **Telemetry:** per-tick data (speed, inputs, tyre loads and slips with
+  sim handling) viewable in the game and exportable. MoTeC is the
+  analysis software real racing teams use; exporting to a format like it
+  lets a lap be studied in the same way.
+- **Accessibility:** one-handed controls, a colour-blind-safe HUD, and
+  auto-steer for younger players and phones (auto-steer for mobile is
+  being built now).
+- **Sim-racing hardware** beyond the owner's wheel and pedals (shifters,
+  handbrakes, button boxes) waits for requests.
+- **RL and robotics:** environments on the simulation, the crawler RL of
+  the vehicle-dynamics spec, and sensor models: a dash camera and a lidar.
+
+### 10.1 How levels get designed together
 
 - **The owner sets the feel** in plain words, with photos and real places:
   "fog over Skyline", "the reservoir on the far side", "Highway 9 twists".
@@ -189,26 +285,17 @@ A collaborative level design process:
 - **Real geography is compressed,** as games do: shorter distances, more
   landmarks per kilometre, the character kept and the tedium dropped.
 
-## 9. Order, when the time comes
+## 11. Parked on purpose
 
-1. Finish the port to cutover. **Nothing in this document starts first.**
-2. Vehicle-dynamics seams, then sim handling (vehicle-dynamics SPEC
-   milestones V0–V4).
-3. The world plan as a map file, and the Peninsula vertical slice: coast,
-   town, 92, Skyline, the redwoods. Start-anywhere events, one breakable
-   shortcut.
-4. Then crawler hills (with the vehicle-dynamics V5–V6), crash junctions,
-   the big city, the bridge, the East Bay and its trams, and the Pearl
-   River Delta.
+Ideas the owner wants eventually, held back to keep the scope sane. Add to
+this list rather than starting them.
 
-## 10. Parking lot
-
-Ideas that came up and have no home yet. Add to this list rather than
-starting them.
-
+- **Trucking,** in the spirit of Euro Truck Simulator 2.
+- **On foot:** getting out of the car and walking around.
+- **A track and route editor for players.**
+- **Towing and recovery** with trucks.
+- **The bay city, the bridge, the East Bay and its trams,** and the Pearl
+  River Delta world, after the Peninsula slice.
 - An H-pattern gearbox and clutch for the owner's wheel and pedals.
-- Weather and time of day as world state: fog rolling over Skyline.
-- Trains as moving obstacles and as scenery (BART, the fantasy trams).
-- Ferries, or the bay crossing as a bridge drive.
-- Multiplayer free roam in the open world (ROADMAP M10–M11 are races
-  first).
+- Trains as moving obstacles; ferries.
+- Multiplayer free roam in the open world.
