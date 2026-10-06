@@ -24,7 +24,7 @@ use crate::render::material::{ThreeKey, ThreeMaterial, three_material};
 use crate::warmup::{Combos, Layout};
 use bevy::camera::primitives::Aabb;
 use bevy::light::{NotShadowCaster, NotShadowReceiver};
-use bevy::math::{DQuat, EulerRot, Vec4};
+use bevy::math::{DQuat, DVec3, EulerRot, Vec4};
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use mr_scene::{MaterialKind, MeshDesc, Scene};
@@ -87,6 +87,13 @@ pub struct Car {
     body: Option<(Entity, Transform)>,
     wheels: Vec<Wheel>,
     pivots: Vec<(Entity, Transform)>,
+    /// Every mesh entity of the model (not what the effects hang on it).
+    meshes: Vec<Entity>,
+    /// The player's model's box in its root's frame, for the bumper view
+    /// (`incar`, D1040); `None` for the rest of the field.
+    bounds: Option<(DVec3, DVec3)>,
+    /// Whether the meshes are hidden from the camera inside the car.
+    hidden: bool,
 }
 
 /// Every car of the race, drawn.
@@ -203,13 +210,20 @@ pub fn spawn_field(
         mat_cache: HashMap::new(),
         combos: Combos::default(),
         nodes: vec![None; scene.nodes.len()],
+        spawned: Vec::new(),
     };
     let mut cars = Vec::new();
     for (k, (m, &racer)) in models.into_iter().zip(&racer).enumerate() {
         let Some(ri) = handles.node(m.root) else {
             continue;
         };
+        s.spawned.clear();
         let root = s.node(ri as usize, None, commands, meshes, mats, racer);
+        let car_meshes = std::mem::take(&mut s.spawned);
+        // The player's car (the first wanted) hides from the camera inside
+        // it (D1040).
+        let bounds =
+            (k == 0).then(|| super::incar::bounds(&super::incar::triangles(&scene, ri as usize)));
         commands
             .entity(root)
             .insert((Transform::default(), Visibility::Hidden, SceneEntity));
@@ -261,6 +275,9 @@ pub fn spawn_field(
             body,
             wheels,
             pivots,
+            meshes: car_meshes,
+            bounds,
+            hidden: false,
         });
     }
     let mut props = Vec::new();
@@ -334,6 +351,8 @@ struct Spawner<'a> {
     /// The combinations the field draws (`warmup`).
     combos: Combos,
     nodes: Vec<Option<Entity>>,
+    /// The mesh entities spawned since last cleared.
+    spawned: Vec<Entity>,
 }
 
 /// The siren glow's geometry: its positions, and the corner, `aBlue` and
@@ -431,6 +450,7 @@ impl Spawner<'_> {
             NotShadowCaster,
             NotShadowReceiver,
         ));
+        self.spawned.push(d.id());
         if let Some(bs) = &desc.bounding_sphere
             && bs.len() == 4
         {
@@ -552,6 +572,7 @@ impl Spawner<'_> {
                     Transform::default(),
                     ChildOf(id),
                 ));
+                self.spawned.push(d.id());
                 if !cast {
                     d.insert(NotShadowCaster);
                 }
@@ -677,6 +698,40 @@ impl Cars {
             if let Ok(mut t) = q.get_mut(*e) {
                 let (x, _, z) = base.rotation.to_euler(EulerRot::XYZ);
                 t.rotation = Quat::from_euler(EulerRot::XYZ, x, -steer_angle as f32, z);
+            }
+        }
+    }
+
+    /// Car `i`'s meshes are not drawn while the camera's eye is inside it
+    /// (the bumper view, `incar`, D1040); its root, the anchors and what
+    /// hangs on the body stay. Only a car with a box (the player's) hides.
+    pub fn hide_round_eye(
+        &mut self,
+        i: usize,
+        pos: DVec3,
+        q: DQuat,
+        eye: DVec3,
+        vis: &mut Query<&mut Visibility, Without<super::RaceCar>>,
+    ) {
+        let Some(car) = self.cars.get_mut(i) else {
+            return;
+        };
+        let Some(bounds) = car.bounds else {
+            return;
+        };
+        let hide = super::incar::eye_inside(bounds, pos, q, eye);
+        if hide == car.hidden {
+            return;
+        }
+        car.hidden = hide;
+        let want = if hide {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        };
+        for &e in &car.meshes {
+            if let Ok(mut v) = vis.get_mut(e) {
+                *v = want;
             }
         }
     }

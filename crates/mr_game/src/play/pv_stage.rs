@@ -438,6 +438,10 @@ fn run(
         // The player's entry only: the police have none (D945).
         let extras = [Extras::default()];
         m.fx.fx.update(dt, night, &ins, &extras);
+        // The pools on the road (D1042).
+        let mut hints = vec![player.s];
+        hints.extend((0..n).map(|i| pu.police(i).k.v.s));
+        m.fx.fx.lay_pools(track, &hints);
     }
     m.view.sync_spikes(
         commands,

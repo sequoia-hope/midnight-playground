@@ -8580,3 +8580,98 @@ changed, so saved maps (`mr.padMaps`) load as before. A unit test pins it
 (`the_camera_is_y_by_default_and_rb_stays_the_handbrakes`: the default
 map, the label, one camera press per Y press, RB the handbrake's, no
 button bound twice, a saved map keeping its own camera button).
+
+## D1040. The bumper view does not draw the player's own car
+
+2026-10-05, the owner: "the in car views ... are occluded by the car".
+`CameraRig.js`'s one in-car mode, `bumper`, puts the eye 1.2 m ahead of
+the car's origin and 0.72 m up (looking back, 2.3 m behind and 1.02 m
+up), which is inside the body, under the bonnet; the JS draws the same
+thing (pictured with `?parity=1` and the rig set to bumper: the lower half
+of the screen black). Ray-cast in the JS page, the black is the GT's front
+wheel-arch liner (the body's `trim` bucket, radius 0.41 m round the axle
+at z = 1.3): the eye is inside it and its inward faces, which three's
+FrontSide culling keeps, fill the view below the horizon. Other kinds
+show other insides. Nothing in the JS hides the player's model, sets a
+layer or moves the near plane (0.3 m) for this mode.
+
+Fixed in the port, the camera itself unchanged: while the drawn eye (the
+rig's, shake and intro included) is inside the player's car, its box from
+the model's own vertices grown by the near distance (`play::incar`), the
+car's mesh entities are hidden. The root, the headlight anchor (the spot
+reads its transform, not its visibility) and the flames hung on the body
+stay, so the spot, the pools and the flames are as before; like three's
+`visible = false`, the hidden meshes cast no shadow then. The chase, far
+and intro views never come within the box (tested), so only the bumper
+view changes. A bug the owner reported, so the JS should take the same
+fix (CLAUDE.md, the precedent of D807); not done here: a change under
+`src/` changes the parity cache key. The JS change: in `Race.js`, after
+the player's model is built, keep its meshes (`pModel.root.traverse`
+already visits them) and its box (`new THREE.Box3().setFromObject(
+pModel.root)`, the root still at the origin), and after the camera is
+placed each frame (after `introCamera`) set every mesh's `visible` to
+whether `camera.position`, brought into the root's frame
+(`root.updateMatrixWorld(); root.worldToLocal(p)`), is outside the box
+grown by 0.3. Until then DEVIATIONS.md lists it.
+
+Tests (`play::incar`): `bumper_view_sees_the_road` builds each car kind's
+model as the race does, places the bumper eye ahead and looking back on
+sierra, coast and streets at three moments of an autopiloted race, and
+casts 25 rays through the lower middle of the view against the model's
+triangles as drawn (culled as three culls): none meets a drawn triangle,
+and the middle ones come down on the road within its width. It also
+checks its teeth: drawn whole, the GT stops most of the forward rays.
+`chase_views_keep_the_car`: the intro, chase and far eyes are never
+inside the box.
+
+## D1041. `?camera=chase|far|bumper`: a race starts in that mode
+
+2026-10-05. A test hook for pictures of the in-car view (D1040): the
+race's camera rig starts in the named mode, as if C had been pressed
+during the countdown (`Params::camera`). The JS has no such parameter;
+its rig is `window.__race.cam` (`cam.mode = 2; cam.snap = true`).
+
+## D1042. The headlight pools lie on the road, not over the tyres
+
+2026-10-05, the owner: "when we pan around the car at game start I can
+see that the tires are drawn as partially embedded in the road". Not the
+wheels: each tyre's lowest point sits on the road at the start (in the
+JS, 1.9 mm above it on coast, the 30-sided tread's flat; in the port,
+within millimetres on every level and car kind; and the JS's road mesh is
+where `surfaceY` puts it, ray-cast across the road). The JS draws the same picture,
+and hiding the pools takes the sunk look away (JS pictures with and
+without them). `Effects.js`'s headlight pool is a level quad at its car's
+`y + 0.06`, centred 7.5 m ahead (10 for the player), 7 × 12 m (9 × 16),
+additive, with `polygonOffset(-6, -6)`. On the grid each pool of the row
+behind lies under the row ahead's cars; the quad 6 cm up, pulled further
+toward the camera by the offset's slope term, draws over the bottom of
+their tyres, which then read as road. The same happens wherever a car
+drives over another's pool, at night.
+
+Fixed in the port (`Effects::lay_pools`, after `update`, in the race and
+both staged scenes): each visible pool sits `POOL_LIFT` (1 cm) over the
+road at its centre (`surfaceY` at its projection), tilted with the road
+there (grade along, bank across, as `Vehicle.sync` tilts a car), its
+long axis still along its car's heading; its material keeps the constant
+offset but drops the slope term (factor 0). A pool now covers at most a
+centimetre of a tyre, under a pixel at the start's distance. Tilted, it
+also follows grades the level quad at the car's height fell under (D803's
+reason for the slope term). In a dip the far ends of a 16 m quad can
+still sink under the road (sagitta L²/2R); the glow fades there anyway.
+
+Test: `tyres_sit_on_the_road_at_the_start` (`play::incar`) checks on
+every level and car kind that the player's tyres' lowest points sit
+between 5 mm under and 3 cm over the road, and that no racer's pool lies more than its lift
+over them, after asserting that as the JS lays them, pools cover the
+bottom 3 cm or more of the tyres.
+
+The JS change (the owner's rule for reported bugs, D807; not made here):
+in `Effects.update`, with the track passed to `Effects` (Race.js has it),
+after placing a pool: `const P = track.project(x, z, v.s); const f =
+track.frame(P.s)`; `pool.position.y = track.surfaceY(P.s, P.lat) + 0.01`;
+the quaternion from the basis (x = y × z, y = (A × T) normalised with T =
+(f.fx, f.grade, f.fz), A = (f.rx, −f.bank, f.rz), z = the heading
+(sin, 0, cos of the old `rotation.y`) made square to y), as
+`Vehicle.sync` builds the car's; and `polygonOffsetFactor: 0` on
+`poolMat` (`tailPoolMat` is never drawn). Until then DEVIATIONS.md lists it; the
+staged effects scenes (D804) differ from the JS's by it.
