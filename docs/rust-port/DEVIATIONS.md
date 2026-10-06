@@ -36,6 +36,7 @@ when a work package introduces one, with the package and the JS it concerns.
 | A steering assist (Off, Light, Strong; Light by default on touch screens, Off otherwise) blends the player's steering toward the racing line when the car heads off the road or far off the line; applied to the controls before they are quantised, so the tick's input frame carries it | The owner's request (2026-10-05) for phones; the JS has none | D1082, D1083 |
 | Bigger touch controls: sideways a larger `--b`, a taller slider (as wide as the JS's) and a longer stick throw; upright a wider and taller slider, taller pads, a longer stick throw and a bigger knob | The owner (2026-10-05): the controls are too small upright and still hard sideways | D1084 |
 | The main menu plays the selected level's music as soon as the sound is up (natively at once; on the web after the first tap or key); the JS menu is silent until a level tab or Race picks a track | The owner (2026-10-06): sound should come up right away | DECISIONS D1010 |
+| The menu lists Coast Highway first (LEVEL 1) and Sierra second (LEVEL 2), and a new player's selected level is Coast; an unknown level id falls back to Coast | The owner (2026-10-06): the first level should start in the dark | DECISIONS D1102 |
 
 ## Known JS quirks reproduced, not fixed
 

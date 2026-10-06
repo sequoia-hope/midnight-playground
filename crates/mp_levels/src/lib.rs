@@ -98,11 +98,13 @@ pub mod world;
 
 pub use survey::SeasideData;
 
-/// Everything the menu offers, in order.
+/// Everything the menu offers, in order. Coast Highway comes first, which
+/// starts in the dark and drives into sunrise, then Sierra (the owner,
+/// 2026-10-06; D1102); the JS lists Sierra first.
 pub fn levels() -> Vec<Level> {
     vec![
-        sierra::level(),
         coast::level(),
+        sierra::level(),
         streets::level(),
         desert::level(),
         seaside::level(),

@@ -409,7 +409,7 @@ impl Settings {
             pedals: store.string("pedals", "slider"),
             fullscreen: store.bool("fullscreen", true),
             car: store.string("car", "sports"),
-            level: store.string("level", "sierra"),
+            level: store.string("level", "coast"),
             track: store.string("track", "auto"),
             flash: store.bool("flash", true),
             rumble: store.bool("rumble", true),
@@ -529,7 +529,7 @@ mod tests {
                 pedals: "slider".into(),
                 fullscreen: true,
                 car: "sports".into(),
-                level: "sierra".into(),
+                level: "coast".into(),
                 track: "auto".into(),
                 flash: true,
                 rumble: true,
@@ -607,7 +607,7 @@ mod tests {
         assert_eq!(s.music, 0.7);
         assert_eq!(s.steering, "tilt");
         assert_eq!(s.car, "sports");
-        assert_eq!(s.level, "sierra");
+        assert_eq!(s.level, "coast");
         assert_eq!(s.track, "auto");
         assert_eq!(s.pedals, "slider");
         // The JS checks the selects only on touch screens.

@@ -90,7 +90,7 @@ pub fn level() -> Level {
     Level {
         id: "sierra",
         mode: Mode::Race,
-        num: "LEVEL 1",
+        num: "LEVEL 2",
         title: "Sierra to the City",
         desc: "Sprint up the switchbacks of Sierra Pass, drop through the old farms of Mill Valley, and finish on the Interstate through downtown Meridian. Sunset to midnight.",
         laps: None,
