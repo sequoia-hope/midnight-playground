@@ -544,15 +544,39 @@ pub fn menu(
         if two {
             holder.justify_self = JustifySelf::Center;
         }
+        // Multiplayer beside Race: on the web the host is the server the
+        // page came from; natively it is `--join ws://host:port/ws`.
+        let mp = cfg!(target_arch = "wasm32") || opts.o.param("join").is_some();
+        let fm = cx.f("btn-mp");
         p.spawn(holder).with_children(|p| {
-            w::button(
-                p,
-                &bp,
-                Control::act("btn-start", Act::Start),
-                label,
-                true,
-                f,
-            );
+            p.spawn(Node {
+                flex_wrap: FlexWrap::Wrap,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                column_gap: bp.px(12.0),
+                row_gap: bp.px(8.0),
+                ..default()
+            })
+            .with_children(|p| {
+                w::button(
+                    p,
+                    &bp,
+                    Control::act("btn-start", Act::Start),
+                    label,
+                    true,
+                    f,
+                );
+                if mp {
+                    w::button(
+                        p,
+                        &bp,
+                        Control::act("btn-mp", Act::Mp(super::lobby::MpAct::Open)),
+                        "Multiplayer",
+                        false,
+                        fm,
+                    );
+                }
+            });
         });
 
         // The options.

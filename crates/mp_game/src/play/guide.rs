@@ -368,7 +368,7 @@ fn draw(
         return;
     };
     let s = &race.session;
-    let p0 = &s.curr.players[0];
+    let p0 = &s.curr.players[s.me];
     let on =
         mode != GuideMode::Off && race.mode != Mode::Results && !p0.rules.finished && play.started;
     let Ok((mut tf, mut vis)) = q.get_mut(d.entity) else {
@@ -383,7 +383,7 @@ fn draw(
     }
     let track = &*s.lr.track;
     let alpha = s.alpha();
-    let (a, b) = (&s.prev.players[0].v, &p0.v);
+    let (a, b) = (&s.prev.players[s.me].v, &p0.v);
     let ps = a.s + track.ds(a.s, b.s) * alpha;
     let speed = {
         let l = |p: f64, q: f64| p + (q - p) * alpha;

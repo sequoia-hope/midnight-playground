@@ -7,7 +7,7 @@
 
 use mp_sim::assist::{Assist, steer_assist};
 use mp_sim::autopilot::autopilot;
-use mp_sim::input::{InputFrame, RESET};
+use mp_sim::input::{AWAY, InputFrame, RESET};
 use mp_sim::physics::PhysEvent;
 use mp_sim::pursuit::PursuitEvent;
 use mp_sim::race::{
@@ -212,7 +212,31 @@ pub fn slots(st: &SimState) -> impl Iterator<Item = (&mp_sim::vehicle::Vehicle, 
 
 impl Race {
     pub fn new(lr: LevelRuntime, setup: Setup, touch: TouchControls) -> Race {
-        let session = Session::new(lr, setup.opts);
+        Race::with_session(Session::new(lr, setup.opts), setup, touch)
+    }
+
+    /// A multiplayer race (`crate::net`): its first state from the network
+    /// client, with this player at `me`.
+    pub fn online(
+        lr: std::sync::Arc<LevelRuntime>,
+        first: SimState,
+        me: usize,
+        setup: Setup,
+        touch: TouchControls,
+    ) -> Race {
+        Race::with_session(Session::online(lr, first, me), setup, touch)
+    }
+
+    /// The local player's index in the race (0 offline).
+    pub fn me(&self) -> usize {
+        self.session.me
+    }
+
+    pub fn online_now(&self) -> bool {
+        self.session.online.is_some()
+    }
+
+    fn with_session(session: Session, setup: Setup, touch: TouchControls) -> Race {
         let n = slots(&session.curr).count();
         Race {
             session,
@@ -277,7 +301,8 @@ impl Race {
         self.session.curr.race.state
     }
 
-    /// `pause(on)`: only a race in progress pauses.
+    /// `pause(on)`: only a race in progress pauses. Online the race goes on
+    /// (MULTIPLAYER 2.9): the menu takes the player's hands off the wheel.
     pub fn pause(&mut self, on: bool) {
         if on && self.mode != Mode::Race {
             return;
@@ -298,6 +323,16 @@ impl Race {
     /// the events. `dt` is the frame's time (already scaled by
     /// `?timescale`).
     pub fn frame(&mut self, dt: f64) {
+        self.frame_with(dt, None);
+    }
+
+    /// [`Race::frame`] for a multiplayer race: the network client decides
+    /// the ticks (`now`: the app's clock, ms).
+    pub fn frame_online(&mut self, dt: f64, client: &mut crate::net::NetClient, now: f64) {
+        self.frame_with(dt, Some((client, now)));
+    }
+
+    fn frame_with(&mut self, dt: f64, net: Option<(&mut crate::net::NetClient, f64)>) {
         self.log.clear();
         self.audio_ticks.clear();
         self.kicks.clear();
@@ -310,7 +345,9 @@ impl Race {
             }
         }
         self.music_pressed = self.input.consume("music");
-        if self.mode == Mode::Paused {
+        // Online the race doesn't stop for the menu: hands off the wheel.
+        let away = self.mode == Mode::Paused;
+        if away && net.is_none() {
             return;
         }
         self.frames += 1;
@@ -333,30 +370,44 @@ impl Race {
         let autodrive = setup.autodrive;
         let assist = *assist;
         let track = session.lr.track.clone();
+        let me = session.me;
         let mut first = true;
-        session.advance_observed(
-            dt,
-            |st| {
-                let s = input.update(DT, Some(touch));
-                let mut inp = s.sim();
-                if autodrive {
-                    autopilot(&mut inp, &st.players[0].v, &track);
-                } else if assist != Assist::Off {
-                    // Before quantising: the frame carries the assisted
-                    // steering, so a recording replays it exactly.
-                    let p = &st.players[0];
-                    steer_assist(&mut inp, &p.v, &p.phys, &track, assist);
-                }
-                let mut f = InputFrame::quantise(&inp);
-                // The reset key is read once a frame, by its first tick.
-                if first && input.consume("reset") {
-                    f.flags |= RESET;
-                }
-                first = false;
-                f
-            },
-            |lr, st, ev, f| audio_ticks.push(TickAudio::of(lr, st, ev, f)),
-        );
+        let sample = |st: &SimState| {
+            if away {
+                return InputFrame {
+                    flags: AWAY,
+                    ..InputFrame::default()
+                };
+            }
+            let s = input.update(DT, Some(touch));
+            let mut inp = s.sim();
+            if autodrive {
+                autopilot(&mut inp, &st.players[me].v, &track);
+            } else if assist != Assist::Off {
+                // Before quantising: the frame carries the assisted
+                // steering, so a recording replays it exactly.
+                let p = &st.players[me];
+                steer_assist(&mut inp, &p.v, &p.phys, &track, assist);
+            }
+            let mut f = InputFrame::quantise(&inp);
+            // The reset key is read once a frame, by its first tick.
+            if first && input.consume("reset") {
+                f.flags |= RESET;
+            }
+            first = false;
+            f
+        };
+        let observe = |lr: &LevelRuntime, st: &SimState, ev: &[SimEvent], f: &InputFrame| {
+            audio_ticks.push(TickAudio::of(lr, st, ev, f, me))
+        };
+        match net {
+            Some((client, now)) => {
+                session.advance_online(client, now, sample, observe);
+            }
+            None => {
+                session.advance_observed(dt, sample, observe);
+            }
+        }
         self.touch.tick(dt);
         let mut events = std::mem::take(&mut self.session.events);
         events.append(&mut self.inject);
@@ -375,6 +426,26 @@ impl Race {
     /// calls to `hud`, `cam` and the vehicle).
     fn on_event(&mut self, e: &SimEvent) {
         let laps = self.session.curr.race.laps;
+        let me = self.session.me;
+        // Another human's lap, bonus or finish isn't this player's news.
+        let mine = match e {
+            SimEvent::PerfectStart { player }
+            | SimEvent::Bonus { player, .. }
+            | SimEvent::Lap { player, .. }
+            | SimEvent::WrongWay { player }
+            | SimEvent::Finished { player, .. }
+            | SimEvent::Phys { player, .. }
+            | SimEvent::Crash { player }
+            | SimEvent::NearMiss { player, .. }
+            | SimEvent::Whoosh { player, .. }
+            | SimEvent::Reset { player }
+            | SimEvent::Controls { player, .. } => *player == me,
+            SimEvent::CarHit { player, .. } => *player == Some(me),
+            _ => true,
+        };
+        if !mine {
+            return;
+        }
         match e {
             SimEvent::Countdown(n) => {
                 self.hud.center(n.to_string(), 1.0);
@@ -444,13 +515,13 @@ impl Race {
             }
             SimEvent::Phys { e, player } => match e {
                 PhysEvent::Impact { strength, .. } => {
-                    if *player == 0 {
+                    if *player == me {
                         self.jolt(*strength);
                     }
                     self.rig.bump(*strength)
                 }
                 PhysEvent::Land { strength, .. } => {
-                    if *player == 0 {
+                    if *player == me {
                         self.kicks.push((0.7 * strength, 0.5 * strength, 180.0));
                     }
                     self.rig.bump(strength * 0.8)
@@ -461,7 +532,7 @@ impl Race {
                     }
                 }
                 PhysEvent::Shift { .. } => {
-                    if *player == 0 {
+                    if *player == me {
                         self.kicks.push((0.0, 0.2, 70.0));
                     }
                 }
@@ -514,7 +585,7 @@ impl Race {
                 self.offroad = o;
             }
         }
-        let p = &self.session.curr.players[0];
+        let p = &self.session.curr.players[self.session.me];
         let ph = &p.phys;
         let speed = mp_math::kernel::hypot(p.v.vx, p.v.vz);
         let sp = mp_math::clamp(speed / 30.0, 0.0, 1.0);
@@ -535,7 +606,7 @@ impl Race {
     /// Stuck? Offer the reset key (`Race.update`, after the wrong-way check).
     fn stuck_hint(&mut self) {
         let st = &self.session.curr;
-        let p = &st.players[0];
+        let p = &st.players[self.session.me];
         let held = st
             .pv
             .as_ref()

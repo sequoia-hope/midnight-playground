@@ -142,7 +142,7 @@ pub fn logo(p: &mut ChildSpawnerCommands, cx: &Cx, place: impl FnOnce(&mut Node)
 }
 
 /// `.title`.
-fn title(p: &mut ChildSpawnerCommands, bp: &Bp, id: &str, s: &str) {
+pub(super) fn title(p: &mut ChildSpawnerCommands, bp: &Bp, id: &str, s: &str) {
     p.spawn((
         w::text(
             s,
@@ -242,8 +242,18 @@ pub fn pause(p: &mut ChildSpawnerCommands, cx: &mut Cx, ui: &UiState, play: &Pla
         .race
         .as_ref()
         .is_some_and(|r| r.session.curr.race.cruise);
+    let online = play.race.as_ref().is_some_and(|r| r.online_now());
     screen(p, cx, Kind::Other, |p, cx| {
-        title(p, &bp, "pause-title", "Paused");
+        title(
+            p,
+            &bp,
+            "pause-title",
+            if online {
+                "Menu (the race goes on)"
+            } else {
+                "Paused"
+            },
+        );
         let b = |p: &mut ChildSpawnerCommands,
                  cx: &mut Cx,
                  id: &str,
@@ -254,11 +264,23 @@ pub fn pause(p: &mut ChildSpawnerCommands, cx: &mut Cx, ui: &UiState, play: &Pla
             w::button(p, &bp, Control::act(id, act), label, primary, f);
         };
         b(p, cx, "btn-resume", Act::Resume, "Resume", true);
-        if cruise {
-            b(p, cx, "btn-end", Act::EndRun, "End run", false);
+        if online {
+            // No restarts with others racing (MULTIPLAYER 2.9).
+            b(
+                p,
+                cx,
+                "mp-leave",
+                Act::Mp(super::lobby::MpAct::Leave),
+                "Leave the race",
+                false,
+            );
+        } else {
+            if cruise {
+                b(p, cx, "btn-end", Act::EndRun, "End run", false);
+            }
+            b(p, cx, "btn-restart", Act::Restart, "Restart", false);
+            b(p, cx, "btn-quit", Act::Quit, "Main menu", false);
         }
-        b(p, cx, "btn-restart", Act::Restart, "Restart", false);
-        b(p, cx, "btn-quit", Act::Quit, "Main menu", false);
         if ui.pads {
             b(p, cx, "btn-pad-pause", Act::PadSetup, "Controller", false);
         }
@@ -462,6 +484,19 @@ pub fn results(p: &mut ChildSpawnerCommands, cx: &mut Cx, ui: &UiState) -> Entit
             TextLayout::justify(Justify::Center),
             Control::named("res-best", Value::Text(v.best.clone())),
         ));
+        if v.online {
+            // The host starts the next race; until then, the lobby.
+            let f = cx.f("mp-back");
+            w::button(
+                p,
+                &bp,
+                Control::act("mp-back", Act::Mp(super::lobby::MpAct::Back)),
+                "Back to the lobby",
+                true,
+                f,
+            );
+            return;
+        }
         let f = cx.f("btn-again");
         w::button(
             p,

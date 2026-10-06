@@ -277,6 +277,7 @@ fn stage(
         lod: mp_worldgen::car_model::Lod::High,
         far: false,
         racer: true,
+        eye: true,
     }];
     let cars = models::spawn_field(
         &wants,

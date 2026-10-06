@@ -3617,6 +3617,7 @@ dependencies = [
  "mp_worldgen",
  "serde_json",
  "tracing",
+ "tungstenite",
  "wasm-bindgen",
  "web-sys",
  "winit",

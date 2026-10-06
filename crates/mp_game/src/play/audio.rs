@@ -228,22 +228,38 @@ pub struct TickAudio {
 }
 
 impl TickAudio {
-    /// The tick just stepped: its state, events and input.
-    pub fn of(lr: &LevelRuntime, st: &SimState, events: &[SimEvent], f: &InputFrame) -> TickAudio {
+    /// The tick just stepped: its state, events and input, heard by player
+    /// `me` (0 offline; online, the others' events are theirs).
+    pub fn of(
+        lr: &LevelRuntime,
+        st: &SimState,
+        events: &[SimEvent],
+        f: &InputFrame,
+        me: usize,
+    ) -> TickAudio {
         let t = &*lr.track;
-        let p = &st.players[0];
+        let p = &st.players[me];
         let (v, ph) = (&p.v, &p.phys);
         let inp = f.input();
         let mut ctrl_throttle = inp.throttle;
         let mut shots = Vec::new();
         let mut bumps = Vec::new();
-        for e in events {
+        let mine = |e: &&SimEvent| match e {
+            SimEvent::CarHit { player, .. } => *player == Some(me),
+            SimEvent::Phys { player, .. }
+            | SimEvent::NearMiss { player, .. }
+            | SimEvent::Whoosh { player, .. }
+            | SimEvent::Finished { player, .. }
+            | SimEvent::Controls { player, .. } => *player == me,
+            _ => true,
+        };
+        for e in events.iter().filter(mine) {
             match e {
                 SimEvent::CarHit {
                     hit,
                     player: Some(_),
                 } => bumps.push(hit.strength * 1.2),
-                SimEvent::Phys { player: 0, e } => match *e {
+                SimEvent::Phys { e, .. } => match *e {
                     PhysEvent::Impact { strength, .. } => bumps.push(strength),
                     PhysEvent::Land { strength, .. } => bumps.push(strength * 0.8),
                     _ => {}
@@ -260,7 +276,7 @@ impl TickAudio {
                     hit.strength,
                     Pan::At(hit.x - v.x, hit.z - v.z),
                 )),
-                SimEvent::Phys { player: 0, e } => match *e {
+                SimEvent::Phys { e, .. } => match *e {
                     PhysEvent::Impact { strength, side, .. } => {
                         shots.push(Shot::Impact(strength, Pan::Fixed(f64::from(side) * 0.6)))
                     }
@@ -332,6 +348,7 @@ impl TickAudio {
             power: electric.then_some(ph.power_out),
             regen: electric.then_some(ph.regen),
         };
+        // The other humans' engines are heard as the rivals' are.
         let rivals = st
             .rivals
             .iter()
@@ -341,6 +358,18 @@ impl TickAudio {
                 speed: a.k.speed,
                 electric: a.k.v.kind == "electric",
             })
+            .chain(
+                st.players
+                    .iter()
+                    .enumerate()
+                    .filter(|(k, _)| *k != me)
+                    .map(|(_, o)| RivalAt {
+                        dx: o.v.x - v.x,
+                        dz: o.v.z - v.z,
+                        speed: o.v.speed.abs(),
+                        electric: o.v.kind == "electric",
+                    }),
+            )
             .collect();
         // Tunnels get a concrete echo.
         let in_tunnel = t

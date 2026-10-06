@@ -10,9 +10,16 @@
 //! The input layer runs at the tick rate: the session asks for one
 //! quantised `InputFrame` per tick.
 //!
-//! It lives here until `mp_net` has its session types (M10), where the
-//! loopback becomes one transport among the others (DECISIONS D430).
+//! Online (multiplayer, `crate::net`), an `mp_net` client steps the race
+//! instead: [`Session::advance_online`] lets it run, then copies its
+//! current and previous states and events here, so everything that reads
+//! the session reads it the same way. `me` is the local player's index in
+//! the race (0 offline).
 
+use std::sync::Arc;
+
+use mp_net::client::Client;
+use mp_net::transport::Transport;
 use mp_sim::input::InputFrame;
 use mp_sim::race::{DT, LevelRuntime, RaceOpts, SimEvent, SimState, step};
 
@@ -23,7 +30,7 @@ pub const MAX_TICKS: u32 = 6;
 pub const MAX_FRAME: f64 = 1.0 / 20.0;
 
 pub struct Session {
-    pub lr: LevelRuntime,
+    pub lr: Arc<LevelRuntime>,
     /// The state before the last tick.
     pub prev: SimState,
     /// The state after the last tick.
@@ -38,6 +45,11 @@ pub struct Session {
     /// The inputs of the ticks the last `advance` ran, in order (for the
     /// run recording, `crate::recording`).
     pub inputs: Vec<InputFrame>,
+    /// The local player's index in the race (0 offline).
+    pub me: usize,
+    /// Online: the drawing's alpha, from the network client (it, not the
+    /// frame time, decides the ticks).
+    pub online: Option<f64>,
 }
 
 impl Session {
@@ -46,12 +58,72 @@ impl Session {
         Session {
             prev: curr.clone(),
             curr,
+            lr: Arc::new(lr),
+            acc: 0.0,
+            events: Vec::new(),
+            ticks: 0,
+            inputs: Vec::new(),
+            me: 0,
+            online: None,
+        }
+    }
+
+    /// A multiplayer race: its first state from the network client, and
+    /// this player's index in it.
+    pub fn online(lr: Arc<LevelRuntime>, first: SimState, me: usize) -> Session {
+        Session {
+            prev: first.clone(),
+            curr: first,
             lr,
             acc: 0.0,
             events: Vec::new(),
             ticks: 0,
             inputs: Vec::new(),
+            me,
+            online: Some(0.0),
         }
+    }
+
+    /// Online: lets the network client step to where it should be (asking
+    /// `input` for this player's controls once per new tick), then takes its
+    /// states and events. `observe` hears the frame once, with the newest
+    /// state. Returns the new ticks.
+    pub fn advance_online<T: Transport>(
+        &mut self,
+        client: &mut Client<T>,
+        now: f64,
+        mut input: impl FnMut(&SimState) -> InputFrame,
+        mut observe: impl FnMut(&LevelRuntime, &SimState, &[SimEvent], &InputFrame),
+    ) -> u32 {
+        self.events.clear();
+        self.inputs.clear();
+        let mut n = 0;
+        let mut last = None;
+        client.update(now, |st, _me| {
+            let f = input(st);
+            last = Some(f);
+            n += 1;
+            f
+        });
+        if let Some(r) = &mut client.race {
+            self.prev.clone_from(r.prev());
+            self.curr.clone_from(r.state());
+            self.events.append(&mut r.events);
+        }
+        self.online = Some(client.alpha());
+        if let Some(f) = last {
+            self.inputs.push(f);
+        }
+        if last.is_some() || !self.events.is_empty() {
+            observe(
+                &self.lr,
+                &self.curr,
+                &self.events,
+                &last.unwrap_or_default(),
+            );
+        }
+        self.ticks = n;
+        n
     }
 
     /// Advances by a frame's time: as many whole ticks as have come due (at
@@ -91,7 +163,10 @@ impl Session {
 
     /// How far the frame is from the previous tick (0) to the current (1).
     pub fn alpha(&self) -> f64 {
-        (self.acc / DT).clamp(0.0, 1.0)
+        match self.online {
+            Some(a) => a,
+            None => (self.acc / DT).clamp(0.0, 1.0),
+        }
     }
 }
 

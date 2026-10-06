@@ -19,6 +19,7 @@
 pub mod store;
 pub mod widgets;
 
+pub mod lobby;
 mod menu;
 pub(crate) mod nav;
 pub(crate) mod pad_setup;
@@ -50,6 +51,8 @@ pub enum Screen {
     Pause,
     Results,
     PadSetup,
+    /// Multiplayer's lobby (WP 10.7).
+    Lobby,
     None,
 }
 
@@ -61,6 +64,7 @@ impl Screen {
             Screen::Pause => "pause",
             Screen::Results => "results",
             Screen::PadSetup => "padsetup",
+            Screen::Lobby => "lobby",
             Screen::None => "none",
         }
     }
@@ -126,6 +130,8 @@ pub enum Act {
     /// Natively: leave the game, as Ctrl+Q does (D1002); the window state
     /// is saved on the way out (D1060).
     Exit,
+    /// Multiplayer: the lobby's buttons and the menu's way in (WP 10.7).
+    Mp(lobby::MpAct),
 }
 
 /// Frames between freeing the menu's views and asking for the level: the
@@ -175,6 +181,8 @@ pub struct ResultsView {
     pub rows: Vec<ResRow>,
     pub tiles: Vec<ResTile>,
     pub best: String,
+    /// A multiplayer race: back to the lobby, not Race again.
+    pub online: bool,
 }
 
 /// The front end's state.
@@ -413,9 +421,31 @@ fn flow(
     time: Res<Time>,
     tr: Res<TrackRes>,
     mut cs: ResMut<CameraState>,
-    previews: Res<crate::preview::Previews>,
+    mut previews: ResMut<crate::preview::Previews>,
+    netv: Res<crate::net::NetView>,
 ) {
     let ui = &mut *ui;
+    // Multiplayer: the host started a race. Load its level as Race would,
+    // then the race is built online (`play::start`); a finished race still
+    // on screen goes first.
+    if let Some(level) = &netv.pending_level
+        && ui.starting.is_none()
+        && status.ready
+    {
+        if play.race.is_some() {
+            play.stop = true;
+            play.armed = false;
+        }
+        ui.settings.level = level.clone();
+        previews.free_sections();
+        ui.starting = Some(if previews.has_full(level) {
+            Starting::Level
+        } else {
+            crate::preview::cover();
+            Starting::Free(0)
+        });
+        ui.dirty = true;
+    }
     // The race built behind the loading screen of a menu-first run warmed
     // the cars' pipelines; the menu shows the attract camera.
     if ui.preview && status.ready && play.race.is_some() {
@@ -487,6 +517,9 @@ fn flow(
                 Some(Mode::Results) => Screen::Results,
                 _ => Screen::None,
             }
+        } else if netv.active {
+            // Multiplayer between races.
+            Screen::Lobby
         } else {
             Screen::Menu
         };
@@ -507,7 +540,7 @@ fn flow(
     if screen == Screen::Results && ui.screen != Screen::Results {
         let id = opts.o.level.clone();
         if let Some(r) = play.race.as_ref() {
-            ui.results = Some(show_results(&mut store, &ui.settings, &id, r));
+            ui.results = Some(show_results(&mut store, &ui.settings, &id, r, &netv));
         }
     }
     if screen != ui.screen {
@@ -620,8 +653,21 @@ fn show_results(
     settings: &Settings,
     id: &str,
     race: &crate::play::flow::Race,
+    net: &crate::net::NetView,
 ) -> ResultsView {
     let st = &race.session.curr;
+    let me_i = race.me();
+    let online = race.online_now();
+    // Online, the humans' names are the ones they chose in the lobby.
+    let name_of = |r: &mp_sim::race::ResultRow| -> String {
+        match r.human {
+            Some(h) if online => net
+                .humans
+                .get(h)
+                .map_or_else(|| r.name.to_string(), |p| p.name.clone()),
+            _ => r.name.to_string(),
+        }
+    };
     let mut v = ResultsView::default();
     if st.race.cruise {
         let res = cruise_results(st);
@@ -668,7 +714,7 @@ fn show_results(
         return v;
     }
     let rows = race.results.clone().unwrap_or_default();
-    let Some(me) = rows.iter().find(|r| r.player).cloned() else {
+    let Some(me) = rows.iter().find(|r| r.human == Some(me_i)).cloned() else {
         return v;
     };
     v.title = if me.place == 1 {
@@ -680,16 +726,22 @@ fn show_results(
         .iter()
         .map(|r| ResRow {
             place: r.place.to_string(),
-            name: r.name.into(),
+            name: name_of(r),
             color: Some(r.color),
             value: format!(
                 "{}{}",
                 if r.estimated { "~" } else { "" },
                 fmt_time(Some(r.time))
             ),
-            me: r.player,
+            me: r.human == Some(me_i),
         })
         .collect();
+    if online {
+        // A race with friends isn't a record attempt: no best times saved.
+        v.best = String::new();
+        v.online = true;
+        return v;
+    }
     let pursuit = pursuit_stats(st);
     let key = store::best_key(id, pursuit.is_some());
     let best = store.num_or_null(&key);
@@ -716,7 +768,7 @@ fn show_results(
             },
         ];
     } else if st.race.laps > 0 {
-        let times = &st.players[0].rules.lap_times;
+        let times = &st.players[me_i].rules.lap_times;
         if !times.is_empty() {
             let best_lap = times.iter().cloned().fold(f64::INFINITY, f64::min);
             let lkey = format!("bestLap.{id}");
@@ -955,6 +1007,8 @@ struct ActCtx<'w, 's> {
     pad_setup: ResMut<'w, pad_setup::PadSetup>,
     windows: Query<'w, 's, &'static mut Window, With<PrimaryWindow>>,
     exit: MessageWriter<'w, bevy::app::AppExit>,
+    netv: Res<'w, crate::net::NetView>,
+    netc: ResMut<'w, crate::net::NetCmds>,
 }
 
 /// A slider follows the pointer: `el.value` from where it is along the
@@ -1181,8 +1235,138 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
                 ctx.exit.write(bevy::app::AppExit::Success);
             }
         }
+        Act::Mp(m) => multiplayer(ui, ctx, m, busy),
     }
     let _ = &ctx.status;
+}
+
+/// The lobby's buttons (WP 10.7): each asks the connection for something.
+fn multiplayer(ui: &mut UiState, ctx: &mut ActCtx, m: lobby::MpAct, busy: bool) {
+    use crate::net::NetCmd;
+    use lobby::MpAct;
+    use mp_net::proto::{AiFill, GridRule};
+    let me = ctx.netv.me().cloned();
+    let set_me = |ctx: &mut ActCtx, name: String, car: String, color: u32| {
+        ctx.store.set_str("mpName", &name);
+        ctx.store.set_num("mpColor", f64::from(color));
+        ctx.netc.0.push(NetCmd::SetMe { name, car, color });
+    };
+    match m {
+        MpAct::Open => {
+            if ui.screen != Screen::Menu || busy {
+                return;
+            }
+            ui.clicks.push("click");
+            let name = ctx.store.string("mpName", "Driver");
+            let car = ui.settings.car.clone();
+            let color = mp_sim::physics::car_spec(&car).map_or(0xd81e36, |s| s.color);
+            let color = ctx.store.num("mpColor", f64::from(color)) as u32;
+            ctx.netc.0.push(NetCmd::Join {
+                url: ctx.opts.o.param("join").map(str::to_string),
+                name,
+                car,
+                color,
+            });
+            ui.screen = Screen::Lobby;
+        }
+        MpAct::Leave => {
+            ui.clicks.push("click");
+            ctx.netc.0.push(NetCmd::Leave);
+            if ctx.play.race.as_ref().is_some_and(|r| r.online_now()) {
+                ctx.play.stop = true;
+                ctx.play.armed = false;
+                to_attract(&mut ctx.cs, &ctx.tr);
+            }
+            ui.screen = Screen::Menu;
+            ui.to_menu = true;
+        }
+        MpAct::Back => {
+            ui.clicks.push("click");
+            ctx.play.stop = true;
+            ctx.play.armed = false;
+            to_attract(&mut ctx.cs, &ctx.tr);
+            ui.screen = Screen::Lobby;
+        }
+        MpAct::Name => {
+            let Some(me) = me else { return };
+            #[cfg(target_arch = "wasm32")]
+            if let Some(n) = web::prompt("Your name", &me.name) {
+                set_me(ctx, n, me.car.clone(), me.color);
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            let _ = me;
+        }
+        MpAct::Car(d) => {
+            let Some(me) = me else { return };
+            let cars: Vec<&str> = store::car_kinds().collect();
+            let i = cars.iter().position(|c| *c == me.car).unwrap_or(0) as i64;
+            let n = cars.len() as i64;
+            let car = cars[(i + i64::from(d)).rem_euclid(n) as usize];
+            ui.settings.car = car.into();
+            ctx.store.set_str("car", car);
+            set_me(ctx, me.name, car.into(), me.color);
+        }
+        MpAct::Color => {
+            let Some(me) = me else { return };
+            let c = lobby::COLORS;
+            let i = c
+                .iter()
+                .position(|x| *x == me.color)
+                .map_or(0, |i| (i + 1) % c.len());
+            set_me(ctx, me.name, me.car, c[i]);
+        }
+        MpAct::Ready => {
+            let r = me.is_some_and(|m| m.ready);
+            ctx.netc.0.push(NetCmd::Ready(!r));
+        }
+        MpAct::Go => ctx.netc.0.push(NetCmd::Go(true)),
+        MpAct::Level(_)
+        | MpAct::Ai
+        | MpAct::Ghost
+        | MpAct::RubberBand
+        | MpAct::Grid
+        | MpAct::Races => {
+            let Some(mut s) = ctx.netv.lobby.settings.clone() else {
+                return;
+            };
+            match m {
+                MpAct::Level(d) => {
+                    // Seaside needs its survey data on the host; every
+                    // level is offered.
+                    let ids: Vec<&str> = mp_levels::levels().iter().map(|l| l.id).collect();
+                    let i = ids.iter().position(|l| *l == s.level).unwrap_or(0) as i64;
+                    let n = ids.len() as i64;
+                    s.level = ids[(i + i64::from(d)).rem_euclid(n) as usize].into();
+                }
+                MpAct::Ai => {
+                    s.ai = match s.ai {
+                        AiFill::None => AiFill::To6,
+                        AiFill::To6 => AiFill::To8,
+                        AiFill::To8 => AiFill::None,
+                    }
+                }
+                MpAct::Ghost => s.ghost = !s.ghost,
+                MpAct::RubberBand => s.rubber_band = !s.rubber_band,
+                MpAct::Grid => {
+                    s.grid = match s.grid {
+                        GridRule::Reverse => GridRule::Random,
+                        GridRule::Random => GridRule::Same,
+                        GridRule::Same => GridRule::Reverse,
+                    }
+                }
+                MpAct::Races => {
+                    s.races = match s.races {
+                        0 => 3,
+                        3 => 4,
+                        4 => 6,
+                        _ => 0,
+                    }
+                }
+                _ => {}
+            }
+            ctx.netc.0.push(NetCmd::Configure(s));
+        }
+    }
 }
 
 pub fn sel_id(sel: Sel) -> &'static str {
@@ -1333,7 +1517,12 @@ fn build(
     scroller: Query<&ScrollPosition, With<Scroller>>,
     mut loading: Local<(f32, String)>,
     mut tilt_seen: Local<u8>,
+    netv: Res<crate::net::NetView>,
 ) {
+    // The lobby follows the connection.
+    if netv.is_changed() && ui.screen == Screen::Lobby {
+        ui.dirty = true;
+    }
     let Some(icons) = icons else { return };
     // `tilt.onChange = showTiltState`: the menu's tilt note follows the sensor.
     let tilt = crate::play::tilt::state_code();
@@ -1412,6 +1601,7 @@ fn build(
             Screen::Pause => screens::pause(p, &mut cx, &ui, &play),
             Screen::Results => screens::results(p, &mut cx, &ui),
             Screen::PadSetup => screens::padsetup(p, &mut cx, &ui, &pad_setup.view),
+            Screen::Lobby => lobby::lobby(p, &mut cx, &ui, &netv),
             Screen::None => return,
         });
         if screen == Screen::Menu && bp.touch && bp.portrait {

@@ -92,6 +92,8 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png"]
 # no icon API, and `winit::window::Icon` is not re-exported. The version
 # Bevy 0.19.1 uses; its features come from bevy_winit.
 winit = { version = "0.30", default-features = false }
+# Multiplayer natively: the WebSocket to an mp-host (`net::ws_native`).
+tungstenite = "0.30"
 
 # The web backend is chosen at compile time (SPEC 2), one wasm file each,
 # picked by the page (roadmap WP 2.7; DECISIONS D391): WebGPU by default,
@@ -110,7 +112,7 @@ bevy = { version = "=0.19.1", default-features = false, features = ["web", "webg
 mp_audio = { workspace = true, features = ["web"] }
 wasm-bindgen.workspace = true
 js-sys.workspace = true
-web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Navigator", "Location", "Performance", "Storage"] }
+web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Navigator", "Location", "Performance", "Storage", "WebSocket", "MessageEvent", "BinaryType", "Url"] }
 # Only for their features: debug and trace logging compiled out of release
 # wasm builds. On the web Bevy's LogPlugin filters at info and nothing can
 # change that at run time (there is no RUST_LOG), so those calls could never
