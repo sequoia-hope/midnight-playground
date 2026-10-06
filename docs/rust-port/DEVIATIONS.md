@@ -27,6 +27,8 @@ when a work package introduces one, with the package and the JS it concerns.
 | Hot Pursuit HUD: the hold title's coloured glow, the radio pill's and the bust track's drop shadows are left out; the heat stars' drop shadow is an approximate blur; a radio line too long for its pill is cut at the edge, with no `…` | Bevy UI has no blurred text shadow, draws a box shadow under a translucent node, and has no `text-overflow: ellipsis` | WP 8.3, DECISIONS D962 |
 | A debug overlay (`debug=1`, F3): frame times over 5 s, 30 s and since it was turned on, with graphs, and the client's state; the JS has only its `?stats=1` panel | The owner's request, 2026-10-05 | DECISIONS D1020 |
 | A run recording (`record=1`): a JSON-lines log of the session with every race's per-tick inputs, replayable headless by `mr-sim replay` | The owner's request, 2026-10-05 | DECISIONS D1021, `RECORDING.md` |
+| The native menu ends with a Quit button (leaves the game as Ctrl+Q does); the web page has none | The owner's request (2026-10-05); a page cannot close itself | DECISIONS D1060 |
+| The Ion Arc's motor whine is 7 dB quieter pulling away and 18 dB quieter from 60 % of its top speed; its wind is up to 7 dB louder (road rumble half that), rising with speed | The owner's request (2026-10-05): the whine was "really annoying at full speed"; EVs in other games are near silent with the wind played up. Other cars unchanged | DECISIONS D1061 |
 
 ## Known JS quirks reproduced, not fixed
 

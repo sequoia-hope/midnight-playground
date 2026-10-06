@@ -582,6 +582,32 @@ pub fn menu(
             ))
             .with_children(|p| keyboard_help(p, &bp, ui.pads));
         }
+
+        // Quit, natively (the owner's request, D1060): last on the menu,
+        // where a desktop game keeps it, a secondary `.btn` as the pause
+        // screen's. The page has none: it cannot close itself.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let f = cx.f("btn-exit");
+            let mut holder = Node {
+                align_self: AlignSelf::Center,
+                ..default()
+            };
+            place(&bp, &mut holder, (1, -1), (7, 1));
+            if two {
+                holder.justify_self = JustifySelf::Center;
+            }
+            p.spawn(holder).with_children(|p| {
+                w::button(
+                    p,
+                    &bp,
+                    Control::act("btn-exit", Act::Exit),
+                    "Quit",
+                    false,
+                    f,
+                );
+            });
+        }
     })
 }
 
