@@ -27,7 +27,24 @@ a colour-blind-safe HUD and the auto-steer option working.
 | **M10. Multiplayer: race together** | Two to eight people on a LAN racing the existing levels |
 | **M11. Multiplayer: tab hosting** | WebRTC, a tab as host, Hot Pursuit and cruise with several players |
 
-## M12. Level tools
+## M12. Sound
+
+**Goal:** engines with a deep rumble, and music with real depth and range.
+First after multiplayer, ahead of any world building: the game is already
+fun, and sound is where it falls shortest.
+
+- Engines as a physical exhaust model (pulses, headers, pipes, mufflers)
+  with cycle-to-cycle variation, and bass that survives phone speakers.
+- Instruments with character: 808, 909, 303, Juno-style voices, and
+  Mutable Instruments' open modules (Plaits first).
+- Arrangements that evolve: genre grammars for house, techno and more,
+  seeded variation, music that follows the race.
+- A small Rust DSP module in the AudioWorklet (revisiting port SPEC 7.1).
+- **Gate:** sound.md S2 to S4: a V8 that rumbles on a phone, and a house
+  and a techno track the owner would play outside the game.
+- Design doc: `docs/vision/sound.md` (draft written).
+
+## M13. Level tools
 
 **Goal:** the owner and Claude can build levels together, and the world
 plan exists as data.
@@ -42,7 +59,7 @@ plan exists as data.
   with the tools, by the owner and Claude together.
 - Design doc: `docs/vision/level-tools.md`.
 
-## M13. Cars and classes
+## M14. Cars and classes
 
 **Goal:** fair races at every level of performance, and more cars to love.
 
@@ -58,7 +75,7 @@ plan exists as data.
   in it, measured by the AI's lap times and the owner's.
 - Design doc: `docs/vision/cars.md`.
 
-## M14. A living world
+## M15. A living world
 
 **Goal:** the existing levels feel alive.
 
@@ -72,17 +89,17 @@ plan exists as data.
   pelicans.
 - Design doc: `docs/vision/living-world.md`.
 
-## M15. Radio
+## M16. Radio
 
 **Goal:** generated radio stations worth leaving on.
 
-- A deeper generated music system: enough range for several stations.
+- Stations by genre on M12's music system (sound.md S5).
 - DJ chatter and station identities voiced like the police radio (Qwen
-  voice design), reacting to the race where it can.
+  voice design): sparse, and about what this player did (WORLD 1.1).
 - **Gate:** the owner leaves it on for a whole session.
 - Design doc: `docs/vision/radio.md`.
 
-## M16. Sim handling
+## M17. Sim handling
 
 **Goal:** the Assetto Corsa class option on every car.
 
@@ -95,7 +112,7 @@ plan exists as data.
 - In parallel, in its own repository: the RP2350 wheel firmware
   (vehicle-dynamics SPEC 7.3).
 
-## M17. The Peninsula slice
+## M18. The Peninsula slice
 
 **Goal:** the first piece of open world.
 
@@ -110,7 +127,7 @@ plan exists as data.
   time trial and a delivery without opening a menu.
 - Design doc: `docs/vision/peninsula.md`.
 
-## M18. Off the tarmac
+## M19. Off the tarmac
 
 **Goal:** dirt and rocks.
 
@@ -122,7 +139,7 @@ plan exists as data.
   soft tyres.
 - Design docs: `docs/vision/off-road.md` and the vehicle-dynamics spec.
 
-## M19. Damage, destruction and gadgets
+## M20. Damage, destruction and gadgets
 
 **Goal:** crashing is part of the fun.
 
@@ -134,7 +151,7 @@ plan exists as data.
 - **Gate:** a crash junction the owner wants to replay.
 - Design doc: `docs/vision/damage.md`.
 
-## M20. Playing with others, beyond the race
+## M21. Playing with others, beyond the race
 
 **Goal:** records, friends and watching.
 
@@ -147,7 +164,7 @@ plan exists as data.
   running a server.
 - Design doc: `docs/vision/social.md`.
 
-## M21. RL and robotics
+## M22. RL and robotics
 
 **Goal:** the simulation as a research environment.
 

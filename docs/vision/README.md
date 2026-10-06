@@ -4,6 +4,7 @@
 |---|---|
 | `WORLD.md` | The vision: what the game becomes |
 | `ROADMAP.md` | The order of work after the port, as milestones M12 onward |
+| `sound.md` | Engines and music: the sound milestone (draft) |
 | `../vehicle-dynamics/SPEC.md` | Sim handling, soft-body tyres, the force-feedback wheel |
 
 ## How this is kept
@@ -73,3 +74,13 @@ these documents:
   these roads. Worried that radio chatter stretched too far falls flat:
   keep it sparse and reactive, and test it. New gadget idea: glitching
   the game world itself. → WORLD 1.1, 7.1.
+- **Then, on story and sound:** reluctant to write detailed narrative, but
+  wants something there; chatter that tries to be deep may show no depth.
+  → WORLD 1.1 (depth from memory). **Sound is high priority, ahead of the
+  open world:** engines are whiny and should have a deep rumble (a V8, a
+  V12); music has a nice vibe but sounds like generic generated
+  synthwave and needs richer, more real sound and more range. Loves
+  electronic dance music, house and techno. Suggested Mutable
+  Instruments' open-source modules (deterministic, the code is the
+  instrument) and classic machines like the 808. No "bring your own
+  music". → `sound.md`, ROADMAP M12.
