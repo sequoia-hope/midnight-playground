@@ -70,8 +70,8 @@ const browser = await puppeteer.launch({
   args: [
     '--autoplay-policy=document-user-activation-required',
     ...(backend === 'webgl2'
-      ? ['--disable-blink-features=WebGPU', '--disable-features=WebGPU', '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist']
-      : ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist']),
+      ? ['--disable-blink-features=WebGPU', '--disable-features=WebGPU', '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist', '--mute-audio']
+      : ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist', '--mute-audio']),
   ],
 });
 const errors = [];
