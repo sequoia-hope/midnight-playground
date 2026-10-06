@@ -109,6 +109,10 @@ impl Grid {
             return Err("survey: a grid needs six numbers".into());
         };
         let (w, h) = (*w as usize, *h as usize);
+        // A corrupt size must not overflow the length checks below.
+        if w.checked_mul(h).and_then(|n| n.checked_mul(3)).is_none() {
+            return Err("survey: grid size out of range".into());
+        }
         let bytes = miniz_oxide::inflate::decompress_to_vec_zlib(zlib)
             .map_err(|e| format!("survey: inflating a grid: {e:?}"))?;
         let mut ch = 1;
@@ -141,6 +145,9 @@ impl Grid {
             GridKind::Rgb5 => {
                 // Planar 5-bit channels → interleaved 0..1 (sRGB values; the
                 // colouriser converts).
+                if bytes.len() < w * h * 3 {
+                    return Err("survey: colour grid too short".into());
+                }
                 ch = 3;
                 let mut data = vec![0f32; w * h * 3];
                 for c in 0..3 {
@@ -149,6 +156,9 @@ impl Grid {
                     }
                 }
                 data
+            }
+            GridKind::Cover if bytes.len() < w * h => {
+                return Err("survey: cover grid too short".into());
             }
             GridKind::Cover => (0..w * h)
                 .map(|k| (bytes[k] as f64 / 255.0) as f32)
@@ -318,8 +328,8 @@ impl SeasideData {
                 .map(|(name, l)| Named { name, pts: pts(l) })
                 .collect())
         };
-        let origin = s.f64("origin")?;
-        let photo = s.f64("photo")?;
+        let origin = s.f64_n("origin", 3)?;
+        let photo = s.f64_n("photo", 6)?;
         Ok(SeasideData {
             origin: [origin[0], origin[1], origin[2]],
             lap: s.f64_1("lap")?,
@@ -423,8 +433,11 @@ impl<'a> Sections<'a> {
                 ),
                 2 => Section::I32(r.i32s(n)?),
                 3 => Section::Bytes(r.take(n)?),
+                // No room reserved from the count: a corrupt one would ask
+                // for any amount; each element needs at least its 4-byte
+                // length, so a short file fails as it reads.
                 4 => {
-                    let mut v = Vec::with_capacity(n);
+                    let mut v = Vec::new();
                     for _ in 0..n {
                         let l = r.u32()? as usize;
                         v.push(r.string(l)?);
@@ -432,7 +445,7 @@ impl<'a> Sections<'a> {
                     Section::Strs(v)
                 }
                 5 => {
-                    let mut v = Vec::with_capacity(n);
+                    let mut v = Vec::new();
                     for _ in 0..n {
                         let l = r.u32()? as usize;
                         v.push(r.i32s(l)?);
@@ -458,6 +471,14 @@ impl<'a> Sections<'a> {
             Section::F64(v) => Ok(v.clone()),
             _ => Err(format!("survey: {name} is not f64")),
         }
+    }
+    /// At least `n` numbers.
+    fn f64_n(&self, name: &str, n: usize) -> Result<Vec<f64>, String> {
+        let v = self.f64(name)?;
+        if v.len() < n {
+            return Err(format!("survey: {name} needs {n} numbers, has {}", v.len()));
+        }
+        Ok(v)
     }
     fn f64_1(&self, name: &str) -> Result<f64, String> {
         self.f64(name)?

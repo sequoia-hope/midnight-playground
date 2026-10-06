@@ -107,11 +107,15 @@ pub fn read(bytes: &[u8]) -> Result<Scene, String> {
                 a.offset
             ));
         }
-        let len = a.count * u64::from(a.item_size) * a.component.size() as u64;
-        let range = a.offset as usize..(a.offset + len) as usize;
-        let slice = bin
-            .get(range)
-            .ok_or_else(|| format!("accessor {i}: past the end of the binary section"))?;
+        let past = || format!("accessor {i}: past the end of the binary section");
+        let end = a
+            .count
+            .checked_mul(u64::from(a.item_size))
+            .and_then(|n| n.checked_mul(a.component.size() as u64))
+            .and_then(|len| a.offset.checked_add(len))
+            .filter(|&end| end <= bin.len() as u64)
+            .ok_or_else(past)?;
+        let slice = bin.get(a.offset as usize..end as usize).ok_or_else(past)?;
         buffers.push(Buffer {
             item_size: a.item_size,
             normalized: a.normalized,
@@ -173,6 +177,10 @@ pub fn write(scene: &Scene) -> Result<Vec<u8>, String> {
         environment: scene.environment.clone(),
     };
     let json = serde_json::to_vec(&header).map_err(|e| format!("header: {e}"))?;
+    // JSON writes a non-finite number as `null`; only the fields FORMAT.md
+    // tags (`{"num": ..}`) can hold one. Refuse what `read` would refuse.
+    serde_json::from_slice::<Header>(&json)
+        .map_err(|e| format!("header: a number that must be finite is not ({e})"))?;
     let json_len = u32::try_from(json.len()).map_err(|_| "header over 4 GB")?;
     let bin_start = align8(16 + json.len() as u64) as usize;
     let mut out = Vec::with_capacity(bin_start + bin_len as usize);
@@ -220,10 +228,29 @@ fn validate(s: &Scene) -> Result<(), String> {
         }
         if let Some(ix) = m.index {
             buf(ix, &format!("mesh {i} index"))?;
+            // Every index names a vertex of the positions (the digest reads
+            // them).
+            if let Some(p) = m.attribute("position") {
+                let n = s.buffers[p.accessor as usize].count() as f64;
+                let data = &s.buffers[ix as usize].data;
+                if let Some(k) = (0..data.len()).find(|&k| !(0.0..n).contains(&data.get(k))) {
+                    return Err(format!(
+                        "mesh {i}: index {} at {k} is not one of its {n} vertices",
+                        data.get(k)
+                    ));
+                }
+            }
         }
     }
     for (i, inst) in s.instances.iter().enumerate() {
         buf(inst.matrices, &format!("instances {i} matrices"))?;
+        let held = s.buffers[inst.matrices as usize].data.len() / 16;
+        if inst.count as usize > held {
+            return Err(format!(
+                "instances {i}: {} drawn, but the matrices hold {held}",
+                inst.count
+            ));
+        }
         if let Some(c) = inst.colors {
             buf(c, &format!("instances {i} colours"))?;
         }
