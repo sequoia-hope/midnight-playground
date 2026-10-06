@@ -103,3 +103,11 @@ these documents:
 - **Tuner sounds:** changing station should sound like the driver turning
   the dial (static, whistles, the station locking in). → `radio.md` 2.1,
   with live stations and reception noise for the pirate station.
+- **Next steps chosen:** Coast Highway becomes the first level (it starts
+  in the dark and drives into sunrise) and Sierra the second; to be done
+  in the Rust game once the rename to Midnight Playground (`mp_` crates)
+  lands. Multiplayer next: design note drafted
+  (`docs/rust-port/MULTIPLAYER.md`). An engine sound lab prototype is
+  being built (`tools/engine-lab.html`). **A living world matters more than
+  cars and classes**: ROADMAP M14 and M15 swapped; Seaside Raceway first,
+  with people, activity and birds.
