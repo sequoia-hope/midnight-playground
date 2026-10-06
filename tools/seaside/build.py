@@ -13,7 +13,7 @@ two generated modules:
   src/levels/seaside/photo.jpg   the aerial photo round the circuit, graded
                                  for the game, draped over the ground
   assets/seaside/survey.bin      circuit.js and ground.js as one binary file
-                                 for the Rust port (mr_levels::seaside)
+                                 for the Rust port (mp_levels::seaside)
 
 Sources (all free to use):
   OpenStreetMap (ODbL, (c) OpenStreetMap contributors): the circuit's route
@@ -199,7 +199,7 @@ def js_ints(a):
 
 class Survey:
     """assets/seaside/survey.bin: every value circuit.js and ground.js hold,
-    for the Rust port (mr_levels::seaside), so both games read the same
+    for the Rust port (mp_levels::seaside), so both games read the same
     numbers. Little-endian:
 
       magic "MRSURVEY", version u32 (1), section count u32, then per
