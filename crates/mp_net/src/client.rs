@@ -237,6 +237,29 @@ impl<T: Transport> Client<T> {
         self.send(Channel::Reliable, &m);
     }
 
+    /// The lobby's leader: the connected player with the lowest slot.
+    pub fn leader(&self) -> Option<Slot> {
+        self.lobby
+            .players
+            .iter()
+            .filter(|p| p.connected)
+            .map(|p| p.slot)
+            .min()
+    }
+
+    pub fn is_leader(&self) -> bool {
+        self.slot.is_some() && self.leader() == self.slot
+    }
+
+    /// The leader's controls: the settings, start and abort.
+    pub fn configure(&mut self, s: Settings) {
+        self.send(Channel::Reliable, &Msg::Configure(s));
+    }
+
+    pub fn go(&mut self, start: bool) {
+        self.send(Channel::Reliable, &Msg::Go(start));
+    }
+
     pub fn ready(&mut self, r: bool) {
         self.send(Channel::Reliable, &Msg::Ready(r));
     }

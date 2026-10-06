@@ -6,8 +6,11 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+mp_levels.workspace = true
 mp_net.workspace = true
 mp_sim.workspace = true
+tungstenite = "0.30"
+
 
 [[bin]]
 name = "mp-host"

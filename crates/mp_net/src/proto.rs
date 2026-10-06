@@ -134,6 +134,10 @@ pub enum Msg {
         t: f64,
     },
     Leave,
+    /// The leader (the lowest connected slot) changes the settings.
+    Configure(Settings),
+    /// The leader starts a race, or (false) aborts the one running.
+    Go(bool),
 
     // ── Host to client ──
     Welcome {
@@ -381,6 +385,14 @@ impl Msg {
                 w.f64(*t);
             }
             Msg::Leave => w.u8(6),
+            Msg::Configure(s) => {
+                w.u8(7);
+                w.settings(s);
+            }
+            Msg::Go(g) => {
+                w.u8(8);
+                w.bool(*g);
+            }
             Msg::Welcome { slot } => {
                 w.u8(20);
                 w.u8(*slot);
@@ -476,6 +488,8 @@ impl Msg {
                 t: r.f64()?,
             },
             6 => Msg::Leave,
+            7 => Msg::Configure(r.settings()?),
+            8 => Msg::Go(r.bool()?),
             20 => Msg::Welcome { slot: r.u8()? },
             21 => Msg::Reject { reason: r.str()? },
             22 => Msg::Lobby {
@@ -574,6 +588,8 @@ mod tests {
             },
             Msg::Ping { id: 9, t: 1234.5 },
             Msg::Leave,
+            Msg::Configure(Settings::default()),
+            Msg::Go(true),
             Msg::Welcome { slot: 3 },
             Msg::Reject {
                 reason: "full".into(),

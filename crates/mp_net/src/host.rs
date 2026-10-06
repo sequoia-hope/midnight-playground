@@ -151,6 +151,18 @@ impl<T: Transport> Host<T> {
         self.send_lobby();
     }
 
+    /// The leader picks the settings and starts races: the connected player
+    /// with the lowest slot (the host app is headless).
+    fn is_leader(&self, i: usize) -> bool {
+        let lowest = self
+            .players
+            .iter()
+            .filter(|p| p.peer.is_some())
+            .map(|p| p.info.slot)
+            .min();
+        lowest == Some(self.players[i].info.slot)
+    }
+
     fn slot_of(&self, peer: PeerId) -> Option<usize> {
         self.players.iter().position(|p| p.peer == Some(peer))
     }
@@ -205,6 +217,17 @@ impl<T: Transport> Host<T> {
                 let host_tick = self.race.as_ref().map_or(0.0, |r| (now - r.t0) / TICK_MS);
                 self.send(peer, Channel::Reliable, &Msg::Pong { id, t, host_tick });
             }
+            (Msg::Configure(set), Some(i)) if self.is_leader(i) => {
+                let mut set = set;
+                if !known_level(&set.level) {
+                    set.level = self.settings.level.clone();
+                }
+                self.set_settings(set);
+            }
+            (Msg::Go(true), Some(i)) if self.is_leader(i) => {
+                self.start(now);
+            }
+            (Msg::Go(false), Some(i)) if self.is_leader(i) => self.abort(),
             (Msg::Leave, Some(_)) => {
                 self.net.close(peer);
                 self.drop_peer(peer);
@@ -623,6 +646,12 @@ pub fn multi_opts(s: &RaceStart) -> MultiOpts {
         rubber_band: s.settings.rubber_band,
         ghost: s.settings.ghost,
     }
+}
+
+/// Whether `id` is one of the game's levels (`level_by_id` falls back to
+/// the first for anything else, which a lobby must not do quietly).
+pub fn known_level(id: &str) -> bool {
+    mp_levels::levels().iter().any(|l| l.id == id)
 }
 
 /// A name as the lobby shows it: trimmed, at most 16 characters, never
