@@ -19,6 +19,7 @@ pub mod physics;
 pub mod police;
 pub mod pursuit;
 pub mod race;
+pub mod replay;
 pub mod rng;
 pub mod staged;
 pub mod trace;
