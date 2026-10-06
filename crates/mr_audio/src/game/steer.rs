@@ -281,6 +281,10 @@ impl GameAudio {
         let regen = clamp(or0(s.regen, 0.0), 0.0, 1.0);
         let boost = if s.nitro == Some(true) { 1.0 } else { 0.0 };
         let moving = clamp(motor * 25.0, 0.0, 1.0);
+        // The owner's request (DEVIATIONS, D1061): the motor's whine is
+        // hushed, a faint one pulling away and almost none at speed, where
+        // the wind and the road carry it (`EV_WIND`).
+        let hush = ev_hush(motor);
         let f1 = 45.0 + motor * 1450.0;
         let k = 0.03;
         ev.f1.o.frequency.set_target_at_time(f1, t, k);
@@ -303,30 +307,30 @@ impl GameAudio {
             .set_target_at_time(500.0 + f1 * 1.7, t, 0.05);
         let tc = 0.05;
         ev.f1.g.gain.set_target_at_time(
-            0.06 * moving * (0.3 + 0.7 * load) * (1.0 - 0.4 * regen),
+            0.06 * moving * (0.3 + 0.7 * load) * (1.0 - 0.4 * regen) * hush,
             t,
             tc,
         );
         ev.f2
             .g
             .gain
-            .set_target_at_time(0.028 * moving * (0.2 + 0.8 * load), t, tc);
+            .set_target_at_time(0.028 * moving * (0.2 + 0.8 * load) * hush, t, tc);
         ev.f3
             .g
             .gain
-            .set_target_at_time(0.012 * moving * load, t, tc);
+            .set_target_at_time(0.012 * moving * load * hush, t, tc);
         ev.mesh
             .g
             .gain
-            .set_target_at_time(0.006 * moving * (0.3 + load + regen), t, tc);
+            .set_target_at_time(0.006 * moving * (0.3 + load + regen) * hush, t, tc);
         ev.regen
             .g
             .gain
-            .set_target_at_time(0.03 * regen * moving, t, tc);
+            .set_target_at_time(0.03 * regen * moving * hush, t, tc);
         ev.saw
             .g
             .gain
-            .set_target_at_time(0.03 * moving * (0.25 + 0.75 * load), t, tc);
+            .set_target_at_time(0.03 * moving * (0.25 + 0.75 * load) * hush, t, tc);
         ev.growl.g.gain.set_target_at_time(
             0.06 * boost * moving,
             t,
@@ -360,17 +364,22 @@ impl GameAudio {
             // Wind: builds with the square of speed; louder in the air.
             let sp = clamp(speed / 80.0, 0.0, 1.3);
             let air = if on_ground { 1.0 } else { 1.35 };
+            // The electric car's near-silent motor leaves the wind and the
+            // road to carry its speed: both louder, more so the faster
+            // (D1061); the road rumble by half as many dB. 1 for every other
+            // car, so their sound is the JS's.
+            let ev = if self.electric { ev_wind(speed) } else { 1.0 };
             g.wind
                 .g
                 .gain
-                .set_target_at_time(0.2 * sp * sp * air, t, 0.1);
+                .set_target_at_time(0.2 * sp * sp * air * ev, t, 0.1);
             g.wind
                 .f
                 .frequency
                 .set_target_at_time(350.0 + speed * 22.0, t, 0.1);
             for w in &g.wind_hi {
                 w.bed.g.gain.set_target_at_time(
-                    0.06 * pow(clamp((speed - 12.0) / 70.0, 0.0, 1.3), 2.2) * air,
+                    0.06 * pow(clamp((speed - 12.0) / 70.0, 0.0, 1.3), 2.2) * air * ev,
                     t,
                     0.12,
                 );
@@ -381,7 +390,7 @@ impl GameAudio {
             }
             g.rumble.g.gain.set_target_at_time(
                 if on_ground {
-                    (0.13 + 0.22 * off) * clamp(speed / 50.0, 0.0, 1.0)
+                    (0.13 + 0.22 * off) * clamp(speed / 50.0, 0.0, 1.0) * ev.sqrt()
                 } else {
                     0.0
                 },
@@ -491,5 +500,49 @@ impl GameAudio {
             i += 1.0;
         }
         self.pop_cooldown = at - t0;
+    }
+}
+
+// ── The electric car's quiet motor (the owner's request, D1061) ─────────
+/// The motor's whine pulling away (motor ≤ `EV_HUSH_FROM`): −7 dB.
+const EV_HUSH_LOW: f64 = 0.45;
+/// And from `EV_HUSH_TO` of the motor's top speed up: −18 dB.
+const EV_HUSH_HIGH: f64 = 0.125;
+const EV_HUSH_FROM: f64 = 0.1;
+const EV_HUSH_TO: f64 = 0.6;
+/// The electric car's wind: up to this many times the others' (+7 dB) at
+/// `EV_WIND_AT` m/s and beyond, rising from 1 at a standstill.
+const EV_WIND: f64 = 2.25;
+const EV_WIND_AT: f64 = 60.0;
+
+/// The motor voices' scale for the motor's speed (0..1.05).
+fn ev_hush(motor: f64) -> f64 {
+    let k = clamp(
+        (motor - EV_HUSH_FROM) / (EV_HUSH_TO - EV_HUSH_FROM),
+        0.0,
+        1.0,
+    );
+    EV_HUSH_LOW + (EV_HUSH_HIGH - EV_HUSH_LOW) * k
+}
+
+/// The electric car's wind scale at `speed` m/s (1 for the others).
+fn ev_wind(speed: f64) -> f64 {
+    1.0 + (EV_WIND - 1.0) * clamp(speed / EV_WIND_AT, 0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_electric_motor_hushes_with_speed_and_its_wind_grows() {
+        assert_eq!(ev_hush(0.0), EV_HUSH_LOW, "a faint whine pulling away");
+        assert_eq!(ev_hush(0.1), EV_HUSH_LOW);
+        assert!(ev_hush(0.3) < ev_hush(0.2), "quieter the faster");
+        assert_eq!(ev_hush(0.6), EV_HUSH_HIGH, "−18 dB at speed");
+        assert_eq!(ev_hush(1.05), EV_HUSH_HIGH);
+        assert_eq!(ev_wind(0.0), 1.0, "the others' wind at a standstill");
+        assert_eq!(ev_wind(30.0), 1.625);
+        assert_eq!(ev_wind(90.0), EV_WIND, "+7 dB from 60 m/s");
     }
 }
