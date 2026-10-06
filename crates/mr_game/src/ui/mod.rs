@@ -91,6 +91,10 @@ pub enum Sel {
     Track,
     Steer,
     Pedals,
+    /// The guide line (Rust only, D1083).
+    Guide,
+    /// The steering assist (Rust only, D1083).
+    Assist,
 }
 
 /// What activating a control does.
@@ -1086,6 +1090,14 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
                     ui.settings.pedals = v.clone();
                     ctx.store.set_str("pedals", &v);
                 }
+                Sel::Guide => {
+                    ui.settings.guide = v.clone();
+                    ctx.store.set_str("guideLine", &v);
+                }
+                Sel::Assist => {
+                    ui.settings.assist = v.clone();
+                    ctx.store.set_str("steerAssist", &v);
+                }
             }
         }
         Act::CloseDropdown => ui.dropdown = None,
@@ -1174,6 +1186,8 @@ pub fn sel_id(sel: Sel) -> &'static str {
         Sel::Track => "opt-track",
         Sel::Steer => "opt-steer",
         Sel::Pedals => "opt-pedals",
+        Sel::Guide => "opt-guide",
+        Sel::Assist => "opt-assist",
     }
 }
 

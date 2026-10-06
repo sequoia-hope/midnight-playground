@@ -26,6 +26,7 @@ mod fx;
 mod fx_stage;
 pub mod gamepad;
 pub mod gamepad_io;
+pub mod guide;
 mod hud;
 mod incar;
 pub mod input;
@@ -84,6 +85,10 @@ pub struct Params {
     /// `?camera=chase|far|bumper`: the race starts in that camera mode, as
     /// if C had been pressed (a test hook, D1041).
     pub camera: Option<usize>,
+    /// `?line=full|brake|off`: the guide line, over the setting (D1083).
+    pub line: Option<guide::GuideMode>,
+    /// `?assist=0|1|2`: the steering assist, over the setting (D1083).
+    pub assist: Option<mr_sim::assist::Assist>,
 }
 
 impl Params {
@@ -117,6 +122,8 @@ impl Params {
             shots: get("shots").map(str::to_owned),
             fx: get("fx") != Some("0"),
             camera: get("camera").and_then(|c| camera::MODES.iter().position(|m| m.name == c)),
+            line: get("line").and_then(guide::GuideMode::parse),
+            assist: get("assist").and_then(mr_sim::assist::Assist::parse),
         }
     }
 
@@ -242,6 +249,7 @@ pub fn plugin(app: &mut App) {
             .before(crate::render::lighting::pack_globals),
     );
     audio::plugin(app);
+    guide::plugin(app);
     hud::plugin(app);
     gamepad_io::plugin(app);
     tilt::plugin(app);

@@ -90,9 +90,16 @@ pub fn stick_steer(d: f64) -> f64 {
         )
 }
 
-/// Full lock on the stick, in CSS px: about a sixth of the screen's short side.
+/// Full lock on the stick, in CSS px: the JS's sixth of the screen's short
+/// side, made longer for finer steering (D1084): 0.17 of the short side
+/// held sideways, 0.185 of the width upright (where the pedal panel beside
+/// it leaves room for no more).
 pub fn stick_range(w: f64, h: f64) -> f64 {
-    clamp(w.min(h) * 0.15, 44.0, 84.0)
+    if h > w {
+        clamp(w * 0.185, 46.0, 92.0)
+    } else {
+        clamp(w.min(h) * 0.17, 46.0, 92.0)
+    }
 }
 
 /// What a thumb at height `u` on the slider (0 bottom, 1 top) asks for.
@@ -271,6 +278,8 @@ pub struct Layout {
     pub b: f64,
     /// `--stick-r`.
     pub stick_r: f64,
+    /// The stick's knob, its diameter (56 px in the JS; D1084).
+    pub knob: f64,
     /// The stick's resting centre (`.t-stick` while it waits).
     pub stick_home: (f64, f64),
     /// `.t-pedal`: the slider and the drift strip together.
@@ -292,26 +301,47 @@ pub struct Layout {
 impl Layout {
     pub fn new(w: f64, h: f64, ins: Insets) -> Layout {
         let vmin = w.min(h) / 100.0;
-        // --b: clamp(58px, calc(12vmin + 26px), 96px)
-        let b = clamp(12.0 * vmin + 26.0, 58.0, 96.0);
+        let portrait = h > w;
+        // Bigger than the JS's (D1084). The JS: --b: clamp(58px, calc(12vmin
+        // + 26px), 96px), --pedal-h: clamp(190px, 62vmin, 300px), the slider
+        // .95 b and the drift strip .7 b wide, the same both ways up.
+        // Sideways: --b clamp(60px, 14vmin + 26px, 104px) and the slider
+        // 66vmin (to 320 px). Upright, where the width is short and the
+        // height long: --b a fifth of the width, held to what lets the
+        // Buttons choices' four pads share a row; the slider panel's unit
+        // .22 of the width; the slider .36 of the height (240 to 380 px);
+        // the pads taller (below).
+        let b = if portrait {
+            clamp(0.2 * w, 58.0, 104.0).min(((w - 62.0) / 4.16).max(58.0))
+        } else {
+            clamp(14.0 * vmin + 26.0, 60.0, 104.0)
+        };
+        let pb = if portrait {
+            clamp(0.22 * w, 60.0, 110.0)
+        } else {
+            b
+        };
         let in_l = ins.left.max(16.0);
         let in_r = ins.right.max(16.0);
         let in_b = ins.bottom.max(14.0);
-        // --pedal-h: clamp(190px, 62vmin, 300px)
-        let pedal_h = clamp(62.0 * vmin, 190.0, 300.0);
+        let pedal_h = if portrait {
+            clamp(0.36 * h, 240.0, 380.0)
+        } else {
+            clamp(66.0 * vmin, 200.0, 320.0)
+        };
         let stick_r = stick_range(w, h);
         // .t-pedal: right: --inR; bottom: --inB; the slider (.95 b), a 6 px
         // gap, the drift strip (.7 b).
         let bottom = h - in_b;
         let top = bottom - pedal_h;
         let drift = Rect {
-            left: w - in_r - 0.7 * b,
+            left: w - in_r - 0.7 * pb,
             top,
             right: w - in_r,
             bottom,
         };
         let track = Rect {
-            left: drift.left - 6.0 - 0.95 * b,
+            left: drift.left - 6.0 - 0.95 * pb,
             top,
             right: drift.left - 6.0,
             bottom,
@@ -333,9 +363,11 @@ impl Layout {
         };
         // .t-steer: left: --inL; bottom: --inB; two 1.08 b pads 14 px apart.
         let d = 1.08 * b;
+        // Upright, the ◂ ▸ pads and the pedals are taller (D1084).
+        let tall_k = if portrait { 1.4 } else { 1.0 };
         let dir = |i: f64| Rect {
             left: in_l + i * (d + 14.0),
-            top: bottom - d,
+            top: bottom - d * tall_k,
             right: in_l + i * (d + 14.0) + d,
             bottom,
         };
@@ -345,8 +377,8 @@ impl Layout {
         // (.74 b round) over BRAKE and GAS (b by 1.3 b).
         let c2 = w - in_r - b;
         let c1 = c2 - 14.0 - b;
-        let row2 = bottom - 1.3 * b;
-        let small = 0.74 * b;
+        let row2 = bottom - 1.3 * b * tall_k;
+        let small = if portrait { 0.84 * b } else { 0.74 * b };
         let row1 = row2 - 12.0;
         let round = |c: f64| Rect {
             left: c + (b - small) / 2.0,
@@ -372,6 +404,7 @@ impl Layout {
             h,
             b,
             stick_r,
+            knob: clamp(stick_r, 56.0, 72.0),
             // .t-stick: left: --inL + --stick-r + 32px; top: 100% - --inB - .6 b
             stick_home: (in_l + stick_r + 32.0, h - in_b - 0.6 * b),
             panel,
@@ -389,11 +422,12 @@ impl Layout {
     pub fn stick_box(&self) -> Rect {
         let (cx, cy) = self.stick_home;
         let hw = self.stick_r + 32.0;
+        let hh = 32.0f64.max(self.knob / 2.0 + 4.0);
         Rect {
             left: cx - hw,
-            top: cy - 32.0,
+            top: cy - hh,
             right: cx + hw,
-            bottom: cy + 32.0,
+            bottom: cy + hh,
         }
     }
 }
@@ -837,19 +871,48 @@ mod tests {
     }
 
     #[test]
-    fn stick_range_is_a_sixth_of_the_short_side() {
-        near(stick_range(915.0, 412.0), 61.8, 1e-9);
-        assert_eq!(stick_range(412.0, 915.0), stick_range(915.0, 412.0));
+    fn stick_range_from_the_screen() {
+        // Sideways, 0.17 of the short side (the JS's 0.15, D1084).
+        near(stick_range(915.0, 412.0), 70.04, 1e-9);
+        // Upright, 0.185 of the width: longer than sideways.
+        near(stick_range(412.0, 915.0), 76.22, 1e-9);
         assert_eq!(
-            stick_range(640.0, 280.0),
-            44.0,
+            stick_range(640.0, 250.0),
+            46.0,
             "never too short to control"
         );
         assert_eq!(
             stick_range(1366.0, 1024.0),
-            84.0,
+            92.0,
             "nor too long on a tablet"
         );
+    }
+
+    /// The bigger controls (D1084) on the owner's iPhone, both ways up:
+    /// bigger than the JS's boxes, inside the screen, and upright the
+    /// stick at rest clears the pedal panel.
+    #[test]
+    fn bigger_controls_on_an_iphone() {
+        let side = Layout::new(844.0, 390.0, Insets::default());
+        let up = Layout::new(390.0, 844.0, Insets::default());
+        // The JS's: b 72.8, the slider 241.8 tall and 126.1 wide, full
+        // lock 58.5 px, the knob 56.
+        assert!(side.b > 80.0 && side.panel.height() > 255.0 && side.stick_r > 66.0);
+        assert!(up.panel.height() > 300.0 && up.panel.width() > 140.0);
+        assert!(up.stick_r > 72.0 && up.knob >= 72.0);
+        assert!(
+            up.pedals[2].height() > 1.3 * 72.8 * 1.3,
+            "taller pedals upright"
+        );
+        for lay in [side, up] {
+            let mut all = vec![lay.panel, lay.wheel, lay.stick_box()];
+            all.extend(lay.dirs);
+            all.extend(lay.pedals);
+            for r in all {
+                assert!(r.left >= 0.0 && r.top >= 0.0 && r.right <= lay.w && r.bottom <= lay.h);
+            }
+        }
+        assert!(up.stick_box().right < up.panel.left);
     }
 
     #[test]
