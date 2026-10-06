@@ -57,7 +57,7 @@ function baseUrl() {
   return `http://127.0.0.1:${port}/${rel ? rel.split(path.sep).join('/') + '/' : ''}`;
 }
 
-const flags = ['--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist'];
+const flags = ['--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist', '--mute-audio'];
 if (perfSecs) flags.push('--disable-gpu-vsync', '--disable-frame-rate-limit');
 if (side === 'rust' && backend === 'webgpu') flags.push('--enable-unsafe-webgpu', '--enable-features=Vulkan');
 if (side === 'rust' && backend === 'webgl2') flags.push('--disable-blink-features=WebGPU', '--disable-features=WebGPU');

@@ -75,8 +75,8 @@ const browser = await puppeteer.launch({
   executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
   headless: 'new',
   args: backend === 'webgl2'
-    ? ['--disable-blink-features=WebGPU', '--disable-features=WebGPU', '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist']
-    : ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist'],
+    ? ['--disable-blink-features=WebGPU', '--disable-features=WebGPU', '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist', '--mute-audio']
+    : ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist', '--mute-audio'],
   dumpio: !!process.env.MR_DUMPIO,
 });
 const errors = [];

@@ -595,7 +595,7 @@ export function installBridge(selectorSrc) {
 // Chrome for the Rust build: WebGPU on Vulkan (SPEC 8.5) beside the
 // harness's GPU flags.
 export const RUST_ARGS = [
-  '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist',
+  '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist', '--mute-audio',
   '--autoplay-policy=document-user-activation-required',
 ];
 
