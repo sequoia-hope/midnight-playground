@@ -8250,3 +8250,94 @@ left as they are:
   <png>` → `--screenshot <png>` (its own run: with both, the picture is
   taken and the smoke report is not printed), `--wait <ms>` → `--after
   <frames>`. `--dev` (F12 devtools) has no counterpart.
+
+## D1005. The menu's hitches natively: the views' work off the main thread
+
+2026-10-05. The owner saw a stutter in the native menu (`cargo run -p
+mr_game`, a debug build) and the log said `1 pipeline(s) compiling after
+the warm-up`. `RUST_LOG=mr_game::status=debug` now logs every frame over
+50 ms (`slow frame`), and a pipeline queued after the warm-up is logged by
+its label (its shader defs at debug level). Measured on the RTX 3060, the
+menu's first 15 s, the five other views built behind it:
+
+- **What stuttered.** Not the late pipeline (natively pipelines compile in
+  the background, so a late one draws late; it does not stall a frame) but
+  each view's hand-over from its build thread: the main thread built the
+  Track twice (before the build and after it) and `world_data` built it a
+  third time for a level with a City or Harbor (Sierra, Coast, Cruise),
+  then converted the textures one per step, Seaside's 1843 × 2160 photo
+  with its mipmaps in a single step. Debug build: 8 frames over 50 ms, the
+  worst 250 ms (the hand-over 21 to 225 ms, the photo 377 ms). Release
+  build: a 74 ms hand-over (Cruise) and the photo's 39 ms step.
+- **Now.** Natively the build thread makes the Track (with `runout`), the
+  world build and the converted textures (`preview::build_on_thread`;
+  `loader::Build::with_images` takes them); the main thread only adds the
+  assets and spawns, 6 ms a frame as before. Debug build: no frame over
+  50 ms in two runs (one of 51 ms in a third); release: spawns 3 to 19 ms,
+  one frame of 51 ms in one run of two. The views are the same; the web
+  path is unchanged (no threads there).
+- **The late pipelines.** The menu's box shadow (`ui::widgets::shadow`)
+  was compiled the first time the menu drew; on the web also Bevy UI's
+  plain and gradient pipelines, because the page's loading screen draws no
+  Bevy UI. `warmup::spawn_ui` adds an off-screen node with all three to the
+  first scene's warm-up. A background view's own stand-ins
+  (`SectionWarm`) queue pipelines by design; those no longer count as late
+  (`preview::section_warming`). Natively the menu now has none late; the
+  one left in a `--screenshot` run is the screenshot's own (D923).
+- **Open, on the web.** The stutter while the views build behind the menu
+  is D746's, accepted: 14 to 16 of about 83 frames over 50 ms, the worst
+  167 to 183 ms (`sections.test.mjs`, load 7 to 10). The first tab switch
+  (to Coast) has one frame of 283 to 317 ms, on main before this change
+  too (D749 saw none; not yet found). With the labels, the web's log shows
+  mesh pipelines (prepass, opaque, alpha-blend) queued after the warm-up
+  behind the menu and in a race after it; each is a hitch in a browser.
+
+## D1006. A keyboard that is also a joystick: the Keychron Q6 HE
+
+2026-10-05, from the owner's native run. The Keychron Q6 HE (a Hall-effect
+keyboard, USB 3434:0b60) exposes a joystick on its interface 0 beside the
+keyboard (`/dev/input/event5` and `js0`, udev's `ID_INPUT_JOYSTICK=1`, 6
+axes, 16 buttons). gilrs takes it for a gamepad and, having no mapping for
+it (`No mapping found for UUID 03000000-3434-0000-600b-000011010000`), uses
+its default one; it was connected first, so it is gamepad 0 and the Xbox
+One pad gamepad 1. What follows, natively, as the pads work (WP 6.4, D781):
+
+- The pads' state is `connected` with no controller in hand, so the race's
+  stuck hint names a pad button and the Controller screen lists the
+  keyboard.
+- The active pad (the one the Controller screen and the hint describe) is
+  the keyboard until another pad's button is pressed or stick moved; then
+  that pad is, as in the JS.
+- Every pad's input is summed (`Pads::poll`), so whatever the keyboard's
+  joystick reports would steer or throttle; with its analog mode off it
+  reports nothing, and the Xbox pad drives normally.
+
+Nothing is filtered: a browser on Linux lists such a device in
+`navigator.getGamepads()` too (Chrome takes `ID_INPUT_JOYSTICK` devices;
+not checked with this keyboard), and the JS game would treat it the same.
+Should it get in the way, the keyboard's own setting turns its joystick
+off, or the port could skip pads that report themselves as keyboards; not
+done.
+
+## D1007. Natively, a click or key wakes the sound
+
+2026-10-05. The owner heard nothing natively until a race had loaded.
+`main.js` wakes the audio (`wakeAudio`: `init`, `unlock`) on every
+pointer-down, pointer-up, touch-end, click and key-down; on the web the
+page's handlers call `play::audio::gesture`, natively nothing did, so the
+graph was built only by a race (`start_race`). The menu then stayed silent:
+the buttons' clicks and a level tab's music (`if (audio.ready)
+pickMusic()`) wait for the sound to be up. `play::audio::native_gesture`
+(PreUpdate, any state) wakes it on a mouse button, a key or a touch ending.
+As in the JS, the menu has no music of its own until a level tab (or the
+track picker) asks for one; the first click builds the sound.
+
+## D1008. `cargo xtask web` swaps the build in when it is done
+
+2026-10-05. The owner, on the tailnet URL during a rebuild: a directory
+listing instead of the game. `cargo xtask web` emptied `dist/next/` first
+and wrote `index.html` last, minutes later. It now builds in
+`dist/next.staging/` (with `--only`, a copy of the live build's other
+backend first) and renames it into place when everything is written; a
+failed build leaves `dist/next/` as it was. Checked: the URL polled every
+0.3 s through a release build (694 requests) served the game every time.

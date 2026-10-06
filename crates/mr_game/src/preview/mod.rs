@@ -129,6 +129,15 @@ pub struct SectionPart;
 #[derive(Component)]
 struct SectionWarm;
 
+/// A background section's stand-ins are out: the pipelines they queue
+/// are that section's warm-up, not ones the menu's missed (`status`).
+static SECTION_WARM: AtomicBool = AtomicBool::new(false);
+
+/// Pipelines compiling now may be a background section's warm-up.
+pub fn section_warming() -> bool {
+    SECTION_WARM.load(Ordering::Relaxed)
+}
+
 /// A section that is up: what showing it puts in place.
 struct Up {
     root: Entity,
@@ -203,9 +212,17 @@ pub struct Previews {
     pub all_ms: Option<f64>,
 }
 
+/// A section's world build, done: natively with its Track and level and
+/// its textures converted, all made on the build thread.
+struct Built {
+    world: Box<WorldBuild>,
+    made: Option<(Track, Level)>,
+    images: Vec<Option<Image>>,
+}
+
 /// The native build thread's result: generation, section, the build.
 #[cfg(not(target_arch = "wasm32"))]
-type ThreadOut = (u64, usize, Result<Box<WorldBuild>, String>);
+type ThreadOut = (u64, usize, Result<Built, String>);
 #[cfg(not(target_arch = "wasm32"))]
 static THREAD_OUT: Mutex<Vec<ThreadOut>> = Mutex::new(Vec::new());
 
@@ -402,11 +419,33 @@ fn new_build(level: &Level, section: Section) -> Build {
 
 /// Runs a section's world build to the end.
 #[cfg(not(target_arch = "wasm32"))]
-fn run_build(mut b: Build, t: Option<f64>) -> Result<Box<WorldBuild>, String> {
+/// Natively, everything a section needs before its entities are spawned,
+/// on the build thread: the Track, the world build, and its textures
+/// converted. On the main thread they were the menu's hitches (DECISIONS
+/// D1005): the Track built up to three times (`world_data` builds its own
+/// for a level with a City or Harbor) and Seaside's photo converted in one
+/// step.
+#[cfg(not(target_arch = "wasm32"))]
+fn build_on_thread(level: Level, t: Option<f64>) -> Result<Built, String> {
+    let mut track = Track::new(&level)?;
+    let mut b = new_build(&level, section_of(&track));
     while !b.is_done() {
         animate::section_step(&mut b, t)?;
     }
-    Ok(Box::new(finish_build(b)))
+    // As `make_track` keeps it: the race may start on this Track.
+    track.runout = mr_levels::world::world_data(level.id).runout;
+    let world = Box::new(finish_build(b));
+    let images = world
+        .scene
+        .textures
+        .iter()
+        .map(|d| crate::convert::build_image(&world.scene, d))
+        .collect();
+    Ok(Built {
+        world,
+        made: Some((track, level)),
+        images,
+    })
 }
 
 /// The cut and the scene (`mr_worldgen::section::finish`).
@@ -448,16 +487,15 @@ fn drive(
                 pv.secs[k].stage = Stage::Failed;
             }
             Some(Ok(level)) => {
-                let track = match Track::new(&level) {
-                    Ok(t) => t,
+                #[cfg(target_arch = "wasm32")]
+                let b = match Track::new(&level) {
+                    Ok(track) => new_build(&level, section_of(&track)),
                     Err(e) => {
                         warn!("section {id}: {e}");
                         pv.secs[k].stage = Stage::Failed;
                         return;
                     }
                 };
-                let sec = section_of(&track);
-                let b = new_build(&level, sec);
                 let s = &mut pv.secs[k];
                 s.started = Some(Instant::now());
                 s.full_kind = animate::generated(id);
@@ -466,7 +504,7 @@ fn drive(
                 {
                     let (g, t) = (pv.generation, opts.o.t);
                     std::thread::spawn(move || {
-                        let r = run_build(b, t);
+                        let r = build_on_thread(level, t);
                         THREAD_OUT
                             .lock()
                             .unwrap_or_else(|e| e.into_inner())
@@ -486,7 +524,7 @@ fn drive(
         }
     }
     // A finished world build: the scene goes to the loader, under a root.
-    let mut built: Vec<(usize, Result<Box<WorldBuild>, String>)> = Vec::new();
+    let mut built: Vec<(usize, Result<Built, String>)> = Vec::new();
     #[cfg(not(target_arch = "wasm32"))]
     {
         let mut out = THREAD_OUT.lock().unwrap_or_else(|e| e.into_inner());
@@ -520,7 +558,14 @@ fn drive(
             Ok(()) if b.is_done() => {
                 if let Stage::Stepping(b) = std::mem::replace(&mut s.stage, Stage::Queued) {
                     let b = b.into_inner().unwrap_or_else(|e| e.into_inner());
-                    built.push((k, Ok(Box::new(finish_build(b)))));
+                    built.push((
+                        k,
+                        Ok(Built {
+                            world: Box::new(finish_build(b)),
+                            made: None,
+                            images: Vec::new(),
+                        }),
+                    ));
                 }
             }
             Ok(()) => {}
@@ -533,22 +578,33 @@ fn drive(
                 warn!("section {}: {e}", s.id);
                 s.stage = Stage::Failed;
             }
-            Ok(mut wb) => {
+            Ok(Built {
+                world: mut wb,
+                made,
+                images,
+            }) => {
                 s.build_ms = s
                     .started
                     .map_or(0.0, |t| t.elapsed().as_secs_f64() * 1000.0);
                 let scene = std::mem::take(&mut wb.scene);
                 s.nodes = scene.nodes.len();
-                let Some(Ok(level)) = level_ready(s.id) else {
-                    s.stage = Stage::Failed;
-                    continue;
+                let (track, level) = match made {
+                    Some(m) => m,
+                    None => {
+                        let Some(Ok(level)) = level_ready(s.id) else {
+                            s.stage = Stage::Failed;
+                            continue;
+                        };
+                        let Ok(mut track) = Track::new(&level) else {
+                            s.stage = Stage::Failed;
+                            continue;
+                        };
+                        // As `make_track` keeps it: the race may start on
+                        // this Track.
+                        track.runout = mr_levels::world::world_data(level.id).runout;
+                        (track, level)
+                    }
                 };
-                let Ok(mut track) = Track::new(&level) else {
-                    s.stage = Stage::Failed;
-                    continue;
-                };
-                // As `make_track` keeps it: the race may start on this Track.
-                track.runout = mr_levels::world::world_data(level.id).runout;
                 let root = commands
                     .spawn((
                         Transform::default(),
@@ -569,7 +625,9 @@ fn drive(
                 );
                 s.started = Some(Instant::now());
                 s.stage = Stage::Spawning(Box::new(Spawn {
-                    build: loader::Build::new(scene, shared.clone()).under(root),
+                    build: loader::Build::new(scene, shared.clone())
+                        .under(root)
+                        .with_images(images),
                     world: *wb,
                     root,
                     track,
@@ -623,8 +681,14 @@ fn drive(
             warm_up,
         } = loader::finish_section(build, &mut commands, &mut meshes, &mut images);
         // Behind the menu, the stand-ins are the section's own; the first
-        // section's are the loading screen's warm-up (`WarmUp`).
-        if !loading {
+        // section's are the loading screen's warm-up (`WarmUp`), with the
+        // menu's UI.
+        if loading {
+            crate::warmup::spawn_ui(&mut commands);
+        } else {
+            if !warm_up.is_empty() {
+                SECTION_WARM.store(true, Ordering::Relaxed);
+            }
             for e in warm_up {
                 commands
                     .entity(e)
@@ -674,6 +738,7 @@ fn end_section_warm_up(
     mut quiet: Local<u32>,
 ) {
     if q.is_empty() {
+        SECTION_WARM.store(false, Ordering::Relaxed);
         *quiet = 0;
         return;
     }
