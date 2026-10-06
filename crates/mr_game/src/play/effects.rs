@@ -221,7 +221,8 @@ pub struct Extras {
     pub launch: bool,
 }
 
-/// The headlight pool's place: `pool.position`, `pool.rotation.y`.
+/// The headlight pool's place: `pool.position`, `pool.rotation.y`, and
+/// once [`Effects::lay_pools`] has laid it on the road, the road's tilt.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Pool {
     pub visible: bool,
@@ -232,7 +233,13 @@ pub struct Pool {
     /// `scale.x`, `scale.z`: 9 × 16 m for the player, 7 × 12 for the rest.
     pub sx: f64,
     pub sz: f64,
+    /// The pool's axes (across, up, along) in the world when it lies on
+    /// the road (D1042); `None`: level, turned by `rot_y` (the JS's).
+    pub axes: Option<[[f64; 3]; 3]>,
 }
+
+/// How far a pool laid on the road floats over it (D1042).
+pub const POOL_LIFT: f64 = 0.01;
 
 /// A registered car (`addCar`'s entry).
 #[derive(Clone, Debug)]
@@ -325,6 +332,52 @@ impl Effects {
             launch_due: 0.0,
         });
         self.cars.len() - 1
+    }
+
+    /// The pools laid on the road under them (the owner's report of
+    /// 2026-10-05, D1042). The JS's pool is a level quad 6 cm above its
+    /// car's height, drawn over the road with a polygon offset that grows
+    /// with the slope; next to a car (the grid at the start: every pool
+    /// of the row behind lies under the row ahead) it is drawn over the
+    /// bottom of the tyres, which then look sunk into the road. Here each
+    /// visible pool sits `POOL_LIFT` over the road at its centre, tilted
+    /// with the road there (grade along, bank across, as `Vehicle.sync`
+    /// tilts a car), and its material has no slope term. `hints`: each
+    /// car's s, where to look for the road.
+    pub fn lay_pools(&mut self, track: &mr_track::Track, hints: &[f64]) {
+        let norm = |v: [f64; 3]| {
+            let l = kernel::hypot(kernel::hypot(v[0], v[1]), v[2]);
+            if l == 0.0 {
+                v
+            } else {
+                [v[0] / l, v[1] / l, v[2] / l]
+            }
+        };
+        let cross = |a: [f64; 3], b: [f64; 3]| {
+            [
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0],
+            ]
+        };
+        for (c, &hint) in self.cars.iter_mut().zip(hints) {
+            let p = &mut c.pool;
+            if !p.visible {
+                continue;
+            }
+            let pr = track.project(p.x, p.z, hint);
+            let f = track.frame(pr.s);
+            p.y = track.surface_y(pr.s, pr.lat) + POOL_LIFT;
+            let t = norm([f.fx, f.grade, f.fz]);
+            let a = norm([f.rx, -f.bank, f.rz]);
+            let up = norm(cross(a, t));
+            // The level quad's +Z after `rotation.y`, square to the road's up.
+            let z0 = [kernel::sin(p.rot_y), 0.0, kernel::cos(p.rot_y)];
+            let d = z0[0] * up[0] + z0[1] * up[1] + z0[2] * up[2];
+            let z = norm([z0[0] - up[0] * d, z0[1] - up[1] * d, z0[2] - up[2] * d]);
+            let x = norm(cross(up, z));
+            p.axes = Some([x, up, z]);
+        }
     }
 
     /// `wheelWorld(v, side)`: a rear wheel's contact point (side -1, 1; 0
@@ -431,6 +484,7 @@ impl Effects {
                 pool.y = v.y + 0.06;
                 pool.z = v.z + fz * ahead;
                 pool.rot_y = -kernel::atan2(fz, fx) + std::f64::consts::PI / 2.0;
+                pool.axes = None;
                 // `c.pool.material.opacity = 0.35 × night`: the shared
                 // material's, overwritten below (D800).
             }
