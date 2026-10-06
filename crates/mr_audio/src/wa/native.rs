@@ -232,6 +232,41 @@ pub struct NativeBackend<C: NativeContext> {
     /// FM modulator wired up before its carrier): held until they are
     /// pulled, so they can be told to run.
     detached: HashMap<NodeId, NativeNode>,
+    /// Live contexts only: let go of finished one-shots ([`Sweep`]).
+    sweep: Option<Sweep>,
+}
+
+/// How long a released node's inputs must have been gone before it is
+/// disconnected: past any filter's or reverb's tail.
+const SWEEP_TAIL: f64 = 4.0;
+
+/// Finished one-shots, let go of (DECISIONS D1009). web-audio-api 1.7.0 frees
+/// a node whose handle is dropped once it reports no tail and nothing feeds
+/// it, but some chains are never freed: the race's exhaust pops (a noise
+/// burst through a band-pass, a shaper and a gain into the effects bus),
+/// and now and then a plain gain after a buffer source, stay in the render
+/// graph after their source has ended, processing silence every quantum. A
+/// race added thousands (846 nodes at its start, 4,790 two minutes in) and
+/// the render thread fell behind (load 0.27 at the start, 4 to 6 after two
+/// and a half minutes, every callback underrunning). A browser collects
+/// such a chain once nothing references it. So: a node the facade lets go
+/// of is held here instead of dropped; once every node feeding it is gone
+/// (a released source that has played out, or another released node let
+/// go of before it) for [`SWEEP_TAIL`] seconds, it is disconnected and
+/// dropped, and the crate frees it. A node fed by anything the facade
+/// still holds is never touched. Offline contexts (the parity renders)
+/// keep the crate's own behaviour.
+#[derive(Default)]
+struct Sweep {
+    /// Released processing nodes, and since when their inputs were all gone.
+    held: HashMap<NodeId, (NativeNode, Option<f64>)>,
+    /// Released sources, until they have played out.
+    sources: HashSet<NodeId>,
+    /// Buffer sources that have ended (their `onended`, on the crate's
+    /// event thread).
+    ended: Arc<std::sync::Mutex<Vec<NodeId>>>,
+    /// Oscillators' stop times.
+    osc_stop: HashMap<NodeId, f64>,
 }
 
 /// Live contexts render without an output device (`set_silent`).
@@ -298,7 +333,9 @@ impl NativeBackend<WaContext> {
     pub fn live(latency_hint: Option<&str>) -> Self {
         let ctx = WaContext::new(live_options(latency_hint));
         watch_capacity(&ctx);
-        Self::with(ctx)
+        let mut b = Self::with(ctx);
+        b.sweep = Some(Sweep::default());
+        b
     }
 
     /// [`NativeBackend::live`], or `None` where the output stream cannot be
@@ -306,7 +343,9 @@ impl NativeBackend<WaContext> {
     pub fn try_live(latency_hint: Option<&str>) -> Option<Self> {
         let ctx = WaContext::try_new(live_options(latency_hint)).ok()?;
         watch_capacity(&ctx);
-        Some(Self::with(ctx))
+        let mut b = Self::with(ctx);
+        b.sweep = Some(Sweep::default());
+        Some(b)
     }
 }
 
@@ -331,7 +370,91 @@ impl<C: NativeContext> NativeBackend<C> {
             ins: HashMap::new(),
             reach: HashSet::new(),
             detached: HashMap::new(),
+            sweep: None,
         }
+    }
+
+    /// Lets go of what [`Sweep`] finds finished.
+    fn sweep(&mut self) {
+        let Some(mut sw) = self.sweep.take() else {
+            return;
+        };
+        let now = self.base.current_time();
+        let mut gone: Vec<NodeId> = Vec::new();
+        {
+            let mut ended = sw.ended.lock().unwrap_or_else(|e| e.into_inner());
+            // One still held waits for its release.
+            ended.retain(|n| {
+                if sw.sources.contains(n) {
+                    gone.push(*n);
+                    false
+                } else {
+                    self.nodes.contains_key(n)
+                }
+            });
+        }
+        for (n, t) in &sw.osc_stop {
+            if *t <= now && sw.sources.contains(n) {
+                gone.push(*n);
+            }
+        }
+        for n in &gone {
+            sw.sources.remove(n);
+            sw.osc_stop.remove(n);
+        }
+        // Released nodes whose inputs are all gone, to a fixed point (a
+        // chain's nodes are released together).
+        loop {
+            let ready: Vec<NodeId> = sw
+                .held
+                .keys()
+                .filter(|n| {
+                    self.ins
+                        .get(n)
+                        .is_none_or(|v| v.iter().all(|u| !self.can_sound(*u, &sw)))
+                })
+                .copied()
+                .collect();
+            let mut changed = false;
+            for n in ready {
+                let t0 = match sw.held.get_mut(&n) {
+                    Some((_, since)) => *since.get_or_insert(now),
+                    None => continue,
+                };
+                if now - t0 >= SWEEP_TAIL
+                    && let Some((node, _)) = sw.held.remove(&n)
+                {
+                    node.node().disconnect();
+                    gone.push(n);
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        // A node whose inputs came back to life (none do; a released node
+        // cannot be reconnected) would start its wait again.
+        if !gone.is_empty() {
+            for n in &gone {
+                self.ins.remove(n);
+                self.reach.remove(n);
+            }
+            for v in self.ins.values_mut() {
+                v.retain(|u| !gone.contains(u));
+            }
+        }
+        self.sweep = Some(sw);
+    }
+
+    /// Whether `u`, feeding a released node, can still sound: held by the
+    /// facade, a released source still playing, or a released node not
+    /// yet let go of.
+    fn can_sound(&self, u: NodeId, sw: &Sweep) -> bool {
+        self.nodes.contains_key(&u)
+            || self.detached.contains_key(&u)
+            || sw.sources.contains(&u)
+            || sw.held.contains_key(&u)
     }
 
     /// The crate's own context, for what the facade does not cover.
@@ -543,6 +666,12 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
             Op::Context { .. } | Op::Resume | Op::Suspend | Op::Close => {}
             Op::New { node, kind, arg } => {
                 let n = self.create(kind, arg);
+                if let (Some(sw), NativeNode::Src(s)) = (&self.sweep, &n) {
+                    let ended = sw.ended.clone();
+                    s.set_onended(move |_| {
+                        ended.lock().unwrap_or_else(|e| e.into_inner()).push(node);
+                    });
+                }
                 self.nodes.insert(node, n);
                 if kind == NodeKind::Destination {
                     self.reach.insert(node);
@@ -754,15 +883,25 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                 self.recompute_reach();
             }
             Op::Start { node, args } => self.start(node, args),
-            Op::Stop { node, args } => match (self.nodes.get_mut(&node), args) {
-                (Some(NativeNode::Osc(o)), []) => o.port().post_message(OscMessage::Stop(0.0)),
-                (Some(NativeNode::Osc(o)), [t, ..]) => o.port().post_message(OscMessage::Stop(*t)),
-                (Some(NativeNode::Src(s)), []) => s.stop(),
-                (Some(NativeNode::Src(s)), [t, ..]) => {
-                    s.stop_at(t - 0.5 / self.base.sample_rate() as f64)
+            Op::Stop { node, args } => {
+                if let Some(sw) = self.sweep.as_mut()
+                    && matches!(self.nodes.get(&node), Some(NativeNode::Osc(_)))
+                {
+                    sw.osc_stop
+                        .insert(node, args.first().copied().unwrap_or(0.0));
                 }
-                _ => {}
-            },
+                match (self.nodes.get_mut(&node), args) {
+                    (Some(NativeNode::Osc(o)), []) => o.port().post_message(OscMessage::Stop(0.0)),
+                    (Some(NativeNode::Osc(o)), [t, ..]) => {
+                        o.port().post_message(OscMessage::Stop(*t))
+                    }
+                    (Some(NativeNode::Src(s)), []) => s.stop(),
+                    (Some(NativeNode::Src(s)), [t, ..]) => {
+                        s.stop_at(t - 0.5 / self.base.sample_rate() as f64)
+                    }
+                    _ => {}
+                }
+            }
             Op::SetPeriodicWave { node, wave } => {
                 if let Some(w) = self.waves.get(&wave).cloned()
                     && let Some(NativeNode::Osc(o)) = self.nodes.get_mut(&node)
@@ -845,14 +984,26 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
 
     fn release_node(&mut self, node: NodeId) {
         // (Its links stay in `ins`: the crate keeps a connected node alive,
-        // as a browser does.)
-        if let Some(n) = self.nodes.remove(&node)
-            && matches!(n, NativeNode::Osc(_))
-            && !self.reach.contains(&node)
-        {
+        // as a browser does, until `sweep` lets go of it.)
+        self.timelines.retain(|p, _| p.node != node);
+        let Some(n) = self.nodes.remove(&node) else {
+            return;
+        };
+        if let Some(sw) = self.sweep.as_mut() {
+            match n {
+                NativeNode::Src(_) | NativeNode::Osc(_) => {
+                    sw.sources.insert(node);
+                }
+                NativeNode::Destination(_) => {}
+                n => {
+                    sw.held.insert(node, (n, None));
+                    return;
+                }
+            }
+        }
+        if matches!(n, NativeNode::Osc(_)) && !self.reach.contains(&node) {
             self.detached.insert(node, n);
         }
-        self.timelines.retain(|p, _| p.node != node);
     }
 
     fn release_buffer(&mut self, buffer: BufferId) {
@@ -864,6 +1015,7 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
     }
 
     fn settle(&mut self) -> Vec<Box<dyn FnOnce()>> {
+        self.sweep();
         std::mem::take(&mut self.tasks)
     }
 
