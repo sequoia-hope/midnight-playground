@@ -27,23 +27,24 @@ The answer is the principle in section 2.
 
 ### 1.1 Who you are
 
-Light story, carried by the radio, as Burnout Paradise's DJ carried it.
-No cutscenes.
+**Someone still becoming who they are.** The owner's own driving on these
+roads was like that: working jobs, going from place to place, already
+someone but not yet who they would become, with no idea yet what was
+coming. So the player gets **no set backstory**. Who they are comes from
+how and where they drive, and the world never tells them who to be.
 
-- **You are the new driver at a small garage in the coastal town.** By
-  night it is a racing crew; by day it builds odd vehicles: rally cars,
-  crawlers, prototypes, robots.
-- That one premise explains the game's range. Sim handling is testing a
-  setup, the crawler is this week's project, deliveries pay the rent, and
-  the RL robots are the shop's side business.
-- **Rivals** are other crews, and a slick corporate outfit buying up the
-  coast gives the story someone to beat.
-- **The radio tells it:** DJ chatter and calls from the crew, voiced like
-  the Hot Pursuit police radio (WORLD 5.2). Reputation, not a scripted
-  plot, opens up regions, cars and jobs.
-- Draft, for the owner to shape. Interstate 76 (the owner's favourite:
-  open world, missions, a garage, the Sidewinder Force Feedback joystick
-  in the box) is the spirit; its outlaw violence is not.
+- Endless roads, jobs and night drives with the radio on carry the theme.
+  Becoming is the story; there is no plot to finish.
+- A garage in the coastal town can still be a home base (jobs, cars,
+  gadgets, the crawler project) without defining the player.
+- **The radio carries the voices,** as Burnout Paradise's DJ did, voiced
+  like the Hot Pursuit police radio (WORLD 5.2). No cutscenes.
+- **The risk is chatter that falls flat:** the police radio's "I saw this
+  driver at this time" wears thin if stretched. So: little and good.
+  Short lines, mostly reacting to what the player just did, never on a
+  loop, long silences between. Tested on the owner before more is built.
+- Interstate 76 (open world, missions, a garage, the Sidewinder Force
+  Feedback joystick in the box) is the spirit; its outlaw violence is not.
 
 ### 1.2 The name
 
@@ -233,7 +234,10 @@ Rocket League (cars, contact and skill, no harm) prove it works. The rule:
   Keep-away with cars, and delivery jobs in multiplayer.
 - **Paint tags:** tag a car and it's "it", or score by painting rivals.
 
-Gadgets fit the garage of section 1.1: the shop builds them.
+- **Glitching the world:** a meta gadget that tears the game's own
+  fabric. Textures corrupt, a stretch of road drops to wireframe, a
+  rival's car stutters a few frames or clips out of the world for a
+  moment. Hacking taken one level up: the player hacks the game itself.
 
 ## 8. Cars
 

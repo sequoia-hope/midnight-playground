@@ -68,3 +68,8 @@ these documents:
   narrative: who the player is and why they drive. The current menu stays
   until there is an open world. Thinking of renaming the game **Midnight
   Playground**. → WORLD 1.1, 1.2, 7.1.
+- **Then:** "who you are" should be someone still becoming who they
+  are, with no set backstory, drawn from the owner's own years of driving
+  these roads. Worried that radio chatter stretched too far falls flat:
+  keep it sparse and reactive, and test it. New gadget idea: glitching
+  the game world itself. → WORLD 1.1, 7.1.
