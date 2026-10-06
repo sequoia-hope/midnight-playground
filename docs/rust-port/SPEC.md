@@ -31,7 +31,7 @@ missing and nothing redesigned.
 | Content | Generated in code for the port. The architecture includes a normal asset pipeline so later content can be authored. |
 | Multiplayer | A native host program first. The netcode is designed so a browser tab can be the host later. |
 | First multiplayer release | Two to eight humans in the existing race levels, AI filling the grid, traffic on. Hot Pursuit and the cruise loop stay single-player until later. |
-| Repository | This repo. The JS game is frozen except for bug fixes. GitHub Pages keeps serving it, unchanged, until the port is done; the Rust build is not published there before cutover. |
+| Repository | This repo. The JS game is frozen except for bug fixes. GitHub Pages keeps serving it, unchanged, at the root until the port is done; the Rust build is published beside it at `dist/next/` (DECISIONS D1101). |
 
 Not goals of the port: new gameplay, retuned handling, authored art, or the
 open-world design. Those come after cutover and each
@@ -1162,7 +1162,9 @@ project's `web_url`; the trailing slash matters). Any device on the tailnet
 gets a secure context there, so WebGPU and tilt work, with the working tree
 served live: the JS game at `/midnight-racer/` and the Rust build at
 `/midnight-racer/dist/next/`. This is how the Rust build is tested on phones
-throughout the port. GitHub Pages plays no part until cutover.
+throughout the port. Since DECISIONS D1101, GitHub Pages also publishes
+the Rust build of every push to `main` at the same `dist/next/` path,
+so people outside the tailnet can play it.
 
 Because the game is always served under some sub-path (this mount, the
 `dist/next/` directory, the Pages project path), every URL the client uses
@@ -1220,15 +1222,14 @@ any time after M1:
   registered server at `/parity/report/`.
 - **CI (GitHub Actions):** format, clippy with warnings denied, native
   tests, simulation tests in wasm, dependency rules, web build, size report,
-  the JS unit tests. CI does not deploy. GitHub Pages keeps serving `main`
-  as it is, which is the JS game, until cutover. At cutover (roadmap M9) the
-  Pages source is switched from "branch" to "GitHub Actions" by the owner,
-  and a deploy job publishes the Rust build at the root with the JS game
-  under `/legacy/`.
+  the JS unit tests. CI does not deploy. A separate workflow, `pages.yml`
+  (DECISIONS D1101), publishes `main`'s tracked files at the site root,
+  which is the JS game as before, and the Rust web build at `dist/next/`.
+  At cutover (roadmap M9) it publishes the Rust build at the root instead,
+  with the JS game under `/legacy/`.
 - **Commits:** as today, finished and tested work goes straight to `main`.
-  The JS game at the root is not touched by Rust work, and nothing the
-  Rust build needs is served from Pages, so the live site keeps working
-  throughout. Build output stays out of git.
+  The JS game at the root is not touched by Rust work, and a failed Rust
+  build still publishes it, so the live site keeps working throughout. Build output stays out of git.
 - **`CLAUDE.md`** (created in M0) carries the working rules for agents:
   the principles in section 1.1, how to run tests and parity, how to view
   output locally, the port rule, and the file-ownership rule for parallel
