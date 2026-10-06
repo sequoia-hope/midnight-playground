@@ -59,7 +59,22 @@ plan exists as data.
   with the tools, by the owner and Claude together.
 - Design doc: `docs/vision/level-tools.md`.
 
-## M14. Cars and classes
+## M14. A living world
+
+**Goal:** the existing levels feel alive. Moved ahead of cars and
+classes at the owner's request; Seaside Raceway first.
+
+- Crowds, waving fans, camera operators and drones at Seaside Raceway.
+- Birds on every level; pelicans flying alongside on the coast.
+- Traffic that reacts; pedestrians and wildlife who always get out of
+  the way.
+- **Day and night, and weather** as simulation state: rain that changes
+  grip, wet windscreens, headlights and high beams, fog.
+- **Gate:** the owner's drive down the Coast Highway at dusk, with
+  pelicans.
+- Design doc: `docs/vision/living-world.md`.
+
+## M15. Cars and classes
 
 **Goal:** fair races at every level of performance, and more cars to love.
 
@@ -74,20 +89,6 @@ plan exists as data.
 - **Gate:** a race in each class is close with good driving on every car
   in it, measured by the AI's lap times and the owner's.
 - Design doc: `docs/vision/cars.md`.
-
-## M15. A living world
-
-**Goal:** the existing levels feel alive.
-
-- Crowds, waving fans, camera operators and drones at Seaside Raceway.
-- Birds on every level; pelicans flying alongside on the coast.
-- Traffic that reacts; pedestrians and wildlife who always get out of
-  the way.
-- **Day and night, and weather** as simulation state: rain that changes
-  grip, wet windscreens, headlights and high beams, fog.
-- **Gate:** the owner's drive down the Coast Highway at dusk, with
-  pelicans.
-- Design doc: `docs/vision/living-world.md`.
 
 ## M16. Radio
 
