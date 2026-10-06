@@ -155,6 +155,39 @@ fn players_join_the_lobby_and_see_each_other() {
 }
 
 #[test]
+fn the_first_player_leads_the_lobby_and_starts_the_race() {
+    let mut w = World::new(9, &[Conditions::LAN; 3]);
+    w.run(500.0);
+    let leader = (0..3).find(|&i| w.clients[i].is_leader()).unwrap();
+    let other = (leader + 1) % 3;
+    assert_eq!(w.clients.iter().filter(|c| c.is_leader()).count(), 1);
+    // Only the leader's word counts.
+    w.clients[other].go(true);
+    w.run(300.0);
+    assert!(!w.host.racing());
+    let mut s = settings("desert");
+    s.ai = AiFill::None;
+    w.clients[leader].configure(s.clone());
+    w.run(300.0);
+    assert_eq!(w.clients[other].lobby.settings.as_ref(), Some(&s));
+    w.clients[leader].go(true);
+    w.run(2500.0);
+    assert!(w.host.racing());
+    assert!(w.clients.iter().all(|c| c.race.is_some()));
+    assert!(w.host.state().unwrap().rivals.is_empty());
+    w.clients[leader].go(false);
+    w.run(300.0);
+    assert!(!w.host.racing());
+    assert!(w.clients.iter().all(|c| c.race.is_none()));
+    // An unknown level is refused.
+    let mut bad = s.clone();
+    bad.level = "moon".into();
+    w.clients[leader].configure(bad);
+    w.run(300.0);
+    assert_eq!(w.host.settings.level, "desert");
+}
+
+#[test]
 fn a_wrong_version_is_turned_away_politely() {
     let net = SimNet::new(1);
     let mut host = Host::new(net.host(), levels(), 1);
