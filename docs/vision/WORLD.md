@@ -153,6 +153,28 @@ with debris that doesn't affect play left to the client.
 Surfaces tell you which vehicle belongs where: sand, mud and rock that
 strand a sports car are part of the design, not a bug.
 
+### 7.1 Car classes and the stable
+
+Balance comes from **matching cars, not slowing them down.** Today the
+Ion Arc is the most fun partly because it is faster than the rest, which
+makes races easy. Racing games solve this with classes of a similar era
+and performance, and a larger stable to fill them:
+
+- **Classes** such as classic, 90s Japanese, modern sports, supercar,
+  electric and off-road. A race is run within a class, so every car in
+  it can be as strong as it really would be.
+- **A performance index** per car, computed from its specs (power,
+  weight, grip), as a check that a class is fair. Within a class, cars
+  differ in character (grip against power, launch against top speed),
+  not in pace.
+- **Cars are inspired, never copied:** recognisable through their
+  proportions and era, with original bodywork and names. The usual trick
+  of one car's front and another's rear is a starting point, not the
+  rule.
+- **Owner's favourites** to start the classic and modern classes: a 1991
+  3000GT VR-4 type (black, white leather interior), and a 2008 Saturn
+  Sky Redline type (black, red and black leather interior).
+
 ## 8. How levels get designed together
 
 A collaborative level design process:
