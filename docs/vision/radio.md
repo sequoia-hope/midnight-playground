@@ -13,8 +13,11 @@ the existing music, like the police radio does.
 ## 1. What the player gets
 
 - **Stations instead of a playlist.** A button (and a key, and a pad
-  binding) tunes the radio: The Tide, Ridgeline Radio, off. A second of
-  static between stations.
+  binding) tunes the radio: The Tide, Ridgeline Radio, off.
+- **You hear the dial move** (section 2.1): pressing the button doesn't cut
+  to the next station; it sounds like the driver reaching over and turning
+  the tuner, through static and whistles and a scrap of somewhere else,
+  until the station locks in.
 - **Each station has its own music and its own DJ.** At first the stations
   share out the existing seven songs by mood:
   - **The Tide** (Marisol): Seabright Dawn, Interstate Nights, Midnight
@@ -53,6 +56,31 @@ decides when a DJ speaks:
   ramp, then comes back. The voice goes through the music bus, so the
   music volume controls it, with its own trim.
 
+### 2.1 The tuner
+
+The owner's idea: the sense that the driver turned the dial. Games like
+GTA cut stations with a short burst of static (from memory; not
+confirmed). We go further, and generate it, like the game's other effects
+(`audio/samples.js`), so it is never the same twice:
+
+- **The sweep, about half a second to a second:** band-passed noise whose
+  centre glides with the "dial", heterodyne whistles that rise and fall
+  as it passes carriers, and a flicker of a station that isn't one of
+  ours (a word, a bar of music) fading through.
+- **The lock:** the static drops away while the station fades in, first
+  narrow and a little detuned (thin, as if not quite on frequency), then
+  opening to full width within a few hundred milliseconds.
+- **Off:** a click, and the hiss falling away.
+- **Ridgeline is a pirate:** its signal is weaker. Static creeps in on the
+  far side of the ridge, in tunnels, and in deep valleys, and it drops out
+  for a moment under bridges. The Tide is clean near the coast and fades
+  inland.
+- **Stations are live:** each station keeps its own clock, so tuning away
+  and back finds it further along, mid-song, as a real station would, not
+  restarted.
+- On screen, the station's name and frequency for a moment; later, with
+  the cockpit camera, the dial on the dash moves.
+
 ## 3. Reacting to the player
 
 The "depth from memory" lines are templates with slots: a car, a colour, a
@@ -84,8 +112,8 @@ in a row, a long night drive in the cruise mode.
 ## 5. Code (Rust, after cutover)
 
 - `mr_audio::dj`: beside `mr_audio::radio` (the police radio), reusing its
-  fetching and decoding. Plays clips, ducks the music, does the static
-  between stations.
+  fetching and decoding. Plays clips, ducks the music, generates the
+  tuner sweep and the reception noise.
 - `mr_audio::music`: playlists per station instead of one playlist; a
   hook at song changes for the director.
 - **The director** lives in the client (`mr_game`). It reads `SimEvent`s
@@ -100,8 +128,8 @@ in a row, a long night drive in the cruise mode.
 | | What | Gate |
 |---|---|---|
 | **R0. Side quest** | Lines recorded, auditioned, rewritten from the owner's 👍/👎 | Enough lines the owner likes to fill two stations |
-| **R1. Radio v0** | Two stations over the existing songs; station IDs and general lines at song changes; ducking; the tune button; the DJ-talk setting | The owner drives a whole cruise session with the radio on and doesn't turn the DJ off |
-| **R2. Context** | Tags; lines chosen by level, mode and event; cooldowns and history | Lines feel like they belong where they're heard |
+| **R1. Radio v0** | Two stations over the existing songs, live (own clocks); station IDs and general lines at song changes; ducking; the tune button with the generated tuner sweep; the DJ-talk setting | The owner drives a whole cruise session with the radio on and doesn't turn the DJ off |
+| **R2. Context** | Tags; lines chosen by level, mode and event; cooldowns and history; reception (Ridgeline's static on the far side of the ridge, tunnels) | Lines feel like they belong where they're heard |
 | **R3. Memory** | Player templates pre-rendered for every combination; records and rivals feed them | The owner hears a line about their own run and it lands |
 | **R4. Real stations** | Each station's own music from the new music system (`sound.md` S4) | vision ROADMAP M16's gate |
 

@@ -100,3 +100,6 @@ these documents:
 - **Radio integration:** asked for the basic plan to put radio in the
   game. → `radio.md`: stations over the existing songs first (R1, right
   after cutover), then context, player memory, and real stations.
+- **Tuner sounds:** changing station should sound like the driver turning
+  the dial (static, whistles, the station locking in). → `radio.md` 2.1,
+  with live stations and reception noise for the pirate station.
