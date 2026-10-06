@@ -644,7 +644,9 @@ fn frame(
         s.main_max = s.main_max.max(ft.main_ms);
         s.render_sum += f64::from(ft.render_ms);
         s.render_max = s.render_max.max(ft.render_ms);
-        if ft.frame_ms > SLOW_MS {
+        // `ms` is the interval that ended as this frame began; `main_ms`
+        // this frame's own work, which shows in the next frame's interval.
+        if ft.frame_ms > SLOW_MS || ft.main_ms > SLOW_MS {
             s.slow += 1;
             rec.slow += 1;
             let mode = mode(&w);
