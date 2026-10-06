@@ -10,7 +10,7 @@ brotli = "8"
 flate2 = "1"
 serde_json = "1"
 mr_kernel = { path = "../tools/parity/kernel" }
-mr_math.workspace = true
+mp_math.workspace = true
 png = "0.18"
-mr_scene.workspace = true
+mp_scene.workspace = true
 sha2 = "0.10"

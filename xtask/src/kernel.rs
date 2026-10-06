@@ -1,4 +1,4 @@
-//! `cargo xtask kernel [--check]`: build `mr_math`'s kernel to wasm for the
+//! `cargo xtask kernel [--check]`: build `mp_math`'s kernel to wasm for the
 //! JS reference run, and check that the wasm, called through the JS `Math`
 //! patch, gives the same bits as native Rust on a million inputs per
 //! function (roadmap WP 0.3).

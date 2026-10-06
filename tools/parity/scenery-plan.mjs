@@ -12,7 +12,7 @@
 // Node with the parity kernel (the Track, `new Terrain`, each scenery module
 // made as loadScenery makes it and its plan() run) and notes, around each
 // module's plan(), how far each list had grown: module k registered
-// flattens [a, b) of the recording, and so on. mr_worldgen's
+// flattens [a, b) of the recording, and so on. mp_worldgen's
 // `scenery::RecordedScenery` replays a module from its slices, so a ported
 // module's real plan() runs in its own place between recorded ones.
 //

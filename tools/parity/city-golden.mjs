@@ -1,6 +1,6 @@
 // The city of the browser's scene exports (roadmap WP 3.8): everything
 // City.js and city/* contribute to Sierra (zone 2) and to the cruise loop, as
-// a small digest, so that mr_worldgen's City can be held to the JS (L3) in CI
+// a small digest, so that mp_worldgen's City can be held to the JS (L3) in CI
 // and in wasm, without the cache.
 //
 //   node tools/parity/city-golden.mjs [--check]
@@ -17,7 +17,7 @@
 //     materials in order of first use, each material described (textures by
 //     their sampler; canvas pixels are WP 3.2's threshold gate) and hashed in
 //     a canonical form (keys sorted, every number as its f64 bits), which
-//     crates/mr_worldgen/tests/city.rs makes the same way;
+//     crates/mp_worldgen/tests/city.rs makes the same way;
 //   - per texture a material uses, the 8×8 block means of its pixels (as
 //     tools/parity/textures.mjs writes them), for the threshold gate without
 //     the cache;

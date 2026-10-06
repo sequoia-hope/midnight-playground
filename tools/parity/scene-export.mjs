@@ -3,7 +3,7 @@
 // headless Chrome through the e2e harness (no server, no port), with the
 // parity kernel on and the scenery frozen, and writes for each level
 //
-//   parity/cache/<key>/scenes/<level>.mrscene        the scene (crates/mr_scene/FORMAT.md)
+//   parity/cache/<key>/scenes/<level>.mrscene        the scene (crates/mp_scene/FORMAT.md)
 //   parity/cache/<key>/scenes/<level>.digest.json    digest of the live three.js objects
 //   parity/cache/<key>/world/<level>/track.{json,bin}    every Track array and value
 //   parity/cache/<key>/world/<level>/terrain.{json,bin}  heights at 10,000 points
@@ -13,7 +13,7 @@
 //
 // plus models.mrscene and golden models.json: every car model, the effects
 // and the pursuit props. `cargo xtask parity scene-check` reads each
-// .mrscene back with mr_scene and checks it against the digest.
+// .mrscene back with mp_scene and checks it against the digest.
 //
 //   node tools/parity/scene-export.mjs [options]
 //     --levels a,b     levels to export (default: all six)
@@ -58,7 +58,7 @@ const problems = [];
 async function pull(game, length) {
   const parts = [];
   for (let at = 0; at < length; at += CHUNK) {
-    const b64 = await game.eval(`window.__mrSceneExport.readBinary(${at}, ${Math.min(length, at + CHUNK)})`);
+    const b64 = await game.eval(`window.__mpSceneExport.readBinary(${at}, ${Math.min(length, at + CHUNK)})`);
     parts.push(Buffer.from(b64, 'base64'));
   }
   const bin = Buffer.concat(parts);
@@ -119,7 +119,7 @@ function golden(name, value) {
 
 async function exportScene(game, what, name, opts) {
   const t0 = Date.now();
-  const r = await game.eval(`window.__mrSceneExport.${what}(${JSON.stringify(opts)})`);
+  const r = await game.eval(`window.__mpSceneExport.${what}(${JSON.stringify(opts)})`);
   const bin = await pull(game, r.binary_length);
   const file = sceneFile(r.header, bin);
   put(path.join(sceneDir, name + '.mrscene'), file);
@@ -130,7 +130,7 @@ async function exportScene(game, what, name, opts) {
 }
 
 async function dump(game, what, dir, name) {
-  const index = await game.eval(`window.__mrSceneExport.${what}()`);
+  const index = await game.eval(`window.__mpSceneExport.${what}()`);
   const bin = await pull(game, index.binary_length);
   for (const a of index.arrays) a.sha256 = sha(bin.subarray(a.offset, a.offset + a.byte_length));
   put(path.join(dir, name + '.json'), Buffer.from(stableJson(index) + '\n'));

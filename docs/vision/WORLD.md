@@ -57,8 +57,8 @@ how and where they drive, and the world never tells them who to be.
 **Midnight Playground** (proposed by the owner) fits the sandbox: a
 literal playground for driving and simulation. One way to keep both
 names: *Midnight Playground* is the game, and *Midnight Racer* is its
-street-racing event series. This answers port SPEC open question 6 once
-the owner decides; crate names keep `mr_` either way.
+street-racing event series. The owner chose the name on 2026-10-06, and
+the crates became `mp_` (port DECISIONS D1100).
 
 ## 2. The principle: the world is the menu
 

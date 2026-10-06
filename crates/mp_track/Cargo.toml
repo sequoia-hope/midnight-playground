@@ -1,0 +1,9 @@
+[package]
+name = "mp_track"
+description = "Level definition types, the Track (1 m samples) and road types"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+mp_math.workspace = true

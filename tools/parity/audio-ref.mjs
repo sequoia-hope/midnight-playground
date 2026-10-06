@@ -127,10 +127,10 @@ async function captureDrive(d) {
   const { openGame } = await import('../../test/e2e/harness.js');
   const game = await openGame(await chrome(), { query: d.query, init: facadeRecorder });
   const t0 = Date.now();
-  await game.waitFor(`window.__mrFacade.tick >= ${d.ticks} || window.__parity.errors.length > 0`, { timeout: d.ticks * 100, interval: 250, what: `${d.ticks} ticks` });
+  await game.waitFor(`window.__mpFacade.tick >= ${d.ticks} || window.__parity.errors.length > 0`, { timeout: d.ticks * 100, interval: 250, what: `${d.ticks} ticks` });
   const errors = await game.eval('window.__parity.errors.map(String)');
   if (errors.length) throw new Error(`drive ${d.name}: errors in the game loop:\n  ${errors.join('\n  ')}`);
-  const lines = await game.eval(`window.__mrFacade.log.filter((l) => JSON.parse(l)[0] < ${d.ticks})`);
+  const lines = await game.eval(`window.__mpFacade.log.filter((l) => JSON.parse(l)[0] < ${d.ticks})`);
   pageErrors(game);
   await game.close();
   console.log(`  ${d.name}: ${lines.length} calls in ${d.ticks} ticks (${((Date.now() - t0) / 1000).toFixed(0)} s)`);

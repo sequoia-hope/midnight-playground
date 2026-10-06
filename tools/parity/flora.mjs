@@ -1,10 +1,10 @@
-// The golden for mr_worldgen::flora (roadmap WP 3.6): the game's own
+// The golden for mp_worldgen::flora (roadmap WP 3.6): the game's own
 // src/world/valley/flora.js under Node with the parity kernel, over every
 // call the scenery makes (Mountain, Valley, Raceway) and the defaults and
 // edges besides: 3-D noise samples, rocks (every option), conifers (both
 // kinds at every detail level), canopies (every kind at both levels),
 // grass, flowers, shrubs and the foliage material.
-// crates/mr_worldgen/tests/flora.rs makes the same calls and requires the
+// crates/mp_worldgen/tests/flora.rs makes the same calls and requires the
 // same bits.
 //
 //   node --import=./tools/parity/kernel/register.mjs tools/parity/flora.mjs [--check]

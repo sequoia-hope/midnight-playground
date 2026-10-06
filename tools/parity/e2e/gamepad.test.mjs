@@ -4,9 +4,9 @@
 // pad's id, rumble from a real wall hit and the countdown, and the
 // Controller screen from pause. The fake controller is the JS suite's,
 // installed once the page is up (the client reads getGamepads every frame).
-// `__race.input.state` is `__mr.race.input`, `__pads` is `__mr.pads`, the
-// highlight is `__mr.focus` with `__mr.padNav`, the Controller screen's DOM
-// is `__mr.padsetup`.
+// `__race.input.state` is `__mp.race.input`, `__pads` is `__mp.pads`, the
+// highlight is `__mp.focus` with `__mp.padNav`, the Controller screen's DOM
+// is `__mp.padsetup`.
 //
 //   cargo xtask web --release && node --test tools/parity/e2e/gamepad.test.mjs
 
@@ -45,16 +45,16 @@ async function press(game, b) {
   await hold(game, b, true); await sleep(90);
   await hold(game, b, false); await sleep(90);
 }
-const input = (game) => game.eval(() => window.__mr.race.input);
+const input = (game) => game.eval(() => window.__mp.race.input);
 // The highlight (`.pad-focus`): the control's id, and whether it is being
 // adjusted (`.pad-edit`); null while hidden.
-const focused = (game) => game.eval(() => (window.__mr.padNav?.shown && window.__mr.focus
-  ? { id: window.__mr.focus, edit: !!window.__mr.padNav.editing } : null));
-const padsetup = (game) => game.eval(() => window.__mr.padsetup);
+const focused = (game) => game.eval(() => (window.__mp.padNav?.shown && window.__mp.focus
+  ? { id: window.__mp.focus, edit: !!window.__mp.padNav.editing } : null));
+const padsetup = (game) => game.eval(() => window.__mp.padsetup);
 async function open(o = {}) {
   const game = await openGame(browser, o);
   await game.eval(fakePad, PAD_ID);
-  await game.waitFor(() => window.__mr.pads?.connected === true, { what: 'the pad to be seen' });
+  await game.waitFor(() => window.__mp.pads?.connected === true, { what: 'the pad to be seen' });
   return game;
 }
 
@@ -91,7 +91,7 @@ test('driving: the triggers, the stick (analogue, with its dead zone), A, X, Sta
     await expectScreen(game, 'pause');
     await press(game, 'Start');
     await expectScreen(game, 'none');
-    assert.equal(await game.eval(() => window.__mr.mode), 'race');
+    assert.equal(await game.eval(() => window.__mp.mode), 'race');
     assert.deepEqual(game.errors, []);
   } finally { await game.close(); }
 });
@@ -111,7 +111,7 @@ test('a remapped pad (mr.padMaps, keyed by its id) drives with its own map', asy
     await hold(game, 'RT', true); await sleep(100);
     assert.equal((await input(game)).throttle, 0, 'RT: nothing now');
     await hold(game, 'RT', false);
-    assert.equal(await game.eval(() => window.__mr.pads.resetLabel), 'Back');
+    assert.equal(await game.eval(() => window.__mp.pads.resetLabel), 'Back');
     assert.deepEqual((await stored(game, 'padMaps'))[PAD_ID].throttle, [{ button: 4 }], 'the map is left as it was');
     assert.deepEqual(game.errors, []);
   } finally { await game.close(); }
@@ -140,7 +140,7 @@ test('rumble: the countdown and a wall hit jolt the pad, then it stops; off, not
     assert.ok(Math.max(...hit.map((e) => e.strongMagnitude)) > 0.5, `a hard one (${Math.max(...hit.map((e) => e.strongMagnitude))})`);
     assert.ok(hit.every((e) => e.strongMagnitude <= 1 && e.weakMagnitude <= 1));
     // Stopped, the scrape's buzz lapses and the pad is reset.
-    await game.waitFor(() => window.__mr.race.speed < 0.5, { timeout: 15000, what: 'the car to stop' });
+    await game.waitFor(() => window.__mp.race.speed < 0.5, { timeout: 15000, what: 'the car to stop' });
     await sleep(700);
     assert.ok((await effects()).some((e) => e.type === 'reset'), 'and it stops');
     assert.deepEqual(game.errors, []);
@@ -154,7 +154,7 @@ test('rumble: the countdown and a wall hit jolt the pad, then it stops; off, not
     await hold(off, 'RT', true); await axis(off, 0, 1);
     await sleep(4000);
     assert.deepEqual(await off.eval(() => window.__pad.effects), [], 'off: no rumble');
-    assert.equal(await off.eval(() => window.__mr.pads.rumbleOn), false);
+    assert.equal(await off.eval(() => window.__mp.pads.rumbleOn), false);
   } finally { await off.close(); }
 });
 

@@ -13,7 +13,7 @@
 // Sierra; the Rust build gets Sierra's terrain-road-sky export (the full
 // export is too big for interception, D106), so the scenery behind the
 // screens differs where it shows through. The Rust canvas is captured with
-// `__mr.screenshot` (headless Chrome does not composite a WebGPU canvas into
+// `__mp.screenshot` (headless Chrome does not composite a WebGPU canvas into
 // page screenshots); its loading screen is the page's own HTML, captured
 // as a page screenshot.
 
@@ -126,14 +126,14 @@ async function rustShots(browser, device, dir) {
   await sleep(1500);
   if (only.includes('menu')) await g.shot(name('menu'), dir);
   if (only.includes('padsetup')) {
-    await g.eval(() => window.__mr.stage({ cmd: 'padsetup' }));
+    await g.eval(() => window.__mp.stage({ cmd: 'padsetup' }));
     await g.frames(4);
     await g.shot(name('padsetup'), dir);
     await press('#pad-done');
   }
   if (only.includes('pause') || only.includes('results')) {
     await press('#btn-start');
-    await g.waitFor(() => window.__mr.race?.state === 'racing', { timeout: 60000, what: 'racing' });
+    await g.waitFor(() => window.__mp.race?.state === 'racing', { timeout: 60000, what: 'racing' });
     if (only.includes('pause')) {
       await g.key('Escape');
       await sleep(800);
@@ -142,8 +142,8 @@ async function rustShots(browser, device, dir) {
       await sleep(300);
     }
     if (only.includes('results')) {
-      await g.eval(() => window.__mr.stage({ cmd: 'finish' }));
-      await g.waitFor(() => window.__mr.screen === 'results', { timeout: 60000, what: 'results' });
+      await g.eval(() => window.__mp.stage({ cmd: 'finish' }));
+      await g.waitFor(() => window.__mp.screen === 'results', { timeout: 60000, what: 'results' });
       await sleep(800);
       await g.shot(name('results'), dir);
     }

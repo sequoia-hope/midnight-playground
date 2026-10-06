@@ -1,12 +1,12 @@
 // The in-page half of tools/parity/scene-export.mjs (roadmap WP 0.5). It is
 // evaluated in the game page (a classic script, through the e2e harness) and
-// installs window.__mrSceneExport, which turns live three.js objects into
+// installs window.__mpSceneExport, which turns live three.js objects into
 // the .mrscene header, its binary chunks and a digest of the live scene.
 //
 // It reads and never changes the game: the one action with an effect is
 // renderer.compile(), which builds any shader programs not built yet so the
 // uniforms that onBeforeCompile patches add can be read back (three keeps
-// them in renderer.properties). The format is crates/mr_scene/FORMAT.md.
+// them in renderer.properties). The format is crates/mp_scene/FORMAT.md.
 (() => {
   const THREE = window.__THREE;
   if (!THREE) throw new Error('scene-page: window.__THREE is missing');
@@ -372,7 +372,7 @@
 
     addRoot(o, renderer) { this.roots.push(this.node(o, null, renderer)); }
 
-    // The digest of the live objects (crates/mr_scene computes the same from
+    // The digest of the live objects (crates/mp_scene computes the same from
     // the file): per mesh counts, bounds, area and centroid and a SHA-256 per
     // attribute; per texture a SHA-256 of its pixels; per drawable node its
     // kinds, textures, instances and world bounds.
@@ -723,5 +723,5 @@
     };
   }
 
-  window.__mrSceneExport = { exportWorld, exportModels, readBinary, trackDump, terrainDump, CUSTOM_KINDS: [...CUSTOM_KINDS], BUILTIN_KINDS };
+  window.__mpSceneExport = { exportWorld, exportModels, readBinary, trackDump, terrainDump, CUSTOM_KINDS: [...CUSTOM_KINDS], BUILTIN_KINDS };
 })();

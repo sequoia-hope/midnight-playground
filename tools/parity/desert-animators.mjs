@@ -24,7 +24,7 @@
 // waits, through Route 66, where it rolls and the tumbleweeds spawn, to
 // the lake, then back; then 360 ticks of 1/120 s with the player at 60 m/s
 // on Route 66, the camera hopping between three stations. Writes
-// parity/golden/animators/desert.json; crates/mr_worldgen/tests/
+// parity/golden/animators/desert.json; crates/mp_worldgen/tests/
 // desert_animators.rs replays it on the Rust build.
 
 import fs from 'node:fs';

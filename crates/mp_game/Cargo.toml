@@ -1,0 +1,127 @@
+[package]
+name = "mp_game"
+description = "The Midnight Playground client: states, rendering, camera, effects, HUD, menus, input, platform glue"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# The web build is the cdylib, post-processed by wasm-bindgen into dist/next/
+# (`cargo xtask web`). The native build is the binary.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "midnight-playground"
+path = "src/main.rs"
+
+[dependencies]
+mp_sim.workspace = true
+mp_net.workspace = true
+mp_scene.workspace = true
+mp_worldgen.workspace = true
+mp_audio.workspace = true
+mp_track.workspace = true
+mp_levels.workspace = true
+mp_math.workspace = true
+# The bundled fonts and the menus' drawn pictures (the logo, icons; WP 6.1).
+mp_canvas.workspace = true
+# The material test scenes' definitions (parity/golden/materials/scenes.json)
+# and the scene export's material parameters.
+serde_json = "1"
+# Bevy 0.19.1, pinned (SPEC 2's version policy; DECISIONS D100). Default
+# features off: the 3D renderer, windowing, states and input only. No UI,
+# text, audio, glTF, gizmos or picking yet; the packages that need them add
+# them. The platform-specific features are in the target tables below.
+bevy = { version = "=0.19.1", default-features = false, features = [
+    "std",
+    "async_executor",
+    "bevy_asset",
+    "bevy_log",
+    "bevy_state",
+    "bevy_window",
+    "bevy_winit",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_light",
+    "bevy_camera",
+    "bevy_mesh",
+    "bevy_image",
+    "bevy_color",
+    "bevy_material",
+    "bevy_shader",
+    # Not `bevy_post_process`: its bloom, depth of field, motion blur, auto
+    # exposure and effect stack are unused (the post chain is three's,
+    # `render::post`), and it cost 0.15 MB of the gzipped wasm
+    # (DECISIONS D670).
+    "keyboard",
+    "mouse",
+    "touch",
+    # The race's HUD text, results list and touch controls (roadmap M4,
+    # DECISIONS D431): Bevy UI with its bundled font.
+    "bevy_ui",
+    "bevy_ui_render",
+    "bevy_text",
+    "default_font",
+    # PNG encoding for screenshots (native --screenshot, the web test hook).
+    "png",
+] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# The race's sound natively: web-audio-api with an output device (cpal;
+# ALSA on Linux). DECISIONS D513.
+mp_audio = { workspace = true, features = ["native-device"] }
+bevy = { version = "=0.19.1", default-features = false, features = [
+    "multi_threaded",
+    "x11",
+    "wayland",
+    # Gamepads through gilrs, with force feedback (WP 6.4, DECISIONS D781).
+    # Not on the web: the browser's Gamepad API is read directly there
+    # (D780).
+    "bevy_gilrs",
+] }
+# The world build's parallel jobs on threads natively (SPEC 5.5; the client
+# builds Level 1 for its animators, `animate`).
+mp_worldgen = { workspace = true, features = ["parallel"] }
+# Seaside Raceway's ground photo (`photo.jpg`) for the client's own build
+# natively; on the web the browser decodes it (`levels::seaside`, D681).
+# PNG too: the window's icon, `desktop/icon.png` (WP 6.8; Bevy's `png`
+# feature turns it on in the same crate already).
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+# The window's icon and state natively (WP 6.8, DECISIONS D1000): Bevy has
+# no icon API, and `winit::window::Icon` is not re-exported. The version
+# Bevy 0.19.1 uses; its features come from bevy_winit.
+winit = { version = "0.30", default-features = false }
+
+# The web backend is chosen at compile time (SPEC 2), one wasm file each,
+# picked by the page (roadmap WP 2.7; DECISIONS D391): WebGPU by default,
+# WebGL2 when built with `RUSTFLAGS="--cfg mp_webgl2"` (`cargo xtask web`
+# builds both, the WebGL2 one in its own target directory). A cfg rather
+# than a Cargo feature, so the native build's Bevy features (and every
+# build cache of it) stay as they are.
+[target.'cfg(all(target_arch = "wasm32", not(mp_webgl2)))'.dependencies]
+bevy = { version = "=0.19.1", default-features = false, features = ["web", "webgpu"] }
+
+[target.'cfg(all(target_arch = "wasm32", mp_webgl2))'.dependencies]
+bevy = { version = "=0.19.1", default-features = false, features = ["web", "webgl2"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# The race's sound on the web: the browser's Web Audio (DECISIONS D513).
+mp_audio = { workspace = true, features = ["web"] }
+wasm-bindgen.workspace = true
+js-sys.workspace = true
+web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Navigator", "Location", "Performance", "Storage"] }
+# Only for their features: debug and trace logging compiled out of release
+# wasm builds. On the web Bevy's LogPlugin filters at info and nothing can
+# change that at run time (there is no RUST_LOG), so those calls could never
+# print; natively RUST_LOG still works. DECISIONS D671.
+tracing = { version = "0.1", default-features = false, features = ["release_max_level_info"] }
+log = { version = "0.4", default-features = false, features = ["release_max_level_info"] }
+
+# `mp_webgl2` is the WebGL2 build's cfg (see the wasm dependency tables).
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(mp_webgl2)"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+# The scripted race's audio calls (parity/golden/audio/drive-race.jsonl.gz).
+flate2 = "1"

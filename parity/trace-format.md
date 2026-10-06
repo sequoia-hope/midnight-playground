@@ -2,7 +2,7 @@
 
 What the Rust simulation and the JS reference runs are compared on, tick for
 tick (SPEC 4.6). The JS writer is `tools/parity/lib/trace.mjs`
-(`traceRecord`); the Rust writer will be `mr_sim::trace_record()`. Where the
+(`traceRecord`); the Rust writer will be `mp_sim::trace_record()`. Where the
 two documents disagree, fix one of them: the bytes must be the same.
 
 A record is a flat sequence of little-endian values, in exactly the order

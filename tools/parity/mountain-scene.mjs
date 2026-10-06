@@ -1,5 +1,5 @@
 // The Sierra Pass scenery of the browser's scene export, as a small digest
-// (roadmap WP 3.6), so that mr_worldgen's Mountain can be held to the JS
+// (roadmap WP 3.6), so that mp_worldgen's Mountain can be held to the JS
 // (the L3 gate for zone 0) in CI and in wasm, without the cache.
 //
 //   node tools/parity/mountain-scene.mjs [--check]
@@ -15,7 +15,7 @@
 //     of its material in a table, and for a group (the parked cars) the
 //     same for its children;
 //   - the table: each material (after the first of its class, as what
-//     differs from that one) described as crates/mr_worldgen/tests/
+//     differs from that one) described as crates/mp_worldgen/tests/
 //     road.rs `material_view` describes it (textures by sampler and, but
 //     for canvas textures, the SHA-256 of their pixels);
 //   - every canvas texture the materials use, in order of first use: size,

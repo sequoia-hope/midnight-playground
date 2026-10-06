@@ -3495,15 +3495,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "mr_audio"
+name = "mp_audio"
 version = "0.1.0"
 dependencies = [
  "flate2",
  "js-sys",
- "mr_levels",
- "mr_math",
- "mr_sim",
- "mr_track",
+ "mp_levels",
+ "mp_math",
+ "mp_sim",
+ "mp_track",
  "serde_json",
  "sha2",
  "wasm-bindgen",
@@ -3514,11 +3514,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "mr_canvas"
+name = "mp_canvas"
 version = "0.1.0"
 dependencies = [
  "harfrust 0.13.3",
- "mr_math",
+ "mp_math",
  "png",
  "serde_json",
  "skrifa 0.46.2",
@@ -3526,7 +3526,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mr_game"
+name = "mp_game"
 version = "0.1.0"
 dependencies = [
  "bevy",
@@ -3534,15 +3534,15 @@ dependencies = [
  "image",
  "js-sys",
  "log",
- "mr_audio",
- "mr_canvas",
- "mr_levels",
- "mr_math",
- "mr_net",
- "mr_scene",
- "mr_sim",
- "mr_track",
- "mr_worldgen",
+ "mp_audio",
+ "mp_canvas",
+ "mp_levels",
+ "mp_math",
+ "mp_net",
+ "mp_scene",
+ "mp_sim",
+ "mp_track",
+ "mp_worldgen",
  "serde_json",
  "tracing",
  "wasm-bindgen",
@@ -3551,34 +3551,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "mr_host"
+name = "mp_host"
 version = "0.1.0"
 dependencies = [
- "mr_net",
- "mr_sim",
+ "mp_net",
+ "mp_sim",
 ]
 
 [[package]]
-name = "mr_kernel"
-version = "0.1.0"
-dependencies = [
- "mr_math",
-]
-
-[[package]]
-name = "mr_levels"
+name = "mp_levels"
 version = "0.1.0"
 dependencies = [
  "miniz_oxide 0.9.1",
- "mr_math",
- "mr_track",
+ "mp_math",
+ "mp_track",
  "serde_json",
  "sha2",
  "wasm-bindgen-test",
 ]
 
 [[package]]
-name = "mr_math"
+name = "mp_math"
 version = "0.1.0"
 dependencies = [
  "libm",
@@ -3587,15 +3580,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "mr_net"
+name = "mp_net"
 version = "0.1.0"
 dependencies = [
- "mr_math",
- "mr_sim",
+ "mp_math",
+ "mp_sim",
 ]
 
 [[package]]
-name = "mr_scene"
+name = "mp_scene"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -3604,38 +3597,45 @@ dependencies = [
 ]
 
 [[package]]
-name = "mr_sim"
+name = "mp_sim"
 version = "0.1.0"
 dependencies = [
  "flate2",
- "mr_levels",
- "mr_math",
- "mr_track",
+ "mp_levels",
+ "mp_math",
+ "mp_track",
  "serde_json",
  "wasm-bindgen-test",
 ]
 
 [[package]]
-name = "mr_track"
+name = "mp_track"
 version = "0.1.0"
 dependencies = [
- "mr_math",
+ "mp_math",
 ]
 
 [[package]]
-name = "mr_worldgen"
+name = "mp_worldgen"
 version = "0.1.0"
 dependencies = [
- "mr_canvas",
- "mr_levels",
- "mr_math",
- "mr_scene",
- "mr_sim",
- "mr_track",
+ "mp_canvas",
+ "mp_levels",
+ "mp_math",
+ "mp_scene",
+ "mp_sim",
+ "mp_track",
  "png",
  "serde_json",
  "sha2",
  "wasm-bindgen-test",
+]
+
+[[package]]
+name = "mr_kernel"
+version = "0.1.0"
+dependencies = [
+ "mp_math",
 ]
 
 [[package]]
@@ -6842,9 +6842,9 @@ version = "0.1.0"
 dependencies = [
  "brotli",
  "flate2",
+ "mp_math",
+ "mp_scene",
  "mr_kernel",
- "mr_math",
- "mr_scene",
  "png",
  "serde_json",
  "sha2",

@@ -1,8 +1,8 @@
-// The golden for mr_worldgen::beach::parts (roadmap WP 7.1; Desert uses
+// The golden for mp_worldgen::beach::parts (roadmap WP 7.1; Desert uses
 // the motel, the gas station and the diner): the game's own
 // beach/parts.js under Node with the parity kernel, each building drawn
 // into a ColorBuilder with Beach.js's palette, in a placed frame, from a
-// seeded stream. crates/mr_worldgen/tests/beach_parts.rs makes the same
+// seeded stream. crates/mp_worldgen/tests/beach_parts.rs makes the same
 // calls and requires the same bits.
 //
 //   node --import=./tools/parity/kernel/register.mjs tools/parity/beach-parts.mjs [--check]

@@ -20,7 +20,7 @@ parity hooks on (`src/parity/`).
 | `golden/desert/` | yes | Desert Run of the Desert export as a digest (`desert.json`: per node of the groups `desert` and `road` its line and material, the textures' block means, the lights), and its lettered textures drawn by Chrome with the bundled fonts (`textures.json`) (WP 7.3, D551). `golden/animators/desert.json` holds Desert Run's animators the same way as Sierra's (D555). |
 | `golden/streets/` | yes | Downtown Streets of the Streets export as a digest (`streets.json`: per node of the groups `streets` and `road` its line and material, the textures' block means), and every canvas of both groups drawn by Chrome with the bundled fonts (`textures.json`) (WP 7.2, D613). `golden/animators/streets.json` holds Downtown Streets' animators the same way as Sierra's (D612). |
 | `golden/animators/cruise.json` | yes | The Night City Cruise's animators, as Sierra's: the loop's `world.update` with the camera hopping round the loop, so the chunk cut-off shows and hides City's chunks (WP 7.5, D631). |
-| `cache/<key>/scenes/` | no | `<level>.mrscene` and `models.mrscene` scene exports (`crates/mr_scene/FORMAT.md`), each with the digest of the live scene; `<level>.base.mrscene` with `--base` (WP 0.5). |
+| `cache/<key>/scenes/` | no | `<level>.mrscene` and `models.mrscene` scene exports (`crates/mp_scene/FORMAT.md`), each with the digest of the live scene; `<level>.base.mrscene` with `--base` (WP 0.5). |
 | `cache/<key>/world/<level>/` | no | `track.{json,bin}` and `terrain.{json,bin}`: the Track arrays and terrain heights (WP 0.5). |
 
 ## The hooks
@@ -30,7 +30,7 @@ nothing unless its URL parameter is given:
 
 | Parameter | Effect |
 |---|---|
-| `kernel=1` | Every inexact `Math` function comes from `mr_math`'s kernel, compiled to wasm (`tools/parity/kernel/mr_kernel.wasm`, rebuilt by `cargo xtask kernel`). Any other inexact one throws. |
+| `kernel=1` | Every inexact `Math` function comes from `mp_math`'s kernel, compiled to wasm (`tools/parity/kernel/mr_kernel.wasm`, rebuilt by `cargo xtask kernel`). Any other inexact one throws. |
 | `fixeddt=1` | The race steps in fixed ticks of 1/120 s, `ticks=N` per rendered frame (default 2). Game time follows the ticks, not the clock. |
 | `quant=1` | The player's input is quantised as the Rust `InputFrame` is. |
 | `seed=N` | Rivals, police and the pursuit draw from seeded streams (`src/parity/sim.js`). |
@@ -50,7 +50,7 @@ Every capture is taken with the kernel on.
 | `cargo xtask kernel [--check]` | The math kernel's wasm, checked bit for bit against native Rust | `tools/parity/kernel/mr_kernel.wasm` |
 | `NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/math-golden.mjs [--check]` | `util/math.js` and the JS semantics of SPEC 4.2 over fixed inputs, as f64 bits (WP 1.1) | `golden/math/math.json` |
 | `NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/seaside-golden.mjs [--check]` | Seaside's survey data as `load.js` decodes it: line, grids, features, the samplers at 33,000 points (WP 1.2) | `golden/seaside/survey.json` |
-| `NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/three-geom.mjs [--check]` | The three.js r180 geometry `mr_worldgen::three_geom` ports: every generator over a spread of parameters, Shape/Path, triangulateShape, CatmullRomCurve3, transforms and normals, mergeGeometries and mergeVertices, as hashes and heads of the typed arrays (WP 3.1) | `golden/three_geom/three_geom.json` |
+| `NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/three-geom.mjs [--check]` | The three.js r180 geometry `mp_worldgen::three_geom` ports: every generator over a spread of parameters, Shape/Path, triangulateShape, CatmullRomCurve3, transforms and normals, mergeGeometries and mergeVertices, as hashes and heads of the typed arrays (WP 3.1) | `golden/three_geom/three_geom.json` |
 | `NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/builders.mjs [--check]` | The world builders run under Node: `valley/Builder.js` (Builder, PaintBuilder), `beach/ColorBuilder.js`, `city/geom.js`, Road.js's `extrude` and `runs` over real tracks, `THREE.Color`, the built-in materials' parameters as the export writes them, and World.build's progress labels (WP 3.3) | `golden/builders/builders.json` |
 | `NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/terrain-plan.mjs [--check]` | What the scenery's `plan()` registers with the terrain (flattens, carves, the railway bed) per level, run under Node and checked against the world golden's height hashes; with the cache, a digest of the export's terrain meshes (WP 3.4, DECISIONS D232, D233) | `golden/terrain/<level>.json` |
 | `NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/road-plan.mjs [--check]` | What the scenery's `plan()` registers for the road (`fenceGaps`, `noMarks`, `runout`) per level, run under Node and checked against the world golden; the sky along the route from the JS `Sky` under Node; with the cache, digests of the export's road, sky and sea (WP 3.5, DECISIONS D273, D274) | `golden/road/<level>.json` |
@@ -70,7 +70,7 @@ Every capture is taken with the kernel on.
 | `node tools/parity/pursuit-scenes.mjs --side js\|rust [--only a,b] [--backend webgl2]` | The staged Hot Pursuit scenes of `golden/pursuit/scenes.json`: the JS's own PursuitView.js on a stand-in race, and the Rust web build with `?pv=<scene>` (WP 8.1, 8.2, D930); compare with `cargo xtask parity shots` | `report/pursuit/scenes/<side>/` |
 | `node tools/parity/pursuit-race.mjs --side js\|rust --level coast --time 40 [--heat 3]` | The same seeded pursuit race in both games at a race time, the autopilot driving (D931) | `report/pursuit/race/` |
 | `node tools/parity/textures.mjs [--check]` | The shared textures of `src/world/textures.js` and canvas probes, in headless Chrome with the bundled fonts (WP 3.2) | `cache/<key>/textures/`, summary in `golden/textures/` |
-| `node tools/parity/fonts-gallery.mjs` | The font gallery: the game's sign strings in each bundled font and the alternatives, rendered by `mr_canvas` (WP 3.2) | `report/fonts/` |
+| `node tools/parity/fonts-gallery.mjs` | The font gallery: the game's sign strings in each bundled font and the alternatives, rendered by `mp_canvas` (WP 3.2) | `report/fonts/` |
 | `node tools/parity/sim-world.mjs [--check]` | What the simulation needs from the world: runout, the opposite carriageway, every vehicle's dimensions | `golden/sim/world-data.json` |
 | `NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs node tools/parity/sim-module.mjs [--check] [--doc]` | Module traces of the staged scenarios (`scenarios.md`, which `--doc` regenerates) | `golden/sim/module/*.trace.gz` |
 | `node tools/parity/sim-race.mjs [--check] [--only id,...]` | Whole-race recordings from the real game; `--check` records each twice and compares | `cache/<key>/sim-races/*.trace`, summaries in `golden/sim/races.json` |
@@ -81,7 +81,7 @@ Every capture is taken with the kernel on.
 | `cargo xtask parity shots --a <dir> --b <dir> --label <name>` | Compares two sets of pictures (CIEDE2000, SPEC 12's limits), with a report | `report/shots-<name>/` |
 | `cargo xtask parity materials [--only all\|every\|<names>]` | The material test scenes rendered by the JS (if not cached) and by the native Rust client (`--materials`), compared; fails over the limits (WP 2.3, D175, D176) | `cache/<key>/materials/rust/`, `report/shots-materials/` |
 | `cargo xtask parity stations [--levels a,b]` | The screenshot stations flown by the native Rust client (`--stations`), compared with the JS shots (WP 2.5, D176) | `cache/<key>/shots/rust/`, `report/shots-stations/` |
-| `node tools/parity/rust-web.mjs --level <id> [--query ...]` | The Rust web build (`cargo xtask web --release`) in headless Chrome on WebGPU: waits for `__mr.ready`, saves `__mr.screenshot`, fails on page errors (D176) | `report/rust-web/` |
+| `node tools/parity/rust-web.mjs --level <id> [--query ...]` | The Rust web build (`cargo xtask web --release`) in headless Chrome on WebGPU: waits for `__mp.ready`, saves `__mp.screenshot`, fails on page errors (D176) | `report/rust-web/` |
 | `node tools/parity/perf-baseline.mjs` | Desktop frame-rate baseline, fly camera along each route | printed, for `docs/rust-port/BASELINE.md` |
 | `node tools/parity/trace-inspect.mjs <trace> [--tick N \| --diff <other>]` | Read a trace: summary, every field of a record by name, or the first differing tick and fields | |
 
@@ -95,7 +95,7 @@ interception: no server, no port).
 node tools/parity/scene-export.mjs            # all six levels and the models, ~1 min
 node tools/parity/scene-export.mjs --base     # terrain, road and sky only
 node tools/parity/scene-export.mjs --check    # again, and compare with the goldens and the last run
-cargo xtask parity scene-check                # read every scene back with mr_scene, check its digest
+cargo xtask parity scene-check                # read every scene back with mp_scene, check its digest
 ```
 
 Each JS material is tagged with its `MaterialKind` (`material.userData.kind`);

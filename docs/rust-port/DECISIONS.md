@@ -8,8 +8,8 @@ Format: number, date, work package, the decision, why.
 
 ## D1. Hash maps are banned outright in the simulation crates
 
-2026-10-03, WP 0.1. SPEC 3.2 forbids hash-map *iteration* in `mr_math`,
-`mr_track`, `mr_levels` and `mr_sim`. `check-deps` forbids the types
+2026-10-03, WP 0.1. SPEC 3.2 forbids hash-map *iteration* in `mp_math`,
+`mp_track`, `mp_levels` and `mp_sim`. `check-deps` forbids the types
 (`HashMap`, `HashSet`) instead: a source scan cannot tell lookup from
 iteration, and SPEC 4.2 wants JS insertion order, which a vector of pairs or
 an index-keyed array gives and a hash map never does.
@@ -18,11 +18,11 @@ an index-keyed array gives and a hash map never does.
 
 2026-10-03, WP 0.1. SPEC 4.2 says the simulation and world generation never
 call `f64::sin` and friends. `check-deps` enforces it by scanning the
-sources of `mr_math`, `mr_track`, `mr_levels`, `mr_sim`, `mr_worldgen` (and
+sources of `mp_math`, `mp_track`, `mp_levels`, `mp_sim`, `mp_worldgen` (and
 the kernel's wasm crate) for `x.sin(`, `f64::sin(` and the like: every
 inexact function, plus `powi` (not the same rounding as `Math.pow`) and
-`mul_add` (fuses a rounding away). Comments are skipped. `mr_canvas`,
-`mr_audio` and `mr_game` are not scanned: their output is compared with
+`mul_add` (fuses a rounding away). Comments are skipped. `mp_canvas`,
+`mp_audio` and `mp_game` are not scanned: their output is compared with
 tolerances, not bit for bit.
 
 ## D3. Banned crates are checked on the default feature set for every target
@@ -97,8 +97,8 @@ computes at load time (it fetches the wasm synchronously for that reason):
 `seed=N`, or `parity=1` for all of them with seed 1. In fixed-dt mode the
 input layer is also read once per tick and the frame's game time is the ticks
 run, so everything (camera, effects, scenery) follows game time, not the
-clock. The e2e harness adds `MR_QUERY` to every page, so the whole suite runs
-with any hook on (`MR_QUERY=kernel=1 npm run test:e2e`).
+clock. The e2e harness adds `MP_QUERY` to every page, so the whole suite runs
+with any hook on (`MP_QUERY=kernel=1 npm run test:e2e`).
 
 ## D10. Generator parameters default to `Math.random`, one per stream
 
@@ -254,7 +254,7 @@ the local and the world matrix. An `InstancedMesh` is exported as type
 custom attributes in its mesh marked `instanced`. Material parameters are
 every own property of the material, as JSON with tagged colours, vectors,
 matrices and texture references. The format is
-`crates/mr_scene/FORMAT.md`.
+`crates/mp_scene/FORMAT.md`.
 
 ## D26. The digest, and what is committed
 
@@ -307,7 +307,7 @@ beds, the tunnel's impulse response, loop start offsets, pops, misfires,
 one-shot variations, radio takes and the burble. Every audio capture
 replaces it with `mulberry32(1)` (the algorithm of `src/util/math.js`)
 before `GameAudio` is built; nothing else draws from it there. So the
-Rust `mr_audio` takes one random stream and draws from it exactly where
+Rust `mp_audio` takes one random stream and draws from it exactly where
 and in the order the JS calls `Math.random`; in the parity tests it is
 `mulberry32(1)`. With that, the Node fake and Chrome build bit-identical
 buffers (the renders stage checks it).
@@ -324,7 +324,7 @@ log is played back into `GameAudio` on a recording Web Audio fake whose
 clock is game time (tick k is at k/120 s), with `setTimeout` on that clock
 and decoding standing in for Chrome's (`parity/golden/audio/README.md`
 has the rules). The Web Audio call log is a pure function of the facade
-log. M5 plays the same facade log into `mr_audio` with the null backend
+log. M5 plays the same facade log into `mp_audio` with the null backend
 under the same rules and compares the two call logs; this tests what the
 web backend will send to the browser, which is what SPEC 7.5 asks of it.
 
@@ -437,7 +437,7 @@ standard and physical sphere grids. 37 kinds and 45 scenes.
 
 ## M1 decisions
 
-## D50. The shape of `mr_math`'s port of `util/math.js`
+## D50. The shape of `mp_math`'s port of `util/math.js`
 
 2026-10-03, WP 1.1. JS closures that carry state become structs that can
 live in a cloned, hashed `SimState`: `mulberry32(seed)` is `Mulberry32`
@@ -456,7 +456,7 @@ double passes it through `js::to_uint32`, the JS `seed >>> 0`.
 2026-10-03, WP 1.1. The roadmap gate "bit-exact against the JS run with the
 kernel" is `parity/golden/math/math.json` (`tools/parity/math-golden.mjs`,
 checked in CI): every function of `util/math.js` and every helper in
-`mr_math::js` over the same inputs on both sides (edge values, then
+`mp_math::js` over the same inputs on both sides (edge values, then
 mulberry32 spreads; noise also at coordinates past 2^31, where `i & 255`
 wraps through ToInt32), stored as FNV-1a 64 of the f64 bits plus the first
 16 values in hex. NaN is written canonically on both sides, because V8 keeps
@@ -467,7 +467,7 @@ wasm too.
 ## D52. Index loops stay index loops
 
 2026-10-03, WP 1.2. Clippy's `needless_range_loop` is allowed in
-`mr_track`, `mr_levels` and `mr_sim`. A JS `for (let k = 0; k < n; k++)`
+`mp_track`, `mp_levels` and `mp_sim`. A JS `for (let k = 0; k < n; k++)`
 that reads several arrays at `k` is ported as the same loop, so the port can
 be read beside the JS line for line; rewriting it as iterator chains hides
 the correspondence and invites reordering.
@@ -479,7 +479,7 @@ the correspondence and invites reordering.
 `circuit.js` and `ground.js` hold, from the same Python values, with each
 grid's zlib stream as it is (the JS file holds it in base64). Rerunning the
 script from its cache reproduces both JS modules byte for byte, so the binary
-was written by a real run, not converted from the JS. `mr_levels::survey`
+was written by a real run, not converted from the JS. `mp_levels::survey`
 decodes it the way `load.js` does, including where `load.js` stores into a
 `Float32Array` (grid values, the blend's scratch buffers) and where into a
 plain array (the samplers' results). `tools/parity/seaside-golden.mjs`
@@ -491,11 +491,11 @@ needs it (M7).
 ## D54. Level functions are shared closures; Seaside is prepared
 
 2026-10-03, WP 1.2. A JS level carries functions (`elevation`, `ground`,
-`looseGround`, `loop.path`). `mr_track::Level` holds them as
+`looseGround`, `loop.path`). `mp_track::Level` holds them as
 `Arc<dyn Fn ... + Send + Sync>`, so a level is plain to clone and share. As
 in the JS, `seaside::level()` is the menu's level without survey data, and
 building its Track fails until `seaside::prepare(level, data)` has filled in
-the path and the ground. `mr_levels` does not embed the survey: the caller
+the path and the ground. `mp_levels` does not embed the survey: the caller
 parses `survey.bin` (`SeasideData::parse`) and passes it in, so the web
 client can fetch it as an asset.
 
@@ -515,10 +515,10 @@ the terrain is the run-off" needs Terrain (M3), "loose run-off slows the car"
 needs `CarPhysics` (WP 1.3) and "rivals rubber-band on race progress" needs
 `AIDriver` (WP 1.4). From `levels.test.js`, the landform and scenery checks
 use the JS names until world generation exists, and a rival's kind is
-checked against `CAR_SPECS` in `mr_sim`'s tests (WP 1.3). Each is ported in
+checked against `CAR_SPECS` in `mp_sim`'s tests (WP 1.3). Each is ported in
 the package that brings what it needs.
 
-## D57. The shape of `mr_sim::physics` and `vehicle`
+## D57. The shape of `mp_sim::physics` and `vehicle`
 
 2026-10-03, WP 1.3. `CarPhysics` holds only its own state (and its spec,
 which is a small copy); the vehicle and the track are passed to `update`,
@@ -533,13 +533,13 @@ and the client reads them. JS fields that start `undefined` (`offTrack`,
 The `cruise` input (the gearbox hint) is carried on `Input` but not in
 `InputFrame`, as `quantiseInput` passes it through.
 
-## D58. Module traces are replayed by `mr_sim::staged`
+## D58. Module traces are replayed by `mp_sim::staged`
 
 2026-10-03, WP 1.3. The module oracle's staging (`tools/parity/lib/node-sim.mjs`)
-is ported as `mr_sim::staged`, which grows with the work packages; the test
-`crates/mr_sim/tests/module_phys.rs` transcribes each scenario's input
+is ported as `mp_sim::staged`, which grows with the work packages; the test
+`crates/mp_sim/tests/module_phys.rs` transcribes each scenario's input
 function from the catalogue in `sim-module.mjs`. The trace record is written
-from views of the state (`mr_sim::trace`), so it can follow the JS layout
+from views of the state (`mp_sim::trace`), so it can follow the JS layout
 while the Rust state takes its own shape. The goldens are compiled into the
 test, so the replay runs in wasm under Node too: the WP 1.3 traces are
 bit-identical native and in wasm. A failing replay keeps its own trace in
@@ -562,11 +562,11 @@ JS's cached frame (`this.F`), because `velocity()`, `setVelocity()` and
 `translate()` use whatever frame was last computed. `yFn` is a `Surface`
 enum (road or opposite carriageway). Parking spots are a `Park` enum with
 `speed(s)` and `lat(s)`. Random draws come from counted `Stream`s
-(`mr_sim::rng`), seeded as `simStreams` seeds them.
+(`mp_sim::rng`), seeded as `simStreams` seeds them.
 
 ## D60. Race rules: one player for now, events, hash
 
-2026-10-03, WP 1.5. `mr_sim::race` ports Race.update's simulation in its
+2026-10-03, WP 1.5. `mp_sim::race` ports Race.update's simulation in its
 order (SPEC 4.3). The state keeps `players` as a vector and each player's
 rule state on its `PlayerCar` (SPEC 4.3), but the rules run for
 `players[0]`: the race-wide things the JS does with "the player"
@@ -586,14 +586,14 @@ hash and the results, so it also runs in wasm and in CI without the cache.
 
 ## D61. Hot Pursuit: racers by index, bodies by id, PursuitView's rules in the race
 
-2026-10-03, WP 1.6. `mr_sim::pursuit` ports Pursuit.js, `mr_sim::police`
+2026-10-03, WP 1.6. `mp_sim::pursuit` ports Pursuit.js, `mp_sim::police`
 PoliceDriver.js. Every body has a `BodyId` (pool and index; police are units
 then roadblock cars, as the trace counts them), carried in its `AgentView`
 with the `police` and `kinematicOnly` flags the drivers test. A unit's
 target is a racer's index in `racers` (player first, then the rivals); the
 pursuit reaches the racers' bodies through a small `Racers` trait (their
 pose, a rival's finish, holding a rival, spiking a tyre), so the race, the
-module staging and the tests each supply their own. `mr_sim::field` holds
+module staging and the tests each supply their own. `mp_sim::field` holds
 what the race and the staging share: the agent list in collision order,
 live views, and the collision pass over all five pools. The simulation
 half of PursuitView (damage from hits and walls with the half-second
@@ -603,9 +603,9 @@ a bust's crash) is `race::PursuitView`, applied at SPEC 4.3's step 17. The
 pursuit's events reach the client as `SimEvent::Pursuit`. Pursuit.js's
 `hud()` and `propMark()` are presentation and stay with the client (M8).
 
-## D62. The `mr-sim` runner lives outside `src/`
+## D62. The `mp-sim` runner lives outside `src/`
 
-2026-10-03, WP 1.8. `mr-sim` (`crates/mr_sim/bin/mr-sim.rs`) reads the
+2026-10-03, WP 1.8. `mp-sim` (`crates/mp_sim/bin/mp-sim.rs`) reads the
 Seaside survey from a file, writes traces and times its benchmark, which
 the simulation library may not (no clock, no I/O; `check-deps` scans
 `src/`). A binary in the crate whose source sits in `bin/` keeps the
@@ -633,7 +633,7 @@ whole state at the end.
 else 0.19.1. On crates.io on 2026-10-03 0.20 is at `0.20.0-rc.2`
 (2026-09-28), so the client is on 0.19.1, pinned exactly (`=0.19.1`), and
 moves to 0.20 straight after G1, before many shaders exist. Default features
-are off; `mr_game` turns on the 3D renderer (`bevy_render`,
+are off; `mp_game` turns on the 3D renderer (`bevy_render`,
 `bevy_core_pipeline`, `bevy_pbr`, `bevy_post_process` and the asset, mesh,
 image, light, camera, material and shader crates), windowing, states,
 logging, keyboard, mouse and touch input, and `png` (screenshots); natively
@@ -669,7 +669,7 @@ in a vertex buffer, drawn with one instanced draw as three draws it.
 2026-10-03, WP 2.2. `?level=<id>` (`--level` natively) names a level, or
 `models`; `?scene=<url>` (`--scene <file>`) names a file outright. The
 default is the level's export in the parity cache of the current JS tree:
-`mr_scene::cache` computes `tools/parity/lib/jstree.mjs`'s key in Rust, the
+`mp_scene::cache` computes `tools/parity/lib/jstree.mjs`'s key in Rust, the
 native client reads `parity/cache/<key>/scenes/<id>.mrscene` under the repo
 root, and `cargo xtask web` writes the same directory into
 `dist/next/build.json` as the relative URL `../../parity/cache/<key>/scenes/`,
@@ -705,7 +705,7 @@ SkyGlow, Surf, LighthouseBeam, Steam, Particles, SkidMarks, PoliceGlow) and
 sprites are not drawn: as plain quads they would be white sheets. Points
 draw one pixel each. Instance colours ride in Bevy's `MeshTag`, 10 bits a
 channel over 0..2, and a small extension of the standard fragment shader
-(`crates/mr_game/src/tint.wgsl`) multiplies the base colour by them, so
+(`crates/mp_game/src/tint.wgsl`) multiplies the base colour by them, so
 instances keep one material per JS material (Sierra: 119 materials, not the
 1,838 a material per distinct colour gave). Canvas textures are flipped on
 upload where three flips them; mip chains are made on the CPU (2 × 2 box
@@ -723,7 +723,7 @@ sun (it has no lights of its own), and frames the grid.
 
 2026-10-03, WP 2.2. `?s=` starts the JS debug fly camera with its
 parameters and defaults (`s`, `h` 5, `back` 14, `lat` 0, `v` 0, `yaw` 0,
-`pitch` -0.08), on the Rust `Track` from `mr_track` and `mr_levels`;
+`pitch` -0.08), on the Rust `Track` from `mp_track` and `mp_levels`;
 `flyCamera` is ported line for line, with `dt` clamped to 1/20 s as the JS
 frame loop does. Without `s` the client runs the menu's attract camera
 (16 m/s along the first zone from s = 120, h 7, back 22, lat 3, pitch
@@ -735,7 +735,7 @@ sky is ported (WP 2.3 and M3).
 
 ## D106. The web page, the gesture bridge and the test hooks
 
-2026-10-03, WP 2.1. `crates/mr_game/web/index.html` checks
+2026-10-03, WP 2.1. `crates/mp_game/web/index.html` checks
 `navigator.gpu.requestAdapter()` before downloading anything (asking up to
 four times: headless Chrome answers null while its GPU process starts) and
 shows a plain "no WebGPU" page naming the browsers to use. It downloads the
@@ -744,13 +744,13 @@ wasm and the scene with progress, starts the app before the scene arrives
 key-down to the wasm's `gesture()` inside the handler; the wasm side only
 counts them for now (audio, fullscreen, the landscape lock and the motion
 permission arrive in M5 and M6). The wasm publishes its state on
-`window.__mr` (`state`, `progress`, `ready`, `frames`, `firstFrameMs`,
+`window.__mp` (`state`, `progress`, `ready`, `frames`, `firstFrameMs`,
 `readyMs`, `counts`, ...), and `?stats=1` shows a panel with the frame rate
 and worst frame measured as the JS game's panel does.
 High quality (shadows on) defaults as in the JS: on, except on touch
 devices; `?hq=0` or `?hq=1` overrides it. The shadow map is one cascade
 to 140 m (about the JS's ±70 m box) at 2048², with Bevy's own biases.
-`__mr.screenshot(name)` saves the next frame through Bevy's screenshot as
+`__mp.screenshot(name)` saves the next frame through Bevy's screenshot as
 a download: headless Chrome does not composite a WebGPU canvas into its own
 screenshots. Headless Chrome on the dev machine gets the hardware adapter
 with `--enable-unsafe-webgpu --enable-features=Vulkan --use-angle=vulkan
@@ -760,8 +760,8 @@ levels are checked through the registered server.
 
 ## D107. The dev server sends precompressed files under `dist/`
 
-2026-10-03, WP 2.1. `cargo xtask web --release` writes `mr_game_bg.wasm.gz`
-and `mr_game.js.gz`; `tools/serve.py` sends the `.gz` with
+2026-10-03, WP 2.1. `cargo xtask web --release` writes `mp_game_bg.wasm.gz`
+and `mp_game.js.gz`; `tools/serve.py` sends the `.gz` with
 `Content-Encoding: gzip` (and the original type) for a file under `/dist/`
 when the browser accepts gzip and the `.gz` exists, and sends `.wasm` as
 `application/wasm`. Everything else is served as before.
@@ -794,13 +794,13 @@ reciprocal, as `divideScalar` does); `+`, `-` and unary `-` are `add`,
 `explicit_counter_loop` are allowed in the module so the port keeps three's
 signatures and loops (D52).
 
-## D131. `BufferGeometry`: attributes in insertion order, typed arrays as `mr_scene::BufferData`
+## D131. `BufferGeometry`: attributes in insertion order, typed arrays as `mp_scene::BufferData`
 
 2026-10-03, WP 3.1. Attributes are a vector of (name, attribute) with a JS
 object's order: setting an existing name keeps its place, deleting and
 setting again moves it to the end. The order is observable:
 `mergeGeometries` follows the first geometry's, and `LatheGeometry` sets
-`uv` before `normal`. An attribute's array is an `mr_scene::BufferData`, so
+`uv` before `normal`. An attribute's array is an `mp_scene::BufferData`, so
 geometry goes into a scene as it is (`to_mesh_desc`, `add_to_scene`);
 writes behave as stores into the JS typed array (`f32` rounding, integer
 wrap through ToInt32/ToUint32, three's `normalize`/`denormalize` for a
@@ -809,7 +809,7 @@ with a list picks `Uint16` or `Uint32` by three's `arrayNeedsUint32`, and
 `set_index_attribute` takes one as built (`TerrainMesh.js` and `Sea.js`
 choose the type themselves). Groups are `usize` start, count and material
 index. `toNonIndexed` on a geometry without an index returns a copy where
-three warns and returns `this`. Nothing was added to `mr_scene`.
+three warns and returns `this`. Nothing was added to `mp_scene`.
 
 ## D132. Curves, shapes and earcut
 
@@ -872,11 +872,11 @@ and the two failures that return null). `parity/golden/three_geom/three_geom.jso
 records each attribute's name, item size, array type, count, the FNV-1a 64
 of the typed array's bytes and its first 16 values as hex bits, the index
 (type, values as u32), groups and bounds; sequences as in the math golden
-(D51). `crates/mr_worldgen/tests/three_geom.rs` rebuilds every case and
+(D51). `crates/mp_worldgen/tests/three_geom.rs` rebuilds every case and
 requires all of it to match. The SPEC's bar is 1e-6; the result is
 bit-identical in every case, native and in wasm
-(`cargo test --target wasm32-unknown-unknown -p mr_worldgen`). CI checks
-that the golden regenerates and runs mr_worldgen's tests in wasm.
+(`cargo test --target wasm32-unknown-unknown -p mp_worldgen`). CI checks
+that the golden regenerates and runs mp_worldgen's tests in wasm.
 
 ## WP 3.2 decisions
 
@@ -896,7 +896,7 @@ Variable fonts stay variable: the `wght` axis follows the requested weight
 within the face's range, as Chrome sets it. A single-weight face (Archivo
 Black, Yellowtail) is registered for the whole 100–900 range, so neither
 Chrome nor the port synthesises bold for it; the set covers every weight and
-style the game requests, so mr_canvas has no synthetic bold (a synthetic
+style the game requests, so mp_canvas has no synthetic bold (a synthetic
 oblique, Skia's 0.25 skew, is there for the gallery). `FontBook::bundled()`
 compiles the files in (about 4 MB, most of it Arimo's and Rajdhani's
 non-Latin coverage: subsetting both sides to the characters in use is the
@@ -906,7 +906,7 @@ committed. The owner picks from `/parity/report/fonts/`.
 
 ## D151. Exact-area coverage and own compositing, on tiny-skia's paths
 
-2026-10-03, WP 3.2. mr_canvas uses tiny-skia for the pixmap, path building
+2026-10-03, WP 3.2. mp_canvas uses tiny-skia for the pixmap, path building
 and the stroker, but rasterises coverage itself (exact signed area per
 pixel, the nonzero rule, as font-rs and FreeType do) and composites in
 float with one rounding per draw. tiny-skia's own anti-aliasing is 4×4
@@ -980,12 +980,12 @@ absolute difference per channel under 3/255 (SPEC 5.7) and side-by-side
 sheets in `parity/report/textures/`. `--check` captures twice and compares
 with the golden.
 
-## D155. The shape of `mr_worldgen::textures`
+## D155. The shape of `mp_worldgen::textures`
 
-2026-10-03, WP 3.2. One function per JS generator, drawing on mr_canvas in
+2026-10-03, WP 3.2. One function per JS generator, drawing on mp_canvas in
 the JS order, returning a `Texture` (unpremultiplied RGBA as uploaded, the
 source kind, wrap, colour space, anisotropy) with `desc()` for an
-`mr_scene::TextureDesc` (canvas textures flip on upload, data textures do
+`mp_scene::TextureDesc` (canvas textures flip on upload, data textures do
 not). The JS module's `Map` cache is a `TextureCache` owned by the world
 build, with the JS keys, including their quirk: a sign's key leaves out its
 font and border, so two signs differing only in those share a texture.
@@ -998,7 +998,7 @@ noise textures are bit-identical to the JS.
 
 ## D190. The shape of the builders' API
 
-2026-10-03, WP 3.3. Each JS module is a module of `mr_worldgen`:
+2026-10-03, WP 3.3. Each JS module is a module of `mp_worldgen`:
 `valley/Builder.js` is `builder`, `beach/ColorBuilder.js` is
 `color_builder`, `city/geom.js` is `geom`, `extrude`, `runs`, `chunks` and
 `groupRuns` of `Road.js` are in `road` (where the `Road` class joins them in
@@ -1127,7 +1127,7 @@ through the `Scenery` trait and a factory given each `SceneryInfo` (name,
 first zone, key, as `loadScenery` passes them); `SCENERY_LABELS` holds each
 class's label. `World` holds the level, the track, the graph, the root
 group `world:<id>`, the animators, the texture cache and the simulation's
-world data (`SimWorldData`, `mr_levels::world::WorldData`, filled by the
+world data (`SimWorldData`, `mp_levels::world::WorldData`, filled by the
 scenery); later packages add their fields (terrain, road, sky, sea).
 
 ## D197. The builders golden
@@ -1154,7 +1154,7 @@ for `dy` and colour, skipped short ranges, the open road's runout) with
 level but Seaside, computed from the levels' zones and the labels the
 scenery classes set. Meshes are compared by name, type, flags, matrix bits,
 material and geometry; geometries as in D134.
-`crates/mr_worldgen/tests/builders.rs` makes the same calls and is
+`crates/mp_worldgen/tests/builders.rs` makes the same calls and is
 bit-identical in every case, native and in wasm. CI checks that the golden
 regenerates.
 
@@ -1162,7 +1162,7 @@ regenerates.
 
 ## D210. The facade: handles like the JS objects, one `Op` per call
 
-2026-10-03, WP 5.1. `mr_audio::wa` ports call for call: `ctx.create_gain()`,
+2026-10-03, WP 5.1. `mp_audio::wa` ports call for call: `ctx.create_gain()`,
 `g.gain.set_target_at_time(v, t, tc)`, `osc.connect(&lp)`. Handles are
 reference-counted like the JS objects (a node handle holds its context, a
 param handle its node); typed nodes carry their params as fields and deref
@@ -1260,7 +1260,7 @@ WP 5.4.
 
 2026-10-03, WP 5.2. `samples`, `noise`, `engine`, `shapes` and `music`
 return plain channel data (`Vec<f32>`, rounded where the JS stores into a
-`Float32Array`, every inexact function through `mr_math::kernel`);
+`Float32Array`, every inexact function through `mp_math::kernel`);
 `samples::render_sfx`/`render_kit` make the AudioBuffers through the
 facade as `toBuffer` does. The audio's `Math.random` is a parameter
 (`&mut impl Rng`): the noise beds draw first, then the tunnel's impulse
@@ -1276,7 +1276,7 @@ hash ever fails.
 
 ## D230. The shape of `terrain`, `colorizer` and `terrain_mesh`
 
-2026-10-03, WP 3.4. `Terrain.js` is `mr_worldgen::terrain`, the
+2026-10-03, WP 3.4. `Terrain.js` is `mp_worldgen::terrain`, the
 `TerrainColorizer` of `TerrainMesh.js` is `colorizer`, the rest of
 `TerrainMesh.js` is `terrain_mesh`. The JS keeps a reference to the track;
 here `Terrain::new`, `build_fields` and `is_elevated` take `&Track` and
@@ -1335,7 +1335,7 @@ the world golden's, so the gate runs without the cache and in wasm; with
 the cache every point is compared and the first difference reported.
 Result: **bit-identical on all six levels**, native and in wasm. L3
 (`tests/terrain_mesh.rs`, native, needs the cache): the terrain built into
-an `mr_scene::Scene` through the object tree, each mesh's `mr_scene` digest
+an `mp_scene::Scene` through the object tree, each mesh's `mp_scene` digest
 (counts, bounds, SHA-256 of `position`, `normal`, `color`, `uv`, `aSurf`
 and the index, area, centroid) against the JS digest of the export's
 meshes under `terrain` (the `--base` export when present), per attribute
@@ -1356,7 +1356,7 @@ same hash.
 
 2026-10-03, WP 3.4. The ground shader drapes Seaside's aerial photo
 (`level.groundPhoto`) with a one-channel loose-ground mask over the same
-box. `mr_worldgen` has no JPEG decoder, and the client already has one
+box. `mp_worldgen` has no JPEG decoder, and the client already has one
 (Bevy's image loader; the browser on the web), so the decoded photo comes
 in with `GroundPhoto::seaside(data, photo, url)`, as the survey itself is
 passed in (D54); the mask is made from the survey's loose grid as the JS
@@ -1399,7 +1399,7 @@ match the export's texture count.
 
 2026-10-03, WP 2.3. The plain kinds (Standard, Physical, Lambert, Basic, and
 Line and Points drawn as basic) are one Bevy `Material`, `ThreeMaterial`
-(`crates/mr_game/src/render/material.rs`), whose WGSL
+(`crates/mp_game/src/render/material.rs`), whose WGSL
 (`three_material.wgsl` on the `three_std.wgsl` library) is three.js r180's
 meshphysical, meshlambert and meshbasic programs for the features the game
 uses: map and vertex colour, instance colour, emissive and emissive map,
@@ -1473,20 +1473,20 @@ day has moved 2.5 % of the route (`refreshEnv`).
 ## D173. The sky in the client, until world generation owns it
 
 2026-10-03, WP 2.3. `Sky.sample` and `Sky.update` are ported into
-`render::sky::SkyState` from `mr_levels`' keys (colours through three's
+`render::sky::SkyState` from `mp_levels`' keys (colours through three's
 sRGB-to-linear with the kernel's `pow`, trigonometry through
-`mr_math::kernel`), driving the dome's uniforms, the sun or moon, the
+`mp_math::kernel`), driving the dome's uniforms, the sun or moon, the
 hemisphere light, the fog and the exposure from the fly or attract
 camera's s, with `?t=` and `?freeze=1` as in the JS. A test checks the
 result at s = 0 against every export's dome uniforms, fog and exposure, to
 1e-12. WP 3.5 ports `Sky.js` into world generation; this moves there then.
 `world.nightMaterials` follow the sky's night factor from the export's
 `night_params` (all `emissiveIntensity`). The client's Track takes the
-scenery's runout from `mr_levels::world` (as the simulation does), so the
+scenery's runout from `mp_levels::world` (as the simulation does), so the
 fly camera reaches the end of the road as the JS one does (stations past
 `length` on Sierra and Coast were wrong without it). The models scene, which
 has no dome, takes Sierra's sky at the start and the dome's noise texture
-from `mr_worldgen`'s `terrainDetailTexture`; it draws on black.
+from `mp_worldgen`'s `terrainDetailTexture`; it draws on black.
 
 ## D174. The post chain
 
@@ -1512,7 +1512,7 @@ the module is `matscene`) renders the scenes of
 `parity/golden/materials/scenes.json` (compiled in) one after another in a
 512 × 512 window (scale factor 1) and saves `<dir>/<group>/<name>.png`, the
 layout `tools/parity/materials.mjs` writes. The geometry is three's, by
-`mr_worldgen::three_geom`; a kind scene takes its material from the level's
+`mp_worldgen::three_geom`; a kind scene takes its material from the level's
 export by the definition's path (from the world root, or the dome), with the
 source mesh's extra attributes set to its first vertex and the first
 instance's colour, as the JS tool does; the fixed scenes' materials are
@@ -1541,7 +1541,7 @@ and the pipelines, and saves the PNGs into `parity/cache/<key>/shots/rust/`;
 it reports but does not fail (most kinds are still stand-ins). For the web
 build, `tools/parity/rust-web.mjs` loads `dist/next/` in headless Chrome with
 D106's WebGPU flags through request interception (`.wasm` as
-`application/wasm`), waits for `__mr.ready` and saves `__mr.screenshot`; it
+`application/wasm`), waits for `__mp.ready` and saves `__mp.screenshot`; it
 needs the release wasm (the dev wasm, 85 MB, overflows the DevTools
 connection's 100 MB buffer) and a scene under about 100 MB.
 
@@ -1563,7 +1563,7 @@ leaves it undefined.
 ## D270. The shape of `road`, `sky`, `sea` and `stages`
 
 2026-10-03, WP 3.5. The `Road` class joins `extrude` and the run helpers
-in `mr_worldgen::road`; `Sky.js` is `sky`, `Sea.js` is `sea`, and the
+in `mp_worldgen::road`; `Sky.js` is `sky`, `Sea.js` is `sea`, and the
 stages of `World.build` they fill are `stages`. `Road::new` makes the group
 `road` and takes the shared `tDetail`; `build` runs the JS methods in order
 (`classify_sides`, `build_surface`, `build_markings`, `build_barriers`,
@@ -1574,7 +1574,7 @@ one per key as the JS does (the chevrons' poles reuse the barriers' `post`,
 the viaduct the barriers' `concrete`), and setting the wood rails'
 `side` changes the one shared wood material, posts included, as in the
 JS. `track.sideL`/`sideR` live on the `Road` (`side_l`, `side_r`): only
-scenery reads them, so mr_track's `Track` is left alone; the same goes for
+scenery reads them, so mp_track's `Track` is left alone; the same goes for
 `track.noMarks`, which is `World::no_marks`. `Road::set_night` and
 `dew_animator` write `uWet` as an edit of each asphalt material (the JS
 shares one uniform object between them). `Sea::new` makes the mesh and
@@ -1682,7 +1682,7 @@ the start. No port fix was needed.
 
 ## WP 3.6 decisions
 
-## D310. `valley/flora.js` is `mr_worldgen::flora`, ported once for its three users
+## D310. `valley/flora.js` is `mp_worldgen::flora`, ported once for its three users
 
 2026-10-03, WP 3.6. Mountain, Valley and the Raceway import
 `valley/flora.js`, so it is ported whole (every export, `canopyGeometry`
@@ -1706,7 +1706,7 @@ native and in wasm. CI checks that the golden regenerates.
 
 ## D311. The shape of `mountain`; the parked cars behind a hook
 
-2026-10-03, WP 3.6. `Mountain.js` is `mr_worldgen::mountain`: `mod.rs`
+2026-10-03, WP 3.6. `Mountain.js` is `mp_worldgen::mountain`: `mod.rs`
 holds the module (`Mountain`, its `plan()` and `build()`, one method per
 JS `build*` in the JS order, the flag's and the waterfall's updaters as
 `Animator`s), `kit.rs` the helpers at the top of the JS file
@@ -1800,7 +1800,7 @@ had grown, writing `parity/golden/scenery-plan/<level>.json`: per module its
 range of the terrain golden's flattens and carves, of the road golden's
 fence gaps and unpainted stretches, whether it set the railway bed, the
 runout after it where it changed it, its label and whether its plan threw.
-`mr_worldgen::scenery` reads the three goldens into a `PlanRecording`
+`mp_worldgen::scenery` reads the three goldens into a `PlanRecording`
 (checking that the ranges follow on and cover every list) and makes
 `RecordedScenery` stand-ins: a module that registers its own slice in its
 own place and builds nothing. `scenery_factory(Some(recording))` gives
@@ -1815,9 +1815,9 @@ and runout, so the goldens test each ported `plan()`. The goldens are
 compiled into the tests, so this runs in wasm too; CI checks that the split
 regenerates.
 
-## D331. The shape of `mr_worldgen::valley`, and the L3 gate for zone 1
+## D331. The shape of `mp_worldgen::valley`, and the L3 gate for zone 1
 
-2026-10-03, WP 3.7. `Valley.js` is `mr_worldgen::valley` (a directory:
+2026-10-03, WP 3.7. `Valley.js` is `mp_worldgen::valley` (a directory:
 `valley/ground.js` is `valley::ground`, `valley/parts.js` `valley::parts`,
 Valley's canvas textures `valley::textures`; `valley/Builder.js` stayed
 `builder` (D190) and `valley/flora.js` is `flora` (D310)). `Valley` keeps the
@@ -1897,16 +1897,16 @@ thin quadratic strokes on a transparent canvas, no text) comes out at
 the 3-level gate. The shapes match (the side-by-side sheet in
 `parity/report/valley/corn.png`); the difference is in the edges: Chrome's
 GPU canvas multisamples curved strokes, so its edge alpha is quantised (no
-pixel has alpha between 1 and 31) where mr_canvas gives exact area
+pixel has alpha between 1 and 31) where mp_canvas gives exact area
 coverage (D151), and the unpremultiplied colour of a faint edge pixel that
 Chrome leaves transparent counts in full. Premultiplied, RGB is within
 (2.45/2.65/1.12), alpha is not (4.20); 1.4 % of pixels fall on the other
 side of the material's `alphaTest` 0.45. Reproducing Chrome's multisampled
-stroke coverage belongs to mr_canvas (WP 3.2's owner), so the test holds
+stroke coverage belongs to mp_canvas (WP 3.2's owner), so the test holds
 the corn strip to 6 levels until then and reports the numbers; every other
 Valley texture is within the gate.
 
-**Resolved 2026-10-04 (D650-D653).** mr_canvas now strokes as Chrome's
+**Resolved 2026-10-04 (D650-D653).** mp_canvas now strokes as Chrome's
 GPU canvas does, and the corn strip is within 0.00/0.00/0.01/0.00 levels
 of the capture (from 4.56/4.95/2.04/4.20); `tests/valley.rs` holds it to
 the gate of 3 like every other Valley texture. The tassels, lone lines
@@ -2059,7 +2059,7 @@ stays hidden until its kind is ported (M3).
 ## D295. Stand-in cars from the simulation
 
 2026-10-03, WP 2.4. The roadmap's thirty moving stand-ins are the cars of
-a real race: `mr_sim`'s `LevelRuntime` and `SimState` for the level
+a real race: `mp_sim`'s `LevelRuntime` and `SimState` for the level
 (sports car, seed 1, no pursuit), stepped at 1/120 s in real time (at most
 30 ticks a frame), the player on the autopilot. Every slot is drawn: the
 player, the rivals and the whole traffic pool (Sierra: 50 slots, 1 + 5 +
@@ -2087,7 +2087,7 @@ looks in both.
 
 2026-10-03, WP 5.3. `Audio.js` and `Music.js` use `setTimeout` for the gate
 tails, the music's 25 ms scheduler, its track-change and retire callbacks,
-and the radio's 700 ms wait. `mr_audio::timers` is the reference's
+and the radio's 700 ms wait. `mp_audio::timers` is the reference's
 `VirtualTimers`: a timer set at time `now` for `ms` is due at
 `now + max(0, ms) / 1000`, due timers run in due order (ties in the order
 set), and each callback is a `Task` that `GameAudio` runs. The driver says
@@ -2106,9 +2106,9 @@ after each call and each timer, as the reference settles microtasks.
 both drives play Midnight Run, so most of their 278k and 474k Web Audio
 calls are notes and drum hits, and the risers' noise draws from the shared
 `Math.random`. Stubbing music would leave the gate untestable. So
-`Music.js` and `tracks.js` are ported faithfully (`mr_audio::music`,
-`mr_audio::tracks`), as is `RadioVoice.js` with `clipId`
-(`mr_audio::radio`, fetching through a `Fetch` trait). The sirens, radio
+`Music.js` and `tracks.js` are ported faithfully (`mp_audio::music`,
+`mp_audio::tracks`), as is `RadioVoice.js` with `clipId`
+(`mp_audio::radio`, fetching through a `Fetch` trait). The sirens, radio
 bus and burble live in `Audio.js` and come with `GameAudio`. Of WP 5.6's
 gates, `test/unit/music.test.js` is ported (`tests/music.rs`: notes, song
 data, every patch's oscillators, every song played start to finish in
@@ -2157,7 +2157,7 @@ says.
 
 ## D255. `GameAudio`'s shape
 
-2026-10-03, WP 5.3. `mr_audio::game::GameAudio` keeps `Audio.js`'s methods
+2026-10-03, WP 5.3. `mp_audio::game::GameAudio` keeps `Audio.js`'s methods
 and order of calls; the graph is in `game/build.rs`, the per-frame steering
 in `game/steer.rs`, and the one-shots and pursuit sounds in
 `game/shots.rs`, in place of SPEC 7.3's suggested `graph`, `gate`,
@@ -2230,11 +2230,11 @@ other node type was checked against Chrome sample by sample.
 
 ## WP 3.8 decisions
 
-## D350. The shape of `mr_worldgen::city`
+## D350. The shape of `mp_worldgen::city`
 
-2026-10-03, WP 3.8. `City.js` is `mr_worldgen::city` (`city/mod.rs`),
+2026-10-03, WP 3.8. `City.js` is `mp_worldgen::city` (`city/mod.rs`),
 `city/freeway.js` is `city::freeway`, `city/cityTextures.js` is
-`city::textures`; `city/geom.js` stays `mr_worldgen::geom` (WP 3.3).
+`city::textures`; `city/geom.js` stays `mp_worldgen::geom` (WP 3.3).
 `City` holds what `plan()` decides (`sA`, the path, the loop's centre,
 inside side and waterfront); `build()` makes a `Build` that is the JS
 `this` while it builds (the grid, the rng 4242, the chunks, lamp spots,
@@ -2268,9 +2268,9 @@ waterfront carve (cruise). City is registered in `scenery::PORTED`, so
 (D330) and require the registrations to equal the recording bit for bit:
 they do on both levels. `build()` sets `sim_data.opposite_carriageway`
 (s0 = sA, s1 = length, `OPP_LANES`, dir -1), as the JS sets
-`world.oppositeCarriageway`; its height is `mr_levels::world::opp_y`, which
+`world.oppositeCarriageway`; its height is `mp_levels::world::opp_y`, which
 the freeway uses too (`freeway::opp_y`). `tests/city.rs` checks the runout,
-the carriageway and `oppY` at the dumped samples against `mr_levels::world`
+the carriageway and `oppY` at the dumped samples against `mp_levels::world`
 and `parity/golden/sim/world-data.json`: equal on Sierra and the loop.
 
 ## D352. City's textures in the world's texture cache
@@ -2332,7 +2332,7 @@ levels mean absolute difference; tunnel tiles, sound wall, park, glow,
 concrete, asphalt under 0.6). The lettered ones (the tunnel name banners,
 the finish and welcome banners, the gantry sign atlas, the billboard and
 roof-ad atlases) differ from the export by 14 to 43 levels: the export
-draws text in whatever faces that machine's Chrome falls back to, mr_canvas
+draws text in whatever faces that machine's Chrome falls back to, mp_canvas
 in the bundled faces (D370), and the sheets show identical layout, colours,
 glow and stripes in another face. They are held, as D313 holds Mountain's,
 to a capture with the bundled fonts: `tools/parity/city-textures.mjs` opens
@@ -2351,7 +2351,7 @@ Result with the Roboto faces: at most 0.55 levels (the sign and roof-ad
 atlases' glow), the banners 0.05 to 0.13. When the bundled fonts change,
 rerun the tool: the gate then fails until the capture is refreshed. Rerun
 the rest: `node tools/parity/city-golden.mjs` (with the cache), then
-`cargo test -p mr_worldgen --test city` (and in wasm).
+`cargo test -p mp_worldgen --test city` (and in wasm).
 
 ## D355. Small additions to shared modules
 
@@ -2397,7 +2397,7 @@ in that set (the JS signs use only ASCII and · — → ●). The OFL fonts have
 no Reserved Font Names; Yellowtail (Apache 2.0, 62 KB) is copied whole.
 The script is deterministic (no timestamp change), so running it again
 gives the same bytes. The bundled fonts went from 4.04 MB to 1.17 MB.
-Subsetting changes no pixel: the gallery drawn by mr_canvas from the
+Subsetting changes no pixel: the gallery drawn by mp_canvas from the
 subsets is byte-identical to the one drawn from the full files for every
 face kept (Gelasio, Caveat, Courier Prime, Rajdhani, Roboto Condensed,
 Roboto Black), and the JS reference is drawn from the same subsets.
@@ -2423,14 +2423,14 @@ and no card has a box.
 
 ## D373. The manifest is the only copy of the mapping
 
-2026-10-03. `crates/mr_canvas/build.rs` reads `assets/fonts/fonts.json`
+2026-10-03. `crates/mp_canvas/build.rs` reads `assets/fonts/fonts.json`
 (with a small JSON reader of its own: the crate takes no build
 dependencies) and generates `BUNDLED`, `BUNDLED_GENERIC`,
 `BUNDLED_FALLBACK` and the files' bytes, each file included once even when
 two families use it (Arial and Arial Black share Roboto's bytes). Changing
 the fonts is a change to `fonts.json` and the files beside it; then
 `node tools/parity/textures.mjs` and `node tools/parity/mountain-textures.mjs`
-recapture the references, and mr_canvas's `tests/text.rs` needs Chrome's
+recapture the references, and mp_canvas's `tests/text.rs` needs Chrome's
 `measureText` numbers again. With Roboto, every texture and probe stays
 within the gate (largest mean absolute difference 0.87 of 255, gravel,
 which has no text; largest for text 0.53, the text-faces probe; Mountain's
@@ -2439,9 +2439,9 @@ lettered canvases at most 0.74).
 
 ## WP 4.1 decisions
 
-## D410. The shape of `mr_worldgen::car_model`; the module's caches live on the graph
+## D410. The shape of `mp_worldgen::car_model`; the module's caches live on the graph
 
-2026-10-03, WP 4.1. `vehicles/CarModel.js` is `mr_worldgen::car_model`, a
+2026-10-03, WP 4.1. `vehicles/CarModel.js` is `mp_worldgen::car_model`, a
 directory following the JS file's sections: `kit.rs` the geometry kit
 (`interp`, `spline`, `sill`, `stations`, the loft with `halfRing` and the
 surface sampler `Surf`, `Tris`, `decal`, `ribbon`, `expandPoly`, `ellipse`,
@@ -2507,10 +2507,10 @@ far model) returns no edits; `setBoost` without accents likewise.
 ## D412. Dimensions, and the parked cars in Mountain's gate
 
 2026-10-03, WP 4.1. A model's `dims` come from its spec, as in the JS.
-mr_worldgen does not depend on mr_sim (SPEC 3.2); `tests/car_model.rs`
+mp_worldgen does not depend on mp_sim (SPEC 3.2); `tests/car_model.rs`
 takes it as a dev-dependency (check-deps follows normal edges only) and
 requires every kind's `dims`, built at high and at low detail, to equal
-`mr_sim::dims::dims(kind)` and the JS dump that table was checked against
+`mp_sim::dims::dims(kind)` and the JS dump that table was checked against
 (`parity/golden/sim/world-data.json`, default, high and low-far): all
 thirteen do.
 
@@ -2556,10 +2556,10 @@ rendering gate for the client and is not part of this package.
 
 ## M4 playable decisions
 
-## D430. The loopback session lives in the client until `mr_net` has one
+## D430. The loopback session lives in the client until `mp_net` has one
 
 2026-10-03, WP 4.2. SPEC 3.3's `session.advance(frame_dt, input)` is
-`mr_game::play::session::Session`: it owns the `LevelRuntime`, the state
+`mp_game::play::session::Session`: it owns the `LevelRuntime`, the state
 before the last tick (`prev`) and after it (`curr`), and the time not yet
 stepped. A frame adds its time, clamped to 1/20 s as the JS frame loop
 does, and runs every tick that has come due, at most six (SPEC 4.1; with a
@@ -2568,11 +2568,11 @@ that the race slows down. Before each tick it asks for that tick's
 quantised `InputFrame`, so the input layer runs at the tick rate (SPEC
 8.2), and it copies `curr` into `prev` (`clone_from`, a few kilobytes) so
 the client draws `prev`→`curr` at `alpha = acc / DT`. The events of the
-frame's ticks are kept in order for the client. `mr_net` is still empty;
+frame's ticks are kept in order for the client. `mp_net` is still empty;
 when multiplayer (M10) gives it a session type the loopback becomes one
 of its transports and this module goes there. A test steps a session with
 ragged frame times (60, 144, 30 Hz, zero, a stall) beside a direct
-`mr_sim` loop with the same autopilot and requires the same tick count
+`mp_sim` loop with the same autopilot and requires the same tick count
 every frame and the same final hash: no drift.
 
 ## D431. Bevy UI for the plain HUD and the touch controls
@@ -2580,7 +2580,7 @@ every frame and the same final hash: no drift.
 2026-10-03, WP 4.6. The race's text (countdown, GO!, toasts, position,
 clock, lap, speed and gear, the pause card and the results list) and the
 touch controls are Bevy UI nodes, as SPEC 8.1 says the UI will be.
-`mr_game` turns on Bevy's `bevy_ui`, `bevy_ui_render`, `bevy_text` and
+`mp_game` turns on Bevy's `bevy_ui`, `bevy_ui_render`, `bevy_text` and
 `default_font`; the text is in Bevy's bundled FiraMono subset, so it is
 plain ASCII (N2O for N₂O, R, C and II on the reset, camera and pause
 buttons, `>` for the stick's arrows). The JS HUD's look (Rajdhani, the
@@ -2663,8 +2663,8 @@ that starts on the slider keeps it), and the reset, camera and pause taps.
 The DOM measured its boxes; `touch::Layout` computes the same boxes from
 `hud.css`'s rules (`--b`, `--pedal-h`, `--stick-r`, the insets), in CSS
 pixels. The page decides `isTouchDevice` (`?touch=`, else a coarse
-pointer with touch points) into `__mr.touch` and measures
-`env(safe-area-inset-*)` into `__mr.insets`; the controls show only while
+pointer with touch points) into `__mp.touch` and measures
+`env(safe-area-inset-*)` into `__mp.insets`; the controls show only while
 driving. Natively `touch=1` shows them and the mouse acts as one finger,
 as pointer events make it in the JS. The ◂ ▸ pads, pedal buttons, tilt
 and auto gas wait for M6. `touch.test.js` is ported whole (stick curve,
@@ -2687,7 +2687,7 @@ the results headless through the client's own frame loop (input layer
 with the autopilot, session, events, HUD state) at 60 frames a second.
 `cargo test` runs it on Sierra and requires the countdown 3, 2, 1, GO!,
 a finish text, six results, and the final hash and the results equal to
-a direct `mr_sim` run of the same ticks. `midnight-racer --level <id>
+a direct `mp_sim` run of the same ticks. `midnight-racer --level <id>
 --smoke-race` does the same for any level (Seaside reads its survey),
 seed 1 unless `seed=` is given, and prints the results; it needs no
 window or GPU, so CI can run it.
@@ -2752,7 +2752,7 @@ its GPU process after the call returns and the first draw with it waits
 there: in Chrome on WebGPU the first flight frames after "ready" had a
 one-second frame before the fence and none after. Then the stand-ins are
 despawned. Pipelines compiled after `ready` are counted
-(`__mr.lateFrames`, a warning in the log) so a missed combination shows;
+(`__mp.lateFrames`, a warning in the log) so a missed combination shows;
 none in the runs recorded in BASELINE.md.
 
 Render pipelines only are counted as waiting: on WebGL2 Bevy 0.19 queues
@@ -2760,33 +2760,33 @@ its "sparse buffer update" compute pipeline although the device has no
 compute, and that pipeline waits for ever for a shader that is never
 loaded (the client has no compute pipelines of its own).
 
-## D391. The WebGL2 build is the `mr_webgl2` cfg in its own target directory
+## D391. The WebGL2 build is the `mp_webgl2` cfg in its own target directory
 
 2026-10-03, WP 2.7, SPEC 2. Bevy picks its backend with a Cargo feature
 (`webgpu` overrides `webgl2`), so the two web builds need different Bevy
-features. Cargo features of `mr_game` would have to name `bevy/webgpu`,
+features. Cargo features of `mp_game` would have to name `bevy/webgpu`,
 which also reaches the native build's `bevy` (one dependency, unified):
 every native build cache in every worktree would be rebuilt for a feature
 that does nothing natively; and Cargo refuses the same crate twice under
 two names, so a wasm-only alias cannot carry them. Instead the wasm
 dependency tables are split on a cfg: `cfg(all(target_arch = "wasm32",
-not(mr_webgl2)))` asks for `webgpu`, `cfg(all(target_arch = "wasm32",
-mr_webgl2))` for `webgl2`, and the WebGL2 build sets `RUSTFLAGS="--cfg
-mr_webgl2"` (added to whatever flags the caller has; CI's `-D warnings`
+not(mp_webgl2)))` asks for `webgpu`, `cfg(all(target_arch = "wasm32",
+mp_webgl2))` for `webgl2`, and the WebGL2 build sets `RUSTFLAGS="--cfg
+mp_webgl2"` (added to whatever flags the caller has; CI's `-D warnings`
 stays). Because changing RUSTFLAGS invalidates a build, the WebGL2 build
 has its own target directory, `target/webgl2/`, and neither build throws
 the other's cache away. The native build is unchanged.
 
 `cargo xtask web [--release]` builds both into `dist/next/`:
-`mr_game.js` and `mr_game_bg.wasm` (WebGPU), `mr_game_webgl2.js` and
-`mr_game_webgl2_bg.wasm` (WebGL2), each gzipped for a release; `--only
+`mp_game.js` and `mp_game_bg.wasm` (WebGPU), `mp_game_webgl2.js` and
+`mp_game_webgl2_bg.wasm` (WebGL2), each gzipped for a release; `--only
 webgpu|webgl2` rebuilds one and keeps the other's files. `build.json`
 lists the backends present. `cargo xtask size` checks the larger of the
 two against the 10 MB budget (a browser downloads one). CI lints the
-WebGL2 build (`RUSTFLAGS="-D warnings --cfg mr_webgl2" cargo clippy -p
-mr_game --target wasm32-unknown-unknown --target-dir target/webgl2`) and
+WebGL2 build (`RUSTFLAGS="-D warnings --cfg mp_webgl2" cargo clippy -p
+mp_game --target wasm32-unknown-unknown --target-dir target/webgl2`) and
 builds it in `cargo xtask web --release`. The client publishes which one
-it is (`__mr.backend`).
+it is (`__mp.backend`).
 
 ## D392. How the page picks, and the fallback when WebGPU fails
 
@@ -2826,7 +2826,7 @@ despawn every scene entity (the warm-up stand-ins and the stand-in cars
 included), drop the build in progress, the cars' race, the night
 materials and `Loaded`, reset the status and the cameras, and wait for the
 next scene; a different level also drops its Track and sky. The page's
-`__mr.reload(level)` calls it, waits for `waiting`, downloads and hands
+`__mp.reload(level)` calls it, waits for `waiting`, downloads and hands
 in the scene as at the start, and resolves when it is `running` again.
 This is how SPEC 6.6's "no growth across ten level switches" is measured;
 it is not yet a menu feature.
@@ -2919,16 +2919,16 @@ tick's hash. Values we write that the JS never changes (positions written
 with a transform, `uFogK`, `uHalfH`) must hold still. Result: **identical,
 every frame and every tick, native and in wasm**; no port fix was needed.
 
-## D471. The runout and the opposite carriageway are computed by the scenery's rules, in `mr_levels::world`
+## D471. The runout and the opposite carriageway are computed by the scenery's rules, in `mp_levels::world`
 
-2026-10-03, WP 3.9. Until now `mr_levels::world::world_data(id)` held the
+2026-10-03, WP 3.9. Until now `mp_levels::world::world_data(id)` held the
 numbers of the WP 0.4 dump (900 and 6419..9379 on Sierra, 700 and
 4865..7665 on Coast, 0..14320 on the loop), the stand-in of an unported
 module replayed the runout its `plan()` was recorded leaving, and nothing
 gave Coast's world build its carriageway. The simulation cannot depend on
-mr_worldgen (SPEC 3.2) and should not need a world build to race, so the
+mp_worldgen (SPEC 3.2) and should not need a world build to race, so the
 parts of the scenery that decide this data are ported into
-`mr_levels::world`, one implementation for both: `City` (`s_a`: the
+`mp_levels::world`, one implementation for both: `City` (`s_a`: the
 merge tag's s0, else the zone's s0 + 220, 0 on a loop; `plan_runout`:
 `max(runout, 900)` off a loop; `opposite_carriageway`: sA to the length)
 and `Harbor` (`s_ws`: the `bridge-up` tag's s0, else `zoneStart` + 200,
@@ -2936,21 +2936,21 @@ less 40; `plan_runout`: `max(runout, 700)`; the carriageway from sWS + 40
 to the length), `Streets`' `runout = 0`, and `level_world_data(level,
 track)`, which runs them as `World.build` runs the modules (every `plan()`
 in the order `loadScenery` makes them, then every `build()`, the last
-carriageway set winning). mr_worldgen's City now takes its sA, runout and
+carriageway set winning). mp_worldgen's City now takes its sA, runout and
 carriageway from those functions (same values: City's gates pass
 unchanged); a `RecordedScenery` computes its module's runout by the rule
 and sets `sim_data.runout`, and its `build()` sets the carriageway Harbor
 would, so Coast's `WorldBuild::sim_data` is complete. The recording's
 runout is no longer replayed; the road test still holds `track.runout` to
-it. mr_sim's `stage_level` and `LevelRuntime::new` call
+it. mp_sim's `stage_level` and `LevelRuntime::new` call
 `level_world_data` on the Track they build; `world_data(id)` stays (the
 client calls it) and builds a Track only for a level with a City or a
-Harbor. Gates: `mr_levels` `tests/world_data.rs` (every level against
+Harbor. Gates: `mp_levels` `tests/world_data.rs` (every level against
 `parity/golden/sim/world-data.json`: runout, roadEnd, s0, s1, lanes, dir,
-oppY at the samples), mr_worldgen `tests/world_data.rs` (each level's
+oppY at the samples), mp_worldgen `tests/world_data.rs` (each level's
 build: the track's and the simulation's runout, and Coast's, Streets',
 Desert's and Seaside's carriageway from the stand-ins' builds; Sierra's
-and the loop's from City's build stay in `tests/city.rs`), and mr_sim's
+and the loop's from City's build stay in `tests/city.rs`), and mp_sim's
 35 module traces and 11 races, unchanged.
 
 ## D472. Level 1 is held to the export as one scene
@@ -2960,7 +2960,7 @@ needs no recording at all (`scenery_factory(None)`), and
 `tests/level1.rs` compares the whole scene with the export rather than
 group by group: built that way, the sky updated at the export's focus,
 the updaters run once at the export's frame (dt 0) and their attribute
-and instance edits written into the buffers, its `mr_scene` digest must
+and instance edits written into the buffers, its `mp_scene` digest must
 have the world golden's counts (526 nodes, 459 meshes, 122 materials, 40
 textures, 101 instance sets, 2 lights, 515 drawables, 1,531,125 vertices,
 4,145,448 indices; even the exporter's byte count comes out equal) and
@@ -2977,7 +2977,7 @@ Standard, Lambert, Basic, Line, Points and Sprite, with their parameters,
 uniforms, kind options, program keys and GLSL (the per-group gates
 compare those). What is left of WP 3.9 is the client's: drawing the kinds
 the renderer still stands in for or hides, applying the animators each
-frame, and building Level 1 from mr_worldgen.
+frame, and building Level 1 from mp_worldgen.
 
 ## Renderer instancing decisions
 
@@ -2992,7 +2992,7 @@ drawn as three draws it: one draw call with the instance count
 (`renderBufferDirect` → `renderInstances`). Entities after the change:
 Sierra 508, Coast 436, Seaside 220, Desert 363, Streets 433, Cruise 432.
 
-How (`crates/mr_game/src/render/instancing.rs`):
+How (`crates/mp_game/src/render/instancing.rs`):
 
 - **Data.** The entity carries `Instances`, an `Arc` of its stream shared
   by its material groups: per instance 20 floats (80 bytes), the world
@@ -3003,7 +3003,7 @@ How (`crates/mr_game/src/render/instancing.rs`):
   from the same JS material). `ThreeMaterial::specialize` then appends a
   second vertex buffer layout, stepped per instance, at shader locations 9
   to 13 (Bevy's attributes use 0 to 7, the patch attribute 8; WebGL2's 16
-  attributes are enough: 12 at most), and the def `MR_INSTANCED`. The
+  attributes are enough: 12 at most), and the def `MP_INSTANCED`. The
   shadow pass's vertex shader becomes `three_prepass_instanced.wgsl` (Bevy's
   prepass vertex shader for what the shadow pass reads, with the
   instance's matrix), set in `specialize` through a fixed shader handle;
@@ -3037,7 +3037,7 @@ materials and the warm-up twice). The tuples copy Bevy 0.19.1's
 
 ## D451. The instanced shaders: the same functions, the matrix from the stream
 
-2026-10-04. `three_material.wgsl` under `MR_INSTANCED` reads the world
+2026-10-04. `three_material.wgsl` under `MP_INSTANCED` reads the world
 matrix from the stream instead of Bevy's mesh uniform; everything after it
 (view and clip position, the shadow coordinate, the points' sizing, every
 fragment function) is the same code. The matrix is the InstancedMesh's
@@ -3105,7 +3105,7 @@ stand-in of such a combination is an instanced entity with a stream of
 one instance 10,000 km below the origin, `NoAutomaticBatching`, drawn by
 `DrawThreeMesh` as the real ones are, in the main and shadow passes. In the
 web runs of BASELINE.md's instancing section no pipeline was compiled after
-`ready` (`__mr.lateFrames` 0). (The native client reports one pipeline
+`ready` (`__mp.lateFrames` 0). (The native client reports one pipeline
 compiled after the warm-up at the first station on every level, before and
 after this change alike; it is not one of the scene's.)
 
@@ -3167,7 +3167,7 @@ slot is written in the same `draw` system that applied the edit, and the
 globals go to the GPU in the same frame); the product colour × value is
 taken in f32 in the shader instead of f64 on the CPU. `start` clears the
 slots for a new field. If the slots ran out, `apply` falls back to editing
-the material as before. `mr_worldgen`'s setters are unchanged.
+the material as before. `mp_worldgen`'s setters are unchanged.
 
 Pictures: race screenshots at night (Cruise, autopilot, seed 1, WebGPU)
 at race time 3 and 8 s are the same before and after (mean 0.06 and 0.22
@@ -3194,9 +3194,9 @@ it recreates, one buffer mapped for reading every frame).
 
 ## WP 7.3 Desert decisions
 
-## D550. The shape of `mr_worldgen::desert`
+## D550. The shape of `mp_worldgen::desert`
 
-2026-10-04, WP 7.3. `Desert.js` is `mr_worldgen::desert` (`desert/mod.rs`),
+2026-10-04, WP 7.3. `Desert.js` is `mp_worldgen::desert` (`desert/mod.rs`),
 `desert/parts.js` is `desert::parts`, `desert/props.js` `desert::props`,
 `desert/glow.js` `desert::glow`; the canvas code of `makeSigns`, the start
 gantry's banners, the railway's ties and the lake bed's cracked mud is
@@ -3248,7 +3248,7 @@ night parameters, runs every updater once as the frozen export ran them
 moves the light's target, as three reads `target.matrixWorld`), and holds
 (a) both groups to the golden, compiled in, so in CI and wasm too, and (b)
 the whole scene to the export as Level 1 is held (D472): the world golden's
-counts and kinds always, the whole `mr_scene` digest with the cache.
+counts and kinds always, the whole `mp_scene` digest with the cache.
 Result: **identical**, native and in wasm: the group `desert`, 179 nodes
 (829,961 vertices) and all 52 of its materials (Sandstone, FlickerPoints
 ×9 with their kind options, GroundPool and FloodBeam with their program
@@ -3274,7 +3274,7 @@ Against it: at most 1.15 levels (the neon atlas's shadow-blurred glyphs),
 the painted atlases 0.17 and 0.08, the banners 0.19, 0.08 and 0.05. Rerun:
 `node tools/parity/desert-golden.mjs` (with the cache),
 `node tools/parity/desert-textures.mjs` when the fonts change, then
-`cargo test -p mr_worldgen --test desert` (and in wasm).
+`cargo test -p mp_worldgen --test desert` (and in wasm).
 
 ## D552. The tumbleweeds' `Math.random` is a stream of their own
 
@@ -3314,7 +3314,7 @@ which the export writes with `instanced: true` and `mesh_per_attribute: 1`
 (Harbor does the same). `BufferGeometry` gains `instanced` (the names of
 such attributes, boxed, `None` for every generator) and
 `set_instanced_attribute`, and `to_mesh_desc` writes the two fields from
-it. The `mr_scene` digest does not hash those flags, so this is for the
+it. The `mp_scene` digest does not hash those flags, so this is for the
 renderer. No existing geometry or scene changes; the Sierra gates pass.
 
 ## D555. Desert Run's animators are held to `world.update`, step by step
@@ -3387,9 +3387,9 @@ L4 stations:
   night) every frame.
 ## WP 7.1 Coast decisions
 
-## D530. The shape of `mr_worldgen::coast`; `coast/kit.js` is Mountain's kit
+## D530. The shape of `mp_worldgen::coast`; `coast/kit.js` is Mountain's kit
 
-2026-10-04, WP 7.1. `Coast.js` is `mr_worldgen::coast` (`coast/mod.rs`):
+2026-10-04, WP 7.1. `Coast.js` is `mp_worldgen::coast` (`coast/mod.rs`):
 `Coast` keeps what `plan()` decides (`zEnd`, the coffee pull-out, the
 lighthouse headland with its two neck flattens, the vista pull-out, the
 exclusions) and implements `Scenery`; `build()` runs on a `Build` that is
@@ -3430,7 +3430,7 @@ the three modules' animators once as the frozen export ran them (dt 0,
 the export's camera), copies the fog into the fogged `ShaderMaterial`s
 (D532) and compares each group (`coast_group`, `beach_group`,
 `harbor_group`); `coast_world_data` holds the runout and the westbound
-carriageway the build gives the simulation to `mr_levels::world` and the
+carriageway the build gives the simulation to `mp_levels::world` and the
 WP 0.4 dump. Result: **every node of every group identical** and **every
 material equal parameter by parameter** (uniforms, program keys and GLSL
 included): `coast` 89 nodes (39,397 vertices, 50 materials), `beach` 60
@@ -3451,14 +3451,14 @@ begin with `UniformsLib.fog` (`fogDensity`, `fogNear`, `fogFar`,
 `fogColor`). three's renderer copies the scene's fog into those every time
 it draws (`refreshFogUniforms`), so the export holds the fog of its frame
 (FogExp2 0x34406a, 0.0003 at the start of Level 2), not the material's
-own values. mr_worldgen makes them with three's defaults (0.00025, 1,
+own values. mp_worldgen makes them with three's defaults (0.00025, 1,
 2000, white), as the JS material is made; the gate does what the renderer
 does, from the export's fog (`coast.json`), before comparing. The client
 sets them from the sky's frame each frame, as it does its own fog.
 
-## D533. The shape of `mr_worldgen::beach`; the parts' random defaults
+## D533. The shape of `mp_worldgen::beach`; the parts' random defaults
 
-2026-10-04, WP 7.1. `Beach.js` is `mr_worldgen::beach` (`beach/mod.rs`),
+2026-10-04, WP 7.1. `Beach.js` is `mp_worldgen::beach` (`beach/mod.rs`),
 `beach/atlas.js` is `beach::atlas`, `beach/parts.js` is `beach::parts`;
 `beach/ColorBuilder.js` stayed `color_builder` (WP 3.3). Desert uses the
 atlas and three of the parts; they landed first, in a commit of their own
@@ -3497,9 +3497,9 @@ corn strip again: against Chrome's capture it is 2.73/5.89/1.94/9.39
 levels mean absolute difference (R/G/B/A) with the total coverage within
 0.06 % (alpha sums 1,716,346 against 1,715,237): Chrome's multisampled
 strokes quantise the edge alpha (no pixel between 1 and 31) where
-mr_canvas takes the exact area (D151). Premultiplied the colour is within
+mp_canvas takes the exact area (D151). Premultiplied the colour is within
 2.26/5.00/1.61; 2.95 % of pixels fall on the other side of the material's
-`alphaTest` 0.4. Matching Chrome's stroke coverage is mr_canvas's (WP 3.2's
+`alphaTest` 0.4. Matching Chrome's stroke coverage is mp_canvas's (WP 3.2's
 owner); until then `tests/coast.rs` holds the leaf to 10 levels
 unpremultiplied and 6 premultiplied and reports the numbers; every other
 Level 2 texture is held to 3.
@@ -3568,7 +3568,7 @@ that the golden regenerates.
 
 2026-10-04, WP 7.1. With Harbor ported, its `plan()` sets the runout (700)
 and its `build()` the westbound carriageway, through
-`mr_levels::world::Harbor` as City's do (D471); no stand-in is left on
+`mp_levels::world::Harbor` as City's do (D471); no stand-in is left on
 Level 2. `tests/world_data.rs` builds its levels without a road, which a
 ported module's `build()` needs, so Level 2 now stops after the plans as
 the City levels do, and `tests/coast.rs` checks the data from the real
@@ -3578,13 +3578,13 @@ parked cars traverse a car as `bakeStatic` does); WP 7.3's
 pools) is cherry-picked unchanged. While Beach and Harbor were ported side
 by side, Harbor sat behind a temporary `harbor-wip` feature; it is gone.
 
-## D540. The shape of `mr_worldgen::harbor`
+## D540. The shape of `mp_worldgen::harbor`
 
-2026-10-04, WP 7.1. `Harbor.js` is `mr_worldgen::harbor` (`harbor/mod.rs`),
+2026-10-04, WP 7.1. `Harbor.js` is `mp_worldgen::harbor` (`harbor/mod.rs`),
 `harbor/build.js` is `harbor::build`, `harbor/textures.js` is
 `harbor::textures`. `plan()` keeps the JS fields (z0, the span, up and down
 tags, sWS, the connector's frames and gate), sets the runout by
-`mr_levels::world::Harbor::plan_runout`, mirrors it into
+`mp_levels::world::Harbor::plan_runout`, mirrors it into
 `sim_data.runout`, and registers the connector's embankment and the gate's
 flattens in the JS order. `build()` runs on a `Build` that is the JS
 `this`, adds the group `harbor` to the root first, as the JS does, calls
@@ -3663,9 +3663,9 @@ kind's uniform of that name if it has one animated, else to the parameter
 ## D491. The client builds Level 1 for its animators; the default still draws the export
 
 2026-10-04, WP 3.9. Animators are code (SPEC 5.1): they come only from a
-world build. For a level `mr_worldgen` builds whole (Sierra, D472), the
+world build. For a level `mp_worldgen` builds whole (Sierra, D472), the
 client runs `level_jobs` itself (`crate::animate`): natively on a thread
-(with `mr_worldgen`'s `parallel` feature), on the web a few jobs a frame
+(with `mp_worldgen`'s `parallel` feature), on the web a few jobs a frame
 (30 ms) while the page downloads the export. It keeps the animators and
 the sky and drops the build's scene, since the default still draws the
 level's `.mrscene` (the coordinator's instruction; delivery stays as D439
@@ -3695,7 +3695,7 @@ loader draws the client's build. On the dev machine (WebGPU, headless
 Chrome, the machine loaded): ready in 7.5 s with nothing downloaded but
 the client, wasm memory 348 MB after load and 357, then 375 on reloads,
 against the export's 488 (above). The pictures are the build's: the
-canvas textures are `mr_canvas`'s, within WP 3.2's thresholds (D312,
+canvas textures are `mp_canvas`'s, within WP 3.2's thresholds (D312,
 D354); the L4 gate (D496) was taken this way. Not decided here (D439, the
 owner's): whether the game should build its levels in the client instead
 of downloading them. The numbers favour it for Sierra (no 131 MB
@@ -3775,9 +3775,9 @@ this machine's 1024 × 768 display (the stations came out 1024 × 701), and
 `rust-web.mjs` cannot pass Sierra's 138 MB export through its request
 interception (D106). `tools/parity/rust-web-stations.mjs` loads the web
 build once with `?world=gen` (no download), flies to each station with a
-new test hook (`__mr.flyTo`, `__mr.flyQuiet`: three frames with no
+new test hook (`__mp.flyTo`, `__mp.flyQuiet`: three frames with no
 pipeline compiling and the environment map built) and saves
-`__mr.screenshot`; `cargo xtask parity shots` compares.
+`__mp.screenshot`; `cargo xtask parity shots` compares.
 
 Result (WebGPU, 1280 × 800, frozen): **all 81 stations within SPEC 12's
 limits**, median 0.23 mean ΔE00 and 0.53 block 95 %, worst 0.674 mean
@@ -3840,7 +3840,7 @@ Sierra, a few hundred lines) and need only handles and a few numbers per
 animator (positions, phases, base vertex arrays), which the build knows;
 the export could carry them (an `animators` list of plain data per
 updater: kind, target handles, constants), and the client run ported
-updater functions over that data without the builders; or `mr_worldgen`
+updater functions over that data without the builders; or `mp_worldgen`
 could split each module's updaters from its builders, so that a client
 linking only the updaters builds them from a small description the
 export or a build tool writes.
@@ -3954,9 +3954,9 @@ StreetAtlas, AmbientProp and Neon pass (0.108 / 0.312 at worst) and join
 
 ## WP 7.4 Seaside decisions
 
-## D590. The shape of `mr_worldgen::raceway`; `world.level.data` and `world.onCountdown`
+## D590. The shape of `mp_worldgen::raceway`; `world.level.data` and `world.onCountdown`
 
-2026-10-04, WP 7.4. `Raceway.js` is `mr_worldgen::raceway`
+2026-10-04, WP 7.4. `Raceway.js` is `mp_worldgen::raceway`
 (`raceway/mod.rs`), `raceway/textures.js` is `raceway::textures`.
 `Raceway` keeps what `plan()` decides (`this.corners`, from `findCorners`)
 and, after `build()`, the JS fields other code reads (`kerbs`,
@@ -4035,13 +4035,13 @@ the tyre wall 0.21, the crowd 0.50, the banner atlas 0.20 (22.0 against
 the export, all in the glyphs: the export draws with the machine's fonts),
 the catch fence as D592 says. Rerun: `node tools/parity/raceway-golden.mjs`
 (with the cache), `node tools/parity/raceway-textures.mjs` when the fonts
-change, then `cargo test -p mr_worldgen --test seaside` (and in wasm).
+change, then `cargo test -p mp_worldgen --test seaside` (and in wasm).
 
 ## D592. The catch fence is held where three draws it
 
 2026-10-04, WP 7.4. `fenceTexture` is D534's case again: diagonal strokes
 1.6 px wide on a transparent canvas, where Chrome's coverage across a
-stroke is 16, 137, 242, 137, 16 and mr_canvas's exact area 2, 151, 242,
+stroke is 16, 137, 242, 137, 16 and mp_canvas's exact area 2, 151, 242,
 151, 2 (the same total). Unpremultiplied that is 11.8/11.7/9.1/5.1 levels
 mean absolute difference (R/G/B/A), the RGB of the faint edge pixels
 dominating. The fence material is `alphaTest` 0.35 and opaque, so three
@@ -4053,12 +4053,12 @@ over the threshold that way (no crossing, drawn colour under 3,
 premultiplied under D534's 6, alpha total within 0.5 %), and without the
 capture's RGBA (CI, wasm) by its premultiplied 8×8 block means, which the
 capture records (0.14/0.29/0.20/0.08). Matching Chrome's stroke coverage
-stays mr_canvas's (D534).
+stays mp_canvas's (D534).
 
 **Resolved 2026-10-04 (D650).** The fence's strokes are lone line
 segments, which Chrome draws as quads with an analytic edge ramp
 `|nx| + |ny|` wide (16, 137, 242, 137, 16 is that ramp at 45°, not
-multisampling). mr_canvas now draws them so, and the fence is within
+multisampling). mp_canvas now draws them so, and the fence is within
 0.148/0.117/0.088/0.029 levels of the capture, every alpha equal;
 `tests/seaside.rs` holds it to 3 like the other canvases, and the
 alpha-tested criterion (`alpha_tested`, `STROKE_PREMULTIPLIED`, the
@@ -4113,7 +4113,7 @@ colours, `instanceColor` on the oaks, `alphaTest` on the fence,
 `polygonOffset` on the kerbs, the grid and the pit lane, `DoubleSide`).
 What the client still has to do for the L4 stations and the race:
 
-- **Build Seaside from mr_worldgen** (`animate::generated` lists Sierra
+- **Build Seaside from mp_worldgen** (`animate::generated` lists Sierra
   only, D491; Seaside builds whole now, numbered as its export): the level
   prepared with the survey (`seaside::prepare`), then
   `World::new(level).with_level_data(survey)` with the same
@@ -4141,7 +4141,7 @@ What the client still has to do for the L4 stations and the race:
 ## D458. The race's car models join the warm-up
 
 2026-10-04. Every race compiled one (Coast) to three (Sierra) pipelines
-after `ready` (`__mr.lateFrames`): the car models (D440) are built when the
+after `ready` (`__mp.lateFrames`): the car models (D440) are built when the
 race starts, during the warm-up, but most of their parts are hidden then
 (the traffic not yet on the road, the far models, the near models of cars
 drawn far), and Bevy specialises a pipeline only for what is drawn.
@@ -4212,24 +4212,24 @@ matches Chrome to 0.01 dB in every band, and the full L4 run is 110 of
 111 within 1.5 dB; the one left is `engine-rally-6500-1`'s 25 Hz band
 (D259), 60 dB under the signal.
 
-## D512. Radio lines in `mr_audio::radio::lines`; `CALLSIGNS` in `mr_sim::pursuit`
+## D512. Radio lines in `mp_audio::radio::lines`; `CALLSIGNS` in `mp_sim::pursuit`
 
-2026-10-04, WP 5.7. `radioLines.js` is `mr_audio::radio::lines`, per SPEC
+2026-10-04, WP 5.7. `radioLines.js` is `mp_audio::radio::lines`, per SPEC
 7.3's port map: `DIRS`, `TAKES`, `place_name`, a `Line { text, parts }`
 per `RADIO` entry as a function of the same name (`unit_down`,
 `rival_busted`), `radio_clips` and `levels_radio_clips` in the JS's order
 (a `Vec` stands in for the `Map` by id, first entry wins). The JS takes
-`CALLSIGNS` from `Pursuit.js` as `radioClips`' default units; `mr_audio`
-may depend on `mr_math` only (SPEC 3.2), so the units are an argument and
-the callers pass `mr_sim::pursuit::CALLSIGNS`, a new export computed from
+`CALLSIGNS` from `Pursuit.js` as `radioClips`' default units; `mp_audio`
+may depend on `mp_math` only (SPEC 3.2), so the units are an argument and
+the callers pass `mp_sim::pursuit::CALLSIGNS`, a new export computed from
 the chase pool as the JS computes it (10 to 30). `levels_radio_clips`
 takes a `LevelRadio` (police or not, zone names, rival names) per level
 for the same reason. The whole clip list (192 clips) was compared once
 with the JS's `levelsRadioClips(LEVELS)`, id, text and takes, and is
 identical. `test/unit/radio.test.js` and `pursuit-audio.test.js` are
 `tests/radio.rs` and `tests/pursuit_audio.rs`; they read the levels and
-the callsigns through dev-dependencies on `mr_track`, `mr_levels` and
-`mr_sim` (check-deps looks at normal dependencies only), and the check of
+the callsigns through dev-dependencies on `mp_track`, `mp_levels` and
+`mp_sim` (check-deps looks at normal dependencies only), and the check of
 `audio/radio/` against `index.json` runs natively, the rest in wasm too.
 The fake `fetch` and decoder are a `Fetch` that serves names as bytes and
 the null backend's decoder, which tells the files apart by the length it
@@ -4239,13 +4239,13 @@ radio are exercised by the pursuit drive's call log, which stays exact.
 
 ## D513. The race's audio: `play::audio`, one `GameAudio` shared with the gesture bridge
 
-2026-10-04, race audio. `crates/mr_game/src/play/audio.rs` drives
-`mr_audio`'s `GameAudio` the way `main.js` and `Race.update` drive the
+2026-10-04, race audio. `crates/mp_game/src/play/audio.rs` drives
+`mp_audio`'s `GameAudio` the way `main.js` and `Race.update` drive the
 JS one. `GameAudio` holds `Rc` handles, so it lives in a non-`Send` Bevy
 resource (`Shared`, an `Rc<RefCell<RaceAudio>>`) whose system runs after
 `draw` on the main thread; on the web the same `Rc` is in a thread-local
 that the page's gesture handlers reach through `web::gesture`. The
-backends are the facade's: the browser's Web Audio on wasm (`mr_audio`'s
+backends are the facade's: the browser's Web Audio on wasm (`mp_audio`'s
 `web` feature), natively web-audio-api with an output device
 (`native-device`: cpal, so ALSA headers on Linux; CI installs
 `libasound2-dev`). `native::try_context` returns `None` where no output
@@ -4347,7 +4347,7 @@ browser's frames are not the drive's two ticks long). The gesture's own
 JS drive log into the JS Web Audio call log exactly (D251,
 `tests/game_calllog.rs`), the client's Web Audio calls are the JS game's
 but for those contact pans. What the audio costs the main thread is on
-`window.__mr.audio`: 0.35 ms a frame on average in that run, 11 ms on the
+`window.__mp.audio`: 0.35 ms a frame on average in that run, 11 ms on the
 race's first frame (`startRace`'s calls), and nothing in the measurement
 page (`?perf=1` flies the camera with no race, so no audio is made).
 
@@ -4368,9 +4368,9 @@ pursuit races get the race's sounds only.
 
 ## WP 7.2 Streets decisions
 
-## D610. The shape of `mr_worldgen::streets`
+## D610. The shape of `mp_worldgen::streets`
 
-2026-10-04, WP 7.2. `Streets.js` is `mr_worldgen::streets` (`streets/mod.rs`),
+2026-10-04, WP 7.2. `Streets.js` is `mp_worldgen::streets` (`streets/mod.rs`),
 `streets/props.js` is `streets::props`, `streets/facades.js`
 `streets::facades` and `streets/textures.js` `streets::textures` (their
 canvas pictures; `facadeMaterial` and `patchStreetAtlas` are in `mod.rs`
@@ -4382,7 +4382,7 @@ pavements, `emitAll`), `buildings.rs` (`block`, `midrise` and its signs,
 the billboards) and `dressing.rs` (the lamps, signals, barriers, gantries,
 crowds, lanterns, the elevated railway, the vents, the reflections), all
 `impl Bld`, where `Bld` is the JS `this` while it builds: the grid
-(`level.grid` is `mr_levels::streets`: `PX`, `PZ`, `HW`, `WALK`, the
+(`level.grid` is `mp_levels::streets`: `PX`, `PZ`, `HW`, `WALK`, the
 route's `setback` and `legs` from `build_route()`, `ground`, `district`),
 the generator 9090, the materials, the collected lists (fronts, sign
 lights, spill, steam, cables, trees, aircraft, billboards) and the ten
@@ -4401,7 +4401,7 @@ an argument list or an array literal, into locals in the same order.
 as `bakeCar` does, through `mountain::kit::world_matrices`;
 `setHeadlights(0)` changes only emissive intensities, which the bake does
 not read, so it is not called. `plan()` sets the runout by
-`mr_levels::world::plan_runout` (0), mirrors it into `sim_data`, and
+`mp_levels::world::plan_runout` (0), mirrors it into `sim_data`, and
 assigns `world.no_marks` (`t.noMarks = nm`; Streets is the level's only
 module). Streets is the eighth line of `scenery::PORTED`: the terrain and
 road gates run its own `plan()`, which gives the recorded unpainted
@@ -4475,11 +4475,11 @@ atlases 0.02 to 0.10, the pavement 0.06. The lettered ones differ from the
 export by up to 36 levels (the start banner), all in the glyphs (the
 export's machine fonts).
 The one port fix the gate found was a chunk's creation order (D610). No
-shared module's behaviour changed; mr_canvas gained `stroke_text_max`
+shared module's behaviour changed; mp_canvas gained `stroke_text_max`
 (`strokeText(text, x, y, maxWidth)`, beside `fill_text_max`, for the neon
 signs), an export only. Rerun: `node tools/parity/streets-golden.mjs`
 (with the cache), `node tools/parity/streets-textures.mjs` when the fonts
-change, then `cargo test -p mr_worldgen --test streets` (and in wasm).
+change, then `cargo test -p mp_worldgen --test streets` (and in wasm).
 
 ## D614. What the client still stands in for on Downtown Streets
 
@@ -4591,13 +4591,13 @@ levels.
   levels; the capture reproduces, `--check`), the road and the sky in
   `tests/road.rs`, the ground in `tests/terrain.rs` and
   `tests/terrain_mesh.rs`, the world data in `tests/city.rs` and
-  `mr_levels`' `tests/world_data.rs`.
+  `mp_levels`' `tests/world_data.rs`.
 - **Whole level**, new: `tests/cruise.rs` holds the scene as Level 1 and
   2 are held (D472, D536): built, the sky at the export's focus, every
   updater once at the export's frame (dt 0, night 1, the export's camera
   and drawing buffer), the edits applied to the objects. The counts and
   kinds equal the world golden always (CI and wasm); with the cache the
-  whole `mr_scene` digest equals the export's entry by entry, and, since
+  whole `mp_scene` digest equals the export's entry by entry, and, since
   the digest leaves them out, so do every node's visibility (the 52 nodes
   the cut-off hid at the export's camera) and the night parameters.
   Result: **identical**, native and in wasm: 495 nodes, 407 meshes, 49
@@ -4611,7 +4611,7 @@ levels.
   CityFacade, GlowPoints, TrafficStreams, SkyGlow and the built-in
   Standard, Basic and Points.
 
-Rerun: `cargo test -p mr_worldgen --test cruise --test city` (and in
+Rerun: `cargo test -p mp_worldgen --test cruise --test city` (and in
 wasm); `node tools/parity/city-textures.mjs` when the fonts change.
 
 ## D631. The Night City Cruise's animators, step by step
@@ -4686,7 +4686,7 @@ animated, on `main` today:
 - **The loop itself.** The sky is pinned (the JS samples it at p = 0.5
   on a loop, and so does `update_sky`), so the night factor is 1
   throughout. The cruise scoring HUD (score, multiplier and its bar,
-  distance, best; the simulation's side is `mr_sim::race`'s cruise
+  distance, best; the simulation's side is `mp_sim::race`'s cruise
   fields, WP 1.5) is the client's, roadmap WP 7.5's third item.
 
 ## Canvas anti-aliasing decisions
@@ -4710,7 +4710,7 @@ Opposite edges combine as `c₁ + c₂ − 1` (a 1 px line at 45° is 90, 180,
 and the ends' coverage (within 0.003 at the corners of butt and square
 caps). Skia draws this as an outer quad (each edge moved out by half its
 ramp) at coverage 0 and an inner one at 1, and the GPU snaps both quads'
-corners to its 1/256 px grid before it interpolates: mr_canvas does the
+corners to its 1/256 px grid before it interpolates: mp_canvas does the
 same (`raster::line_quad_coverage`), which is what moves the catch
 fence's faint pixels' blue from 12.48 to 13 as Chrome rounds it. A round
 cap, a thinner line, a skewing transform and any other path go to the
@@ -4727,7 +4727,7 @@ to (9,5), (7,11), (13,9), (5,3), (3,13), (1,7), (11,15), (15,1) in 1/16 px
 (`raster::MSAA8_X`, sorted by row). And it blends per sample: two opaque
 curves of different colours crossing at a shallow angle leave only whole
 eighths in alpha and in each colour, where blending their coverages would
-not. So once a canvas strokes a multisampled path, mr_canvas keeps eight
+not. So once a canvas strokes a multisampled path, mp_canvas keeps eight
 samples for each pixel whose samples differ (`samples.rs`; the others
 stay in the pixmap), blends every later draw into each sample (analytic
 draws with their coverage, into all eight), and keeps the pixmap at the
@@ -4769,7 +4769,7 @@ quadratic strokes 1.6, 3 and 10 px wide, a three-point polyline, cracks
 polyline with round joins and caps are identical; a native `roundRect`
 and an arc with lines differ in 80 pixels of 65,536 by a sample or two,
 a full circle in 353 (0.22 levels): Blink makes arcs conics where
-mr_canvas makes cubics (D150's path code), and a lone `arc()` is Skia's
+mp_canvas makes cubics (D150's path code), and a lone `arc()` is Skia's
 arc op. Not chased: no texture of the game strokes a lone circle.
 
 ## D653. After five path draws, lone lines are multisampled too
@@ -4828,9 +4828,9 @@ store is a file (D572), and `--level` races as before.
 
 2026-10-04. The brief said "the bundled Roboto fonts"; the JS menus,
 HUD and screens are set in Rajdhani (`hud.css` `--font`, Google Fonts
-500/600/700), which D370 keeps for the HUD and mr_canvas already bundles,
+500/600/700), which D370 keeps for the HUD and mp_canvas already bundles,
 so the screens use it: the same files as the JS page's (subset, D371),
-registered with Bevy's text from mr_canvas's copies (no second copy in the
+registered with Bevy's text from mp_canvas's copies (no second copy in the
 wasm). Chrome only has 500, 600 and 700, so a normal weight draws Medium
 and 800/900 draw Bold, as there. Bevy draws no synthetic styles, and the
 menus' headings are `font-style: italic` (Chrome's fake italic of
@@ -4854,7 +4854,7 @@ same origin as the JS game, so settings, best times and controller maps
 carry over); natively a JSON object of the same key → string pairs in
 `$XDG_CONFIG_HOME/midnight-racer/storage.json` (`~/.config`,
 `~/Library/Application Support` on macOS, `%APPDATA%` on Windows),
-rewritten on each change, `$MR_STORE` to point elsewhere. `Settings` is
+rewritten on each change, `$MP_STORE` to point elsewhere. `Settings` is
 the JS's `settings` object with its defaults and checks; nothing is
 written until a control changes, as there. The volume, track, steering,
 pedal, tilt, auto gas and rumble settings are stored and shown but not yet
@@ -4872,7 +4872,7 @@ margins). What Bevy UI has no equivalent for:
 - Gradient text (the logo): MIDNIGHT takes the colour its glyphs mostly
   show (the white top of its gradient), each letter of RACER the colour
   of the accent-to-orange gradient where it stands, and the pink glow is
-  left out. Drawing the logo with mr_canvas's text, as the CSS paints it,
+  left out. Drawing the logo with mp_canvas's text, as the CSS paints it,
   was tried and looked right, but it linked a second copy of the font
   stack (harfrust, read-fonts, skrifa: 1.1 MB raw, about 0.3 MB gzip), so
   the results table is laid out by Bevy's grid for the same reason (no
@@ -4887,7 +4887,7 @@ margins). What Bevy UI has no equivalent for:
   which opens a list under it (Chrome on a desktop) rather than Android's
   picker. No hover states; the keyboard focus ring is the gamepad's
   (`.pad-focus`), Tab and Shift+Tab move it, Enter or Space activates.
-- Characters no bundled face has are drawn with mr_canvas's paths: ★
+- Characters no bundled face has are drawn with mp_canvas's paths: ★
   (results), ⏭ (Next track), ♪ (the music link) and the tick; ◂ ▸ in the
   Steering choice and the touch help become ← → (Arimo has them); N₂O is
   N2O (D431).
@@ -4902,7 +4902,7 @@ car picks and mode buttons, which had none, are `lvl-tab-<id>`,
 2026-10-04, WP 6.2 (`main.js` `loadLevel`, `startRace`, `toMenu`). A
 level tab saves the level and builds it behind the loading screen, as the
 JS does: the scene is torn down and the other level's export downloaded
-(the page's `__mr.reload`, D394; natively a thread reads it). Race loads
+(the page's `__mp.reload`, D394; natively a thread reads it). Race loads
 the chosen level first if it is not the one built, then builds the field
 (`play::Play` gains `armed`, `hold` and `stop`) and holds the countdown,
 with the menu still up, until the frame's pipelines are compiled (three
@@ -4940,7 +4940,7 @@ build's progress, preparing the shaders).
 
 ## D577. The screens' part of the test bridge, and the suites
 
-2026-10-04, WP 6.2 (SPEC 8.5; WP 6.7 owns the rest). `window.__mr` gains
+2026-10-04, WP 6.2 (SPEC 8.5; WP 6.7 owns the rest). `window.__mp` gains
 `screen` and `mode` (`__game.mode`'s values), `ui(id)` (`{x, y, w, h,
 visible, enabled, value, sel, z}` in CSS px, from the last frame's
 layout; the touch controls' taps as `touch-reset`, `touch-camera`,
@@ -4948,7 +4948,7 @@ layout; the touch controls' taps as `touch-reset`, `touch-camera`,
 `races` (races started, for "exactly one race"), `race.locked`, and
 `stage(cmd)` with `finish` (the suites' `teleportToFinish`), `cruise` (the
 score) and `padsetup`. `test/` is frozen, so the suites are adapted in
-`tools/parity/e2e/` (`harness.mjs` is the JS harness's API over `__mr`:
+`tools/parity/e2e/` (`harness.mjs` is the JS harness's API over `__mp`:
 `center` reveals a control and fails if another one is on top of it, as
 `elementFromPoint` did). Request interception cannot carry Sierra's full
 export (D106), so the harness answers a request for a full export over
@@ -4979,7 +4979,7 @@ nothing but on a button, as in the JS. The phone harness of M4 tapped
 the middle of the screen to resume, which is now Main menu; its copy in
 this package's checks taps Resume. The Controller screen is the JS's,
 reached from the menu or pause when a gamepad is connected (`ui.pads`,
-never until WP 6.4 reads pads; `__mr.stage({cmd: 'padsetup'})` opens it
+never until WP 6.4 reads pads; `__mp.stage({cmd: 'padsetup'})` opens it
 for the tests): it lists the actions with the standard layout's labels,
 the Rumble option (saved), Defaults and Done; picking a binding waits for
 6.4. Esc there leaves it and keeps the race paused.
@@ -4988,7 +4988,7 @@ the Rumble option (saved), Defaults and Done; picking a binding waits for
 
 2026-10-04, WP 6.1–6.2. Release build, gzip: WebGPU 8.77 → 8.92 MB,
 WebGL2 9.24 → 9.40 MB (+0.15 and +0.16 MB) of the 10 MB budget. The fonts add
-nothing (the wasm already carried mr_canvas's bundled files; the oblique
+nothing (the wasm already carried mp_canvas's bundled files; the oblique
 face is 27 KB). Not decided here (D439): a level tab downloads that
 level's whole export behind the loading screen, as the JS rebuilds the
 world, and on a phone Coast is 210 MB; the menu could show each level's
@@ -5022,7 +5022,7 @@ world build (`animate`, D490–D497).
   buttons make the JS's click (`uiClick('click')`; Race, Race again and
   Restart make the sound's own "start"), and Main menu makes `toMenu`'s
   calls (unpaused, the engine idle, no rivals, open acoustics). The sound
-  polls and publishes `__mr.audio` on the menus too, so the music plays
+  polls and publishes `__mp.audio` on the menus too, so the music plays
   on there. End run (a cruise from the pause screen) unpauses the sound,
   as `btn-end` does. Every race start has its own number
   (`flow::next_start`), so a race built afresh from the menu makes
@@ -5050,7 +5050,7 @@ attribution are in `BASELINE.md`, "Wasm size: where the bytes go".
 
 ## D670. No `bevy_post_process`
 
-2026-10-04. `mr_game` asked Bevy for `bevy_post_process` (D100's list),
+2026-10-04. `mp_game` asked Bevy for `bevy_post_process` (D100's list),
 but the client's post chain is three's, ported in `render::post`, and no
 camera ever carries Bevy's `Bloom`, `DepthOfField`, `MotionBlur`,
 `AutoExposure` or effect-stack components. The feature only made
@@ -5069,7 +5069,7 @@ runs of the same build too).
 default `wgpu=error,naga=warn`), and the `RUST_LOG` override it reads is
 an environment variable the browser does not have, so no `debug!` or
 `trace!` from Bevy, wgpu, naga or the client can print there. The wasm
-target of `mr_game` now depends on `tracing` and `log` only to turn on
+target of `mp_game` now depends on `tracing` and `log` only to turn on
 their `release_max_level_info` features, which compile those calls and
 their strings out of builds without debug assertions. 0.04 to 0.05 MB
 after gzip (WebGPU 9.85 to 9.81 MB, WebGL2 10.33 to 10.28 MB). Native
@@ -5085,8 +5085,8 @@ on, and `DefaultPlugins` then adds `SpritePlugin` and `SpriteRenderPlugin`
 pipelines and shaders), none of which the client draws. Disabling them in
 the group does not take their code out: a plugin group holds every plugin
 as a `Box<dyn Plugin>`, so the plugin's `build` and all it registers stay
-linked. `mr_game::plugins::ClientPlugins` is therefore `DefaultPlugins`
-for exactly the features `mr_game` turns on, in its order, natively and
+linked. `mp_game::plugins::ClientPlugins` is therefore `DefaultPlugins`
+for exactly the features `mp_game` turns on, in its order, natively and
 on the web (the native build keeps `TerminalCtrlCHandlerPlugin` and
 `PipelinedRenderingPlugin`), with the two sprite plugins replaced by
 `UiSpriteSupport`, the two things `UiRenderPlugin` reads from them:
@@ -5145,7 +5145,7 @@ details and frame times in `BASELINE.md`.
    frames +0.3 to 0.6 ms, and five single pixels of Seaside's WebGPU
    stations differ (reproducibly). Either could also be applied to some
    crates only (`[profile.web-release.package.<crate>]`, for example
-   Bevy's UI and text, naga, or `mr_worldgen` without the simulation),
+   Bevy's UI and text, naga, or `mp_worldgen` without the simulation),
    not measured.
 2. **`-C target-feature=+simd128`**: -0.16 MB on each build, no frame-time
    change, pictures identical, simulation tests pass in wasm. Safe for the
@@ -5157,9 +5157,9 @@ details and frame times in `BASELINE.md`.
    (from 9.27 and 9.73 by gzip -9); the dev server would send `.br`, and
    the budget would be measured in brotli. **Zopfli-made gzip**: 8.86 and
    9.31 MB, decoded by every browser, a change to `precompress` only.
-4. **One font stack.** `mr_canvas` shapes and hints with harfrust 0.13 and
+4. **One font stack.** `mp_canvas` shapes and hints with harfrust 0.13 and
    skrifa 0.46 (read-fonts 0.43, D152); Bevy's text uses harfrust 0.6 and
-   skrifa 0.42 (parley) and skrifa 0.44 (swash). Moving `mr_canvas` to
+   skrifa 0.42 (parley) and skrifa 0.44 (swash). Moving `mp_canvas` to
    parley's versions would drop one copy of each, about 0.30 MB, but is a
    port of its text code to older APIs with the texture gates rerun
    (autohinting changed between those versions); or wait for Bevy 0.20's
@@ -5175,7 +5175,7 @@ details and frame times in `BASELINE.md`.
    gzip. As files fetched beside it they download the same bytes, unless
    only the fonts a level's signs use are fetched.
 7. **World generation as a second wasm**, loaded when a level is built:
-   `mr_worldgen`, `mr_canvas`, its text stack and the fonts are about 1.5
+   `mp_worldgen`, `mp_canvas`, its text stack and the fonts are about 1.5
    MB of the first download today (Sierra's scenery only); more as levels
    are built in the client: Seaside +0.03 MB, Coast +0.20, Desert +0.14,
    Streets +0.10, the Cruise nothing (City only), +0.44 MB for all.
@@ -5242,7 +5242,7 @@ The client halves of WP 7.4 and 7.5: D595's and D632's lists.
 `seaside` (and `cruise`, D683), so the client builds Seaside Raceway for
 its animators, and with `?world=gen` draws that build without the
 download. What Seaside needs beyond Level 1's setup is in a module of its
-own, `crates/mr_game/src/levels/` (`animate` gains one line in
+own, `crates/mp_game/src/levels/` (`animate` gains one line in
 `generated`, a call to `levels::new_build` at the top of `new_build`, a
 wait on `levels::inputs_ready` before a build starts, and the countdown of
 D682): the build is `tests/seaside_animators.rs`'s, `seaside::prepare`
@@ -5394,7 +5394,7 @@ layout, fonts and styling are M6's (WP 6.3).
 budget at 16 MB (D675), the client builds Desert Run and Downtown Streets
 as it builds Sierra (D491, D492): `animate::generated` names the three, and
 each level's scenery is named in a file of its own
-(`crates/mr_game/src/levels/desert.rs`, `streets.rs`: `Desert` and
+(`crates/mp_game/src/levels/desert.rs`, `streets.rs`: `Desert` and
 `Streets`, each the level's only module, D550, D610), not through
 `scenery::PORTED` (D498). Both are numbered as their exports (D551, D613),
 so as for Sierra: with `?world=gen` the page downloads nothing and the
@@ -5407,7 +5407,7 @@ level tabs build them too (D580). The wasm grew 0.15 MB after gzip
 ## D721. What the two levels' animators needed of the client
 
 2026-10-04. Every edit the two levels' animators make is now applied (no
-"not applied" line natively at `mr_game::animate=debug`), which closes
+"not applied" line natively at `mp_game::animate=debug`), which closes
 D556's and D614's lists, whose kinds D500 and D501 drew:
 
 - **The train's spot light** (Desert; D553, D556). `SceneIndex` keeps the
@@ -5473,7 +5473,7 @@ with other agents' Chrome runs, which made a station flight fail with
   over**, median 0.336 / 1.001, worst 0.755 / 5.171 (02500-chase). Against
   the same flight of the export without the animators (`world=off`, D501's
   numbers again: 0.489 / 1.812) the difference is the lettering: the
-  build's signs are drawn by `mr_canvas` with the bundled fonts (D370),
+  build's signs are drawn by `mp_canvas` with the bundled fonts (D370),
   the JS shots and the export with the machine's fonts (D613: up to 36
   levels in the glyphs); the neon and the banners light up the difference
   maps and nothing else does. A spot check of the WebGL2 build (three
@@ -5591,7 +5591,7 @@ happens on Coast's flights or race.
   (07000-high, the harbour from above).
 - The export with the animators (the default): 67 within, median 0.229 /
   0.504, worst 0.748 / 2.747 (07000-high). The build's canvas textures are
-  `mr_canvas`'s, hence the small difference.
+  `mp_canvas`'s, hence the small difference.
 - The three sunrise stations that waited for the lamp-pool updater (D499,
   commit 46b2e64): 04000-chase 5.16 / 30.22 → 0.554 / 0.723, 04250-chase
   3.98 / 23.59 → 0.303 / 0.597, 04500-chase 2.72 / 22.24 → 0.247 / 0.470
@@ -5681,7 +5681,7 @@ wasm. Reading through `Reflect` also reads a page's own `getGamepads`
 `vibrationActuator.playEffect('dual-rumble', {duration: 140,
 strongMagnitude, weakMagnitude})`, else `hapticActuators[0].pulse`, with
 `reset()` to stop, each promise's rejection swallowed (`.catch(() =>
-{})`), on the pad object of the same frame's poll. `window.__mr.pads` is
+{})`), on the pad object of the same frame's poll. `window.__mp.pads` is
 the state for the tests (`window.__pads`): connected, value, held, nav,
 steerAxis, active, capture, rumbleOn, resetLabel.
 
@@ -5714,7 +5714,7 @@ received only strong-motor effects). gilrs also lists any HID device with
 a joystick interface: on this machine a Hall-effect keyboard shows up as
 pad 0 (no SDL mapping) and is the pad in hand until a real one is
 touched; Chrome lists such devices too. `RUST_LOG=
-mr_game::play::gamepad_io=debug` logs what the pads ask for each time it
+mp_game::play::gamepad_io=debug` logs what the pads ask for each time it
 changes, for trying a controller.
 
 ## D782. When the pads are polled, and how the race reads them
@@ -5795,7 +5795,7 @@ with a race (opened from pause) it consumes the race's pending pause in
 the race's frame, after the pads reach the input layer and before the
 ticks; from the menu (no race) it reads Esc and P itself and the pad's
 Start press. The Controller screen left any other way stops listening.
-`window.__mr.padsetup` (`name`, `binds`, `on`, `listening`, `hint`) is the
+`window.__mp.padsetup` (`name`, `binds`, `on`, `listening`, `hint`) is the
 screen for the tests, which read its DOM in the JS suite.
 
 ## D760. The race's headlight spot, and three's spot lights as a list
@@ -5870,15 +5870,15 @@ Those, not the spot, are most of the "too dark" the owner sees.
 ## Menu section decisions
 
 D676's package: the menu switches levels at once, over a short section of
-each level built in the client (`crates/mr_game/src/preview.rs`,
-`crates/mr_worldgen/src/section.rs`). The deviation is in DEVIATIONS.md.
+each level built in the client (`crates/mp_game/src/preview.rs`,
+`crates/mp_worldgen/src/section.rs`). The deviation is in DEVIATIONS.md.
 
 ## D740. The menu flies over sections, prepared for every level
 
 2026-10-04 (D676). A menu-first run (`ui::menu_first`, not a test scene,
 station run, fly camera or given scene file; `?sections=0` keeps the old
 boot) downloads no level. The client builds a **section** of every level
-with `mr_worldgen` (D741), spawns each once under a root entity of its own
+with `mp_worldgen` (D741), spawns each once under a root entity of its own
 (hidden unless shown) and shows the selected one behind the menu. A level
 tab or card only selects (it saves `mr.level` and plays the level's music,
 as before): if that level's section is up it is shown in the same frame,
@@ -5898,7 +5898,7 @@ flies **500 m** (31 s at 16 m/s), then starts over (`preview::wrap_attract`;
 the JS's runs the whole first zone, 2 to 14 km, which a section does not
 have). The stretch built is `startS + 20` to `startS + 660` (the eye is
 22 m behind, the camera looks 20 m ahead, and 100 m of road beyond the
-run's end). `mr_worldgen::section::Section` restricts a level's build,
+run's end). `mp_worldgen::section::Section` restricts a level's build,
 with `World::section` set (a new field, `None` for a level, which changes
 nothing):
 - **Terrain**: only tiles within **2,500 m** of the stretch are meshed
@@ -5919,12 +5919,12 @@ nothing):
 Seeds and the order of draws are the level's, so what is kept is what the
 level draws: natively, 200 m into the run, the section and the whole
 level (`?world=gen` for Sierra, the exports for the others; the other
-sections built with all of `mr_worldgen`'s scenery for the comparison,
-`MR_SECTION_SCENERY=1`) give the same pictures for all six levels, the
+sections built with all of `mp_worldgen`'s scenery for the comparison,
+`MP_SECTION_SCENERY=1`) give the same pictures for all six levels, the
 only differences beyond 600 m (a far hill on Seaside, a distant lorry on
 Desert). The radii and length are `preview::{CAMERA_RUN, TERRAIN_RADIUS,
 SCENERY_RADIUS}`; at 600 m the city skylines the sections look at stay
-(Cruise's towers are within it). `cargo run --release -p mr_worldgen
+(Cruise's towers are within it). `cargo run --release -p mp_worldgen
 --example section_cost -- <levels>` (`LEN=640 RS=600 RT=2500` for a
 section, `JOBS=1` per job) times each job and counts the heap. Natively
 (load 7): sections build in 0.25 s (Seaside) to 1.1 s (Streets, Cruise),
@@ -5966,7 +5966,7 @@ exits; `menu=0` draws no screens.
 2026-10-04. Race (`ui` Act::Start) frees the sections (roots despawned,
 worlds and indexes dropped, any build in flight abandoned) and, unless
 that level is drawn whole already, asks for it as a tab did before
-(`__mr.reload` on the web, a thread natively): downloaded, or built by the
+(`__mp.reload` on the web, a thread natively): downloaded, or built by the
 client with `?world=gen`, behind the loading screen; the countdown arms
 once the level drawn whole is that level (`Previews::full`) and ready.
 Main menu after a race keeps the raced level drawn whole for its tab, as
@@ -6019,7 +6019,7 @@ so behind the menu no tile job holds a frame long.
   this branch's sections (Sierra's whole, the others terrain and road),
   against 488 MB for the boot that downloaded Sierra's export (D492). With
   every level's scenery (a measurement build linking all of
-  `mr_worldgen`'s scenery, what the client will hold once every level is
+  `mp_worldgen`'s scenery, what the client will hold once every level is
   generated): 160 MB at the menu, **508 to 565 MB** once all six are up
   (load 7 to 21). That is over SPEC 6.6's 512 MB, and it comes from one
   build, not from what is held: Streets' downtown module peaks at 448 MB of
@@ -6092,7 +6092,7 @@ finding on real builds: over SPEC 6.6's 512 MB on WebGPU because of
 Streets' build peak, not what the sections hold; the long frames are the
 scenery modules' one-job builds. Both stay the owner's (D746); nothing
 chosen here. `level-switch.test.mjs` (both forms) passes on WebGPU and on
-WebGL2 (`MR_BACKEND=webgl2`, new), as does `sections.test.mjs` on both.
+WebGL2 (`MP_BACKEND=webgl2`, new), as does `sections.test.mjs` on both.
 Wasm 8.42 MB (WebGPU) and 8.80 MB (WebGL2) after gzip with every level's
 world generation linked.
 
@@ -6130,7 +6130,7 @@ replaces D741's section of its full build:
   of scene data.
 - **Stand-ins for its scenery** (`preview/hints.rs`, a job added after
   the build with `Build::push_job`), chosen from what the attract camera
-  sees on each level and built from `mr_worldgen`'s flora templates and
+  sees on each level and built from `mp_worldgen`'s flora templates and
   boxes, with a fixed seed per level: Sierra a few spruce and fir up the
   slopes and boulders by the road; Coast telegraph poles on the inland side
   and scrub; Streets blocks of tinted walls with a generated window texture
@@ -6212,7 +6212,7 @@ under 5 cm or over 4 m dropped), and per car (`addCar`, in the JS's order:
 the player, the rivals, the traffic pool) its flames' lengths, its last
 rear-wheel contacts and its headlight pool, with `sparksAt`, `smokeAt`,
 `wheelWorld`, `resize` and `update` as the JS has them; the inexact math
-through `mr_math::kernel`. `play::fx` draws it (D803), and `play`'s
+through `mp_math::kernel`. `play::fx` draws it (D803), and `play`'s
 `effects_frame` runs it once a rendered frame after the cars are placed,
 as `Race.update` runs `effects.update(dt, night, this.extras)` after its
 visual sync: the extras are the player's `{ nitro, skid, launch }` (launch:
@@ -6284,7 +6284,7 @@ The particles integrate over the frame's dt as the JS's.
   only as three's default side, polygon offset (−4, −4)).
 - **Flames**: the JS's open cone (`ConeGeometry(0.13, 1, 10, 1, true)`
   turned to point down −Z, moved back half its length) built by
-  `mr_worldgen`'s three geometry, two `MeshBasicMaterial`s (0x66aaff at
+  `mp_worldgen`'s three geometry, two `MeshBasicMaterial`s (0x66aaff at
   0.85 and white at 0.9, additive, no depth write), the outer at each
   exhaust on the car's body entity, the core inside it scaled (0.45, 0.45,
   0.6); shown with the nitro, `scale.z` the frame's random length.
@@ -6320,7 +6320,7 @@ the flames, the frames run at once (each frame's bursts, then
 `Effects.js` in the game's page (kernel on, the export's seeded
 `Math.random` restored after); `--side rust` loads the web build with
 `?fx=<scene>` (`play::fx_stage`), which stages the same through
-`play::fx` once the level is up and reports `__mr.fxStaged`. At 1280 ×
+`play::fx` once the level is up and reports `__mp.fxStaged`. At 1280 ×
 800 against the JS (`cargo xtask parity shots`), all within SPEC 12's
 limits on WebGPU and on WebGL2 (the same numbers to the second decimal):
 
@@ -6742,7 +6742,7 @@ the exponential step composes exactly, so only the 1e-3 snap can land a
 tick apart. Every `tilt.test.js` case is a Rust test, with the JS's
 `pose()` helper ported, plus the 2 s wait.
 
-## D842. Drawing the controls: Bevy UI, the SVG icons with `mr_canvas`
+## D842. Drawing the controls: Bevy UI, the SVG icons with `mp_canvas`
 
 2026-10-04, WP 6.5. `play::touch_ui` draws every part of `#touch`: the
 stick (its track at .75 opacity while idle, the knob's border white when
@@ -6752,7 +6752,7 @@ slider with its bands, mark, fills and knob (with its glow), the DRIFT
 strip, the four pedal pads with their colours, and the three tap
 buttons, `.on` as the CSS has it (white border, the lit background,
 `scale(.94)`). The icons are the page's SVG paths (◂ ▸, reset, camera,
-pause, the wheel) stroked with `mr_canvas` into 96 px images once, at
+pause, the wheel) stroked with `mp_canvas` into 96 px images once, at
 the SVG's stroke width and round caps; no font has them (D431's R, C,
 II and `<` `>` are gone). Font sizes, icon sizes and border widths are
 CSS px divided by the page's scale (`css_scale`), as positions already
@@ -6822,15 +6822,15 @@ the keys and fingers (D106).
 
 2026-10-04, WP 6.5, 6.6. `touch-controls`, `analog-controls` and `tilt`
 are adapted in `tools/parity/e2e/` with `controls-helpers.mjs`:
-`__race` is `__mr.race`, which gains the car's `yaw`, `steerAngle`,
+`__race` is `__mp.race`, which gains the car's `yaw`, `steerAngle`,
 `hw`, `yawToRoad`, `nitro`, `nitroActive`, `camMode`, the camera's right
 (`camRight`, `__camera.matrixWorld`'s x axis) and `touch` (the controls:
 `visible`, `mode`, `steering`, `pedals`, `autoGas`, `stickR`, `held`,
 `stick`, `lock`, `knob`, `panel` (the pedal panel's classes), `wheel`,
-`tilt`); `__mr.race.touchUi` is the old boolean. The pads are
-`__mr.ui('touch-<act>')` (`touch-left`, `touch-throttle`, …, and
+`tilt`); `__mp.race.touchUi` is the old boolean. The pads are
+`__mp.ui('touch-<act>')` (`touch-left`, `touch-throttle`, …, and
 `touch-stick`, `touch-slider`, `touch-drift`, `touch-pedal`,
-`touch-wheel`), not visible when hidden. `__mr.stage` gains `place`
+`touch-wheel`), not visible when hidden. `__mp.stage` gains `place`
 (`phys.reset` and the speed, with `fromFinish`, `latFrac`, `yaw`, the
 camera snapped), `nitro` and `autogas`. A drop-down choice is two taps
 (the select, then `option-<value>`), the sensitivity slider a drag to an
@@ -6875,7 +6875,7 @@ with D751 to D753, 490 to 522 (median 490) against 462 to 510 (median
 (median 496). The menu's own high-water drops from 167 to 173 MB to 139
 to 151 (no field). `sections.test.mjs`, `level-switch.test.mjs` and
 `race-flow.test.mjs` pass on WebGPU and WebGL2 (the last two take
-`MR_BACKEND=webgl2` now); the native menu-to-race script too.
+`MP_BACKEND=webgl2` now); the native menu-to-race script too.
 
 ## D752. The menu's glyph atlases go with the views
 
@@ -6892,9 +6892,9 @@ from fresh atlases on the next frame (`preview::release_glyphs`).
 while the client loads (D576), and the client drew its Bevy copy under it,
 whose glyphs (about 8 MB at the screens' ratio) were then held through
 the level's build. On the web the client now draws no loading screen
-(`ui::build`, `Screen::Loading`; `__mr.screen` still reads `loading`), and
-Race puts the page's up at once (`__mr.cover`, from `preview::cover`)
-while the views are freed, before `__mr.reload` keeps it up for the load.
+(`ui::build`, `Screen::Loading`; `__mp.screen` still reads `loading`), and
+Race puts the page's up at once (`__mp.cover`, from `preview::cover`)
+while the views are freed, before `__mp.reload` keeps it up for the load.
 Natively the client's loading screen is drawn as before.
 
 What is still above the address's figure (about 25 to 30 MB at the
@@ -7007,7 +7007,7 @@ all threads 3.84, 3.59, 3.84 to 3.52, 3.22, 3.30 ms. It copies Bevy
 
 ## D863. The level ids are kept, not rebuilt every frame
 
-2026-10-04. `Options::race_on` asked `mr_levels::levels()` whether the
+2026-10-04. `Options::race_on` asked `mp_levels::levels()` whether the
 level is one of the menu's, and that builds all six levels (Downtown
 Streets' route among them) each call; `fly_system` and `cars::start_cars`
 call it every frame (0.17 ms a frame of wall time in the profile above).
@@ -7016,7 +7016,7 @@ too.
 
 ## D864. The gamepad bridge is written when it changes
 
-2026-10-04. `gamepad_io::web::publish` built `window.__mr.pads` (about 40
+2026-10-04. `gamepad_io::web::publish` built `window.__mp.pads` (about 40
 properties in four objects) every frame for the tests (WP 6.4), about
 0.09 ms of a race frame's wall time, more than reading the pads. It now
 remembers what it wrote (the pads' state, the pad in hand, a capture,
@@ -7142,7 +7142,7 @@ cars unless `cars=1` (`cars_on`): the level is built whole as for the fly
 camera's runs (the client's own build, D678; `world=export` as
 elsewhere), and `crate::viewer` drives the camera instead of
 `fly_system` (which returns at once in a viewer run). Everything is in
-`crates/mr_game/src/viewer/`: `cams` (the cameras as plain math), `link`
+`crates/mp_game/src/viewer/`: `cams` (the cameras as plain math), `link`
 (the query string), `input`, `panel`, `groups`, `stats`, and `web` for
 the page. Shared files gain only additions: `options.rs` (`viewer()`),
 `lib.rs` (the module, its plugin, the early return), `animate.rs`
@@ -7279,13 +7279,13 @@ its triangles the index count over three times its instances (an
 That is how three's `renderer.info.render` counts, the unit of SPEC 6.6's
 budgets; Bevy may batch some of these into fewer GPU draws, and the post
 chain's passes are not counted. Counted only while the panel is open (or
-`__mr.viewer.set({count: true})`), with no allocation per frame.
+`__mp.viewer.set({count: true})`), with no allocation per frame.
 
 ## D890. Pads in the viewer
 
 2026-10-04. The viewer has no race, so it adds the pads' poll alone
 (`gamepad_io::pads_only`: `PadsRes`, polled in `PreUpdate`, WP 6.4's
-maps and `__mr.pads` as before) and reads the active pad's standard
+maps and `__mp.pads` as before) and reads the active pad's standard
 layout directly, with the race's dead zone and curve (0.12, ^1.4): left
 stick moves, right stick looks (2.2 rad/s), LT and RT sink and rise, LB
 and RB slow down and speed up (orbit and overview: zoom), Y the next
@@ -7295,11 +7295,11 @@ D-pad goes along the route (◂ ▸ 500 m) and moves the time of day
 
 ## D891. The test bridge
 
-2026-10-04. In a viewer run `__mr.screen` and `__mr.mode` are `viewer`,
-`__mr.uiNodes` holds the panel's controls (`vw-…`, as the menus' ids),
-and `__mr.viewer` reports the mode, pose, orbit, overview, ride, route
+2026-10-04. In a viewer run `__mp.screen` and `__mp.mode` are `viewer`,
+`__mp.uiNodes` holds the panel's controls (`vw-…`, as the menus' ids),
+and `__mp.viewer` reports the mode, pose, orbit, overview, ride, route
 position and zone, toggles, groups, the link, frame time, draws and
-triangles; `__mr.viewer.set({mode, cam, orbit, ride, fog, far, anim, t,
+triangles; `__mp.viewer.set({mode, cam, orbit, ride, fog, far, anim, t,
 hide, speed, route, folded, help, count})` takes a pose and the panel's
 state (with `cam`, at once, no flight). `tools/parity/e2e/viewer.test.mjs`
 drives it; `tools/parity/viewer-shots.mjs` takes the review pictures and
@@ -7365,7 +7365,7 @@ build, desktop and phone emulation"), SPEC 8.5. Decisions D900 to D919.
 ## D900. The harness's `target` option: the JS suites unchanged
 
 2026-10-04. `test/e2e/harness.js` gains `target` (`openGame(browser,
-{ target })`, `launch({ target })`, default `MR_TARGET` or `'js'`). Under
+{ target })`, `launch({ target })`, default `MP_TARGET` or `'js'`). Under
 `'js'` nothing changes: every new branch is behind `target === 'rust'`,
 and the JS game's requests, flags and timing are as before (the
 JS run after the change, `--target js`, is in D908). Under `'rust'`:
@@ -7379,29 +7379,29 @@ JS run after the change, `--target js`, is in D908). Under `'rust'`:
 - `center(sel)`/`tap`/`click` look the selector up as a control id
   (`rust-bridge.js` `selectorId`: `#btn-start` is `btn-start`, `#level-pick
   .lvl-tab:nth-child(3)` is `lvl-tab-streets`, `#touch [data-tap="pause"]`
-  is `touch-pause`, …), scroll it to the middle (`__mr.reveal`) and take
-  the centre of `__mr.ui(id)`, failing as `elementFromPoint` did when the
+  is `touch-pause`, …), scroll it to the middle (`__mp.reveal`) and take
+  the centre of `__mp.ui(id)`, failing as `elementFromPoint` did when the
   client's hit test finds another control on top.
 - The suites' page code is not rewritten. `installBridge` (run before the
   page's scripts, on the Rust page only) defines `window.__race`, `__game`,
   `__audio`, `__world`, `__camera`, `__stats`, `__pads`, `__pursuit` and
-  `__ready` as views over `window.__mr`, and `game.eval` runs each
-  evaluation inside `__mrShim.run`, which for its duration answers
+  `__ready` as views over `window.__mp`, and `game.eval` runs each
+  evaluation inside `__mpShim.run`, which for its duration answers
   `document.getElementById`, `querySelector(All)` and `getComputedStyle`
-  for the selectors the suites use with stand-ins over `__mr.uiNodes`
+  for the selectors the suites use with stand-ins over `__mp.uiNodes`
   (the page's own scripts never see them). A view is built once per
   evaluation from the last frame's snapshots.
 - A write to a view (`r.player.vx = …`, `r.phys.reset(s, lat)`,
   `a.writePos()`, a select's `value` and `change`, `el.focus()`) becomes a
-  `__mr.stage` command, sent in order when the evaluation ends; the
-  client counts what it applied (`__mr.staged`) and the harness waits for
+  `__mp.stage` command, sent in order when the evaluation ends; the
+  client counts what it applied (`__mp.staged`) and the harness waits for
   that frame before the next read, since the JS game applied writes at
   once. Likewise every mouse, touch and key event the harness or a suite
   sends (`page.mouse`, `page.touchscreen`, `page.keyboard`,
   `game.touch`) waits two frames on the Rust target: the JS handles an
   event in its handler, the client in its next frame.
-- `snapshot()` reads `__mr` (`screen`, `mode`, `race.state`,
-  `audio.context`, `touchUi`); `waitReady` waits for `__mr.ready` with
+- `snapshot()` reads `__mp` (`screen`, `mode`, `race.state`,
+  `audio.context`, `touchUi`); `waitReady` waits for `__mp.ready` with
   the menu's controls laid out (`__ready`), up to four minutes.
 - `music.html` (the `path` option, and the menu's Music player link) is
   the JS page, which the Rust menu links to (DEVIATIONS: "The music
@@ -7409,7 +7409,7 @@ JS run after the change, `--target js`, is in D908). Under `'rust'`:
   evaluations run as for the JS game.
 
 `npm run test:e2e:rust` (`tools/parity/e2e/js-suites.mjs`) runs every
-suite with `MR_TARGET=rust`, one Chrome at a time, waiting before each
+suite with `MP_TARGET=rust`, one Chrome at a time, waiting before each
 suite for the GPU's memory to be under 9 GB (the machine is shared), and
 prints the suite × device table with the reason for every skip (D908).
 `--target js` runs the same table for the JS game; `--only` takes a name
@@ -7420,7 +7420,7 @@ a Chrome that no `after` closes).
 `src`, `vendor`, `index.html` and the kernel), so these edits change no
 cached parity data.
 
-## D901. `window.__mr`, complete for the suites
+## D901. `window.__mp`, complete for the suites
 
 2026-10-04, SPEC 8.5. What the client publishes, each frame unless said:
 `ready`, `state`, `screen`, `mode`, `races`, `focus`, `touchUi`,
@@ -7449,8 +7449,8 @@ enabled, value, sel, z}`, CSS px), `reveal(id)`, `stage(cmd)` and
 
 SPEC 8.5 writes `race()`, `pursuit()`, `audio()`, `stats()`; they are
 properties holding the last frame's snapshot, as the tools since WP 2.5
-read them (`__mr.race.state`), not functions. `stats` is `{fps}` on the
-test side: frames counted between two reads of `__mr.frames`, so the page
+read them (`__mp.race.state`), not functions. `stats` is `{fps}` on the
+test side: frames counted between two reads of `__mp.frames`, so the page
 adds no per-frame work (the frame-time package times the frame).
 
 `stage(cmd)` takes, beside D577's and D846's (`finish`, `cruise`,
@@ -7473,40 +7473,40 @@ across the jump).
 
 | JS | Rust |
 |---|---|
-| `__ready` | `__mr.ready`, not on the loading screen, controls laid out |
-| `__game.mode` | `__mr.mode` |
-| `__race.state, time, countdown, cruise, lap, lapTimes, playerFinished, playerTime, dist, score, nearMisses, lastS, odo, pursuitOn` | `__mr.race.*` (the last race kept after Main menu, as `window.__race` is) |
+| `__ready` | `__mp.ready`, not on the loading screen, controls laid out |
+| `__game.mode` | `__mp.mode` |
+| `__race.state, time, countdown, cruise, lap, lapTimes, playerFinished, playerTime, dist, score, nearMisses, lastS, odo, pursuitOn` | `__mp.race.*` (the last race kept after Main menu, as `window.__race` is) |
 | `__race.player.{x, y, z, vx, vz, yaw, s, lat, speed, steerAngle, prog}` | `race.{x, y, z, vx, vz, yaw, s, lat, along, steerAngle, prog}`; writes: `set` |
 | `__race.phys.{locked, gear, nitro, nitroActive, skid, damage}`, `.reset(s, lat)`, `.events.push(impact)` | `race.*`; `reset`; `event` |
-| `__race.track.{startS, finishS, n, length, loop}`, `.frame(s)`, `.wrap(s)` | `race.track.*`, `__mr.trackFrame`, `__mr.trackWrap` |
+| `__race.track.{startS, finishS, n, length, loop}`, `.frame(s)`, `.wrap(s)` | `race.track.*`, `__mp.trackFrame`, `__mp.trackWrap` |
 | `__race.ais[i]` (`s, lat, speed, prog, finished, finishTime`, `.v.*`, `.writePos()`) | `race.ais[i]`; `set`, `aiWritePos` |
 | `__race.input.state.*`, `.input.touch.{stickR, stick, steering, held, tilt.state, autoGas}` | `race.input`, `race.touch`; `autoGas`: `set` |
 | `__race.cam.mode`, `.cam.snap = true` | `race.camMode`; `set cam.snap` |
 | `__race.progS.set(car, s)`, `.standings()`, `.traffic` | `set progS.<i>`; `race.place`, `race.racers`; `race.traffic` |
-| `__race.__tagged` (flow-helpers' `markRace`) | `__mr.races` at the time of the mark |
+| `__race.__tagged` (flow-helpers' `markRace`) | `__mp.races` at the time of the mark |
 | `__race.pv`, `.playerBody`, `__pursuit` | none (M8) |
-| `__audio.ctx.state`, `.ctx.suspend()`, `.ready`, `._musicOn`, `.musicGate.gain.value`, `._vol`, `.trackInfo.id` | `__mr.audio.context` (`none`: no `ctx`), `audio` stage, `ready`, `musicOn`, `musicGate`, `vol`, `playing` |
+| `__audio.ctx.state`, `.ctx.suspend()`, `.ready`, `._musicOn`, `.musicGate.gain.value`, `._vol`, `.trackInfo.id` | `__mp.audio.context` (`none`: no `ctx`), `audio` stage, `ready`, `musicOn`, `musicGate`, `vol`, `playing` |
 | `__audio._radioCur` | none (M8) |
-| `__world.level.id` | `__mr.level` |
-| `__world.scenery[0].lampMats[].emissiveIntensity` | `__mr.lamps` |
+| `__world.level.id` | `__mp.level` |
+| `__world.scenery[0].lampMats[].emissiveIntensity` | `__mp.lamps` |
 | `__world.renderer.compileAsync` | none (the race-button double tap, D908) |
 | `__camera.matrixWorld.elements[0, 2]`, `.position` | `race.camRight`, `race.camPos` |
-| `__stats.fps` | `__mr.frames` between reads |
-| `__pads` | `__mr.pads` |
-| `#loading, #menu, #pause, #results, #padsetup` `.hidden` | `__mr.screen` |
-| `#hud`, `#hud-lap`, `#hud-lap-n`, `#hud-lap-best`, `#hud-pen` | `__mr.hud` |
+| `__stats.fps` | `__mp.frames` between reads |
+| `__pads` | `__mp.pads` |
+| `#loading, #menu, #pause, #results, #padsetup` `.hidden` | `__mp.screen` |
+| `#hud`, `#hud-lap`, `#hud-lap-n`, `#hud-lap-best`, `#hud-pen` | `__mp.hud` |
 | `#touch` `.hidden` | `touchUi`, `race.touch.visible`, no screen up |
 | `#touch [data-act=x]`, `[data-tap=x]`, `.t-slider`, `.t-drift-strip` | `ui('touch-x')`, `touch-slider`, `touch-drift` |
 | `.t-stick` (`.active`, `.lock`, `style.left/top`), `.t-stick-knob` `style.transform`, `.t-pedal` (classes, `--u`, `--gas`, `--brk`), `.t-wheel` `style.transform` | `race.touch.stick`, `lock`, `knob`, `panel`, `u` (the JS's `SLIDER` bands), `wheel`, serialised as the CSSOM does |
-| Controls by id (`btn-*`, `opt-*`, `lvl-*`, `res-title`, `res-best`, `pad-*`, `link-music`, `rotate-hint`, `tilt-note`, `np-pause`, `mode-pick`): `textContent`, `checked`, `value`, `.sel`, boxes, `closest('label')` | `ui(id)` (`value`, `sel`, the box; the control is its own label); not on screen: `__mr.settings` |
+| Controls by id (`btn-*`, `opt-*`, `lvl-*`, `res-title`, `res-best`, `pad-*`, `link-music`, `rotate-hint`, `tilt-note`, `np-pause`, `mode-pick`): `textContent`, `checked`, `value`, `.sel`, boxes, `closest('label')` | `ui(id)` (`value`, `sel`, the box; the control is its own label); not on screen: `__mp.settings` |
 | `#level-pick .lvl-tab`, `#car-pick .pick` (`:nth-child(n)`, `:first-child`, `:last-child`, `.sel`) | `lvl-tab-<level>`, `pick-<car>` |
-| `<select>` `.value = v` + `change`, `.options`; `<input type=range>` `.value` + `input` | `choose`, `__mr.selects`; `slide` |
+| `<select>` `.value = v` + `change`, `.options`; `<input type=range>` `.value` + `input` | `choose`, `__mp.selects`; `slide` |
 | `el.focus()`, `el.click()` | `focus`, `act` |
 | `#res-table tr` (`rowIndex`, `.me`, `cells`), `#res-extra .res-stat small` | `res-table` (rows), `res-row-<i>` (`place|name|value`, `sel`), `res-stat-<i>` (`value|label`) |
-| `.pad-focus` (`id`, text, `.pad-edit`), `.pad-bind[data-act=x]` (`.on`, `.listening`, `b`), `#pad-name` | `__mr.focus` with `padNav`; `__mr.padsetup` (row labels: `Gamepad.js` `ACTIONS`) |
+| `.pad-focus` (`id`, text, `.pad-edit`), `.pad-bind[data-act=x]` (`.on`, `.listening`, `b`), `#pad-name` | `__mp.focus` with `padNav`; `__mp.padsetup` (row labels: `Gamepad.js` `ACTIONS`) |
 | `#mode-pick .sel` `dataset.mode`, `#mode-pick [data-mode=x]` | `mode-race`, `mode-pursuit` |
 | `#pause .title` | `pause-title` |
-| `body.touch`, `body.pad` | `__mr.touchUi`, `__mr.pads.connected` (set on the real body) |
+| `body.touch`, `body.pad` | `__mp.touchUi`, `__mp.pads.connected` (set on the real body) |
 | `#hud-pz`, `#hud-dmg`, `#pz-bar`, `#hud-hold`, `#pz-stars`, `#hud-radio-text`, the radio clips' resource entries | never shown (M8) |
 
 ## D903. `?level=` picks the menu's level, as in the JS
@@ -7532,7 +7532,7 @@ native `shots=`. Every Rust tool that loads a level to race passes
   control's value is the JS text.
 - The client read `navigator.audioSession` once at start-up; the JS's
   `askForPlayback(navigator)` reads it when the context is made (the
-  first gesture). `mr_audio::session::web::NavigatorSession` looks it up
+  first gesture). `mp_audio::session::web::NavigatorSession` looks it up
   at each use; on an iPhone, where it is there from the start, nothing
   changes.
 
@@ -7545,7 +7545,7 @@ and `analog-controls`, and the repeated tests of `menu`, `race-button`,
 - `menu.test.mjs`: the volume sliders and the track picker reach the
   sound; M shows on the pause slider.
 - `race-button.test.mjs`: a second tap while the race is starting starts
-  one race (`__mr.races`; the JS version holds three's `compileAsync`).
+  one race (`__mp.races`; the JS version holds three's `compileAsync`).
 - `gamepad.test.mjs`: driving with the triggers and the stick (dead zone
   and curve), a map saved for the pad's id, rumble from a real wall hit
   and the countdown, the Controller screen from pause.
@@ -7569,7 +7569,7 @@ bridge for them is listed so M8 can fill it: `window.__pursuit`
 `wrecks`), `__race.playerBody`, `__audio._radioCur` (`srcs`), the DOM
 `#hud-pz`, `#pz-stars`, `#pz-bar`, `#hud-dmg`, `#hud-hold`, `#hud-pen`,
 `#hud-radio-text`, `#res-extra`'s pursuit tiles, and the radio clips'
-`performance` resource entries. Until then `__mr.pursuit` says
+`performance` resource entries. Until then `__mp.pursuit` says
 `{available: false, waits: 'roadmap M8 (Hot Pursuit)'}`, the stand-ins
 for those elements are never shown, and a pursuit staging command
 (`pursuit`, `unit`, `roadblock`, `spikes`, `hurt`, `say`) logs that it
@@ -7622,7 +7622,7 @@ the suites name it ("phone", "phonePortrait"), the rest are desktop
 | music-player | phone | 7 pass | 7 pass | the first test goes there from the Rust menu |
 | pursuit | desktop | 7 pass | 1 pass, 6 skip | M8 (D906) |
 | race-button | desktop | 2 pass | 2 pass | |
-| race-button | phone | 5 pass | 4 pass, 1 skip | the double tap holds three's `compileAsync` and traps `window.__race`; `tools/parity/e2e/race-button.test.mjs` checks it with `__mr.races` (passes) |
+| race-button | phone | 5 pass | 4 pass, 1 skip | the double tap holds three's `compileAsync` and traps `window.__race`; `tools/parity/e2e/race-button.test.mjs` checks it with `__mp.races` (passes) |
 | race-flow | desktop | 8 pass | 8 pass | |
 | race-flow | phone | 3 pass | 3 pass | |
 | tilt | desktop | 1 pass | 1 pass | |
@@ -7749,10 +7749,10 @@ it (which adds its cars to the effects), the units activated with
 then per frame with `Math.random = mulberry32(seed)`: PursuitView's clock,
 the events due, `player.sync`, `pv.sync`, `effects.update`. `--side rust`
 loads the web build with `?pv=<scene>` (`play::pv_stage`), which makes the
-same pursuit from `mr_sim` (`Pursuit::new` on the same streams,
+same pursuit from `mp_sim` (`Pursuit::new` on the same streams,
 `activate`, `place_roadblock`, `place_spikes`), the same cars, and runs the
 same frames through `play::police` and `play::fx` once the entities exist;
-`__mr.pvStaged` counts the frames since. The pursuit is bit-identical
+`__mp.pvStaged` counts the frames since. The pursuit is bit-identical
 (WP 1.6), so the cars stand in the same places and the roadblock's gap is
 where the JS put it; the effects draw from the scene's stream in the JS's
 order (D801), so the smoke and sparks land on the same pixels.
@@ -7786,7 +7786,7 @@ draws the roadblock SUVs' exhaust flames. Pictures:
 pictures the JS game (`?parity=1`, stopped at the tick) and the Rust build
 (its own screenshot the first frame the race reaches the time) in the same
 seeded pursuit race with the autopilot: Coast, seed 1, heat 3. The
-simulations agree (the units' callsigns, modes and s at 40 s match `mr-sim
+simulations agree (the units' callsigns, modes and s at 40 s match `mp-sim
 race --state-at`), and the pictures show the same cars in the same
 places: a unit oncoming beside the player at 40 s, a disabled unit
 smoking at the player's side after a takedown at 24 s, the wrecked
@@ -7798,11 +7798,11 @@ the picture's place is the screenshot's own pipeline (a race without
 pursuit logs it where its picture is taken too). Pictures:
 `parity/report/pursuit/race/`.
 
-## D940. The props in `mr_worldgen`, and their L3 gate
+## D940. The props in `mp_worldgen`, and their L3 gate
 
-2026-10-05, WP 8.2. `mr_worldgen::pursuit_props` ports PursuitView.js's
+2026-10-05, WP 8.2. `mp_worldgen::pursuit_props` ports PursuitView.js's
 `sawhorseModel` (the 128 × 16 canvas of red and white diagonal bands drawn
-with `mr_canvas`, a `CanvasTexture` in sRGB, the board and four A-frame
+with `mp_canvas`, a `CanvasTexture` in sRGB, the board and four A-frame
 legs, `dims`) and `spikeStrip` (a base box and `round(w / 0.16)` pairs of
 four-sided cones merged without an index, placed at `pointAt(s, (lat0 +
 lat1) / 2)` turned to the road). The JS module keeps the sawhorse's parts
@@ -7883,7 +7883,7 @@ pursuit suite's menu test (toggle, remembered per level, a pursuit from
 the menu) and results test (the tiles, the `.pursuit` key) pass against
 the Rust build. Two of `startRace`'s pursuit options were missing and are
 added: `?cops=N` (`Number(params.get('cops'))`, 6 by default) and the
-menu's flash option (`settings.flash`). `mr_sim::race::SimState::new`
+menu's flash option (`settings.flash`). `mp_sim::race::SimState::new`
 makes the pursuit with 6 units and flashing lights, as the recordings do;
 the client sets `pursuit.max_units` (`clamp(cops, 0, 6)`) and `flash` on
 the new field and on every restart (`flow::PursuitOpts`,
@@ -7952,19 +7952,19 @@ stub with the same names.)
 
 ## D964. The bridge for Hot Pursuit
 
-2026-10-05, filling D906. `__mr.pursuit` is null without a pursuit (so
+2026-10-05, filling D906. `__mp.pursuit` is null without a pursuit (so
 `window.__pursuit` is undefined and `__race.pv` null, as the JS clears
 them) and otherwise `{available, state, heat, maxHeat, heatMeter, bust,
 evade, busts, takedowns, flash, maxUnits, units[{active, mode, siren, s,
 lat, speed, callsign, type, x, z, health, target, visible}], player{hold,
 holdReason, holdTotal, grace, bust}, pv{damage, wrecks, penalty}}`.
-`__mr.hud` gains `pz, pzBar, dmg, hold, pen, radio` (each shown as its
+`__mp.hud` gains `pz, pzBar, dmg, hold, pen, radio` (each shown as its
 `.hidden` says), `radioText`, `pzLabel` and the stars' fills;
 `rust-bridge.js` answers `#hud-pz`, `#pz-stars`, `#pz-bar`, `#pz-label`,
 `#hud-dmg`, `#hud-hold`, `#hud-pen`, `#hud-radio` (`.show`) and
 `#hud-radio-text` from them. New staging: `unit {i, s, lat, speed, mode,
 dir}` (`__pursuit.activate`), `hurt {d}` (`pv.hurt`, through
-`mr_sim::race::hurt_player`, an addition to the simulation's API: the
+`mp_sim::race::hurt_player`, an addition to the simulation's API: the
 same `hurt` a tick runs), `say {text, parts, force}`, `roadblock {s}`,
 `spikes {s}`, and `set` of `pursuit.state`,
 `pursuit.units.<i>.speed|s|lat|target` (`race.playerBody` is the
@@ -8009,14 +8009,14 @@ machine; nothing of this package's touches it).
 2026-10-05, WP 8.4. `PursuitView.js`'s radio (`radioT` and its four
 seconds, `say(line, force)`, `zoneName()`, `heading()` and the table in
 `events()` of what each pursuit event says and which stinger it plays) is
-`crates/mr_game/src/play/radio.rs`. `flow::Race` gains `radio: Radio` and
+`crates/mp_game/src/play/radio.rs`. `flow::Race` gains `radio: Radio` and
 `stage_say` (the test bridge's `race.pv.say(line, now)`, said at the next
 frame), and `Race::frame` calls `radio.frame(dt)` after the pause check,
 says the staged lines, and after the frame's event loop runs
 `radio.events(&mut audio_ticks)`. A line that gets through goes into
 `race.radio.said` (cleared each frame), which the HUD (WP 8.3) shows as
 `hud.radio(text, max(3, len / 14))`, and into its tick's calls for the
-voice. JS's `RADIO_GAP` is `SAY_GAP` here: `mr_audio`'s `RADIO_GAP` is
+voice. JS's `RADIO_GAP` is `SAY_GAP` here: `mp_audio`'s `RADIO_GAP` is
 already the pause between a line's clips. The JS runs `events(dt)` once per
 `Race.update`, and the parity drives update once per 1/120 s tick, so the
 countdown of the gap and the events are per tick (each tick's pursuit
@@ -8078,9 +8078,9 @@ sources off `__audio._radioCur.srcs` (`s.buffer.duration`, `s.loop`,
 Audio nodes, so the client hands the page the nodes themselves, not
 stand-ins: `GameAudio::radio_cur_srcs()` lists the transmission's sources
 (the hiss, the clips or the burble's buzz and breath, in order),
-`mr_audio::wa::web::js_node` returns the browser node behind a facade node
+`mp_audio::wa::web::js_node` returns the browser node behind a facade node
 (a `Backend::js_node` that only the web backend answers), and
-`play::audio` publishes `{ srcs }` on `__mr.audio.radioCur` (rebuilt only
+`play::audio` publishes `{ srcs }` on `__mp.audio.radioCur` (rebuilt only
 when the transmission changes); `rust-bridge.js`'s `audioView()` returns
 it as `_radioCur`. The radio clips are fetched from `../../audio/radio/`
 relative to the page (D513), so the `performance` resource entries the
@@ -8108,7 +8108,7 @@ fullscreen when it is either (`win._lastBounds`).
 
 - **Where.** Beside the settings store (`FileStore::default_path`'s
   directory, `~/.config/midnight-racer/` on Linux, the directory of
-  `$MR_STORE` when that is set). Electron's own file
+  `$MP_STORE` when that is set). Electron's own file
   (`~/.config/Midnight Racer/window-state.json`) is not read: the first
   native run opens at 1600 × 900.
 - **Units.** The client draws at a scale factor of 1 natively, so the
@@ -8137,7 +8137,7 @@ fullscreen when it is either (`win._lastBounds`).
   Wayland that is the icon shown. The icon itself is built in at 64 × 64:
   the 256 × 256 one left X11's `_NET_WM_ICON` empty (a quarter of a
   megabyte in one property request). `winit` is a direct dependency of
-  `mr_game` for `winit::window::Icon` (Bevy 0.19 has no icon API), at the
+  `mp_game` for `winit::window::Icon` (Bevy 0.19 has no icon API), at the
   version Bevy uses, and `image` gains `png` (already on through Bevy's).
 
 Checked on the dev machine (GNOME on Wayland, two monitors): on XWayland,
@@ -8193,7 +8193,7 @@ the same mode change, made at start for a saved fullscreen, was checked
 there (D1000). Cmd+Q on macOS and Windows are untested.
 
 Checked by the owner, 2026-10-05, on the real desktop (GNOME on Wayland,
-`cargo run -p mr_game`, the menu): F11 by key went fullscreen ("F11:
+`cargo run -p mp_game`, the menu): F11 by key went fullscreen ("F11:
 fullscreen on"), Ctrl+Q quit, and `window-state.json` was saved as
 `{"width":1600,"height":900,"fullscreen":true,"maximized":false}`: the
 normal bounds under the fullscreen, and no position, as Wayland tells none.
@@ -8204,7 +8204,7 @@ normal bounds under the fullscreen, and no position, as Wayland tells none.
 `mesa-vulkan-drivers` and `libvulkan1`, builds `midnight-racer` (debug, on
 the dependencies `cargo test` built) and runs `--smoke-test --after 5`
 twice under `xvfb-run` with `VK_ICD_FILENAMES` set to lavapipe's ICD and
-`WGPU_BACKEND=vulkan`, with a store of its own (`MR_STORE`): the default
+`WGPU_BACKEND=vulkan`, with a store of its own (`MP_STORE`): the default
 run (the menu's first screen, Sierra's section built in the client, D678,
 D742) and a race on Seaside Raceway (`level=seaside&autostart=sports`),
 the lightest level to build. Race timings through lavapipe under Xvfb on
@@ -8254,8 +8254,8 @@ left as they are:
 ## D1005. The menu's hitches natively: the views' work off the main thread
 
 2026-10-05. The owner saw a stutter in the native menu (`cargo run -p
-mr_game`, a debug build) and the log said `1 pipeline(s) compiling after
-the warm-up`. `RUST_LOG=mr_game::status=debug` now logs every frame over
+mp_game`, a debug build) and the log said `1 pipeline(s) compiling after
+the warm-up`. `RUST_LOG=mp_game::status=debug` now logs every frame over
 50 ms (`slow frame`), and a pipeline queued after the warm-up is logged by
 its label (its shader defs at debug level). Measured on the RTX 3060, the
 menu's first 15 s, the five other views built behind it:
@@ -8420,7 +8420,7 @@ can record runs for you to examine". `recording`, the format in
   where the agents work (git ignores it); `record=<dir>` or
   `record=<file.jsonl>` writes elsewhere. The path is printed at the start
   and, with the size, at the end. On the web the lines stay in memory for
-  `__mr.recording()` and `__mr.saveRecording()` (a download); the native
+  `__mp.recording()` and `__mp.saveRecording()` (a download); the native
   file is the priority, and a phone has no easy way to fetch a download,
   which is left open.
 - **Format.** JSON lines, each with `t` (seconds since the start) and
@@ -8433,7 +8433,7 @@ can record runs for you to examine". `recording`, the format in
   `slow_frame` line for every frame over 50 ms (the D1005 threshold) with
   its number, the three times, the mode and pipelines waiting, so a stall
   is timestamped against what the client was doing. Natively the log's
-  warnings and errors and the client's own (`mr_*`) info lines come
+  warnings and errors and the client's own (`mp_*`) info lines come
   through the tally layer (D1003), at most 1000 a frame; the web has no
   layer.
 - **Races.** The start (seed, car, pursuit and heat, the units' cap,
@@ -8452,12 +8452,12 @@ can record runs for you to examine". `recording`, the format in
   the effects, the sound's calls; per-frame timing (summarised per second;
   the overlay's graphs are for live looking).
 
-## D1022. A recorded race replays in `mr-sim`
+## D1022. A recorded race replays in `mp-sim`
 
 2026-10-05. The simulation is deterministic and a race is its options and
-its inputs, so `mr-sim replay <file> [--race N] [--trace F] [--state-at T]`
+its inputs, so `mp-sim replay <file> [--race N] [--trace F] [--state-at T]`
 steps each recorded race from a new `SimState` with the recorded inputs and
-checks the hash at every `ticks` line (`mr_sim::replay`: the parser reads
+checks the hash at every `ticks` line (`mp_sim::replay`: the parser reads
 only the flat fields of `race_start` and `ticks`, by hand, since the
 simulation has no JSON dependency; the input coding is beside it, so the
 client and the replay share it). It prints how many checkpoints matched (or
@@ -8480,7 +8480,7 @@ replays on the code it was made with: the `start` line has the commit.
 
 2026-10-06. The owner heard buffer underruns natively "well into level
 play" (web-audio-api's `buffer underrun or overrun`, many a second).
-Measured with the render thread's load report (`RUST_LOG=mr_game::play::
+Measured with the render thread's load report (`RUST_LOG=mp_game::play::
 audio=debug`, D1005's companion in `play::audio`): on Coast with the
 autopilot the load was 0.27 in the first ten seconds and 4 to 6 after two
 and a half minutes, every device callback underrunning from then on. It
@@ -8698,16 +8698,16 @@ loop). So a point's target speed already says "slow down here for the
 corner after it"; the colour only has to compare it with the player's
 speed and the room left.
 
-What the car can do comes from `mr_sim`'s physics, read off its code:
+What the car can do comes from `mp_sim`'s physics, read off its code:
 full brake is `a -= 15 × brake` for every car (above 0.8 m/s), plus the
-drag `0.00115 v|v| + 0.01 v`; `mr_sim::assist::BRAKE_DECEL` and
+drag `0.00115 v|v| + 0.01 v`; `mp_sim::assist::BRAKE_DECEL` and
 `full_brake_decel` hold these, and a test steps the physics one tick at
 full brake and checks the deceleration (less the slope) against them.
 `brake_distance(v0, v1, frac)` is the distance to slow from v0 to v1 with
 `frac` of the brake and the whole drag, ∫ u / a(u) du by Simpson's rule
 over eight steps (flat road; the grade is left out).
 
-The rule (`mr_sim::assist::brake_urgency(v, vt, d)`, for a point d metres
+The rule (`mp_sim::assist::brake_urgency(v, vt, d)`, for a point d metres
 ahead along the road with target speed vt, the car at v):
 
 - at or under the point's speed (v ≤ vt), or nearly still (v < 1 m/s):
@@ -8767,12 +8767,12 @@ results, after the player's finish, and before the race has started
 drawing. The speed and place are the player's as drawn (between the last
 two ticks).
 
-`__mr.aids` (web) gives `guide`, `assist`, `shown` (chevrons drawn last
+`__mp.aids` (web) gives `guide`, `assist`, `shown` (chevrons drawn last
 frame) and `maxUrgency` for the tests.
 
 ## D1082. The steering assist
 
-2026-10-05. `mr_sim::assist::steer_assist(inp, vehicle, phys, track,
+2026-10-05. `mp_sim::assist::steer_assist(inp, vehicle, phys, track,
 Assist)`, a pure function through the kernel. The client calls it on the
 player's controls each tick before quantising them into the tick's
 `InputFrame` (`flow::Race::frame`), so the frame (and so any recording or
@@ -8803,7 +8803,7 @@ if it is: a test). The autopilot never gets it.
   more than 1.2 rad off the road (spun, or the wrong way). No braking or
   throttle: only the steering changes.
 
-Measured headlessly (`cargo test --release -p mr_sim --test assist --
+Measured headlessly (`cargo test --release -p mp_sim --test assist --
 --ignored --nocapture`): a scripted driver uses the autopilot's pedals
 (93 % of the profile, no nitro) with the stick flagged analogue, and
 steers as one of: Good (the autopilot's steering), Lazy (half of it),
@@ -8858,8 +8858,8 @@ settings are (JSON strings under `mr.`), ids `opt-guide` and
 controls, `ui::touch_ui`) Full and Light; with a keyboard or gamepad, Off
 and Off. Light rather than Strong so the player still steers (the owner
 asked for help, not a driver). A saved value the menu does not offer
-falls back to the default. `__mr.settings` gains `guide` and `assist`;
-`__mr.selects` the two lists.
+falls back to the default. `__mp.settings` gains `guide` and `assist`;
+`__mp.selects` the two lists.
 
 Query hooks (D1004's pattern, natively through `--query`): `line=full|
 brake|off` (also `1`, `0`) and `assist=0|1|2` (also `off|light|strong`),
@@ -8967,3 +8967,60 @@ the frozen JS game's.
 2026-10-06. After playing on the iPhone: "mobile feels good with the driving
 line and assist!" The touch defaults stay as D1083 set them: guide line
 Full, steering assist Light.
+
+## D1100. The Rust game is Midnight Playground; its crates are `mp_`
+
+2026-10-06. The owner: "i want to rename this - midnight playground. and
+rename the mr_ rust variables/crates". This answers SPEC open question 6
+and vision WORLD 1.2. The owner's choices, asked: prefix `mp_`; the code,
+docs and the Rust game's own name now, the public addresses at cutover;
+the JS game keeps its name.
+
+Renamed now:
+
+- The eleven crates `mr_*` → `mp_*` (directories, package names, every
+  path), the `mr_webgl2` cfg → `mp_webgl2`, the binaries `mr-sim`,
+  `mr-host` → `mp-sim`, `mp-host`, the client's binary `midnight-racer` →
+  `midnight-playground`, and the wasm files `mr_game_bg.wasm` →
+  `mp_game_bg.wasm` (and the WebGL2 build's).
+- The page bridge `window.__mr` (and `__mrShim`, `__mrFonts`,
+  `__mrSceneExport`, `__mrFacade`) → `__mp`; the test and tool
+  environment variables `MR_*` → `MP_*` (`MP_TARGET`, `MP_BASE_URL`,
+  `MP_HEADFUL`, `MP_STORE`, `MP_MUTE`, …); GPU labels and shader locals.
+- The name the player sees in the Rust build: the window title
+  (`Midnight Playground`) and Wayland app id / X11 class
+  (`midnight-playground`), the page's title, the loading screen's and the
+  menu's logo (MIDNIGHT over PLAYGROUND, with RACER's style; the
+  per-letter gradient spans the same stretch over ten letters), the
+  banner, the recording's file name. A deviation (DEVIATIONS.md).
+- The native settings folder: `midnight-playground/` in the config
+  directory; the first time it is missing, the files of `midnight-racer/`
+  (storage and window state) are copied into it.
+
+Kept, and why:
+
+- **Everything of the JS game** (`src/`, `index.html`, `vendor/`, its
+  manifest, music page, Electron shell, README until WP 9.4): it is frozen,
+  becomes `/legacy/` at cutover under its own name, and `src/` is the
+  parity cache key. Its comments still name `mr_math`.
+- **`mr_kernel`** (the crate and `tools/parity/kernel/mr_kernel.wasm`):
+  `src/parity/kernel.js` loads that file by name and its bytes are part
+  of the JS tree key. The committed wasm is unchanged; `cargo xtask kernel
+  --check` passes on it.
+- **The shader defines `MR_PHOTO` and `MR_SUN_FOG`**: the JS's names,
+  ported as they are.
+- **Storage keys `mr.*`** (web localStorage and the native file): the JS
+  game writes the same keys on the same origin, which is how its best
+  times carry over at cutover (WP 9.5).
+- **File formats**: the magics `MRSCENE`, `MRTRACE`, `MRSURVEY` and the
+  `.mrscene` extension. Golden traces in git carry `MRTRACE`; a format tag
+  is not a name the player sees.
+- **In-world signs** ("MIDNIGHT RACER" on the raceway, "STAGE 1 ·
+  MIDNIGHT RACER"): level content ported from the JS; vision WORLD 1.2
+  keeps *Midnight Racer* as the street-racing series.
+- **Addresses until cutover**: the GitHub repository and Pages address,
+  the local folder, the `proj` registry name and the tailnet path
+  `/midnight-racer/`, and the tests' stand-in origin
+  `https://midnight-racer.test`. A repository rename moves the Pages
+  address, and GitHub does not redirect a project site, so it is done once,
+  with the swap (WP 9.5).

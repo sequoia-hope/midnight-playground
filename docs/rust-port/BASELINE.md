@@ -85,7 +85,7 @@ frames after the page appears, when shaders compile.
 SPEC 4.6 test 6: ticks per second for the full Sierra field (the player
 on the autopilot, five rivals, 22 traffic cars, collisions; no Race rules,
 no trace), median of five runs of 14,400 ticks, on the dev machine (Ryzen 9
-9900X). The Rust figure is `cargo run --release -p mr_sim --bin mr-sim --
+9900X). The Rust figure is `cargo run --release -p mp_sim --bin mp-sim --
 bench`; the JS one is `parity/golden/sim/bench.json`
 (`tools/parity/sim-bench.mjs`, Node, parity kernel on).
 
@@ -103,7 +103,7 @@ ticks/s natively (about 1,100 to 1,500 times real time).
 The Bevy client (stand-in materials, DECISIONS D103) loading each export,
 on the dev machine (RTX 3060), 2026-10-03, with the machine busy with
 unrelated work (load average 20 to 35 on 24 cores), so these are
-indications, not baselines. Native: the dev build (`cargo run -p mr_game`,
+indications, not baselines. Native: the dev build (`cargo run -p mp_game`,
 dependencies optimised), `--screenshot`, from start to the screenshot of the
 first frame with every pipeline compiled; web: the dev wasm in headless
 Chrome on WebGPU (Vulkan), through the registered server, times from
@@ -127,7 +127,7 @@ with every pipeline compiled. Ranges are over the dev and release builds and
 repeated runs. The dev wasm is 77 MB raw.
 
 **Release build** (`cargo xtask web --release`, fat LTO, `wasm-opt -Oz`;
-3 min 14 s at load average about 30): `mr_game_bg.wasm` 18.91 MB, **5.87 MB
+3 min 14 s at load average about 30): `mp_game_bg.wasm` 18.91 MB, **5.87 MB
 after gzip** (G1's limit: 10 MB). Flying Sierra and Coast at 60 m/s from
 s = 80 in headless Chrome (WebGPU, 1280 × 800), shadows off and on: a steady
 60 fps (the display rate) with no frame over 16.8 ms after the first second
@@ -205,7 +205,7 @@ RSS 905 MB (WP 2.2: 4.1 s, 839 MB; the environment atlas, post targets and
 pipelines add about 70 MB). The environment map (28 passes) is rebuilt
 every 2.5 % of a sprint route.
 
-**Web.** Release build (`cargo xtask web --release`): `mr_game_bg.wasm`
+**Web.** Release build (`cargo xtask web --release`): `mp_game_bg.wasm`
 20.2 MB, 6.26 MB after gzip (WP 2.2: 5.87 MB). In headless Chrome on WebGPU
 (`tools/parity/rust-web.mjs`), Seaside ready 4.2 to 9.7 s after navigation (models 3.4 s) with
 the dev machine loaded; the WGSL compiles in Chrome's compiler and the
@@ -271,7 +271,7 @@ the night). Side by side, the five gate stations, the same five in the full
 scene and four from other levels: `parity/report/wp24-side-by-side/` (from
 the worktree that ran them).
 
-**Web.** Release build: `mr_game_bg.wasm` 20.4 MB, 6.35 MB after gzip
+**Web.** Release build: `mp_game_bg.wasm` 20.4 MB, 6.35 MB after gzip
 (WP 2.3: 6.26 MB). In headless Chrome on WebGPU (`rust-web.mjs`), scenes
 cut down to the new kinds (sea, terrain, road and points of Coast; glow
 points of Sierra; flicker points of Desert) compile and draw without
@@ -324,7 +324,7 @@ Coast 459 / 300) was taken the same way at load average about 20.
 **Warm-up (SPEC 6.3; D390).** Sierra draws 45 material × mesh-layout
 combinations, Coast 43, Seaside 14, the models 11; they compile behind
 the loading screen, and in every run above no pipeline was compiled after
-it (`__mr.lateFrames` 0). Before the GPU fence the first flight frames had
+it (`__mp.lateFrames` 0). Before the GPU fence the first flight frames had
 one frame of about 1.07 s just after "ready" (the browser finishing the
 pipelines in its GPU process); with it, none. The JS game's own worst
 frames include its shader compiles (the "> 50 ms" frames in its first
@@ -358,7 +358,7 @@ for gate G1: measure on the phones before deciding (below).
 
 **Memory, ten reloads (SPEC 6.6; D394).** The wasm memory's size, which is
 its high-water mark, in MB, after the first load and after each reload
-(`__mr.reload`, the scene torn down and loaded again in place):
+(`__mp.reload`, the scene torn down and loaded again in place):
 
 | Run | After load | Reloads 1 to 10 |
 |---|---:|---|
@@ -387,8 +387,8 @@ menu).** First frame 0.97 to 1.84 s after navigation (WebGPU), 1.64 to
 built and warmed up, 2.8 to 5.5 s. The JS game reaches its menu in 3.2 s.
 Met with room.
 
-**Size.** `cargo xtask web --release`: `mr_game_bg.wasm` 19.58 MB, 6.09 MB
-after gzip (WebGPU); `mr_game_webgl2_bg.wasm` 20.81 MB, 6.56 MB after gzip
+**Size.** `cargo xtask web --release`: `mp_game_bg.wasm` 19.58 MB, 6.09 MB
+after gzip (WebGPU); `mp_game_webgl2_bg.wasm` 20.81 MB, 6.56 MB after gzip
 (WebGL2). G1's limit is 10 MB.
 
 **WebGL2 (WP 2.7).** The page loads the WebGL2 build when the browser
@@ -529,8 +529,8 @@ display's size) before and after: the same to 2 levels of 255 except the
 stations of D452 (Streets' lamp globes, whose instance colours above 2
 are no longer clamped) and a few edge pixels (D451).
 
-**Size.** `mr_game_bg.wasm` 27.59 MB, 8.77 MB after gzip;
-`mr_game_webgl2_bg.wasm` 28.83 MB, 9.24 MB after gzip (budget 10 MB).
+**Size.** `mp_game_bg.wasm` 27.59 MB, 8.77 MB after gzip;
+`mp_game_webgl2_bg.wasm` 28.83 MB, 9.24 MB after gzip (budget 10 MB).
 The build this change started from (9b573da) is 27.51 / 8.74 MB and
 28.75 / 9.22 MB: this change adds 0.08 MB, 0.02 to 0.03 MB after gzip.
 The growth since the WP 2.6 figures above (6.09 / 6.56 MB after gzip) came
@@ -556,7 +556,7 @@ On WebGPU the light setters' per-frame material edits were the slow
 frames at dusk; after D456 the one frame over 50 ms left is at the start
 of the race (s 43, 52.6 ms) or at Sierra s 5,137 (50.2 ms), where the race
 compiles pipelines the warm-up does not cover: every race run, before and
-after, reports `__mr.lateFrames` 1 (Coast) or 3 (Sierra). The race's car
+after, reports `__mp.lateFrames` 1 (Coast) or 3 (Sierra). The race's car
 models (D440) are spawned when the race starts and are not part of the
 warm-up's combinations (D390), which is the next thing to fix for SPEC
 6.3's gate in a race (play/ is not changed here beyond D456). WebGL2 on
@@ -692,7 +692,7 @@ world build is done before `ready` (2.9 s in wasm on the dev machine).
 Memory, ten reloads of Sierra (WebGPU): after load 348 MB, then 357, 488
 (before: 303, then 443). With `?world=gen`: 348, then 357, 375.
 
-Size: `mr_game_bg.wasm` 9.44 MB and `mr_game_webgl2_bg.wasm` 9.93 MB after
+Size: `mp_game_bg.wasm` 9.44 MB and `mp_game_webgl2_bg.wasm` 9.93 MB after
 gzip (budget 10 MB; before: 8.77 and 9.24). World generation is now linked
 into the client (the level build, its textures and the bundled fonts).
 After merging main (race audio, the race warm-up, the other levels'
@@ -742,11 +742,11 @@ inside the 16.7 ms.
 2026-10-04. Sizes are MB of 2^20 bytes, as `cargo xtask size` prints them;
 "gzip" is gzip at level 9 (`xtask size` uses flate2's best, which comes
 out about 0.01 MB above `gzip -9`). Main at a60cb88 was over SPEC 6.6's
-budget: `mr_game_bg.wasm` 31.27 MB, **10.00 MB gzip** (WebGPU);
-`mr_game_webgl2_bg.wasm` 32.51 MB, **10.48 MB gzip** (WebGL2).
+budget: `mp_game_bg.wasm` 31.27 MB, **10.00 MB gzip** (WebGPU);
+`mp_game_webgl2_bg.wasm` 32.51 MB, **10.48 MB gzip** (WebGL2).
 
 **How it was measured.** The release build's wasm (`target/wasm32-
-unknown-unknown/web-release/mr_game.wasm`, which keeps its name section)
+unknown-unknown/web-release/mp_game.wasm`, which keeps its name section)
 through `wasm-bindgen` and then `wasm-opt -Oz -g`, the same optimisation
 as the shipped file but with function names kept (32.79 MB without the
 names, as shipped). Each function body is given to a crate: the first
@@ -770,22 +770,22 @@ on the same named file gives the per-function sizes.
 | Bevy UI and text (`bevy_ui`, `ui_render`, `bevy_text`, taffy, parley, swash, zeno, harfrust 0.6, skrifa 0.42 and 0.44, read-fonts 0.39 and 0.41) | 2.66 | 0.96 | 10 % |
 | naga, naga_oil, regex (WGSL composition and validation on the client; includes naga's GLSL front end, which `bevy_shader` turns on for wasm) | 2.16 | 0.83 | 8 % |
 | Bevy PBR, core pipelines (3D and 2D), lights | 2.23 | 0.76 | 8 % |
-| Data: the bundled fonts (`mr_canvas`, 17 files, `include_bytes!`) | 1.07 | 0.65 | 7 % |
+| Data: the bundled fonts (`mp_canvas`, 17 files, `include_bytes!`) | 1.07 | 0.65 | 7 % |
 | Bevy render core, mesh, image, camera, `image` and `png` | 1.94 | 0.64 | 6 % |
-| `mr_worldgen`: the other levels' scenery (Coast, Beach, Harbor, Desert, Raceway, Streets) | 1.19 | 0.39 | 4 % |
-| `mr_canvas`'s text stack (harfrust 0.13, skrifa 0.46, read-fonts 0.43) | 0.82 | 0.30 | 3 % |
+| `mp_worldgen`: the other levels' scenery (Coast, Beach, Harbor, Desert, Raceway, Streets) | 1.19 | 0.39 | 4 % |
+| `mp_canvas`'s text stack (harfrust 0.13, skrifa 0.46, read-fonts 0.43) | 0.82 | 0.30 | 3 % |
 | Bevy input, window, winit, a11y | 1.03 | 0.29 | 3 % |
-| `mr_game` | 0.62 | 0.24 | 2 % |
-| `mr_worldgen`: shared (terrain, road, sky, sea, flora, textures, car models, geometry) | 0.58 | 0.23 | 2 % |
-| `mr_worldgen`: Sierra's scenery (Mountain, Valley, City) | 0.51 | 0.18 | 2 % |
+| `mp_game` | 0.62 | 0.24 | 2 % |
+| `mp_worldgen`: shared (terrain, road, sky, sea, flora, textures, car models, geometry) | 0.58 | 0.23 | 2 % |
+| `mp_worldgen`: Sierra's scenery (Mountain, Valley, City) | 0.51 | 0.18 | 2 % |
 | Bevy 2D sprites (`bevy_sprite`, `bevy_sprite_render`) | 0.49 | 0.15 | 2 % |
 | Data: WGSL sources (Bevy's and the client's) | 0.61 | 0.15 | 2 % |
 | Data: other text (type names, messages, JSON) | 0.44 | 0.12 | 1 % |
 | std, core, alloc | 0.31 | 0.12 | 1 % |
-| Simulation (`mr_sim`, `mr_levels`, `mr_track`, `mr_math`, `mr_net`) | 0.26 | 0.11 | 1 % |
-| `mr_canvas` and tiny-skia | 0.23 | 0.10 | 1 % |
-| `mr_audio` | 0.18 | 0.07 | 1 % |
-| `mr_scene`, serde_json, sha2 | 0.19 | 0.07 | 1 % |
+| Simulation (`mp_sim`, `mp_levels`, `mp_track`, `mp_math`, `mp_net`) | 0.26 | 0.11 | 1 % |
+| `mp_canvas` and tiny-skia | 0.23 | 0.10 | 1 % |
+| `mp_audio` | 0.18 | 0.07 | 1 % |
+| `mp_scene`, serde_json, sha2 | 0.19 | 0.07 | 1 % |
 | Bevy `post_process` (bloom, depth of field, motion blur, ...) | 0.16 | 0.06 | 1 % |
 | wgpu and the web-sys glue | 0.09 | 0.04 | 0 % |
 | Section headers, import and export names, the function table | 0.54 | | |
@@ -800,7 +800,7 @@ replaces in the other build. wgpu itself is small on WebGPU.
 font-types), codespan-reporting 0.12 and 0.13 (naga_oil and naga),
 hashbrown 0.16 and 0.17 (bevy_platform and indexmap), miniz_oxide 0.8 and
 0.9 (both from `png`: its decoder and flate2), syn 2 and 3 (proc macros,
-not in the wasm). Only the font stacks are ours to change: `mr_canvas`'s
+not in the wasm). Only the font stacks are ours to change: `mp_canvas`'s
 copy is what world generation draws its signs with, reached from the
 client's world build (D491), not from the menus (their icons draw paths
 only).
@@ -889,7 +889,7 @@ page with a little less work per frame, waiting longer on some), not
 work added; with vsync on, as players run it, nothing changes.
 
 **Each further level's world generation, if linked** (a standalone
-cdylib of `mr_worldgen` with the stages and a chosen set of scenery
+cdylib of `mp_worldgen` with the stages and a chosen set of scenery
 modules, fat LTO, `wasm-opt -Oz`, gzip -9; deltas over the Sierra set):
 
 | Added to Sierra's Mountain, Valley and City | Gzip |
@@ -912,7 +912,7 @@ counted here. The stages and the fonts alone are 0.84 MB. (KB here are 1024 byte
 
 2026-10-04, the web release build (`opt-level = "s"`), headless Chrome on
 WebGPU, 1280 × 800, high quality, through the registered server
-(`rust-perf.mjs`, a race script reading `__mr.wasmMemoryBytes`). GPU memory
+(`rust-perf.mjs`, a race script reading `__mp.wasmMemoryBytes`). GPU memory
 is the tab's processes' use as `nvidia-smi` lists it, sampled every 2 s.
 The machine was overloaded throughout (load averages given per run, up to
 190 on 24 cores, swap full, other agents' browsers on the same GPU), so

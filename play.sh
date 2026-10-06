@@ -21,7 +21,7 @@ fi
 # Chromium's sandbox needs either a root-owned setuid chrome-sandbox helper
 # or unprivileged user namespaces. Ubuntu's AppArmor blocks the latter for
 # unconfined apps, so fall back to --no-sandbox there. The game only loads
-# its own local files. Force either way with MR_SANDBOX=1 / MR_SANDBOX=0.
+# its own local files. Force either way with MP_SANDBOX=1 / MP_SANDBOX=0.
 sandbox_ok() {
   local helper="$ELECTRON_DIR/dist/chrome-sandbox"
   if [ "$(stat -c '%u' "$helper" 2>/dev/null)" = "0" ] && [ -u "$helper" ]; then return 0; fi
@@ -32,7 +32,7 @@ sandbox_ok() {
   return 0
 }
 FLAGS=()
-case "${MR_SANDBOX:-auto}" in
+case "${MP_SANDBOX:-auto}" in
   0) FLAGS+=(--no-sandbox) ;;
   1) ;;
   *) sandbox_ok || FLAGS+=(--no-sandbox) ;;

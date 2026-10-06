@@ -1,6 +1,6 @@
 // Seaside Raceway of the browser's scene export (roadmap WP 7.4):
 // everything Raceway.js and raceway/* contribute (the group `raceway`), as
-// a small digest, so that mr_worldgen's Raceway can be held to the JS (L3)
+// a small digest, so that mp_worldgen's Raceway can be held to the JS (L3)
 // in CI and in wasm, without the cache. The pattern of
 // tools/parity/desert-golden.mjs, whose file it does not touch.
 //
@@ -18,7 +18,7 @@
 //     materials in order of first use, each material described (textures by
 //     their sampler; canvas pixels are WP 3.2's threshold gate) and hashed in
 //     a canonical form (keys sorted, every number as its f64 bits), which
-//     crates/mr_worldgen/tests/seaside.rs makes the same way;
+//     crates/mp_worldgen/tests/seaside.rs makes the same way;
 //   - per texture a material uses, the 8×8 block means of its pixels (as
 //     tools/parity/textures.mjs writes them), for the threshold gate without
 //     the cache;

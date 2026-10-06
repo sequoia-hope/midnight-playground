@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#05060c">
+<title>Midnight Playground</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111'/%3E%3Cpath d='M6 20h20l-3-6H12z' fill='%23ff3860'/%3E%3Ccircle cx='11' cy='21' r='3' fill='%23fff'/%3E%3Ccircle cx='22' cy='21' r='3' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #05060c; color: #e8ecf4;
+               font: 16px/1.5 system-ui, sans-serif; overflow: hidden; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block;
+          outline: none; touch-action: none; -webkit-touch-callout: none;
+          -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  .screen { position: fixed; inset: 0; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 14px; padding: 16px;
+            background: #05060c; text-align: center; }
+  .screen[hidden] { display: none; }
+  h1 { margin: 0; font-size: clamp(26px, 6vw, 44px); letter-spacing: 0.12em;
+       font-weight: 800; font-style: italic; }
+  h1 span { color: #ff3d6e; }
+  .bar { width: min(420px, 80vw); height: 6px; border-radius: 3px; background: #1b2032;
+         overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: #ff3d6e;
+           transition: width 120ms linear; }
+  #msg { margin: 0; color: #9aa3b8; font-size: 14px; min-height: 1.5em; }
+  #msg.error { color: #ff8a8a; white-space: pre-wrap; max-width: 46em; }
+  #nogpu p { max-width: 34em; margin: 0; color: #c5cbdb; }
+  /* The loading screen as the JS game draws it (src/game/hud.css: .screen,
+     #loading, .logo, .load-bar, #load-fill, #load-label), in the bundled
+     Rajdhani the menus use (roadmap WP 6.2). */
+  @font-face { font-family: Rajdhani; font-weight: 500; src: url(../../assets/fonts/rajdhani/Rajdhani-Medium.ttf); }
+  @font-face { font-family: Rajdhani; font-weight: 600; src: url(../../assets/fonts/rajdhani/Rajdhani-SemiBold.ttf); }
+  @font-face { font-family: Rajdhani; font-weight: 700; src: url(../../assets/fonts/rajdhani/Rajdhani-Bold.ttf); }
+  #loading { background: radial-gradient(ellipse at 50% 40%, #1c1030, #05060a 70%); gap: 16px;
+             font-family: Rajdhani, "Arial Narrow", ui-sans-serif, system-ui, sans-serif; color: #f4f6fb; }
+  #loading .logo { font-size: clamp(48px, 9vw, 110px); font-weight: 900; font-style: italic; letter-spacing: -.02em;
+                   line-height: .9; text-align: center; padding: 0 .18em;
+                   background: linear-gradient(180deg, #fff 30%, #9aa4c0); -webkit-background-clip: text; background-clip: text;
+                   color: transparent; filter: drop-shadow(0 6px 24px rgba(255,56,96,.35)); }
+  #loading .logo span { display: block; font-size: .5em; letter-spacing: .45em; margin-left: .3em;
+                        background: linear-gradient(90deg, #ff3860, #ff9a3c); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #loading .bar { width: min(420px, 80vw); height: 6px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+  #loading .bar i { background: linear-gradient(90deg, #ff3860, #ff9a3c); transition: width .15s; }
+  #loading #msg { color: rgba(244, 246, 251, 0.62); letter-spacing: .2em; text-transform: uppercase; font-size: 13px; line-height: normal; }
+  #loading #msg.error { color: #ff8a8a; letter-spacing: normal; text-transform: none; font: 14px/1.5 system-ui, sans-serif; }
+  @media (max-height: 780px) { #loading { gap: 10px; justify-content: flex-start; padding-top: 18px; }
+                               #loading .logo { font-size: clamp(40px, 7vw, 76px); } }
+  @media (max-height: 500px) { #loading { gap: 8px; padding: 10px 16px; } #loading .logo { font-size: 34px; } }
+</style>
+</head>
+<body>
+<!-- Roadmap WP 2.1: the Rust client's page. It picks the backend (WebGPU,
+     else the WebGL2 build: WP 2.7), shows download progress while the wasm
+     and the scene load, keeps the loading screen up while the pipelines
+     warm up (WP 2.6), and bridges user gestures into the wasm (SPEC 8.1,
+     8.4). ?perf=1 runs the measurement (perf.js). Every URL here is
+     relative: the build is always served under a sub-path. -->
+<canvas id="game" tabindex="0"></canvas>
+<div id="loading" class="screen">
+  <div class="logo">MIDNIGHT<span>PLAYGROUND</span></div>
+  <div class="bar"><i id="bar"></i></div>
+  <p id="msg">Starting…</p>
+</div>
+<div id="nogpu" class="screen" hidden>
+  <h1>MIDNIGHT <span>PLAYGROUND</span></h1>
+  <p><strong>This browser has neither WebGPU nor WebGL2</strong>, one of which this build of the game needs.</p>
+  <p>Use a current Chrome or Edge (113 or newer on Windows, macOS or ChromeOS;
+     121 or newer on Android 12+), or Safari 26 on iOS, iPadOS or macOS.
+     WebGPU is only offered to secure pages: open the game over https (or on
+     localhost) to get it.</p>
+  <p id="nogpu-why"></p>
+</div>
+<script type="module">
+  // The status the wasm publishes (state, progress, frames, ready, …), and
+  // the page's own: the start of SPEC 8.5's window.__mp.
+  const mr = (window.__mp = { state: 'boot', startMs: performance.now() });
+  const $ = (id) => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  const show = (frac, text) => {
+    if (frac !== null) $('bar').style.width = (100 * Math.max(0, Math.min(1, frac))).toFixed(1) + '%';
+    if (text !== null) $('msg').textContent = text;
+  };
+  const fail = (text) => {
+    mr.state = 'failed'; mr.error = text;
+    $('loading').hidden = false;
+    $('msg').className = 'error';
+    $('msg').textContent = text;
+  };
+  const MB = (n) => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
+  const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+
+  // Fetch with progress: onProgress(received, total or 0).
+  async function download(url, onProgress) {
+    const res = await fetch(url, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+    // A precompressed response's length is the compressed size: no fraction.
+    const total = res.headers.get('content-encoding') ? 0 : Number(res.headers.get('content-length')) || 0;
+    if (!res.body) return new Uint8Array(await res.arrayBuffer());
+    const reader = res.body.getReader();
+    let buf = new Uint8Array(total || 1 << 20), n = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (n + value.length > buf.length) {
+        const next = new Uint8Array(Math.max(buf.length * 2, n + value.length));
+        next.set(buf.subarray(0, n)); buf = next;
+      }
+      buf.set(value, n); n += value.length;
+      onProgress(n, total);
+    }
+    return buf.length === n ? buf : buf.slice(0, n);
+  }
+
+  // An image's pixels: unpremultiplied RGBA rows, top first.
+  async function loadPhoto(url) {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0);
+    const { width, height, data } = g.getImageData(0, 0, c.width, c.height);
+    c.width = c.height = 0;
+    return { width, height, data: new Uint8Array(data.buffer) };
+  }
+
+  // WebGPU, asked a few times: Chrome can answer null while its GPU process
+  // is still starting (seen headless on Linux).
+  async function webgpuAdapter() {
+    let adapter = null;
+    for (let i = 0; i < 4 && !adapter && 'gpu' in navigator; i++) {
+      if (i) await new Promise((r) => setTimeout(r, 400));
+      adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null);
+    }
+    return adapter;
+  }
+  function hasWebGL2() {
+    try { return !!document.createElement('canvas').getContext('webgl2'); } catch { return false; }
+  }
+
+  // The same page with other parameters (the WebGPU-failed fallback).
+  const withParams = (extra) => {
+    const q = new URLSearchParams(location.search);
+    for (const [k, v] of Object.entries(extra)) q.set(k, v);
+    return location.pathname + '?' + q.toString() + location.hash;
+  };
+
+  async function main() {
+    // 1. The backend, before anything else is downloaded (SPEC 2, roadmap
+    // WP 2.7): the WebGPU build where the browser offers an adapter, else
+    // the WebGL2 build. ?backend=webgpu or ?backend=webgl2 forces one.
+    const want = params.get('backend');
+    let backend = null, adapter = null;
+    if (want !== 'webgl2') {
+      adapter = await webgpuAdapter();
+      if (adapter) backend = 'webgpu';
+    }
+    if (!backend && want !== 'webgpu' && hasWebGL2()) backend = 'webgl2';
+    mr.adapter = adapter ? `${adapter.info?.vendor || ''} ${adapter.info?.architecture || ''}`.trim() : null;
+    mr.webgpu = !!adapter; mr.secure = window.isSecureContext;
+    mr.backend = backend;
+    if (params.get('fallback')) mr.fallback = params.get('fallback');
+    if (!backend) {
+      mr.state = 'nogpu';
+      $('loading').hidden = true; $('nogpu').hidden = false;
+      $('nogpu-why').textContent = (!window.isSecureContext
+        ? 'This page is not a secure context (plain http on a network address), so it gets no WebGPU. '
+        : ('gpu' in navigator ? 'navigator.gpu exists but gave no adapter. ' : 'navigator.gpu is missing. '))
+        + (want === 'webgpu' ? 'WebGL2 was not tried (?backend=webgpu).' : 'WebGL2 is not available either.');
+      return;
+    }
+
+    // If the WebGPU build fails before its first frame (a panic while Bevy
+    // asks for the device, a shader the browser rejects at start), load the
+    // page again with the WebGL2 build, unless WebGPU was asked for.
+    if (backend === 'webgpu' && want !== 'webgpu') {
+      const fallBack = (e) => {
+        if (mr.frames || mr.state === 'failed') return;
+        console.error('WebGPU build failed before its first frame; trying WebGL2:', e?.message || e?.reason || e);
+        location.replace(withParams({ backend: 'webgl2', fallback: 'webgpu-failed' }));
+      };
+      window.addEventListener('error', fallBack);
+      window.addEventListener('unhandledrejection', fallBack);
+    }
+
+    // ?perf=1: the measurement (perf.js) flies the fly camera; give it the
+    // JS baseline's parameters unless the address has its own.
+    if (params.has('perf') && !params.has('s')) {
+      history.replaceState(null, '', withParams({ s: '80', v: '60' }));
+    }
+
+    // 2. The client: wasm with progress (0–30 % of the bar).
+    const build = await fetch('build.json', { cache: 'no-cache' }).then((r) => r.json()).catch(() => ({}));
+    const name = backend === 'webgl2' ? 'mp_game_webgl2' : 'mp_game';
+    const glue = await import(`./${name}.js`);
+    show(0, `Loading the client (${backend === 'webgl2' ? 'WebGL2' : 'WebGPU'})…`);
+    const wasmBytes = await download(`${name}_bg.wasm`, (n, t) => show(t ? 0.3 * n / t : null, `Loading the client… ${MB(n)}`));
+    mr.wasmMB = +(wasmBytes.length / 1048576).toFixed(2);
+    const wasm = await glue.default({ module_or_path: wasmBytes });
+    // The wasm memory never shrinks, so its size is its high-water mark.
+    mr.wasmMemoryBytes = () => wasm.memory.buffer.byteLength;
+
+    // 3. The gesture bridge: inside the handler, into the wasm (SPEC 8.4).
+    // Every gesture wakes the sound (pointerdown too: D510–D517); the
+    // up-events also carry where the pointer is, for the controls that go
+    // fullscreen inside the tap (Race, Race again, Restart; D577).
+    for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+      window.addEventListener(type, (e) => {
+        glue.gesture(type);
+        if (type === 'pointerdown' || type === 'keydown') return;
+        const t = e.changedTouches ? e.changedTouches[0] : e;
+        if (t && t.clientX !== undefined) glue.gesture_at(type, t.clientX, t.clientY);
+        // The level viewer's Copy link, inside the tap (SPEC 8.6).
+        if (t && t.clientX !== undefined && glue.viewer_gesture) glue.viewer_gesture(type, t.clientX, t.clientY);
+      }, { capture: true, passive: true });
+    }
+
+    // Touch controls on a touch-first device, or forced with ?touch=1 (and
+    // off with ?touch=0), as the JS game's isTouchDevice decides; and the
+    // safe-area insets they keep clear of (env(safe-area-inset-*)).
+    mr.touch = params.get('touch') === '1' ? true : params.get('touch') === '0' ? false
+      : !!window.matchMedia?.('(pointer: coarse)').matches && (navigator.maxTouchPoints || 0) > 0;
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;'
+      + 'padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
+    document.body.appendChild(probe);
+    const insets = () => {
+      const c = getComputedStyle(probe), px = (v) => parseFloat(v) || 0;
+      mr.insets = { top: px(c.paddingTop), right: px(c.paddingRight), bottom: px(c.paddingBottom), left: px(c.paddingLeft) };
+    };
+    insets();
+    window.addEventListener('resize', insets);
+    // No long-press menu on the game.
+    $('game').addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // 4. Start the app: its first frame draws while the scene downloads.
+    // __mp.screenshot(name) saves the next frame as a download (test hook).
+    mr.screenshot = (n) => glue.screenshot(String(n));
+    // ?record=1: the run recording so far (JSON lines, D1021), as text, or
+    // saved as a download.
+    mr.recording = () => glue.recording_text();
+    mr.saveRecording = (name) => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([glue.recording_text()], { type: 'application/x-ndjson' }));
+      a.download = name || `midnight-playground-${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
+    mr.ui = (id) => (mr.uiNodes || {})[id] ?? null;
+    mr.reveal = (id) => glue.ui_reveal(String(id));
+    mr.stage = (c) => glue.stage(typeof c === 'string' ? c : JSON.stringify(c));
+    // The race's road, read at once (the e2e bridge's `__race.track`).
+    mr.trackFrame = (s) => Array.from(glue.track_frame(+s));
+    mr.trackWrap = (s) => glue.track_wrap(+s);
+    // __mp.flyTo(station): the fly camera to a screenshot station; then
+    // __mp.flyQuiet counts settled frames (a test hook).
+    // __mp.viewer (the level viewer, ?view=god): the client fills in the
+    // mode, pose and panel state; set({ mode, cam: [x, y, z, yaw, pitch],
+    // ... }) places the camera (a test hook, SPEC 8.6).
+    if (glue.viewer_set) mr.viewer = { set: (o) => glue.viewer_set(JSON.stringify(o)) };
+    mr.flyTo = (p) => { mr.flyQuiet = 0; glue.fly_to(p.s, p.h, p.back, p.lat || 0, p.yaw || 0, p.pitch || 0); };
+    glue.run();
+
+    // 5. The scene (30–80 %), and Seaside's survey for its Track.
+    let level = params.get('level') || glue.start_level() || 'sierra';
+    const sceneUrlOf = (lv) => (lv === level && params.get('scene')) || (build.scenes ? build.scenes + lv + '.mrscene' : null);
+    async function loadScene(lv, first) {
+      const sceneUrl = sceneUrlOf(lv);
+      mr.sceneUrl = sceneUrl;
+      if (lv === 'seaside' && (first || lv !== level)) {
+        download('../../assets/seaside/survey.bin', () => {})
+          .then((b) => glue.load_survey(b))
+          .catch((e) => glue.survey_failed(String(e.message || e)));
+      }
+      level = lv;
+      // The client builds the level itself, no download (D678); as
+      // animate::draws_generated: ?world=export (or off, ?scene= for this
+      // level, ?mat=) loads the exported scene instead, a parity tool.
+      const exported = ['export', 'off'].includes(params.get('world'))
+        || (params.get('scene') && sceneUrl === params.get('scene')) || params.has('mat');
+      if (!exported && glue.generates_scene(lv)) {
+        show(0.3, `Building ${lv}…`);
+        // Seaside's ground photo, decoded by the browser as the JS game's
+        // texture (and the scene exporter) reads it: an image drawn on a
+        // canvas, getImageData's bytes (D680).
+        if (lv === 'seaside' && !glue.has_photo()) {
+          loadPhoto('../../src/levels/seaside/photo.jpg')
+            .then(({ width, height, data }) => glue.load_photo(width, height, data))
+            .catch((e) => glue.photo_failed(String(e.message || e)));
+        }
+        return;
+      }
+      if (!sceneUrl) { glue.scene_failed('no scene: build.json has no scene directory and no ?scene= was given'); return; }
+      let bytes;
+      try {
+        const t0 = performance.now();
+        bytes = await download(sceneUrl, (n, t) => show(t ? 0.3 + 0.5 * n / t : null, `Loading ${lv}… ${MB(n)}${t ? ' of ' + MB(t) : ''}`));
+        mr.sceneMB = +(bytes.length / 1048576).toFixed(1);
+        mr.downloadMs = Math.round(performance.now() - t0);
+      } catch (e) {
+        glue.scene_failed(`${sceneUrl}: ${e.message || e}\n(make the exports with: node tools/parity/scene-export.mjs)`);
+        return;
+      }
+      // The client may still be building the level's world for its
+      // animators: the scene goes in once that memory is free (D491).
+      while (glue.world_pending()) { show(0.8, `Building ${lv}…`); await nextFrame(); }
+      show(0.8, 'Reading the scene…');
+      // Let the bar paint before the synchronous parse.
+      await nextFrame();
+      const t0 = performance.now();
+      glue.load_scene(bytes);
+      mr.parseMs = Math.round(performance.now() - t0);
+      bytes = null;
+    }
+
+    // 6. Building (80–100 %), the warm-up, then hide the loading screen.
+    const poll = () => {
+      if (mr.state === 'failed') return fail(mr.error || 'failed');
+      if (mr.state === 'building') show(0.8 + 0.2 * (mr.progress || 0), 'Building the scene…');
+      if (mr.state === 'warming') show(1, `Preparing the shaders… (${mr.warmUp || 0})`);
+      if (mr.state === 'running') { show(1, ''); $('loading').hidden = true; $('game').focus(); return; }
+      requestAnimationFrame(poll);
+    };
+
+    // __mp.cover(): the loading screen up at once (Race from the menu's
+    // views, while they are freed before the level is asked for, D753).
+    mr.cover = () => { $('loading').hidden = false; $('msg').className = ''; show(0.3, 'Loading…'); };
+
+    // __mp.reload(level): tear the scene down and load it (or another
+    // level) again, behind the loading screen; resolves when it is ready.
+    mr.reload = async (lv = level) => {
+      const t0 = performance.now();
+      $('loading').hidden = false; $('msg').className = '';
+      show(0.3, `Unloading ${level}…`);
+      glue.unload_scene(lv);
+      while (mr.state !== 'waiting' && mr.state !== 'failed') await nextFrame();
+      poll();
+      await loadScene(lv, false);
+      while (mr.state !== 'running' && mr.state !== 'failed') await nextFrame();
+      if (mr.state === 'failed') throw new Error(mr.error || 'failed');
+      return { level: lv, ms: Math.round(performance.now() - t0), downloadMs: mr.downloadMs, parseMs: mr.parseMs };
+    };
+
+    poll();
+    // A menu-first run opens on the menu's sections, which the client builds
+    // itself (D742): no level is downloaded until Race (`__mp.reload`), and
+    // Seaside's view needs its survey and its ground photo.
+    if (glue.menu_sections && glue.menu_sections()) {
+      show(0.3, 'Preparing the menu…');
+      download('../../assets/seaside/survey.bin', () => {})
+        .then((b) => glue.section_survey(b))
+        .catch((e) => glue.section_survey_failed(String(e.message || e)));
+      // Its view's photo at a quarter of the size (D748); the race fetches
+      // the whole one when Seaside is raced.
+      (async () => {
+        const img = new Image();
+        img.src = '../../src/levels/seaside/photo.jpg';
+        await img.decode();
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth / 4); c.height = Math.round(img.naturalHeight / 4);
+        const g = c.getContext('2d', { willReadFrequently: true });
+        g.drawImage(img, 0, 0, c.width, c.height);
+        const { width, height, data } = g.getImageData(0, 0, c.width, c.height);
+        c.width = c.height = 0;
+        glue.section_photo(width, height, new Uint8Array(data.buffer));
+      })().catch((e) => glue.section_photo_failed(String(e.message || e)));
+      level = '';
+    } else {
+      await loadScene(level, true);
+    }
+    if (params.has('stats') || params.has('perf')) statsPanel();
+    if (params.has('perf')) (await import('./perf.js')).runPerf(mr, new URLSearchParams(location.search));
+  }
+
+  // ?stats=1: frame rate and the longest frame of each half second, from
+  // requestAnimationFrame as the JS game's panel measures them, and what the
+  // client reports. For reading on phones (roadmap G1).
+  function statsPanel() {
+    const el = Object.assign(document.createElement('div'), { id: 'stats' });
+    el.style.cssText = 'position:fixed;left:8px;bottom:8px;font:12px ui-monospace,monospace;color:#9f9;background:rgba(0,0,0,.6);padding:4px 8px;border-radius:4px;z-index:9;pointer-events:none;white-space:pre';
+    document.body.appendChild(el);
+    let t0 = performance.now(), last = null, n = 0, worst = 0;
+    const frame = (now) => {
+      requestAnimationFrame(frame);
+      if (last !== null) worst = Math.max(worst, now - last);
+      last = now; n++;
+      const dt = now - t0;
+      if (dt < 500) return;
+      const c = mr.counts || {};
+      const mem = mr.wasmMemoryBytes ? `  wasm ${(mr.wasmMemoryBytes() / 1048576).toFixed(0)} MB` : '';
+      mr.stats = { fps: +(1000 * n / dt).toFixed(1), worstMs: +worst.toFixed(1) };
+      el.textContent = `fps ${mr.stats.fps}  worst ${mr.stats.worstMs}ms  ${mr.backend || ''} ${mr.adapter || ''}\n`
+        + `${mr.state} ${mr.level || ''} s ${Math.round(mr.s || 0)}  hq ${mr.hq ? 'on' : 'off'}${mem}\n`
+        + `first frame ${mr.firstFrameMs ? (mr.firstFrameMs / 1000).toFixed(2) + 's' : '…'}  ready ${mr.readyMs ? (mr.readyMs / 1000).toFixed(2) + 's' : '…'}\n`
+        + `entities ${c.entities ?? '…'}  materials ${c.materials ?? '…'}  warm-up ${mr.warmUp ?? '…'}`;
+      t0 = now; n = 0; worst = 0;
+    };
+    requestAnimationFrame(frame);
+  }
+  main().catch((e) => fail('Failed to start: ' + (e && e.stack || e)));
+</script>
+</body>
+</html>

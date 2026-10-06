@@ -1,6 +1,6 @@
 // What Coast.js, Beach.js and Harbor.js (with coast/kit, beach/*, harbor/*)
 // contribute to Level 2, the Coast Highway (roadmap WP 7.1), as a small
-// digest per group, so that mr_worldgen's Coast, Beach and Harbor can be
+// digest per group, so that mp_worldgen's Coast, Beach and Harbor can be
 // held to the JS (L3) in CI and in wasm, without the cache. The method is
 // tools/parity/city-golden.mjs's (DECISIONS D354), per group:
 //
@@ -18,7 +18,7 @@
 //   - which material each drawable uses, as an index into a table of the
 //     group's materials in order of first use, each described (textures by
 //     their sampler) and hashed in a canonical form (keys sorted, numbers as
-//     f64 bits), as crates/mr_worldgen/tests/coast.rs makes it;
+//     f64 bits), as crates/mp_worldgen/tests/coast.rs makes it;
 //   - per texture a material uses, the 8×8 block means of its pixels;
 //   - the export's night factor and camera (the animators are replayed
 //     there), its fog (which three's renderer copies into a ShaderMaterial's

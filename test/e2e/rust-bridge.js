@@ -6,23 +6,23 @@
 // (`document.getElementById('menu').classList.contains('hidden')`, a
 // select's `value` and `change` event, a pad's bounding box). The Rust
 // build draws everything into one canvas and reports through
-// `window.__mr` (`screen`, `mode`, `ui(id)`, `race`, `audio`, `hud`,
+// `window.__mp` (`screen`, `mode`, `ui(id)`, `race`, `audio`, `hud`,
 // `settings`, `stage(cmd)`, ...). `installBridge` runs in the page before
-// its scripts and puts the JS game's globals over `__mr`, so the suites run
+// its scripts and puts the JS game's globals over `__mp`, so the suites run
 // unchanged:
 //
-// - `__race` and friends are views built from the last frame's `__mr`
+// - `__race` and friends are views built from the last frame's `__mp`
 //   snapshots, once per `game.eval`. A write to a view (`r.player.vx = 3`,
 //   `r.phys.reset(s, 0)`, `a.writePos()`, `el.value = v` and its `change`)
-//   becomes a `__mr.stage` command, sent in order when the eval ends; the
-//   harness then waits for the frame that applied them (`__mr.staged`)
+//   becomes a `__mp.stage` command, sent in order when the eval ends; the
+//   harness then waits for the frame that applied them (`__mp.staged`)
 //   before the next read, as the JS game applied them at once.
 // - While a `game.eval` runs (and only then: the page's own scripts never
 //   see them), `document.getElementById`, `querySelector(All)` and
 //   `getComputedStyle` answer the selectors the suites use with stand-ins
-//   backed by `__mr.uiNodes` (the canvas UI's controls, by their DOM ids).
+//   backed by `__mp.uiNodes` (the canvas UI's controls, by their DOM ids).
 //
-// Hot Pursuit (M8): `__pursuit` and `__race.pv` over `__mr.pursuit`, their
+// Hot Pursuit (M8): `__pursuit` and `__race.pv` over `__mp.pursuit`, their
 // writes and calls as staging commands (`unit`, `hurt`, `say`, `set
 // pursuit.*`, `set pv.*`). What has no Rust counterpart reads as absent:
 // `__world.renderer` and the three.js objects. The list, with what each
@@ -73,7 +73,7 @@ export function installBridge(selectorSrc) {
   };
   // The label a highlighted row starts with (`.pad-focus` is the row).
   const ROW_LABELS = { 'opt-track': 'Track', 'vol-music': 'Music', 'vol-sfx': 'SFX', 'opt-steer': 'Steering', 'opt-pedals': 'Pedals', 'opt-tilt-sens': 'Tilt' };
-  // A setting each option shows (`__mr.settings`), for when it is not on screen.
+  // A setting each option shows (`__mp.settings`), for when it is not on screen.
   const SETTING = {
     'opt-mph': 'mph', 'opt-hq': 'hq', 'opt-flash': 'flash', 'opt-autogas': 'autogas', 'opt-fullscreen': 'fullscreen', 'opt-rumble': 'rumble',
     'opt-track': 'track', 'opt-steer': 'steering', 'opt-pedals': 'pedals',
@@ -82,7 +82,7 @@ export function installBridge(selectorSrc) {
   // TouchControls' SLIDER bands, for the panel's `--gas` and `--brk`.
   const GAS_BOTTOM = 0.36, BRAKE_TOP = 0.3;
 
-  const M = () => window.__mr || {};
+  const M = () => window.__mp || {};
   const U = (id) => (M().uiNodes || {})[id] || null;
   const shownU = (u) => !!u && !!u.visible && u.w > 0 && u.h > 0;
   const pct = (f) => (f * 100).toFixed(2) + '%';
@@ -105,7 +105,7 @@ export function installBridge(selectorSrc) {
     flush() {
       const q = S.queue.splice(0);
       for (const c of q) {
-        if (!M().stage) throw new Error('the Rust build has no __mr.stage');
+        if (!M().stage) throw new Error('the Rust build has no __mp.stage');
         M().stage(c);
         S.sent++;
       }
@@ -122,7 +122,7 @@ export function installBridge(selectorSrc) {
       return r && typeof r.then === 'function' ? Promise.resolve(r).then(out) : out(r);
     },
   };
-  window.__mrShim = S;
+  window.__mpShim = S;
 
   // `body.touch` and `body.pad`, which the suites read off the real body.
   function syncBody() {
@@ -481,7 +481,7 @@ export function installBridge(selectorSrc) {
         return new El({ domId: id, visible: () => !!(hud().shown && hud().laps) });
       case 'hud-lap-n': return new El({ domId: id, text: () => hud().texts?.lapN ?? '' });
       case 'hud-lap-best': return new El({ domId: id, text: () => hud().texts?.lapBest ?? '' });
-      // Hot Pursuit's furniture (`__mr.hud`: each shows as its `.hidden`
+      // Hot Pursuit's furniture (`__mp.hud`: each shows as its `.hidden`
       // says, inside a shown HUD).
       case 'hud-pen': return new El({ domId: id, visible: () => !!(hud().shown && hud().pen), text: () => hud().texts?.pen ?? '' });
       case 'hud-pz': case 'pz-stars': return new El({ domId: id, visible: () => !!(hud().shown && hud().pz) });

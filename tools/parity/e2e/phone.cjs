@@ -6,7 +6,7 @@
 // the touch pause button and resumes with the pause screen's Resume (the
 // M4 card resumed on a tap anywhere; that spot is Main menu on the JS's
 // screen, D578), or lets the autopilot run to the results; saves
-// __mr.screenshot()s.
+// __mp.screenshot()s.
 //   cargo xtask web --release
 //   node tools/parity/e2e/phone.cjs <repo root> <out dir> [touch|auto|desktop] [query]
 // The level is $LEVEL, else Seaside.
@@ -35,7 +35,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     });
     const cdp = await page.createCDPSession();
     await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: out });
-    page.on('console', (m) => { const t = m.text(); if (m.type() === 'error' && !/Failed to load resource/.test(t)) errors.push(t); if (process.env.MR_VERBOSE) console.log('[page]', t); });
+    page.on('console', (m) => { const t = m.text(); if (m.type() === 'error' && !/Failed to load resource/.test(t)) errors.push(t); if (process.env.MP_VERBOSE) console.log('[page]', t); });
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.setRequestInterception(true);
     page.on('request', (req) => {
@@ -51,7 +51,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const ev = (f) => cdp.send('Runtime.evaluate', { expression: f, returnByValue: true, userGesture: false }).then((r) => r.result.value);
     const t0 = Date.now();
     for (;;) {
-      const s = await ev('({state: __mr.state, ready: __mr.ready, error: __mr.error, race: __mr.race})');
+      const s = await ev('({state: __mp.state, ready: __mp.ready, error: __mp.error, race: __mp.race})');
       if (s.error || s.state === 'failed') throw new Error('client failed: ' + s.error);
       if (s.ready && s.race) break;
       if (Date.now() - t0 > 240000) throw new Error('not ready: ' + JSON.stringify(s));
@@ -60,16 +60,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const shot = async (name) => {
       const f = path.join(out, name);
       fs.rmSync(f, { force: true });
-      await ev(`__mr.screenshot(${JSON.stringify(name)})`);
+      await ev(`__mp.screenshot(${JSON.stringify(name)})`);
       for (let i = 0; i < 100 && !fs.existsSync(f); i++) await sleep(100);
       console.log('shot', f, fs.existsSync(f));
     };
-    const info = await ev('({touch: __mr.touch, insets: __mr.insets, canvas: [document.getElementById("game").width, document.getElementById("game").height, document.getElementById("game").clientWidth], race: __mr.race})');
+    const info = await ev('({touch: __mp.touch, insets: __mp.insets, canvas: [document.getElementById("game").width, document.getElementById("game").height, document.getElementById("game").clientWidth], race: __mp.race})');
     console.log('ready', JSON.stringify(info));
     await sleep(1200);
     await shot(`${kind}-countdown.png`);
     for (;;) {
-      const r = await ev('__mr.race');
+      const r = await ev('__mp.race');
       if (r.state === 'racing') break;
       await sleep(100);
     }
@@ -83,19 +83,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         await touch('touchMove', [{ ...stick, x: 200 + Math.min(25, i) }, gas]);
         await sleep(50);
       }
-      const r1 = await ev('__mr.race');
+      const r1 = await ev('__mp.race');
       console.log('driving', JSON.stringify(r1));
       if (!(r1.input.throttle === 1 && r1.input.analog && r1.input.steer > 0 && r1.speed > 8)) errors.push('touch driving failed: ' + JSON.stringify(r1.input) + ' speed ' + r1.speed);
       await shot('touch-race.png');
       // Slide right onto DRIFT, then down to the brake.
       await touch('touchMove', [stick, { ...gas, x: 800 }]);
       await sleep(200);
-      const r2 = await ev('__mr.race.input');
+      const r2 = await ev('__mp.race.input');
       console.log('drift', JSON.stringify(r2));
       if (!r2.handbrake) errors.push('drift strip failed');
       await touch('touchMove', [stick, { ...gas, y: 370 }]);
       await sleep(200);
-      const r3 = await ev('__mr.race.input');
+      const r3 = await ev('__mp.race.input');
       console.log('brake', JSON.stringify(r3));
       if (!(r3.brake > 0.9 && r3.throttle === 0)) errors.push('brake failed');
       await touch('touchEnd', []);
@@ -104,18 +104,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       await touch('touchStart', [{ x: 16 + 108 + 22, y: 96 + 8 + 22, id: 3 }]);
       await touch('touchEnd', []);
       await sleep(300);
-      const m1 = await ev('__mr.race.mode');
+      const m1 = await ev('__mp.race.mode');
       await shot('touch-paused.png');
-      const rb = await ev("__mr.ui('btn-resume')"); await touch('touchStart', [{ x: rb.x + rb.w / 2, y: rb.y + rb.h / 2, id: 4 }]);
+      const rb = await ev("__mp.ui('btn-resume')"); await touch('touchStart', [{ x: rb.x + rb.w / 2, y: rb.y + rb.h / 2, id: 4 }]);
       await touch('touchEnd', []);
       await sleep(300);
-      const m2 = await ev('__mr.race.mode');
+      const m2 = await ev('__mp.race.mode');
       console.log('pause', m1, '→', m2);
       if (m1 !== 'paused' || m2 !== 'race') errors.push('pause/resume failed');
     } else {
       let raced = false; // desktop and auto
       for (;;) {
-        const r = await ev('__mr.race');
+        const r = await ev('__mp.race');
         if (r.time > 20 && !raced) { raced = true; await shot(`${kind}-race.png`); }
         if (r.mode === 'results') break;
         if (Date.now() - t0 > 600000) throw new Error('no results');
@@ -123,9 +123,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       }
       await sleep(1500);
       await shot(`${kind}-results.png`);
-      console.log('results', JSON.stringify(await ev('__mr.race.results')));
+      console.log('results', JSON.stringify(await ev('__mp.race.results')));
     }
-    console.log('fps-ish frames', await ev('__mr.frames'));
+    console.log('fps-ish frames', await ev('__mp.frames'));
   } catch (e) {
     errors.push(String(e.message || e));
   } finally {

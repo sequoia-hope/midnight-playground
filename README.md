@@ -433,9 +433,9 @@ portrait; the tilt comes through Chrome's own sensor emulation), and with a
 fake gamepad in place of `navigator.getGamepads` (menus, remapping, rumble). They
 tap and click the way a player does, with the browser's real rules for when
 audio and fullscreen may start. The working tree is served through request
-interception, so the tests need no server and no port. Set `MR_BASE_URL` to test a running copy
+interception, so the tests need no server and no port. Set `MP_BASE_URL` to test a running copy
 instead (for example the GitHub Pages build), `CHROME_PATH` if Chrome isn't at
-`/usr/bin/google-chrome`, and `MR_HEADFUL=1` to watch.
+`/usr/bin/google-chrome`, and `MP_HEADFUL=1` to watch.
 
 ## Desktop app
 
@@ -456,8 +456,8 @@ and fullscreen state are remembered between runs.
 On Ubuntu, AppArmor blocks Chromium's sandbox unless Electron's
 `chrome-sandbox` helper is owned by root and setuid. When it isn't, `play.sh`
 detects this and falls back to `--no-sandbox`; the app only loads its own
-local files. You can force either behaviour with `MR_SANDBOX=1` or
-`MR_SANDBOX=0`.
+local files. You can force either behaviour with `MP_SANDBOX=1` or
+`MP_SANDBOX=0`.
 
 To add Midnight Racer to your applications menu, run
 `tools/install-desktop-entry.sh`. It writes

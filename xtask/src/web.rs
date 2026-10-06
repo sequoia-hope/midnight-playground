@@ -29,7 +29,7 @@ const WASM_FEATURES: &[&str] = &[
 
 /// One build of the client. Bevy picks its backend at compile time, so the
 /// WebGL2 fallback is a second wasm file, chosen by the page (SPEC 2,
-/// DECISIONS D391). The WebGL2 one is built with the `mr_webgl2` cfg in its
+/// DECISIONS D391). The WebGL2 one is built with the `mp_webgl2` cfg in its
 /// own target directory, so neither build's cache is thrown away by the
 /// other's flags.
 pub struct Backend {
@@ -44,15 +44,15 @@ pub struct Backend {
 pub const BACKENDS: [Backend; 2] = [
     Backend {
         name: "webgpu",
-        out_name: "mr_game",
+        out_name: "mp_game",
         target_dir: None,
         cfg: None,
     },
     Backend {
         name: "webgl2",
-        out_name: "mr_game_webgl2",
+        out_name: "mp_game_webgl2",
         target_dir: Some("webgl2"),
-        cfg: Some("mr_webgl2"),
+        cfg: Some("mp_webgl2"),
     },
 ];
 
@@ -101,13 +101,13 @@ pub fn run(args: &[String]) -> Result {
         built.push(b.name);
     }
 
-    copy_dir(&root.join("crates/mr_game/web"), &out)?;
+    copy_dir(&root.join("crates/mp_game/web"), &out)?;
     // Where the page finds the scene exports: the parity cache of this JS
     // tree, relative to dist/next/ (the registered server serves the repo
     // root, and every URL the client uses is relative; DECISIONS D102).
-    let key = mr_scene::cache::js_tree_key(&root)
+    let key = mp_scene::cache::js_tree_key(&root)
         .map_err(|e| format!("hashing the JS tree for the scene cache key: {e}"))?;
-    let scenes_rel = mr_scene::cache::scenes_rel(&key);
+    let scenes_rel = mp_scene::cache::scenes_rel(&key);
     let backends = BACKENDS
         .iter()
         .filter(|b| out.join(format!("{}_bg.wasm", b.out_name)).exists())
@@ -150,7 +150,7 @@ fn build_backend(b: &Backend, release: bool, profile: &str, out: &Path) -> Resul
     build.args([
         "build",
         "-p",
-        "mr_game",
+        "mp_game",
         "--lib",
         "--target",
         TARGET,
@@ -171,7 +171,7 @@ fn build_backend(b: &Backend, release: bool, profile: &str, out: &Path) -> Resul
     let wasm = target_root
         .join(TARGET)
         .join(profile_dir)
-        .join("mr_game.wasm");
+        .join("mp_game.wasm");
     exec(
         Command::new("wasm-bindgen")
             .args([

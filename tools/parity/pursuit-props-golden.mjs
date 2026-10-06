@@ -2,7 +2,7 @@
 // PursuitView.js's sawhorse (its striped canvas board) and a spike strip
 // laid on Sierra's road at startS + 200 from lat -4 to 4, the children of
 // the export's group `pursuit-props` (tools/parity/lib/scene-page.js
-// exportModels), as a small digest, so mr_worldgen::pursuit_props can be
+// exportModels), as a small digest, so mp_worldgen::pursuit_props can be
 // held to the JS (L3) in CI and in wasm without the cache.
 //
 //   node tools/parity/pursuit-props-golden.mjs [--check]
@@ -11,7 +11,7 @@
 // written out whole (there are few), as tools/parity/car-model-golden.mjs
 // writes them hashed; which materials each node uses, as indices into one
 // table in order of first use; each material's canonical hash and the 8×8
-// block means of its 4-channel textures. crates/mr_worldgen/tests/
+// block means of its 4-channel textures. crates/mp_worldgen/tests/
 // pursuit_props.rs builds the same and compares.
 //
 // --check regenerates in memory and fails if the file would change.
@@ -93,7 +93,7 @@ function blocks(width, height, rgba) {
   return out;
 }
 
-// One node's line (crates/mr_worldgen/tests/car_model.rs `node_line`).
+// One node's line (crates/mp_worldgen/tests/car_model.rs `node_line`).
 function nodeLine({ H, D }, n) {
   let ml = '-', groups = '-', sphere = '-';
   if (n.mesh !== undefined && n.mesh !== null) {

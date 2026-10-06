@@ -5,8 +5,8 @@
 // sections again. Prints the times and the wasm memory it sees.
 //
 //   cargo xtask web --release && node --test tools/parity/e2e/sections.test.mjs
-//   (MR_SHOTS=<dir> saves a picture of each tab's section;
-//    MR_BACKEND=webgl2 runs the WebGL2 build)
+//   (MP_SHOTS=<dir> saves a picture of each tab's section;
+//    MP_BACKEND=webgl2 runs the WebGL2 build)
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,16 +18,16 @@ before(async () => { browser = await launch(); });
 after(async () => { await browser?.close(); });
 
 const MB = (b) => +(b / 1048576).toFixed(0);
-const shots = process.env.MR_SHOTS || null;
-const backend = process.env.MR_BACKEND ? `backend=${process.env.MR_BACKEND}&` : '';
+const shots = process.env.MP_SHOTS || null;
+const backend = process.env.MP_BACKEND ? `backend=${process.env.MP_BACKEND}&` : '';
 
 test('sections: instant tabs, Race loads the level, Main menu builds them again', async () => {
   const load = os.loadavg()[0].toFixed(1);
   const game = await openGame(browser, { query: backend + 'timescale=2', storage: { 'mr.level': 'sierra' }, downloads: shots });
   try {
     const boot = await game.eval(() => ({
-      ready: window.__mr.readyMs, first: window.__mr.firstFrameMs, sceneUrl: window.__mr.sceneUrl ?? null,
-      mem: window.__mr.wasmMemoryBytes(), sec: window.__mr.sections, backend: window.__mr.backend,
+      ready: window.__mp.readyMs, first: window.__mp.firstFrameMs, sceneUrl: window.__mp.sceneUrl ?? null,
+      mem: window.__mp.wasmMemoryBytes(), sec: window.__mp.sections, backend: window.__mp.backend,
     }));
     // Frame times from here: the other sections are built behind the menu.
     await game.eval(() => {
@@ -43,9 +43,9 @@ test('sections: instant tabs, Race loads the level, Main menu builds them again'
     assert.equal(boot.sceneUrl, null, 'no level downloaded at boot');
     assert.equal(boot.sec.active, true);
     assert.equal(boot.sec.shown, 'sierra');
-    await game.waitFor(() => window.__mr.sections?.allMs != null, { timeout: 180000, interval: 250, what: 'every section' });
+    await game.waitFor(() => window.__mp.sections?.allMs != null, { timeout: 180000, interval: 250, what: 'every section' });
     await game.frames(10);
-    const all = await game.eval(() => ({ sec: window.__mr.sections, mem: window.__mr.wasmMemoryBytes(), t: performance.now() }));
+    const all = await game.eval(() => ({ sec: window.__mp.sections, mem: window.__mp.wasmMemoryBytes(), t: performance.now() }));
     console.log(`# ${boot.backend}, load average ${load}: menu ready ${(boot.ready / 1000).toFixed(2)} s (first frame ${(boot.first / 1000).toFixed(2)} s, `
       + `first section shown ${(boot.sec.firstMs / 1000).toFixed(2)} s after its build began), `
       + `wasm ${MB(boot.mem)} MB; all sections ${(all.sec.allMs / 1000).toFixed(2)} s after the first was asked for, wasm ${MB(all.mem)} MB`);
@@ -57,26 +57,26 @@ test('sections: instant tabs, Race loads the level, Main menu builds them again'
       await frameStats();
       const t0 = await game.eval(() => performance.now());
       await game.click(`#lvl-tab-${id}`);
-      const r = await game.waitFor(`(() => { const m = window.__mr; return m.sections.shown === ${JSON.stringify(id)} && m.level === ${JSON.stringify(id)} && { t: performance.now(), screen: m.screen }; })()`,
+      const r = await game.waitFor(`(() => { const m = window.__mp; return m.sections.shown === ${JSON.stringify(id)} && m.level === ${JSON.stringify(id)} && { t: performance.now(), screen: m.screen }; })()`,
         { timeout: 5000, interval: 16, what: id + ' shown' });
       assert.equal(r.screen, 'menu');
       // The click takes two frames in the harness (`click` waits them).
       console.log(`#   tab ${id}: shown ${(r.t - t0).toFixed(0)} ms after the click (harness's two frames included)`);
       await game.frames(60);
       console.log(`#     frames after the switch: ${JSON.stringify(await frameStats())}`);
-      if (shots) await game.shot(`section-${process.env.MR_BACKEND || 'webgpu'}-${id}.png`, shots);
+      if (shots) await game.shot(`section-${process.env.MP_BACKEND || 'webgpu'}-${id}.png`, shots);
     }
-    const mem1 = await game.eval(() => window.__mr.wasmMemoryBytes());
+    const mem1 = await game.eval(() => window.__mp.wasmMemoryBytes());
     console.log(`#   wasm after the tabs: ${MB(mem1)} MB`);
-    assert.equal(await game.eval(() => window.__mr.sceneUrl ?? null), null, 'still nothing downloaded');
+    assert.equal(await game.eval(() => window.__mp.sceneUrl ?? null), null, 'still nothing downloaded');
     // Race on Coast: the sections go, the level is loaded whole.
     await game.click('#lvl-tab-coast');
-    await game.waitFor(() => window.__mr.sections.shown === 'coast');
+    await game.waitFor(() => window.__mp.sections.shown === 'coast');
     const t1 = await game.eval(() => performance.now());
     await startFromMenu(game, { timeout: 240000 });
     const t2 = await game.eval(() => performance.now());
     await waitRacing(game, 60000);
-    const race = await game.eval(() => ({ level: window.__mr.level, sec: window.__mr.sections, mem: window.__mr.wasmMemoryBytes(), mb: window.__mr.sceneMB ?? null }));
+    const race = await game.eval(() => ({ level: window.__mp.level, sec: window.__mp.sections, mem: window.__mp.wasmMemoryBytes(), mb: window.__mp.sceneMB ?? null }));
     console.log(`#   Race on coast: racing (countdown) ${((t2 - t1) / 1000).toFixed(2)} s after the click, `
       + `${race.mb == null ? 'built in the client' : 'a ' + race.mb + ' MB export downloaded'}, wasm ${MB(race.mem)} MB`);
     assert.equal(race.level, 'coast');
@@ -88,23 +88,23 @@ test('sections: instant tabs, Race loads the level, Main menu builds them again'
     await expectScreen(game, 'pause');
     await game.click('#btn-quit');
     await expectScreen(game, 'menu');
-    await game.waitFor(() => window.__mr.sections?.active && window.__mr.sections.allMs != null, { timeout: 180000, interval: 250, what: 'the sections again' });
-    let back = await game.eval(() => window.__mr.sections);
+    await game.waitFor(() => window.__mp.sections?.active && window.__mp.sections.allMs != null, { timeout: 180000, interval: 250, what: 'the sections again' });
+    let back = await game.eval(() => window.__mp.sections);
     assert.equal(back.full, 'coast');
     assert.equal(back.shown, null);
     await game.click('#lvl-tab-desert');
-    await game.waitFor(() => window.__mr.sections.shown === 'desert' && window.__mr.sections.full === null, { timeout: 5000, what: 'desert shown, coast freed' });
+    await game.waitFor(() => window.__mp.sections.shown === 'desert' && window.__mp.sections.full === null, { timeout: 5000, what: 'desert shown, coast freed' });
     await game.click('#lvl-tab-coast');
-    await game.waitFor(() => window.__mr.sections.shown === 'coast', { timeout: 5000, what: "coast's section" });
-    const mem2 = await game.eval(() => window.__mr.wasmMemoryBytes());
+    await game.waitFor(() => window.__mp.sections.shown === 'coast', { timeout: 5000, what: "coast's section" });
+    const mem2 = await game.eval(() => window.__mp.wasmMemoryBytes());
     console.log(`#   back on the menu, Coast freed for Desert's section: wasm ${MB(mem2)} MB`);
     // And a race from there: Seaside, downloaded.
     await game.click('#lvl-tab-seaside');
-    await game.waitFor(() => window.__mr.sections.shown === 'seaside');
+    await game.waitFor(() => window.__mp.sections.shown === 'seaside');
     await startFromMenu(game, { timeout: 240000 });
     await waitRacing(game, 60000);
-    assert.equal(await game.eval(() => window.__mr.level), 'seaside');
-    console.log(`#   Race on seaside after that: wasm ${MB(await game.eval(() => window.__mr.wasmMemoryBytes()))} MB`);
+    assert.equal(await game.eval(() => window.__mp.level), 'seaside');
+    console.log(`#   Race on seaside after that: wasm ${MB(await game.eval(() => window.__mp.wasmMemoryBytes()))} MB`);
     assert.deepEqual(game.errors, []);
   } finally { await game.close(); }
 });

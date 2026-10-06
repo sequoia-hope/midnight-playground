@@ -36,13 +36,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libwayland-dev libxkbcommon-dev libasound2-dev libudev-dev xvfb xauth mesa-vulkan-drivers libvulkan1 libxkbcommon-x11-0 libx11-xcb1 libxcursor1 libxi6 libxrandr2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo clippy -p mr_game --target wasm32-unknown-unknown -- -D warnings
+      - run: cargo clippy -p mp_game --target wasm32-unknown-unknown -- -D warnings
       # The WebGL2 build of the client (roadmap WP 2.7; DECISIONS D391): the
-      # same crate with the `mr_webgl2` cfg, in its own target directory.
+      # same crate with the `mp_webgl2` cfg, in its own target directory.
       - name: Clippy, the WebGL2 client
         env:
-          RUSTFLAGS: -D warnings --cfg mr_webgl2
-        run: cargo clippy -p mr_game --target wasm32-unknown-unknown --target-dir target/webgl2 -- -D warnings
+          RUSTFLAGS: -D warnings --cfg mp_webgl2
+        run: cargo clippy -p mp_game --target wasm32-unknown-unknown --target-dir target/webgl2 -- -D warnings
       - run: cargo test --workspace
       - run: cargo xtask check-deps
       # The native client's smoke test (roadmap WP 6.8, DECISIONS D1003):
@@ -54,22 +54,22 @@ jobs:
       # four of its cores without a sound device. A store of its own, so no
       # saved setting changes what is tested.
       - name: Build the native client
-        run: cargo build -p mr_game --bin midnight-racer
+        run: cargo build -p mp_game --bin midnight-playground
       - name: Smoke test, native, software Vulkan
         timeout-minutes: 15
         env:
           VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
           WGPU_BACKEND: vulkan
-          MR_STORE: ${{ runner.temp }}/mr-store/storage.json
+          MP_STORE: ${{ runner.temp }}/mp-store/storage.json
         run: |
-          xvfb-run -a -s "-screen 0 1280x800x24" target/debug/midnight-racer --smoke-test --after 5
-          xvfb-run -a -s "-screen 0 1280x800x24" target/debug/midnight-racer --smoke-test --after 5 --query "level=seaside&autostart=sports"
-      # mr_audio's backends are features (SPEC 3.2, 7.1): the native one
+          xvfb-run -a -s "-screen 0 1280x800x24" target/debug/midnight-playground --smoke-test --after 5
+          xvfb-run -a -s "-screen 0 1280x800x24" target/debug/midnight-playground --smoke-test --after 5 --query "level=seaside&autostart=sports"
+      # mp_audio's backends are features (SPEC 3.2, 7.1): the native one
       # (web-audio-api, offline renders, no device) is linted and tested
       # here, the web one is linted in its target.
-      - run: cargo clippy -p mr_audio --features native --all-targets -- -D warnings
-      - run: cargo test -p mr_audio --features native
-      - run: cargo clippy -p mr_audio --target wasm32-unknown-unknown --features web -- -D warnings
+      - run: cargo clippy -p mp_audio --features native --all-targets -- -D warnings
+      - run: cargo test -p mp_audio --features native
+      - run: cargo clippy -p mp_audio --target wasm32-unknown-unknown --features web -- -D warnings
 
   wasm:
     name: Wasm (tests under Node, kernel bits, web build, size)
@@ -93,11 +93,11 @@ jobs:
           curl -sSL https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz | tar xz -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/binaryen-version_116/bin" >> "$GITHUB_PATH"
       - name: Simulation crates' tests in wasm (Node)
-        run: cargo test --target wasm32-unknown-unknown -p mr_math -p mr_track -p mr_levels -p mr_sim
+        run: cargo test --target wasm32-unknown-unknown -p mp_math -p mp_track -p mp_levels -p mp_sim
       - name: World generation's tests in wasm (Node)
-        run: cargo test --target wasm32-unknown-unknown -p mr_worldgen
+        run: cargo test --target wasm32-unknown-unknown -p mp_worldgen
       - name: Audio's tests in wasm (Node)
-        run: cargo test --target wasm32-unknown-unknown -p mr_audio
+        run: cargo test --target wasm32-unknown-unknown -p mp_audio
       - name: Kernel in wasm is bit-identical to native
         run: cargo xtask kernel --check
       # Both clients: WebGPU and the WebGL2 fallback (roadmap WP 2.7).

@@ -2,7 +2,7 @@
 // real GPU, the game loaded exactly as a player gets it.
 //
 // No web server and no port: every request to ORIGIN is answered from the
-// working tree by request interception. Set MR_BASE_URL to test a running
+// working tree by request interception. Set MP_BASE_URL to test a running
 // copy instead (`proj url midnight-racer`, or the GitHub Pages build).
 //
 // Everything the tests read from the page goes through Runtime.evaluate with
@@ -11,11 +11,11 @@
 // and that hides exactly the kind of bug these tests exist for (audio or
 // fullscreen that only unlocks inside a real tap).
 //
-// target: 'rust' (MR_TARGET=rust, `npm run test:e2e:rust`) runs the same
+// target: 'rust' (MP_TARGET=rust, `npm run test:e2e:rust`) runs the same
 // suites against the Rust build in dist/next/ (SPEC 8.5): Chrome gets
-// WebGPU, a selector is looked up through `__mr.ui(id)` and tapped at its
+// WebGPU, a selector is looked up through `__mp.ui(id)` and tapped at its
 // centre, and the page's `__race`, `__game`, `__audio`, ... and the DOM the
-// suites read are stand-ins over `window.__mr` (rust-bridge.js). The
+// suites read are stand-ins over `window.__mp` (rust-bridge.js). The
 // default, 'js', is the JS game, exactly as before.
 
 import puppeteer from 'puppeteer-core';
@@ -26,8 +26,8 @@ import { selectorId, installBridge, RUST_ARGS, RUST_TYPES, RUST_PAGE } from './r
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const ORIGIN = 'https://midnight-racer.test';
-const BASE = process.env.MR_BASE_URL ? process.env.MR_BASE_URL.replace(/\/?$/, '/') : ORIGIN + '/';
-export const TARGET = process.env.MR_TARGET || 'js';
+const BASE = process.env.MP_BASE_URL ? process.env.MP_BASE_URL.replace(/\/?$/, '/') : ORIGIN + '/';
+export const TARGET = process.env.MP_TARGET || 'js';
 
 const TYPES = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
@@ -53,14 +53,14 @@ export function launch({ target = TARGET } = {}) {
   if (target === 'rust') {
     return puppeteer.launch({
       executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
-      headless: process.env.MR_HEADFUL ? false : 'new',
+      headless: process.env.MP_HEADFUL ? false : 'new',
       args: RUST_ARGS,
       protocolTimeout: 600000,
     });
   }
   return puppeteer.launch({
     executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
-    headless: process.env.MR_HEADFUL ? false : 'new',
+    headless: process.env.MP_HEADFUL ? false : 'new',
     args: [
       '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist', '--mute-audio',
       '--autoplay-policy=document-user-activation-required',
@@ -117,7 +117,7 @@ export class Game {
     const inner = typeof fn === 'function' ? `(${fn})(...${JSON.stringify(args)})` : `(${fn})`;
     const res = await this.cdp.send('Runtime.evaluate', {
       // A JS page reached from the Rust one (music.html) has no bridge.
-      expression: `(window.__mrShim ? window.__mrShim.run(() => ${inner}) : Promise.resolve(${inner}).then((v) => ({ v })))`,
+      expression: `(window.__mpShim ? window.__mpShim.run(() => ${inner}) : Promise.resolve(${inner}).then((v) => ({ v })))`,
       returnByValue: true, awaitPromise: true, userGesture: false,
     });
     if (res.exceptionDetails) {
@@ -133,7 +133,7 @@ export class Game {
   async staged(n, timeout = 10000) {
     const t0 = Date.now();
     for (;;) {
-      const r = await this.cdp.send('Runtime.evaluate', { expression: `(window.__mr?.staged ?? 0) >= ${n}`, returnByValue: true });
+      const r = await this.cdp.send('Runtime.evaluate', { expression: `(window.__mp?.staged ?? 0) >= ${n}`, returnByValue: true });
       if (r.result.value) return;
       if (Date.now() - t0 > timeout) throw new Error(`the client did not apply staged command ${n}`);
       await sleep(10);
@@ -152,7 +152,7 @@ export class Game {
   snapshot() {
     if (this.target === 'rust') {
       return this.eval(() => {
-        const m = window.__mr || {};
+        const m = window.__mp || {};
         return {
           screen: m.screen === undefined ? 'none' : m.screen,
           mode: m.mode,
@@ -199,22 +199,22 @@ export class Game {
     return r;
   }
 
-  // The Rust build: the control with that id (`__mr.ui`), scrolled to the
-  // middle of its screen (`__mr.reveal`); fails if it is not shown or
+  // The Rust build: the control with that id (`__mp.ui`), scrolled to the
+  // middle of its screen (`__mp.reveal`); fails if it is not shown or
   // another control is on top of its centre (the client's own hit test).
   async centerRust(selector) {
     const id = selectorId(selector);
     if (!id) throw new Error(`no Rust control for ${selector}`);
-    await this.cdp.send('Runtime.evaluate', { expression: `window.__mr.reveal(${JSON.stringify(id)})` });
+    await this.cdp.send('Runtime.evaluate', { expression: `window.__mp.reveal(${JSON.stringify(id)})` });
     await this.frames(3);
     const res = await this.cdp.send('Runtime.evaluate', {
       expression: `(${(i) => {
-        const u = window.__mr.ui(i);
+        const u = window.__mp.ui(i);
         if (!u) return { error: 'no element ' + i };
         if (!u.visible || !u.w || !u.h) return { error: i + ' is not visible' };
         const x = u.x + u.w / 2, y = u.y + u.h / 2;
         let top = null;
-        for (const [k, o] of Object.entries(window.__mr.uiNodes || {})) {
+        for (const [k, o] of Object.entries(window.__mp.uiNodes || {})) {
           if (!o.visible || !o.enabled || x < o.x || x > o.x + o.w || y < o.y || y > o.y + o.h) continue;
           if (!top || o.z > top.z || (o.z === top.z && o.w * o.h < top.w * top.h)) top = { k, ...o };
         }
@@ -265,7 +265,7 @@ export class Game {
     if (this.target === 'rust') {
       // The wasm, the level's build and the shaders' warm-up take longer.
       await this.waitFor(() => {
-        const m = window.__mr;
+        const m = window.__mp;
         if (m?.state === 'failed') throw new Error('client failed: ' + m.error);
         return window.__ready === true;
       }, { timeout: Math.max(timeout, 240000), interval: 250, what: 'the game to load' });
@@ -299,7 +299,7 @@ export async function openGame(browser, { device = 'desktop', query = '', storag
     else if (m.type() === 'warn' || m.type() === 'warning') game.warnings.push(text);
   });
 
-  if (!process.env.MR_BASE_URL) {
+  if (!process.env.MP_BASE_URL) {
     await page.setRequestInterception(true);
     page.on('request', async (req) => {
       const u = new URL(req.url());
@@ -324,9 +324,9 @@ export async function openGame(browser, { device = 'desktop', query = '', storag
     }, Object.fromEntries(Object.entries(storage).map(([k, v]) => [k, JSON.stringify(v)])));
   }
   if (init) await page.evaluateOnNewDocument(init, ...initArgs);
-  // MR_QUERY adds parameters to every page, e.g. MR_QUERY=kernel=1 runs the
+  // MP_QUERY adds parameters to every page, e.g. MP_QUERY=kernel=1 runs the
   // whole suite with the Rust port's parity kernel on (src/parity/hooks.js).
-  const q = [query.replace(/^\?/, ''), process.env.MR_QUERY || ''].filter(Boolean).join('&');
+  const q = [query.replace(/^\?/, ''), process.env.MP_QUERY || ''].filter(Boolean).join('&');
   await page.goto(BASE + page_ + (q ? '?' + q : ''));
   await game.waitReady();
   return game;
@@ -366,7 +366,7 @@ async function openRust(browser, { device, query, storage, path: page_, init, in
     if (/Ignored attempt to cancel a touchstart event/.test(text)) return;
     if (m.type() === 'error') game.errors.push(text);
     else if (m.type() === 'warn' || m.type() === 'warning') game.warnings.push(text);
-    if (process.env.MR_VERBOSE) console.log(`[page ${m.type()}] ${text}`);
+    if (process.env.MP_VERBOSE) console.log(`[page ${m.type()}] ${text}`);
   });
   await page.setRequestInterception(true);
   page.on('request', async (req) => {
@@ -398,7 +398,7 @@ async function openRust(browser, { device, query, storage, path: page_, init, in
   // aids, on by default on a touch screen (DECISIONS D1083), start off
   // unless a test asks for them.
   const aids = ['assist=0', 'line=off'].filter((kv) => !new RegExp('(^|[?&])' + kv.split('=')[0] + '=').test(query));
-  const q = [query.replace(/^\?/, ''), ...aids, process.env.MR_QUERY || ''].filter(Boolean).join('&');
+  const q = [query.replace(/^\?/, ''), ...aids, process.env.MP_QUERY || ''].filter(Boolean).join('&');
   await page.goto(ORIGIN + '/' + (page_ || RUST_PAGE) + (q ? '?' + q : ''));
   await game.waitReady();
   return game;

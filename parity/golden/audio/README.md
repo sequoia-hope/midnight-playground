@@ -1,6 +1,6 @@
 # Audio reference
 
-What the Rust port's audio (`mr_audio`, roadmap M5) is compared against
+What the Rust port's audio (`mp_audio`, roadmap M5) is compared against
 (SPEC 7.5). Produced from the JS game by `tools/parity/audio-ref.mjs`
 (roadmap WP 0.7):
 

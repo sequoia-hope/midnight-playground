@@ -1,8 +1,8 @@
 // The L2 golden for util/math.js (roadmap WP 1.1): mulberry32, hash2, the
 // simplex noise, fbm and ridged, the small helpers, and the JS semantics of
 // SPEC 4.2 (Math.round, Math.sign, Math.max/min, ToInt32), each evaluated
-// over a fixed set of inputs with the parity kernel on. mr_math's tests
-// (crates/mr_math/tests/golden.rs) require the same bits.
+// over a fixed set of inputs with the parity kernel on. mp_math's tests
+// (crates/mp_math/tests/golden.rs) require the same bits.
 //
 //   NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs \
 //     node tools/parity/math-golden.mjs [--check]

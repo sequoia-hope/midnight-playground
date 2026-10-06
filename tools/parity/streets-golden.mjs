@@ -1,7 +1,7 @@
 // Downtown Streets of the browser's scene export (roadmap WP 7.2): what
 // Streets.js and streets/* contribute to Level 3 (the group `streets`), and
 // the group `road`, whose `asphalt2` material Streets wets (roughness,
-// metalness, colour), as a small digest per group, so that mr_worldgen's
+// metalness, colour), as a small digest per group, so that mp_worldgen's
 // Streets can be held to the JS (L3) in CI and in wasm, without the cache.
 // The method is tools/parity/coast-golden.mjs's (DECISIONS D531), whose
 // file it does not touch:
@@ -20,7 +20,7 @@
 //   - which material each drawable uses, as an index into a table of the
 //     group's materials in order of first use, each described (textures by
 //     their sampler) and hashed in a canonical form (keys sorted, numbers as
-//     f64 bits), as crates/mr_worldgen/tests/streets.rs makes it;
+//     f64 bits), as crates/mp_worldgen/tests/streets.rs makes it;
 //   - per texture a material uses, the 8×8 block means of its pixels;
 //   - the export's night factor, camera and fog, and the level's night
 //     parameters.

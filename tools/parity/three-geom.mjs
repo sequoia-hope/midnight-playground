@@ -1,10 +1,10 @@
-// The golden for mr_worldgen::three_geom (roadmap WP 3.1, SPEC 5.2): every
+// The golden for mp_worldgen::three_geom (roadmap WP 3.1, SPEC 5.2): every
 // three.js r180 generator the world code uses, over a spread of parameters
 // (the world code's own calls among them, and the edges: few segments,
 // partial sweeps, open ends, bevel on and off, fractional counts), plus
 // Shape/Path, triangulateShape, CatmullRomCurve3, the geometry transforms
 // and normals, mergeGeometries and mergeVertices, taken with the parity
-// kernel on. crates/mr_worldgen/tests/three_geom.rs builds the same cases in
+// kernel on. crates/mp_worldgen/tests/three_geom.rs builds the same cases in
 // the same order and requires the same bits; read the two side by side.
 //
 //   NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs \

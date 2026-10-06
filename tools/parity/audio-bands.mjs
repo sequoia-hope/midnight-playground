@@ -1,6 +1,6 @@
 // The L4 audio comparison of the Rust port (SPEC 7.5, roadmap M5): the
 // native backend renders every scenario of parity/golden/audio/renders.json
-// (crates/mr_audio/examples/render_scenarios.rs, the way
+// (crates/mp_audio/examples/render_scenarios.rs, the way
 // tools/parity/audio-ref.html renders it in Chrome), and each render's
 // third-octave band levels (tools/parity/lib/bands.mjs, the one analyser for
 // both sides) are compared with Chrome's: within TOLERANCE dB per band,
@@ -49,7 +49,7 @@ const dir = cacheDir('audio/rust-renders');
 
 if (render) {
   const ids = prefixes.length ? prefixes : [...new Set(wanted.map((r) => r.id.split('-')[0] + '-'))];
-  const r = spawnSync('cargo', ['run', '--release', '-q', '-p', 'mr_audio', '--features', 'native', '--example', 'render_scenarios', '--', dir, ...ids], { cwd: ROOT, stdio: ['ignore', 'inherit', 'inherit'] });
+  const r = spawnSync('cargo', ['run', '--release', '-q', '-p', 'mp_audio', '--features', 'native', '--example', 'render_scenarios', '--', dir, ...ids], { cwd: ROOT, stdio: ['ignore', 'inherit', 'inherit'] });
   if (r.status !== 0) { console.error('render_scenarios failed'); process.exit(2); }
 }
 

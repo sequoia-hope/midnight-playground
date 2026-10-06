@@ -9,8 +9,8 @@
 //   node tools/parity/rust-perf.mjs --game js --level sierra [--secs N]
 //
 // The Rust side runs the client's own measurement page (`index.html?perf=1`,
-// crates/mr_game/web/perf.js: the page the owner opens on the phone), and
-// reads `window.__mr.perf`. The JS side opens the JS game's debug fly camera
+// crates/mp_game/web/perf.js: the page the owner opens on the phone), and
+// reads `window.__mp.perf`. The JS side opens the JS game's debug fly camera
 // with the same parameters (s = 80, v = 60, h = 5, back = 14, as
 // tools/parity/perf-baseline.mjs) and records the same frame times with the
 // same requestAnimationFrame recorder.
@@ -109,7 +109,7 @@ const browser = await puppeteer.launch({
   headless: 'new',
   args: flags,
   protocolTimeout: timeoutS * 1000,
-  dumpio: !!process.env.MR_DUMPIO,
+  dumpio: !!process.env.MP_DUMPIO,
 });
 const errors = [];
 let result = null;
@@ -216,7 +216,7 @@ try {
   page.on('console', (m) => {
     const t = m.text();
     if (m.type() === 'error' && !/Failed to load resource/.test(t)) errors.push(t);
-    if (process.env.MR_VERBOSE) console.log(`[page ${m.type()}] ${t}`);
+    if (process.env.MP_VERBOSE) console.log(`[page ${m.type()}] ${t}`);
   });
   page.on('pageerror', (e) => errors.push(String(e)));
   const t0 = Date.now();
@@ -230,7 +230,7 @@ try {
     const url = game === 'rust' ? `${base}dist/${dist}/index.html?${q}` : `${base}index.html?${q}&stats=1`;
     console.error(`${game} race ${game === 'rust' ? backend : ''}: ${url}  (load average ${load.join(' ')})`);
     await page.goto(url);
-    const raceTime = game === 'rust' ? '(window.__mr?.race?.time ?? -1)' : '(window.__race?.time ?? -1)';
+    const raceTime = game === 'rust' ? '(window.__mp?.race?.time ?? -1)' : '(window.__race?.time ?? -1)';
     await page.waitForFunction(`${raceTime} >= 3`, { timeout: timeoutS * 1000, polling: 200 });
     const t0Page = await page.evaluate(() => performance.now());
     const traced = traceS ? (async () => { await sleep((raceS * 1000) / 4); return traceFor(cdp, Math.min(traceS, raceS / 2)); })() : null;
@@ -247,8 +247,8 @@ try {
       requestAnimationFrame(frame);
       await new Promise((r) => setTimeout(r, flightS * 1000));
       on = false;
-      return { dts, at, ss, backend: window.__mr?.backend ?? null };
-    }, raceS, game === 'rust' ? '(window.__mr?.race?.s ?? 0)' : '(window.__race?.player?.s ?? 0)');
+      return { dts, at, ss, backend: window.__mp?.backend ?? null };
+    }, raceS, game === 'rust' ? '(window.__mp?.race?.s ?? 0)' : '(window.__race?.player?.s ?? 0)');
     result.cpu = await cpuStats(page, t0Page, await page.evaluate(() => performance.now()));
     if (traced) result.trace = await traced;
     result.flight = summarise(result.dts, result.at, result.ss);
@@ -266,7 +266,7 @@ try {
     let last = '';
     let traced = null, flightSeen = null;
     for (;;) {
-      const p = await page.evaluate(() => ({ perf: window.__mr?.perf, state: window.__mr?.state, error: window.__mr?.error }));
+      const p = await page.evaluate(() => ({ perf: window.__mp?.perf, state: window.__mp?.state, error: window.__mp?.error }));
       if (p.error || p.state === 'failed' || p.state === 'nogpu') throw new Error(`client ${p.state}: ${p.error || ''}`);
       if (p.perf?.phase === 'flight' && flightSeen === null) flightSeen = Date.now();
       if (traceS && !traced && flightSeen !== null && p.perf?.phase === 'flight' && Date.now() - flightSeen > (p.perf.secs * 1000) / 4) {
@@ -279,7 +279,7 @@ try {
         break;
       }
       const now = JSON.stringify(p.perf || p.state);
-      if (now !== last && process.env.MR_VERBOSE) console.error(now);
+      if (now !== last && process.env.MP_VERBOSE) console.error(now);
       last = now;
       if (Date.now() - t0 > timeoutS * 1000) throw new Error(`not done after ${timeoutS} s (${now})`);
       await sleep(1000);

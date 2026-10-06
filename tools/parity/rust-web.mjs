@@ -1,8 +1,8 @@
 // Screenshots of the Rust client's web build (roadmap WP 2.5): headless
 // Chrome on the GPU with WebGPU (DECISIONS D106's flags), the page and its
 // files answered from the working tree by request interception (no server,
-// no port, `.wasm` as application/wasm), `window.__mr.ready` waited for,
-// then `__mr.screenshot(name)` (a download: headless Chrome does not
+// no port, `.wasm` as application/wasm), `window.__mp.ready` waited for,
+// then `__mp.screenshot(name)` (a download: headless Chrome does not
 // composite a WebGPU canvas into its own screenshots).
 //
 //   cargo xtask web && node tools/parity/rust-web.mjs --level seaside \
@@ -45,7 +45,7 @@ const browser = await puppeteer.launch({
   args: backend === 'webgl2'
     ? ['--disable-blink-features=WebGPU', '--disable-features=WebGPU', '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist', '--mute-audio']
     : ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist', '--mute-audio'],
-  dumpio: !!process.env.MR_DUMPIO,
+  dumpio: !!process.env.MP_DUMPIO,
 });
 const errors = [];
 try {
@@ -56,7 +56,7 @@ try {
   page.on('console', (m) => {
     const t = m.text();
     if (m.type() === 'error' && !/Failed to load resource/.test(t)) errors.push(t);
-    if (process.env.MR_VERBOSE) console.log(`[page ${m.type()}] ${t}`);
+    if (process.env.MP_VERBOSE) console.log(`[page ${m.type()}] ${t}`);
   });
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.setRequestInterception(true);
@@ -65,13 +65,13 @@ try {
     if (u.origin !== ORIGIN) return req.continue();
     let p = path.join(ROOT, decodeURIComponent(u.pathname));
     if (p.endsWith('/')) p = path.join(p, 'index.html');
-    if (!fs.existsSync(p)) { if (process.env.MR_VERBOSE) console.log('404', u.pathname); return req.respond({ status: 404, body: 'not found' }); }
+    if (!fs.existsSync(p)) { if (process.env.MP_VERBOSE) console.log('404', u.pathname); return req.respond({ status: 404, body: 'not found' }); }
     req.respond({ status: 200, contentType: TYPES[path.extname(p)] || 'application/octet-stream', body: fs.readFileSync(p) });
   });
   const t0 = Date.now();
   await page.goto(`${ORIGIN}/dist/next/index.html?level=${level}&${query}`);
   for (;;) {
-    const s = await page.evaluate(() => ({ state: window.__mr?.state, ready: window.__mr?.ready, error: window.__mr?.error }));
+    const s = await page.evaluate(() => ({ state: window.__mp?.state, ready: window.__mp?.ready, error: window.__mp?.error }));
     if (s.error || s.state === 'failed') throw new Error(`client failed: ${s.error}`);
     if (s.ready) break;
     if (Date.now() - t0 > timeoutMs) throw new Error(`not ready after ${timeoutMs} ms (state ${s.state})`);
@@ -81,9 +81,9 @@ try {
   await new Promise((r) => setTimeout(r, 1500));
   const file = path.join(out, name);
   fs.rmSync(file, { force: true });
-  await page.evaluate((n) => window.__mr.screenshot(n), name);
+  await page.evaluate((n) => window.__mp.screenshot(n), name);
   for (let i = 0; i < 100 && !fs.existsSync(file); i++) await new Promise((r) => setTimeout(r, 100));
-  const info = await page.evaluate(() => ({ readyMs: window.__mr.readyMs, frames: window.__mr.frames, counts: window.__mr.counts, backend: window.__mr.backend, webgpu: window.__mr.webgpu, warmUp: window.__mr.warmUp }));
+  const info = await page.evaluate(() => ({ readyMs: window.__mp.readyMs, frames: window.__mp.frames, counts: window.__mp.counts, backend: window.__mp.backend, webgpu: window.__mp.webgpu, warmUp: window.__mp.warmUp }));
   console.log(`${level}: ${fs.existsSync(file) ? file : 'no screenshot'}; ${info.backend} (WebGPU adapter: ${info.webgpu ? 'yes' : 'no'}), ready at ${Math.round(info.readyMs)} ms, ${info.frames} frames, ${info.warmUp} warm-up pipelines`);
   if (info.backend !== backend) errors.push(`the page picked ${info.backend}, expected ${backend}`);
 } catch (e) {

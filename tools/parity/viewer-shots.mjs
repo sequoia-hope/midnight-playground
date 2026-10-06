@@ -46,9 +46,9 @@ const browser = await puppeteer.launch({
   protocolTimeout: 600000,
 });
 
-const vw = (g) => g.eval(() => window.__mr.viewer);
-const set = async (g, o) => { await g.eval((x) => window.__mr.viewer.set(x), o); await g.frames(3); };
-const settled = (g) => g.waitFor(() => !window.__mr.viewer.flying, { timeout: 15000, what: 'the flight' });
+const vw = (g) => g.eval(() => window.__mp.viewer);
+const set = async (g, o) => { await g.eval((x) => window.__mp.viewer.set(x), o); await g.frames(3); };
+const settled = (g) => g.waitFor(() => !window.__mp.viewer.flying, { timeout: 15000, what: 'the flight' });
 
 // Frame times over `ms` while `during` runs, and the counters at the end.
 async function measure(g, ms, during = async () => {}) {
@@ -60,12 +60,12 @@ async function measure(g, ms, during = async () => {}) {
   await during();
   const d = (await rec).sort((a, b) => a - b);
   const q = (p) => d[Math.min(d.length - 1, Math.floor(p * d.length))];
-  const v = await g.eval(() => window.__mr.viewer || {});
+  const v = await g.eval(() => window.__mp.viewer || {});
   return {
     frames: d.length, p50: +q(0.5).toFixed(2), p95: +q(0.95).toFixed(2), max: +d[d.length - 1].toFixed(1),
     mean: +(d.reduce((a, b) => a + b, 0) / d.length).toFixed(2),
     draws: v.draws, tris: v.tris, shadowDraws: v.shadowDraws, shadowTris: v.shadowTris,
-    wasmMB: Math.round(await g.eval(() => window.__mr.wasmMemoryBytes() / 1048576)),
+    wasmMB: Math.round(await g.eval(() => window.__mp.wasmMemoryBytes() / 1048576)),
   };
 }
 
@@ -82,7 +82,7 @@ for (const level of levels) {
   const t0 = Date.now();
   const g = await openGame(browser, { device, query: `view=god&level=${level}&panel=0`, downloads: OUT });
   try {
-    await g.waitFor(() => window.__mr.viewer?.ready === true, { timeout: 120000, what: 'the viewer' });
+    await g.waitFor(() => window.__mp.viewer?.ready === true, { timeout: 120000, what: 'the viewer' });
     r.readyS = +((Date.now() - t0) / 1000).toFixed(1);
     await set(g, { count: true });
     await g.frames(30);
@@ -141,7 +141,7 @@ for (const level of levels) {
     await settled(g);
     await shot(g, `${level}-ride.png`);
     r.ride = await measure(g, secs * 1000);
-    r.wasmPeakMB = Math.round(await g.eval(() => window.__mr.wasmMemoryBytes() / 1048576));
+    r.wasmPeakMB = Math.round(await g.eval(() => window.__mp.wasmMemoryBytes() / 1048576));
     r.errors = g.errors.filter((e) => !/Ignored attempt to cancel a touchstart/.test(e));
     console.log(level, JSON.stringify(r));
   } catch (e) {
@@ -151,7 +151,7 @@ for (const level of levels) {
   if (race) {
     const rg = await openGame(browser, { device, query: `level=${level}&autostart=sports&autodrive=1` });
     try {
-      await rg.waitFor(() => window.__mr.race?.state === 'racing', { timeout: 120000, what: 'the race' });
+      await rg.waitFor(() => window.__mp.race?.state === 'racing', { timeout: 120000, what: 'the race' });
       await sleep(1500);
       r.race = await measure(rg, secs * 1000);
     } catch (e) {

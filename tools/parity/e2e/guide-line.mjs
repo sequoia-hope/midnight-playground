@@ -1,6 +1,6 @@
 // The driving aids on an emulated iPhone (Rust only, DECISIONS D1080–D1084):
 // a race with the touch screen's defaults (guide line Full, steering assist
-// Light), checked on `__mr.aids`; then the car is put on the road at speed
+// Light), checked on `__mp.aids`; then the car is put on the road at speed
 // 200 m before a hairpin with the gas held on the pedal slider, and the
 // line is pictured as it turns from green to orange to red; then every
 // camera mode on the same approach; on a day and a night level, sideways
@@ -38,7 +38,7 @@ const check = (ok, what) => {
 
 async function race(browser, device, level, query) {
   const g = await openGame(browser, { device, query: `level=${level}&autostart=sports&seed=1${query}`, downloads: dir });
-  await g.waitFor(() => window.__mr.race?.state === 'racing' && window.__mr.screen === 'none', { timeout: 120000, what: 'racing' });
+  await g.waitFor(() => window.__mp.race?.state === 'racing' && window.__mp.screen === 'none', { timeout: 120000, what: 'racing' });
   return g;
 }
 
@@ -51,7 +51,7 @@ async function gas(g, on) {
 
 // 200 m short of the hairpin at 42 m/s, on the line's side of the road.
 async function approach(g, level) {
-  await g.eval((c) => window.__mr.stage({ cmd: 'place', ...c }), { ahead: HAIRPIN[level] - 200, speed: 42, lat: 0 });
+  await g.eval((c) => window.__mp.stage({ cmd: 'place', ...c }), { ahead: HAIRPIN[level] - 200, speed: 42, lat: 0 });
   await g.frames(3);
 }
 
@@ -61,17 +61,17 @@ try {
     for (const level of levels) {
       const tag = `${level}-${device}`;
       const g = await race(browser, device, level, '');
-      const aids = await g.eval('window.__mr.aids');
+      const aids = await g.eval('window.__mp.aids');
       check(aids?.guide === 'full' && aids?.assist === 'light', `${tag}: touch defaults ${JSON.stringify(aids)}`);
       await gas(g, true);
       await sleep(1500);
-      const a0 = await g.eval('window.__mr.aids');
+      const a0 = await g.eval('window.__mp.aids');
       check(a0.shown > 10, `${tag}: chevrons shown (${a0.shown})`);
       // Into the hairpin flat out: green, then orange, then red.
       await approach(g, level);
       const seen = [];
       for (let k = 0; k < 6; k++) {
-        const a = await g.eval('window.__mr.aids');
+        const a = await g.eval('window.__mp.aids');
         seen.push(+a.maxUrgency.toFixed(2));
         await g.shot(`${tag}-approach-${k}.png`, dir);
         await sleep(450);
@@ -82,7 +82,7 @@ try {
       for (let m = 0; m < 3; m++) {
         await approach(g, level);
         await sleep(900);
-        const cam = await g.eval('window.__mr.race.camMode');
+        const cam = await g.eval('window.__mp.race.camMode');
         await g.shot(`${tag}-cam${cam}.png`, dir);
         await g.tap('touch-camera');
       }
@@ -100,11 +100,11 @@ try {
     const g = await race(browser, device, level, '&line=brake');
     await gas(g, true);
     await sleep(1000);
-    const calm = await g.eval('window.__mr.aids');
+    const calm = await g.eval('window.__mp.aids');
     await approach(g, level);
     let shown = 0;
     for (let k = 0; k < 6; k++) {
-      const a = await g.eval('window.__mr.aids');
+      const a = await g.eval('window.__mp.aids');
       shown = Math.max(shown, a.shown);
       await g.shot(`${level}-${device}-brake-${k}.png`, dir);
       await sleep(450);
@@ -119,7 +119,7 @@ try {
     await gas(g, true);
     await approach(g, level);
     await sleep(1200);
-    const a = await g.eval('window.__mr.aids');
+    const a = await g.eval('window.__mp.aids');
     check(a.guide === 'off' && a.assist === 'off' && a.shown === 0, `line=off&assist=0: ${JSON.stringify(a)}`);
     await g.shot(`${level}-${device}-off.png`, dir);
     await gas(g, false);

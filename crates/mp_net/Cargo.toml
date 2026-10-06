@@ -1,0 +1,10 @@
+[package]
+name = "mp_net"
+description = "Multiplayer protocol, transports, session, prediction and rollback"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+mp_math.workspace = true
+mp_sim.workspace = true

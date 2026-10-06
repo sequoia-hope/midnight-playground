@@ -76,7 +76,7 @@ pub fn run(args: &[String]) -> Result {
     let rerun_js = args.iter().any(|a| a == "--rerun-js");
     let root = root();
     let key =
-        mr_scene::cache::js_tree_key(&root).map_err(|e| format!("hashing the JS tree: {e}"))?;
+        mp_scene::cache::js_tree_key(&root).map_err(|e| format!("hashing the JS tree: {e}"))?;
     let cache = root.join("parity/cache").join(&key);
     let js = cache.join("shots").join(format!("{js_run}{suffix}"));
     let missing: Vec<&String> = levels
@@ -111,8 +111,8 @@ pub fn run(args: &[String]) -> Result {
             &levels.join(","),
         ]))?;
     }
-    exec(cargo().args(["build", "-p", "mr_game"]))?;
-    let exe = root.join("target/debug/midnight-racer");
+    exec(cargo().args(["build", "-p", "mp_game"]))?;
+    let exe = root.join("target/debug/midnight-playground");
     let rust = cache.join("shots").join(format!("{rust_run}{suffix}"));
     let _ = std::fs::remove_dir_all(&rust);
     for level in &levels {

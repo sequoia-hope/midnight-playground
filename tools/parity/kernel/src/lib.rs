@@ -1,4 +1,4 @@
-//! `mr_math::kernel` compiled to wasm for the JS reference run (SPEC 4.2,
+//! `mp_math::kernel` compiled to wasm for the JS reference run (SPEC 4.2,
 //! roadmap WP 0.3).
 //!
 //! `src/parity/kernel.js` instantiates `mr_kernel.wasm` and replaces
@@ -31,7 +31,7 @@ pub const FUNCTIONS: &[(&str, u32)] = &[
 
 /// Evaluates function `f` (an index into [`FUNCTIONS`]) on `args`, natively.
 pub fn eval(f: usize, args: &[f64]) -> f64 {
-    use mr_math::kernel as k;
+    use mp_math::kernel as k;
     match FUNCTIONS[f].0 {
         "sin" => k::sin(args[0]),
         "cos" => k::cos(args[0]),
@@ -155,7 +155,7 @@ pub fn native_hash(f: usize, n: u32) -> u32 {
 /// that the C library also defines.
 #[cfg(target_arch = "wasm32")]
 mod exports {
-    use mr_math::kernel as k;
+    use mp_math::kernel as k;
 
     macro_rules! export1 {
         ($($name:ident => $f:path),* $(,)?) => {$(

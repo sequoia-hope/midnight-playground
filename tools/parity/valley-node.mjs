@@ -11,7 +11,7 @@
 // the updater sets (the windpump wheels' instance matrices as the SHA-256 of
 // their Float32Array, the waterwheel's and the sails' quaternions, the
 // creek's normal-map offset and its emissive tint) as hex f64 bits;
-// crates/mr_worldgen/tests/valley.rs runs Valley's animator over the same
+// crates/mp_worldgen/tests/valley.rs runs Valley's animator over the same
 // frames. Also prints what the build counted, and how many Math.random
 // draws separate the canvases the build creates (three.js draws four per
 // uuid, so the wood signs' plank noise starts at stream positions that

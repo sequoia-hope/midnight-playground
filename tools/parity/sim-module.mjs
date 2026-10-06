@@ -192,7 +192,7 @@ and requires the hash of every tick to match.
 ## Common ground
 
 - **Numbers.** The parity kernel is on (every inexact \`Math\` function from
-  \`mr_math\`); dt is 1/120 s; the player's input is quantised as the Rust
+  \`mp_math\`); dt is 1/120 s; the player's input is quantised as the Rust
   \`InputFrame\` (\`quantiseInput\`, src/parity/sim.js) before each tick.
 - **Streams.** \`simStreams(1)\`: rivals draw from \`ai\`, the police weave from
   \`police\`, the pursuit from \`pursuit\`, traffic from \`traffic\` (mulberry32

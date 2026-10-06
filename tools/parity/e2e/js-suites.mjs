@@ -1,6 +1,6 @@
 // The JS game's e2e suites (test/e2e/*.test.js) against the Rust build
 // (roadmap WP 6.7, M6's exit; SPEC 8.5): each suite runs with the
-// harness's `target: 'rust'` (MR_TARGET=rust), one Chrome at a time, and
+// harness's `target: 'rust'` (MP_TARGET=rust), one Chrome at a time, and
 // the result is a table of suite × device: passed, failed, skipped, with
 // the reason for every skip.
 //
@@ -12,7 +12,7 @@
 // The device is the test's own: a test named for a phone ("phone…",
 // "phonePortrait…", "iPhone…") is a phone-emulation test, the rest run on
 // the desktop viewport. Before each suite the GPU's memory must be under
-// MR_GPU_MB (default 9000 MB): the machine is shared and the suites are
+// MP_GPU_MB (default 9000 MB): the machine is shared and the suites are
 // GPU-heavy.
 
 import { spawn, execFileSync } from 'node:child_process';
@@ -27,7 +27,7 @@ export const SKIPS = [
   // Deviations (DEVIATIONS.md).
   { suite: 'audio', name: /^phone: pausing suspends the audio, taps on the pause screen leave it/, why: 'deviation: a tap on no control of the pause screen resumes (DEVIATIONS.md, D578); suspend on pause and resume are race-flow\'s Esc test' },
   // JS-only hooks.
-  { suite: 'race-button', name: /^phone: a second tap while the race is starting/, why: 'replaces three\'s `renderer.compileAsync` and traps `window.__race` assignments; the Rust check counts `__mr.races` (tools/parity/e2e/race-button.test.mjs)' },
+  { suite: 'race-button', name: /^phone: a second tap while the race is starting/, why: 'replaces three\'s `renderer.compileAsync` and traps `window.__race` assignments; the Rust check counts `__mp.races` (tools/parity/e2e/race-button.test.mjs)' },
   { suite: 'traffic-lod', name: /./, why: 'drives three.js internals (CarModel.setFar and its geometry groups, Traffic.activate and .lod); the Rust switch (play::FAR_OUT 95 m, FAR_IN 85 m, the same hysteresis) is inside the draw system, with no bridge' },
 ];
 
@@ -44,7 +44,7 @@ const DIR = path.join(ROOT, 'test', 'e2e');
 const all = fs.readdirSync(DIR).filter((f) => f.endsWith('.test.js')).map((f) => f.replace(/\.test\.js$/, '')).sort();
 const run = suites.length ? suites : all;
 
-const GPU_MB = Number(process.env.MR_GPU_MB || 9000);
+const GPU_MB = Number(process.env.MP_GPU_MB || 9000);
 function gpuUsedMb() {
   try {
     const out = execFileSync('nvidia-smi', ['--query-gpu=memory.used', '--format=csv,noheader,nounits'], { encoding: 'utf8' });
@@ -87,12 +87,12 @@ function runSuite(suite) {
   if (skip.some((s) => s.name.source === '.')) return Promise.resolve({ suite, code: 0, tests: skippedOf(suite, skip, []), out: '' });
   return new Promise((resolve) => {
     const child = spawn('nice', ['-n', '10', process.execPath, ...nodeArgs], {
-      cwd: ROOT, env: { ...process.env, MR_TARGET: target }, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: ROOT, env: { ...process.env, MP_TARGET: target }, stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
-    child.stdout.on('data', (d) => { out += d; if (process.env.MR_VERBOSE) process.stdout.write(d); });
-    child.stderr.on('data', (d) => { out += d; if (process.env.MR_VERBOSE) process.stderr.write(d); });
-    const timer = setTimeout(() => child.kill('SIGKILL'), Number(process.env.MR_SUITE_TIMEOUT || 1800000));
+    child.stdout.on('data', (d) => { out += d; if (process.env.MP_VERBOSE) process.stdout.write(d); });
+    child.stderr.on('data', (d) => { out += d; if (process.env.MP_VERBOSE) process.stderr.write(d); });
+    const timer = setTimeout(() => child.kill('SIGKILL'), Number(process.env.MP_SUITE_TIMEOUT || 1800000));
     child.on('close', (code) => {
       clearTimeout(timer);
       const tests = [];
@@ -144,5 +144,5 @@ for (const r of results) {
 }
 console.log('\n| Suite | Target | Device | Pass | Fail | Skip | Notes |\n|---|---|---|---|---|---|---|\n' + rows.join('\n'));
 const failed = results.some((r) => r.code !== 0 && r.tests.some((t) => t.status === 'fail')) || results.some((r) => !r.tests.length);
-if (process.env.MR_RESULTS) fs.writeFileSync(process.env.MR_RESULTS, JSON.stringify(results.map(({ out, ...r }) => r), null, 1));
+if (process.env.MP_RESULTS) fs.writeFileSync(process.env.MP_RESULTS, JSON.stringify(results.map(({ out, ...r }) => r), null, 1));
 process.exit(failed ? 1 : 0);

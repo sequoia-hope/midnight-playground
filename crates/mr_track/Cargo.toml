@@ -1,9 +1,0 @@
-[package]
-name = "mr_track"
-description = "Level definition types, the Track (1 m samples) and road types"
-version.workspace = true
-edition.workspace = true
-publish.workspace = true
-
-[dependencies]
-mr_math.workspace = true
