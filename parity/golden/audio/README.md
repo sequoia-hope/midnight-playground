@@ -42,6 +42,7 @@ before the game's modules load, in Chrome by `?kernel=1` / `?parity=1`.
 | `drives.json`, `drive-<name>.jsonl.gz` | drive | The game's calls on its audio facade during scripted drives |
 | `calllog.json` | calllog | Digest of the Web Audio call log each drive produces |
 | `renders.json` | renders | Offline renders: scenario, third-octave band levels, Chrome's run-to-run variation |
+| `rust-deviated.json` | (not from the JS) | The Rust renders' own expected bands for the scenarios the port changes on purpose (`audio-bands.mjs` `DEVIATED`, DEVIATIONS.md; written by `audio-bands.mjs --update-deviated`) |
 
 ### `arrays.json`, `arrays-small.bin`
 

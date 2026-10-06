@@ -6,7 +6,13 @@
 // both sides) are compared with Chrome's: within TOLERANCE dB per band,
 // ignoring bands quieter than the golden's compareAboveDb in both.
 //
-//   node tools/parity/audio-bands.mjs [--no-render] [id-prefix ...]
+//   node tools/parity/audio-bands.mjs [--no-render] [--update-deviated] [id-prefix ...]
+//
+// A scenario the port changes on purpose (DEVIATED, each with its line in
+// docs/rust-port/DEVIATIONS.md) is compared with the Rust render's own
+// expected bands in parity/golden/audio/rust-deviated.json instead of
+// Chrome's, at the same tolerance; `--update-deviated` writes that file
+// from this run's renders (only after a deliberate change to them).
 //
 // The WAVs and a JSON report go to parity/cache/<js-tree-key>/audio/
 // rust-renders/. Prints one line per scenario (worst band difference, the
@@ -22,8 +28,19 @@ import { readWav, analyseRender, CENTRES } from './lib/bands.mjs';
 
 const TOLERANCE = 1.5; // dB per band (SPEC 7.5)
 
+// Scenarios whose sound departs from the JS on the owner's request.
+const DEVIATED = [
+  // The Ion Arc's motor whine hushed (−7 dB pulling away, −18 dB from 60 %
+  // of its top speed): DEVIATIONS.md, DECISIONS D1061.
+  { id: /^engine-electric-/, why: 'electric motor hushed (D1061)' },
+];
+const deviated = (id) => DEVIATED.find((d) => d.id.test(id));
+const DEV_FILE = path.join(ROOT, 'parity/golden/audio/rust-deviated.json');
+
 const args = process.argv.slice(2);
 const render = !args.includes('--no-render');
+const updateDeviated = args.includes('--update-deviated');
+const devGolden = fs.existsSync(DEV_FILE) ? JSON.parse(fs.readFileSync(DEV_FILE, 'utf8')) : { renders: {} };
 const prefixes = args.filter((a) => !a.startsWith('--'));
 const golden = JSON.parse(fs.readFileSync(path.join(ROOT, 'parity/golden/audio/renders.json'), 'utf8'));
 const floor = golden.analyser.compareAboveDb;
@@ -39,11 +56,18 @@ if (render) {
 const fmt = (x) => x.toFixed(2).padStart(6);
 const report = [];
 let fails = 0;
-for (const ref of wanted) {
-  const file = path.join(dir, ref.id + '.wav');
-  if (!fs.existsSync(file)) { console.log(`${ref.id.padEnd(32)} no render`); continue; }
+for (const chrome of wanted) {
+  const file = path.join(dir, chrome.id + '.wav');
+  if (!fs.existsSync(file)) { console.log(`${chrome.id.padEnd(32)} no render`); continue; }
   const { channels, sampleRate } = readWav(file);
-  const res = analyseRender(channels, sampleRate, ref.scenario.analyse);
+  const res = analyseRender(channels, sampleRate, chrome.scenario.analyse);
+  const dev = deviated(chrome.id);
+  if (dev && updateDeviated) {
+    devGolden.renders[chrome.id] = { why: dev.why, channels: res.map((r) => ({ rms: Math.round(r.rms * 100) / 100, bands: r.bands.map((b) => Math.round(b * 100) / 100) })) };
+  }
+  // A deviated scenario is held to the Rust render's own expected bands.
+  const ref = dev ? { ...chrome, channels: devGolden.renders[chrome.id]?.channels } : chrome;
+  if (!ref.channels) { fails++; console.log(`${chrome.id.padEnd(32)} FAIL deviated (${dev.why}) with no expected bands: run with --update-deviated`); continue; }
   let worst = 0, at = null, compared = 0;
   const bands = [];
   for (let c = 0; c < res.length; c++) {
@@ -59,8 +83,12 @@ for (const ref of wanted) {
   const rms = res.map((r) => Math.round(r.rms * 100) / 100);
   const ok = worst <= TOLERANCE;
   if (!ok) fails++;
-  report.push({ id: ref.id, ok, worst: Math.round(worst * 100) / 100, at, compared, jitter: ref.jitter, rms, chromeRms: ref.channels.map((c) => c.rms), bands });
-  console.log(`${ref.id.padEnd(32)} ${ok ? 'ok  ' : 'FAIL'} worst ${fmt(worst)} dB${at ? ` at ${String(at.hz).padStart(5)} Hz ch${at.c} (rust ${fmt(at.rust)}, chrome ${fmt(at.chrome)})` : ''}; rms ${rms.map(fmt).join('/')} vs ${ref.channels.map((c) => fmt(c.rms)).join('/')}; ${compared} bands`);
+  report.push({ id: ref.id, ok, deviated: dev?.why, worst: Math.round(worst * 100) / 100, at, compared, jitter: ref.jitter, rms, chromeRms: ref.channels.map((c) => c.rms), bands });
+  console.log(`${ref.id.padEnd(32)} ${ok ? (dev ? 'dev ' : 'ok  ') : 'FAIL'} worst ${fmt(worst)} dB${at ? ` at ${String(at.hz).padStart(5)} Hz ch${at.c} (rust ${fmt(at.rust)}, chrome ${fmt(at.chrome)})` : ''}; rms ${rms.map(fmt).join('/')} vs ${ref.channels.map((c) => fmt(c.rms)).join('/')}; ${compared} bands${dev ? `; chrome rms ${chrome.channels.map((c) => fmt(c.rms)).join('/')}` : ''}`);
+}
+if (updateDeviated) {
+  fs.writeFileSync(DEV_FILE, JSON.stringify({ about: 'The Rust renders\' expected band levels for the scenarios audio-bands.mjs DEVIATED from the JS on purpose (docs/rust-port/DEVIATIONS.md); written by --update-deviated.', analyser: golden.analyser, renders: devGolden.renders }, null, 1) + '\n');
+  console.log(`wrote ${path.relative(ROOT, DEV_FILE)}`);
 }
 fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify({ tolerance: TOLERANCE, floor, renders: report }, null, 1) + '\n');
 console.log(`\n${report.length - fails} of ${report.length} scenarios within ${TOLERANCE} dB; report in ${path.relative(ROOT, path.join(dir, 'report.json'))}`);
