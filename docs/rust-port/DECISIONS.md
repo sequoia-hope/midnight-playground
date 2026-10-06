@@ -8394,8 +8394,7 @@ Unit tests pin the bands, monotonicity in distance and speed, and green at
 or under the target. Each chevron is coloured by its own point, so
 approaching a corner too fast the line turns red from the corner back
 towards the car; once the car is slow enough the far side of the corner,
-where the profile rises, stays green. An autopilot car (93 % of the
-profile) sees green with orange at the braking points.
+where the profile rises, stays green.
 
 Braking only shows a chevron with its urgency as its opacity up to 1 (so
 nothing while green, fading in as it turns orange); Full shows every
@@ -8405,10 +8404,10 @@ chevron.
 
 2026-10-05. `play::guide`: one mesh of 102 chevrons, six vertices and four
 triangles each (a ">" pointing down the road, 1.5 m across, the tip
-0.9 m ahead of the arms' ends, the arms 1.5 m long along the road), with positions,
-an up normal and RGBA vertex colours; an unlit (`Model::Basic`)
+0.9 m ahead of the arms' ends, the arms 1.5 m long along the road),
+with positions, an up normal and RGBA vertex colours; an unlit (`Model::Basic`)
 transparent material, both sides drawn, no depth write, fog on, and the
-skid marks' polygon offset (D807: constant 256, slope 4); 5 cm over the
+skid marks' polygon offset (constant 256, slope 4, as `skid_material`); 5 cm over the
 road surface (`Track::point_at`'s height, which includes the bank; the
 skid marks sit 3 cm up). The chevrons sit every 3 m of arc length at
 fixed places on the road, so they do not crawl as the car moves; each
@@ -8425,7 +8424,7 @@ gaps, which reads as a row of arrows.
 The vertices go into the mesh's place in the vertex slab once a frame
 (`animate::MeshWrites`, as the smoke and sparks, D701); no asset edit, no
 new mesh. The CPU copy is reused; the write itself packs a vertex buffer
-(17 KB), as the particles' writes do. The entity sits at the middle of
+(24 KB), as the particles' writes do. The entity sits at the middle of
 the line's reach and the vertices are written relative to it, so the
 transparent sort uses that point (D808's way); its sort rank is 6, after
 the effects, so where it ties with the skid marks it draws over them. Its
@@ -8481,29 +8480,33 @@ the whole race:
 
 | Level | Driver | Race time off / Light / Strong (s) | Off-road off / Light / Strong (s) | Resets off / Light / Strong |
 |---|---|---|---|---|
-| Sierra | Good | 208.6 / 204.5 / 200.7 | 5.1 / 1.8 / 0.4 | 0 / 0 / 1 |
-| Sierra | Lazy | 233.8 / 229.6 / 228.4 | 29.6 / 8.3 / 2.4 | 0 / 1 / 4 |
-| Sierra | Noisy | 227.3 / 234.3 / 216.4 | 17.7 / 5.4 / 0.5 | 0 / 1 / 0 |
-| Sierra | Pulling | 217.7 / 222.5 / 222.3 | 21.0 / 4.8 / 1.0 | 0 / 1 / 1 |
-| Coast | Good | 150.4 / 146.1 / 146.7 | 4.0 / 0.0 / 0.0 | 0 / 0 / 0 |
-| Coast | Lazy | 165.8 / 148.6 / 146.8 | 15.4 / 4.9 / 0.8 | 0 / 0 / 0 |
-| Coast | Noisy | 151.7 / 143.7 / 151.0 | 7.9 / 3.0 / 0.7 | 0 / 0 / 0 |
-| Coast | Pulling | 163.8 / 162.8 / 150.7 | 11.4 / 3.4 / 0.1 | 0 / 0 / 0 |
-| Desert | Good | 136.9 / 135.4 / 138.7 | 2.7 / 0.5 / 1.4 | 0 / 0 / 0 |
-| Desert | Lazy | 162.4 / 147.5 / 143.9 | 19.6 / 4.8 / 3.1 | 0 / 1 / 0 |
-| Desert | Noisy | 139.7 / 147.5 / 133.7 | 12.4 / 3.9 / 1.5 | 0 / 0 / 0 |
-| Desert | Pulling | 172.0 / 148.0 / 144.5 | 16.9 / 3.1 / 0.5 | 5 / 0 / 0 |
-| Streets | Good | 164.3 / 162.4 / 159.6 | 0.0 / 0.0 / 0.0 | 1 / 1 / 0 |
-| Streets | Lazy | 192.9 / 173.3 / 159.1 | 0.0 / 0.0 / 0.0 | 4 / 0 / 0 |
-| Streets | Noisy | 163.1 / 162.7 / 164.3 | 0.0 / 0.0 / 0.0 | 1 / 0 / 0 |
-| Streets | Pulling | 161.8 / 161.4 / 162.2 | 0.0 / 0.0 / 0.0 | 0 / 0 / 0 |
+| Sierra | Good | 208.6 / 198.4 / 209.4 | 5.1 / 0.6 / 1.2 | 0 / 0 / 0 |
+| Sierra | Lazy | 233.8 / 227.5 / 260.2 | 29.6 / 10.4 / 2.2 | 0 / 0 / 9 |
+| Sierra | Noisy | 227.3 / 226.5 / 203.7 | 17.7 / 3.6 / 2.5 | 0 / 2 / 0 |
+| Sierra | Pulling | 217.7 / 217.1 / 210.1 | 21.0 / 5.8 / 1.0 | 0 / 1 / 1 |
+| Coast | Good | 150.4 / 157.8 / 148.6 | 4.0 / 0.0 / 0.0 | 0 / 0 / 0 |
+| Coast | Lazy | 165.8 / 147.7 / 161.7 | 15.4 / 4.3 / 0.8 | 0 / 0 / 1 |
+| Coast | Noisy | 151.7 / 146.0 / 146.3 | 7.9 / 2.9 / 0.4 | 0 / 0 / 0 |
+| Coast | Pulling | 163.8 / 156.6 / 169.5 | 11.4 / 3.2 / 0.1 | 0 / 0 / 1 |
+| Desert | Good | 136.9 / 140.1 / 147.5 | 2.7 / 0.5 / 4.1 | 0 / 0 / 1 |
+| Desert | Lazy | 162.4 / 139.0 / 142.7 | 19.6 / 5.8 / 1.8 | 0 / 0 / 0 |
+| Desert | Noisy | 139.7 / 144.5 / 144.6 | 12.4 / 3.8 / 2.7 | 0 / 0 / 0 |
+| Desert | Pulling | 172.0 / 173.3 / 152.9 | 16.9 / 2.5 / 0.7 | 5 / 4 / 0 |
+| Streets | Good | 164.3 / 156.4 / 154.0 | 0.0 / 0.0 / 0.0 | 1 / 0 / 0 |
+| Streets | Lazy | 192.9 / 168.0 / 165.1 | 0.0 / 0.0 / 0.0 | 4 / 0 / 0 |
+| Streets | Noisy | 163.1 / 171.0 / 159.7 | 0.0 / 0.0 / 0.0 | 1 / 2 / 0 |
+| Streets | Pulling | 161.8 / 163.0 / 169.2 | 0.0 / 0.0 / 0.0 | 0 / 0 / 0 |
 
-Off-road time falls by about three quarters with Light and by 90 % or
-more with Strong for every poor driver; race times change by a few
-seconds either way (the field's contacts differ run to run; resets are
-mostly a car pinned against another), and the good driver is not slowed.
-Streets has walls at the road's edge, so nobody leaves it; there the
-assist saves the bounces (Lazy 193 → 173 → 159 s).
+Off-road time falls by 63 to 85 % with Light and by 78 to 99 % with
+Strong for every poor driver on the three levels with open road edges.
+Race times move by a few seconds either way: the field's contacts differ
+from run to run, and most resets are the car pinned against another one
+(Sierra's Lazy and Strong run: nine resets behind a car stopped at 4.7 km,
+which the scripted driver never steers round, hence its 260 s). A good
+driver's times move as the others' do (Light: Sierra −10 s, Coast +7 s);
+with Strong, Desert's good run spent 1.4 s more off the road than
+without (not looked into further), one reason for Light as the default. Streets has walls at the road's edge, so nobody
+leaves it; there the assist saves the bounces (Lazy 193 → 168 → 165 s).
 
 Unit tests: Off is the identity; heading for either edge with the stick
 at rest it steers back, Strong more than Light; on the line it leaves the
@@ -8554,5 +8557,24 @@ Rust only:
   box above the ◂ ▸ pads) is now the pads' own top, so the taller pads
   push it up; sideways it is the same number as before.
 
+The suites against the release build (`js-suites.mjs`): touch-controls
+10 of 10, tilt 5 of 5, race-flow 11 of 11, menu 9 of 9 (the new options
+included), analog-controls 4 of 5. The one that fails, "the pedal
+slider ...", fails on its last check ("light gas pulls away slower"): it
+resets the car 40 m past the start at rest at about 4 s of race time
+(`timescale=2`), in the path of the field, and a rival running into it
+gives the "light gas" pull 12 to 15 m/s. Replaying the test's steps by
+script, main's build is hit the same way; whether the real test is hit
+depends on how much race time its wall-clock steps take, which this
+build shifts (it fails here also with the guide line and the assist
+off, once in two). Left for the owner's call: the test is the frozen JS
+game's.
+
 Pictures (rest, both thumbs, the Buttons choices; before = main's build,
-after = this one): [PATHS].
+after = this one), the guide line on Sierra (day) and Streets (night)
+into a hairpin flat out, sideways and upright, every camera mode, Braking
+only, the menu's new options, and the native countdown with the line (lavapipe under Xvfb: the
+race shot 20 s in did not come within 15 minutes on the loaded machine):
+`parity/report/driving-aids/index.html` of the branch's worktree (build
+output, not in git; `tools/parity/e2e/guide-line.mjs` and
+`tools/parity/touch-shots.mjs --side rust` make them again).
