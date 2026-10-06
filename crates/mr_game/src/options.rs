@@ -281,6 +281,9 @@ impl Options {
                 "--smoke-test" => smoke = true,
                 "--smoke-race" => smoke_race = true,
                 "--autodrive" => query.push("autodrive=1".into()),
+                // The debug overlay and the run recording (D1020, D1021).
+                "--debug" => query.push("debug=1".into()),
+                "--record" => query.push("record=1".into()),
                 "--materials" => materials = Some(val("--materials")?),
                 "--out" => out = Some(val("--out")?),
                 "--stations" => stations = Some(val("--stations")?),
@@ -320,7 +323,10 @@ pub fn usage() -> &'static str {
      \x20       orbit=x,y,z, fog=0|1, far=0|1, anim=0|1, t=<route fraction>, hide=<groups>, speed=N\n\
      race:   a level without s= is a race (race=0: the attract camera); car=<kind>, seed=N,\n\
      \x20       autodrive=1 (or --autodrive), timescale=N, pursuit=1, heat=N, touch=0|1,\n\
-     \x20       shots=<dir> (save countdown, race and results PNGs, then exit)"
+     \x20       shots=<dir> (save countdown, race and results PNGs, then exit)\n\
+     debug:  debug=1 (or --debug): the frame-time overlay from the start; F3 shows and hides it\n\
+     \x20       record=1 (or --record): record the run to recordings/<date>-<level>.jsonl\n\
+     \x20       (record=<file.jsonl|dir> elsewhere); replay its races with `mr-sim replay <file>`"
 }
 
 #[cfg(test)]
