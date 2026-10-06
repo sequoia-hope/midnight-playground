@@ -368,7 +368,8 @@ audio/radio/           the police radio voice's recorded lines (tools/radio-voic
 vendor/three/          three.js r180 (the build plus the few add-ons used)
 tools/                 check-track.js, car-test.html, audio-test.html, serve.py,
                        og-image.mjs, radio-voice.html and radio-voice/ (the police
-                       radio voice: design, record, audition), seaside/build.py
+                       radio voice: design, record, audition), dj-voice.html and
+                       dj-voice/ (sample DJ chatter, the same way), seaside/build.py
                        (Level 5's data from OpenStreetMap and USGS)
 test/unit/, test/e2e/  the tests (see Tests below)
 music.html             the soundtrack player
