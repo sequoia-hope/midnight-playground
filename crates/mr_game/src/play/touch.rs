@@ -306,7 +306,7 @@ impl Layout {
         // + 26px), 96px), --pedal-h: clamp(190px, 62vmin, 300px), the slider
         // .95 b and the drift strip .7 b wide, the same both ways up.
         // Sideways: --b clamp(60px, 14vmin + 26px, 104px) and the slider
-        // 66vmin (to 320 px). Upright, where the width is short and the
+        // 66vmin (to 320 px), as wide as the JS's. Upright, where the width is short and the
         // height long: --b a fifth of the width, held to what lets the
         // Buttons choices' four pads share a row; the slider panel's unit
         // .22 of the width; the slider .36 of the height (240 to 380 px);
@@ -316,10 +316,14 @@ impl Layout {
         } else {
             clamp(14.0 * vmin + 26.0, 60.0, 104.0)
         };
+        // The slider panel's unit: sideways the JS's `--b`, so the panel
+        // grows in height only and its thumb lane stays where it was (D1085:
+        // a lane moved left of x = 800 on the emulated 915 px phone changed
+        // how fast headless Chrome hands the suites' touches over).
         let pb = if portrait {
             clamp(0.22 * w, 60.0, 110.0)
         } else {
-            b
+            clamp(12.0 * vmin + 26.0, 58.0, 96.0)
         };
         let in_l = ins.left.max(16.0);
         let in_r = ins.right.max(16.0);
@@ -898,6 +902,15 @@ mod tests {
         // The JS's: b 72.8, the slider 241.8 tall and 126.1 wide, full
         // lock 58.5 px, the knob 56.
         assert!(side.b > 80.0 && side.panel.height() > 255.0 && side.stick_r > 66.0);
+        // Sideways the slider is as wide as the JS's and in the same lane
+        // (D1085).
+        let js_b = 12.0 * 3.9 + 26.0;
+        near(
+            side.track.left,
+            844.0 - 16.0 - 0.7 * js_b - 6.0 - 0.95 * js_b,
+            1e-9,
+        );
+        near(side.panel.right, 844.0 - 16.0, 1e-9);
         assert!(up.panel.height() > 300.0 && up.panel.width() > 140.0);
         assert!(up.stick_r > 72.0 && up.knob >= 72.0);
         assert!(
