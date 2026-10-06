@@ -111,7 +111,9 @@ export const PRESETS = {
     name: 'Turbo inline-4 (rally)',
     gameCar: 'rally',
     idle: 950, redline: 7500,
-    // 1-3-4-2 into one 4-2-1 manifold and turbo; anti-lag keeps it banging off-throttle.
+    // 1-3-4-2 into one 4-2-1 manifold and turbo. Anti-lag is a hint, not a
+    // machine gun: the owner found the full rat-a-tat harsh, "tin cans", so
+    // the pops are fewer, lower and darker (popHz 1200 -> 500).
     events: [[0, 0], [0, 1], [0, 2], [0, 3]],
     headers: [0.5, 0.52, 0.5, 0.52],
     headerR: -0.45, headerRv: 0.85, headerLossHz: 3500,
@@ -119,8 +121,8 @@ export const PRESETS = {
     pipes: 1, xpipe: 0, pipeLen: 2.4, pipeR: -0.5, pipeRc: 0.3, pipeLossHz: 3000,
     mufflerLp: 2600, sections: [[180, 3, 3], [540, 4, 4], [1400, 3, 3]],
     tailLen: 0.45, tailR: -0.45, radHz: 90, radLow: 0.38, body: 2,
-    drive: 2.2, intake: 1.2, intakeLen: 0.3, mech: 0.7, pops: 2.0, popHz: 1200,
-    turbo: 1, bov: 1, antiLag: 1, level: 1.88, width: 0.3,
+    drive: 2.2, intake: 1.2, intakeLen: 0.3, mech: 0.7, pops: 0.5, popHz: 500,
+    turbo: 1, bov: 1, antiLag: 0.2, level: 1.88, width: 0.3,
     revUp: 12000, revDown: 5500,
   },
 };
