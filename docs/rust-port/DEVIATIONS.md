@@ -33,7 +33,7 @@ when a work package introduces one, with the package and the JS it concerns.
 | The Ion Arc's motor whine is 7 dB quieter pulling away and 18 dB quieter from 60 % of its top speed; its wind is up to 7 dB louder (road rumble half that), rising with speed | The owner's request (2026-10-05): the whine was "really annoying at full speed"; EVs in other games are near silent with the wind played up. Other cars unchanged | DECISIONS D1061 |
 | A guide line on the road (Full, Braking only, Off; Full by default on touch screens, Off otherwise): chevrons on the racing line ahead, green, orange or red by how soon the player has to brake for each point | The owner's request (2026-10-05) for phones; the JS has none | D1080, D1081, D1083 |
 | A steering assist (Off, Light, Strong; Light by default on touch screens, Off otherwise) blends the player's steering toward the racing line when the car heads off the road or far off the line; applied to the controls before they are quantised, so the tick's input frame carries it | The owner's request (2026-10-05) for phones; the JS has none | D1082, D1083 |
-| Bigger touch controls: sideways a larger `--b`, slider and stick throw; upright a wider and taller slider, taller pads, a longer stick throw and a bigger knob | The owner (2026-10-05): the controls are too small upright and still hard sideways | D1084 |
+| Bigger touch controls: sideways a larger `--b`, a taller slider (as wide as the JS's) and a longer stick throw; upright a wider and taller slider, taller pads, a longer stick throw and a bigger knob | The owner (2026-10-05): the controls are too small upright and still hard sideways | D1084 |
 
 ## Known JS quirks reproduced, not fixed
 
