@@ -869,6 +869,11 @@ impl Canvas {
         let (x0, y0) = (sx.max(0.0).floor(), sy.max(0.0).floor());
         let x1 = (sx + sw).min(src.width as f64).ceil();
         let y1 = (sy + sh).min(src.height as f64).ceil();
+        // The source rectangle is clipped to the source; nothing of it left
+        // (wholly outside, or a 0×0 source) draws nothing, as in the browser.
+        if !(x1 > x0 && y1 > y0) {
+            return;
+        }
         // The source is read: its multisampled pass is resolved.
         src.flushed.set(true);
         let source = Source::Image {
