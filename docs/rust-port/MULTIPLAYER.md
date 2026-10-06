@@ -221,9 +221,21 @@ link** shared in Slack, Signal, Discord or a stream's chat:
   mixed links to the points with no desync.
 - **WP 10.5** `mp-host` (files, WebSocket at `…/ws`, the session).
   `MP_HOST=1 ./serve.sh` runs it on the project's port.
-- **Not yet:** the game client's side (WP 10.7): the lobby screens, the
-  WebSocket transport in the browser, drawing the other humans' cars, the
-  name tags and the points screen.
+- **WP 10.7** the game client (`mp_game::net`): a WebSocket transport in
+  the browser (`ws` beside the page) and natively (`?join=ws://…/ws`), the
+  lobby screen (name, car, colour, ready; the leader's level, AI fill,
+  contact, rubber-banding, grid, races and Start; the points table), the
+  race driven by the network client (`Race::online`, `frame_online`), the
+  other humans' cars, engines and minimap dots, name tags over their cars,
+  the results with every human's name, and Back to the lobby. The menu
+  does not stop an online race: it takes the player's hands off the wheel.
+  `net::tests` races two game clients on the in-process network from the
+  lobby to the results.
+- **To try it:** `MP_HOST=1 ./serve.sh`, open the project's address plus
+  `dist/next/` on each machine, press Multiplayer. The first player in
+  leads and starts the race.
+- **Not yet:** a browser end-to-end suite with two tabs, and a real test
+  across machines.
 
 Two choices differ from SPEC 9.1 and 9.2 (DECISIONS records them):
 

@@ -45,6 +45,9 @@ pub struct Want {
     pub far: bool,
     /// Race.js casts shadows from every mesh of a racer.
     pub racer: bool,
+    /// The local player's car: the bumper view's eye sits inside it, so it
+    /// hides from there (D1040).
+    pub eye: bool,
 }
 
 /// What the pursuit adds after the field (PursuitView's `makeUnit`, in its
@@ -220,10 +223,10 @@ pub fn spawn_field(
         s.spawned.clear();
         let root = s.node(ri as usize, None, commands, meshes, mats, racer);
         let car_meshes = std::mem::take(&mut s.spawned);
-        // The player's car (the first wanted) hides from the camera inside
-        // it (D1040).
+        // The local player's car hides from the camera inside it (D1040).
+        let eye = wants.get(k).is_some_and(|w| w.eye);
         let bounds =
-            (k == 0).then(|| super::incar::bounds(&super::incar::triangles(&scene, ri as usize)));
+            eye.then(|| super::incar::bounds(&super::incar::triangles(&scene, ri as usize)));
         commands
             .entity(root)
             .insert((Transform::default(), Visibility::Hidden, SceneEntity));

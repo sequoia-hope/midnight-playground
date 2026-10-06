@@ -705,15 +705,22 @@ fn car_in(a: &mp_sim::vehicle::Vehicle, b: &mp_sim::vehicle::Vehicle, t: f64) ->
 
 /// The frame's sparks from the ticks' contacts (`Race.update`: a car hit
 /// with the player, a wall impact), then a scrape's, in the JS's order.
-fn frame_sparks(fx: &mut Effects, log: &[SimEvent], st: &SimState, track: &Track, dt: f64) {
-    let p = &st.players[0];
+fn frame_sparks(
+    fx: &mut Effects,
+    log: &[SimEvent],
+    st: &SimState,
+    track: &Track,
+    dt: f64,
+    me: usize,
+) {
+    let p = &st.players[me];
     let (vx, vz) = (p.v.vx, p.v.vz);
     for e in log {
         match e {
             SimEvent::CarHit {
                 hit,
-                player: Some(0),
-            } => fx.sparks_at(
+                player: Some(k),
+            } if *k == me => fx.sparks_at(
                 hit.x,
                 hit.y,
                 hit.z,
@@ -722,11 +729,11 @@ fn frame_sparks(fx: &mut Effects, log: &[SimEvent], st: &SimState, track: &Track
                 vz,
             ),
             SimEvent::Phys {
-                player: 0,
+                player: k,
                 e: PhysEvent::Impact {
                     strength, x, y, z, ..
                 },
-            } => fx.sparks_at(
+            } if *k == me => fx.sparks_at(
                 *x,
                 *y,
                 *z,
@@ -777,7 +784,7 @@ pub fn frame(
     let running = race.mode != Mode::Paused && dt > 0.0;
     if running {
         let track = &*s.lr.track;
-        frame_sparks(&mut fx.fx, &race.log, &s.curr, track, dt);
+        frame_sparks(&mut fx.fx, &race.log, &s.curr, track, dt, race.me());
         let alpha = s.alpha();
         let prev: Vec<_> = super::flow::slots(&s.prev).collect();
         let mut ins = Vec::with_capacity(cars.cars.len());
@@ -833,12 +840,19 @@ pub fn frame(
         // the police have no entry (D945).
         let mut extras =
             vec![Extras::default(); (st.players.len() + st.rivals.len()).min(ins.len())];
-        if let Some(p) = st.players.first() {
-            extras[0] = Extras {
-                nitro: p.phys.nitro_active,
-                skid: p.phys.skid,
-                launch: st.race.state == RaceStateKind::Countdown && fx.throttle > 0.5,
-            };
+        // Every human's nitro and skids; the launch smoke is this player's
+        // (it follows their throttle).
+        let me = race.me();
+        for (k, p) in st.players.iter().enumerate() {
+            if let Some(e) = extras.get_mut(k) {
+                *e = Extras {
+                    nitro: p.phys.nitro_active,
+                    skid: p.phys.skid,
+                    launch: k == me
+                        && st.race.state == RaceStateKind::Countdown
+                        && fx.throttle > 0.5,
+                };
+            }
         }
         let np = st.players.len();
         for (k, r) in st.rivals.iter().enumerate() {

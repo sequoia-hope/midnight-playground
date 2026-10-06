@@ -102,6 +102,7 @@ fn default_for(screen: Screen, list: &List, order: &[String]) -> Option<String> 
         Screen::Menu => "btn-start",
         Screen::Pause => "btn-resume",
         Screen::Results => "btn-again",
+        Screen::Lobby => "mp-go",
         _ => "",
     };
     let has = |id: &str| list.iter().any(|(i, ..)| i == id);

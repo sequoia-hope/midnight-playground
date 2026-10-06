@@ -31,6 +31,7 @@ mod hud;
 mod incar;
 pub mod input;
 mod models;
+mod nametags;
 pub mod police;
 pub mod pose;
 mod pv_stage;
@@ -221,7 +222,7 @@ pub fn plugin(app: &mut App) {
         stop: false,
         headlight: 0.0,
     })
-    .add_systems(Startup, (hud::spawn, touch_ui::spawn))
+    .add_systems(Startup, (hud::spawn, touch_ui::spawn, nametags::spawn))
     .add_systems(
         Update,
         (start, read_input, step, draw)
@@ -238,7 +239,12 @@ pub fn plugin(app: &mut App) {
     )
     .add_systems(
         Update,
-        (hud::update, touch_ui::update, touch_ui::sizes)
+        (
+            hud::update,
+            touch_ui::update,
+            touch_ui::sizes,
+            nametags::update,
+        )
             .after(draw)
             .run_if(in_state(AppState::Running)),
     )
@@ -275,6 +281,7 @@ fn start(
     mut lights: ResMut<MaterialLights>,
     cars: Query<Entity, With<RaceCar>>,
     cams: Query<&Projection, With<Camera3d>>,
+    mut net: NonSendMut<crate::net::Net>,
 ) {
     if play.stop {
         // `race.dispose()`: the field's cars go with the race, and the
@@ -314,10 +321,28 @@ fn start(
     });
     let mut tc = TouchControls::new(layout);
     tc.show(play.touch_ui);
-    let setup = Setup {
+    let mut setup = Setup {
         opts: play.params.race_opts(),
         autodrive: play.params.autodrive,
         touch: play.touch_ui,
+    };
+    // Multiplayer: the host started this race; the network client builds it
+    // now that the level is here (and tells the host this player is ready).
+    let built = match net.client.as_mut() {
+        Some(c) if c.pending.is_some() => {
+            let lr = std::sync::Arc::new(lr);
+            if !c.attach(lr.clone()) {
+                return;
+            }
+            let r = c.race.as_ref().expect("attached");
+            let first = r.state().clone();
+            let me = r.me;
+            setup.opts.car = first.players[me].v.kind;
+            setup.opts.seed = r.start.seed;
+            setup.opts.pursuit = false;
+            Err((lr, first, me))
+        }
+        _ => Ok(lr),
     };
     info!(
         "race: {} in the {} car, seed {}{}",
@@ -326,7 +351,10 @@ fn start(
         setup.opts.seed,
         if setup.autodrive { ", autodrive" } else { "" }
     );
-    let mut race = Race::new(lr, setup, tc);
+    let mut race = match built {
+        Err((lr, first, me)) => Race::online(lr, first, me, setup, tc),
+        Ok(lr) => Race::new(lr, setup, tc),
+    };
     if let Some(m) = play.params.camera {
         race.rig.mode = m;
     }
@@ -335,8 +363,9 @@ fn start(
         flash: play.params.flash,
     });
     let st = &race.session.curr;
+    let me = race.me();
     let mut wants = Vec::new();
-    for p in &st.players {
+    for (k, p) in st.players.iter().enumerate() {
         // Race.js: `buildVehicle(carKind, { color, lod: 'high', seed: 1 })`.
         wants.push(models::Want {
             kind: p.v.kind,
@@ -345,6 +374,7 @@ fn start(
             lod: Lod::High,
             far: false,
             racer: true,
+            eye: k == me,
         });
     }
     for (i, r) in st.rivals.iter().enumerate() {
@@ -355,6 +385,7 @@ fn start(
             lod: Lod::High,
             far: false,
             racer: true,
+            eye: false,
         });
     }
     for (i, c) in st.traffic.cars.iter().enumerate() {
@@ -367,6 +398,7 @@ fn start(
             lod: Lod::Low,
             far: true,
             racer: false,
+            eye: false,
         });
     }
     // Hot Pursuit: the police cars and sawhorses follow the field.
@@ -523,7 +555,8 @@ fn read_input(
     // again or resumes.
     let _ = tapped;
     match race.mode {
-        Mode::Results if again => {
+        // Online the next race is the host's to start.
+        Mode::Results if again && !race.online_now() => {
             let mut opts = race.setup.opts;
             opts.seed = opts_for_restart.seed.unwrap_or_else(clock_seed);
             race.restart(opts);
@@ -542,7 +575,13 @@ const FAR_IN: f64 = 85.0;
 const MOUSE_ID: u64 = u64::MAX;
 
 /// Runs the frame's ticks, once the scene is up and compiled.
-fn step(time: Res<Time>, mut play: ResMut<Play>, status: Res<Status>) {
+fn step(
+    time: Res<Time>,
+    real: Res<Time<bevy::time::Real>>,
+    mut play: ResMut<Play>,
+    status: Res<Status>,
+    mut net: NonSendMut<crate::net::Net>,
+) {
     let play = &mut *play;
     if !status.ready || play.hold {
         return;
@@ -552,7 +591,14 @@ fn step(time: Res<Time>, mut play: ResMut<Play>, status: Res<Status>) {
     };
     play.started = true;
     let dt = f64::from(time.delta_secs()) * play.params.timescale;
-    race.frame(dt);
+    if race.online_now() {
+        // The host's clock rules a multiplayer race, not the frame's.
+        if let Some(c) = net.client.as_mut() {
+            race.frame_online(dt, c, crate::net::now_ms(&real));
+        }
+    } else {
+        race.frame(dt);
+    }
 }
 
 type CarFilter = (With<RaceCar>, Without<Camera3d>);
@@ -584,13 +630,15 @@ fn draw(
     let Some(race) = play.race.as_mut() else {
         return;
     };
-    let paused = race.mode == Mode::Paused || !play.started;
+    // Online the race goes on behind the menu.
+    let paused = (race.mode == Mode::Paused && !race.online_now()) || !play.started;
     let dt = if paused {
         0.0
     } else {
         (f64::from(time.delta_secs()) * play.params.timescale).min(session::MAX_FRAME)
     };
     let s = &race.session;
+    let me = s.me;
     let track = s.lr.track.clone();
     let alpha = s.alpha();
     let prev: Vec<_> = flow::slots(&s.prev).collect();
@@ -622,7 +670,7 @@ fn draw(
         };
         let p = pose::Pose::lerp(&track, &a, &pose::Pose::of(v), alpha);
         let (pos, q) = pose::root(&track, &p);
-        if i == 0 {
+        if i == me {
             player_root = Some((pos, q));
         }
         *t = Transform::from_translation(pos.as_vec3()).with_rotation(q.as_quat());
@@ -642,12 +690,12 @@ fn draw(
         .map_or(1.6, |w| f64::from(w.width() / w.height().max(1.0)));
     let car = camera::Car::lerp(
         &track,
-        &camera::Car::of(&s.prev.players[0].v),
-        &camera::Car::of(&s.curr.players[0].v),
+        &camera::Car::of(&s.prev.players[me].v),
+        &camera::Car::of(&s.curr.players[me].v),
         alpha,
     );
     let st = &s.curr;
-    let p0 = &st.players[0];
+    let p0 = &st.players[me];
     let look_back = race.input.state.look_back;
     let mut view = race
         .rig
@@ -658,7 +706,7 @@ fn draw(
     // The bumper view's eye is inside the player's car: not drawn from
     // there (the owner's report, D1040).
     if let Some((pos, q)) = player_root {
-        models.hide_round_eye(0, pos, q, view.eye, &mut node_vis);
+        models.hide_round_eye(me, pos, q, view.eye, &mut node_vis);
     }
     if let Ok((mut t, mut proj)) = cam.single_mut() {
         *t = Transform::from_translation(view.eye.as_vec3())
@@ -797,7 +845,8 @@ fn headlight(
 ) {
     let want = play.as_deref().and_then(|p| {
         p.race.as_ref()?;
-        let e = p.models.as_ref()?.cars.first()?.headlight?;
+        let me = p.race.as_ref()?.me();
+        let e = p.models.as_ref()?.cars.get(me)?.headlight?;
         let m = anchors.get(e).ok()?.affine();
         let h = &HEADLIGHT;
         Some(crate::render::lighting::Spot {

@@ -1742,7 +1742,8 @@ fn nitro_grad(b: f32) -> BackgroundGradient {
 /// `hud.update`'s `st` from the race (Race.js `updateHud`).
 fn hud_in(race: &super::flow::Race) -> HudIn {
     let st = &race.session.curr;
-    let p = &st.players[0];
+    let me = race.me();
+    let p = &st.players[me];
     let t = &race.session.lr.track;
     let laps = st.race.laps > 0;
     // (On a circuit's grid, behind the line, you're at the start of lap
@@ -1755,22 +1756,41 @@ fn hud_in(race: &super::flow::Race) -> HudIn {
         }
     };
     let list = standings(st);
-    let position = list.iter().position(|r| r.player).map_or(0, |i| i + 1);
+    let position = list
+        .iter()
+        .position(|r| r.human == Some(me))
+        .map_or(0, |i| i + 1);
     let s = lap_s(p.v.prog, p.v.s);
+    // This player first, then the other humans, then the rivals (the same
+    // order as the route bar's colours, `key`).
     let mut racers = vec![s];
+    racers.extend(
+        st.players
+            .iter()
+            .enumerate()
+            .filter(|(k, _)| *k != me)
+            .map(|(_, o)| lap_s(o.v.prog, o.v.s)),
+    );
     racers.extend(st.rivals.iter().map(|a| lap_s(a.prog, a.k.s)));
     let rivals = list
         .iter()
-        .filter(|r| !r.player)
-        .filter_map(|r| {
-            st.rivals
+        .filter(|r| r.human != Some(me))
+        .filter_map(|r| match r.human {
+            // Another human, drawn as a rival is.
+            Some(k) => st.players.get(k).map(|o| RivalDot {
+                x: o.v.x,
+                z: o.v.z,
+                color: o.spec.color,
+            }),
+            None => st
+                .rivals
                 .iter()
                 .find(|a| a.name == r.name && a.color == r.color)
                 .map(|a| RivalDot {
                     x: a.k.v.x,
                     z: a.k.v.z,
                     color: a.color,
-                })
+                }),
         })
         .collect();
     let r = &p.rules;
@@ -2065,7 +2085,15 @@ pub(super) fn update(
         crate::play::touch::Steering::Buttons => "buttons",
         crate::play::touch::Steering::Tilt => "tilt",
     };
-    let mut colors = vec![st.players[0].spec.color];
+    let me = race.me();
+    let mut colors = vec![st.players[me].spec.color];
+    colors.extend(
+        st.players
+            .iter()
+            .enumerate()
+            .filter(|(k, _)| *k != me)
+            .map(|(_, o)| o.spec.color),
+    );
     colors.extend(st.rivals.iter().map(|a| a.color));
     let key = Key {
         bp,
@@ -2073,7 +2101,7 @@ pub(super) fn update(
         level: track.level.id,
         cruise: st.race.cruise,
         laps: st.race.laps > 0,
-        electric: st.players[0].phys.electric,
+        electric: st.players[me].phys.electric,
         racers: colors.clone(),
         steer_top: steer_top(&race.touch.layout, steering),
         in_l: (play.insets.left as f32).max(16.0),

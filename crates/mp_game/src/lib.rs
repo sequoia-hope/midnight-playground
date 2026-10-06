@@ -41,6 +41,7 @@ pub mod fly;
 pub mod levels;
 pub mod loader;
 pub mod matscene;
+pub mod net;
 pub mod options;
 pub mod play;
 pub mod plugins;
@@ -576,6 +577,7 @@ pub fn app(o: Options, hq: bool) -> App {
     if let Some(path) = stations {
         stations::plugin(&mut app, &path, out);
     }
+    net::plugin(&mut app);
     play::plugin(&mut app);
     preview::plugin(&mut app);
     ui::plugin(&mut app);

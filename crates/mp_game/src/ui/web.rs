@@ -70,6 +70,16 @@ pub fn reload(level: &str) {
     let _ = f.call1(&JsValue::NULL, &JsValue::from_str(level));
 }
 
+/// The browser's own prompt, for the lobby's name (no text field is drawn
+/// in the canvas, and a phone's keyboard only comes up for the DOM's).
+/// The answer, trimmed, or `None` if cancelled or empty.
+pub fn prompt(message: &str, current: &str) -> Option<String> {
+    let w = web_sys::window()?;
+    let a = w.prompt_with_message_and_default(message, current).ok()??;
+    let a = a.trim().to_string();
+    (!a.is_empty()).then_some(a)
+}
+
 /// `applyQuality`'s pixel ratio: `hq ? min(devicePixelRatio, 1.5) : 1`.
 pub fn apply_pixel_ratio(w: &mut Window, hq: bool) {
     w.resolution
