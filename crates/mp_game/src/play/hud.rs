@@ -2785,4 +2785,54 @@ mod tests {
         assert_eq!(css_color("#888"), widgets::rgb(0x888888));
         assert_eq!(css_color("#3ad7ff"), widgets::rgb(0x3ad7ff));
     }
+
+    /// Online with this player second in the race (`me` = 1): the HUD's
+    /// place, route bar and minimap are this player's, and the other human
+    /// is drawn as a rival is.
+    #[test]
+    fn the_hud_reads_the_local_player_online() {
+        let mut race = super::super::flow::tests::second_of_two();
+        // Into the race a little, so the field has spread.
+        let lr = race.session.lr.clone();
+        let mut ev = Vec::new();
+        for _ in 0..(6 * 120) {
+            let mut frames = [mp_sim::input::InputFrame::default(); 2];
+            for (i, f) in frames.iter_mut().enumerate() {
+                let mut inp = mp_sim::input::Input::default();
+                mp_sim::autopilot::autopilot(&mut inp, &race.session.curr.players[i].v, &lr.track);
+                *f = mp_sim::input::InputFrame::quantise(&inp);
+            }
+            mp_sim::race::step(&lr, &mut race.session.curr, &frames, &mut ev);
+        }
+        let st = &race.session.curr;
+        let h = hud_in(&race);
+        let list = standings(st);
+        let mine = list.iter().position(|r| r.human == Some(1)).unwrap();
+        assert_eq!(h.position, mine + 1);
+        let p = &st.players[1];
+        assert_eq!(h.player, (p.v.x, p.v.z, p.v.yaw));
+        assert_eq!(h.speed, mp_math::kernel::hypot(p.v.vx, p.v.vz));
+        assert_eq!(h.racers.len(), st.players.len() + st.rivals.len());
+        assert_eq!(h.racers[0], h.s, "this player's mark first");
+        // Every other car on the minimap: the other human and the rivals.
+        assert_eq!(h.rivals.len(), list.len() - 1);
+        let other = &st.players[0];
+        assert!(
+            h.rivals
+                .iter()
+                .any(|d| d.x == other.v.x && d.z == other.v.z && d.color == other.spec.color),
+            "the other human is on the minimap"
+        );
+        assert!(!h.rivals.iter().any(|d| d.x == p.v.x && d.z == p.v.z));
+
+        // The same state seen by the other player: its own place and car.
+        let mut theirs = super::super::flow::tests::second_of_two();
+        theirs.session.curr = st.clone();
+        theirs.session.me = 0;
+        let h0 = hud_in(&theirs);
+        let first = list.iter().position(|r| r.human == Some(0)).unwrap();
+        assert_eq!(h0.position, first + 1);
+        assert_ne!(h0.position, h.position);
+        assert_eq!(h0.player, (other.v.x, other.v.z, other.v.yaw));
+    }
 }

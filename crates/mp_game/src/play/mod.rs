@@ -966,3 +966,27 @@ pub fn smoke_race_cli(o: &crate::options::Options) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+
+    /// A `Play` with no race, as the menu has it, for the screens' tests.
+    pub(crate) fn bare_play() -> Play {
+        Play {
+            params: Params::from_options(&crate::options::Options::default()),
+            race: None,
+            models: None,
+            fx: None,
+            touch_ui: false,
+            insets: Insets::default(),
+            started: false,
+            css_scale: 1.0,
+            touch_scale: 1.0,
+            armed: true,
+            hold: false,
+            stop: false,
+            headlight: 0.0,
+        }
+    }
+}

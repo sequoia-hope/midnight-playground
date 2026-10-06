@@ -232,10 +232,12 @@ pub fn frame(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     //! The whole client path without graphics: a host and two game clients
     //! on the in-process network, each driving a real `Race` through
-    //! `frame_online` on the autopilot, from the lobby to the results.
+    //! `frame_online` on the autopilot, from the lobby to the results; the
+    //! [`frame`] system on its own (commands, events, the view); and
+    //! [`Lan`], the host and clients the other modules' online tests use.
 
     use std::sync::Arc;
 
@@ -338,5 +340,342 @@ mod tests {
             assert_eq!(res.iter().filter(|row| row.human.is_some()).count(), 2);
             assert!(res.iter().any(|row| row.human == Some(r.me())));
         }
+    }
+
+    // ── The shared harness ─────────────────────────────────────────────
+
+    /// One rendered frame, s.
+    pub(crate) const FRAME: f64 = 1.0 / 60.0;
+
+    /// A host and game clients on the in-process network (LAN links),
+    /// racing Coast Highway. The tests drive the clients themselves; the
+    /// host and the clock move with [`Lan::host_frame`].
+    pub(crate) struct Lan {
+        pub net: SimNet,
+        pub host: Host<mp_net::transport::SimEnd>,
+        pub clients: Vec<NetClient>,
+        pub lr: Arc<LevelRuntime>,
+        pub now: f64,
+    }
+
+    impl Lan {
+        pub fn new(names: &[&str]) -> Lan {
+            let net = SimNet::new(7);
+            let lr = Arc::new(LevelRuntime::new(mp_levels::level_by_id("coast")).unwrap());
+            let lv = lr.clone();
+            let host = Host::new(
+                net.host(),
+                std::rc::Rc::new(move |id: &str| (id == "coast").then(|| lv.clone())),
+                3,
+            );
+            let clients = names
+                .iter()
+                .map(|n| {
+                    Client::new(
+                        Box::new(net.connect(Conditions::LAN)) as Box<dyn Transport>,
+                        n,
+                        "sports",
+                        0xd81e36,
+                    )
+                })
+                .collect();
+            Lan {
+                net,
+                host,
+                clients,
+                lr,
+                now: 0.0,
+            }
+        }
+
+        /// The clock, the network and the host by one frame.
+        pub fn host_frame(&mut self) {
+            self.now += FRAME * 1000.0;
+            self.net.advance_to(self.now);
+            self.host.update(self.now);
+        }
+
+        /// One frame with every client between races.
+        pub fn lobby_frame(&mut self) {
+            self.host_frame();
+            let now = self.now;
+            for c in &mut self.clients {
+                c.update(now, |_, _| mp_sim::input::InputFrame::default());
+            }
+        }
+
+        /// Half a second of lobby; the leader's index.
+        pub fn settle(&mut self) -> usize {
+            for _ in 0..30 {
+                self.lobby_frame();
+            }
+            (0..self.clients.len())
+                .find(|&i| self.clients[i].is_leader())
+                .expect("a leader")
+        }
+
+        /// The leader starts a race with `s`; every client builds it and
+        /// gets the game's `Race` for it.
+        pub fn start(&mut self, s: Settings, autodrive: bool) -> Vec<Race> {
+            let leader = self.settle();
+            self.clients[leader].configure(s);
+            self.clients[leader].go(true);
+            for _ in 0..120 {
+                self.lobby_frame();
+                if self.clients.iter().all(|c| c.pending.is_some()) {
+                    break;
+                }
+            }
+            let lr = self.lr.clone();
+            self.clients
+                .iter_mut()
+                .map(|c| {
+                    assert!(c.attach(lr.clone()), "the race is built");
+                    race_of(c, &lr, autodrive)
+                })
+                .collect()
+        }
+    }
+
+    /// The game's `Race` for the race a client has attached.
+    pub(crate) fn race_of(c: &NetClient, lr: &Arc<LevelRuntime>, autodrive: bool) -> Race {
+        let r = c.race.as_ref().expect("attached");
+        let opts = mp_sim::race::RaceOpts {
+            car: r.state().players[r.me].v.kind,
+            seed: r.start.seed,
+            pursuit: false,
+            heat: 1.0,
+        };
+        Race::online(
+            lr.clone(),
+            r.state().clone(),
+            r.me,
+            Setup {
+                opts,
+                autodrive,
+                touch: false,
+            },
+            TouchControls::default(),
+        )
+    }
+
+    // ── The `frame` system ─────────────────────────────────────────────
+
+    use bevy::ecs::system::RunSystemOnce;
+
+    fn world(client: Option<NetClient>) -> World {
+        let mut w = World::new();
+        w.insert_non_send(Net { client });
+        w.init_resource::<NetView>();
+        w.init_resource::<NetCmds>();
+        w.init_resource::<NetStatsRes>();
+        w.insert_resource(Time::<Real>::default());
+        w
+    }
+
+    fn run(w: &mut World, cmds: Vec<NetCmd>) -> NetView {
+        w.resource_mut::<NetCmds>().0.extend(cmds);
+        w.run_system_once(frame).unwrap();
+        assert!(
+            w.resource::<NetCmds>().0.is_empty(),
+            "every command is done"
+        );
+        w.resource::<NetView>().clone()
+    }
+
+    fn client_of(w: &mut World) -> &mut NetClient {
+        w.non_send_mut::<Net>()
+            .into_inner()
+            .client
+            .as_mut()
+            .unwrap()
+    }
+
+    /// Natively there is no page to take the host's address from: Join
+    /// without `--join` says why and opens nothing.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn joining_with_no_host_address_says_so_and_opens_nothing() {
+        let mut w = world(None);
+        let v = run(
+            &mut w,
+            vec![NetCmd::Join {
+                url: None,
+                name: "Ann".into(),
+                car: "sports".into(),
+                color: 0xd81e36,
+            }],
+        );
+        assert_eq!(
+            v.status,
+            "No host to join: open the game from the host's address"
+        );
+        assert!(!v.active && !v.connected);
+        assert!(w.non_send::<Net>().client.is_none());
+        // The commands that need a connection do nothing without one.
+        let v = run(
+            &mut w,
+            vec![
+                NetCmd::Ready(true),
+                NetCmd::Go(true),
+                NetCmd::Configure(Settings::default()),
+                NetCmd::SetMe {
+                    name: "B".into(),
+                    car: "rally".into(),
+                    color: 0,
+                },
+            ],
+        );
+        assert!(!v.active && v.slot.is_none());
+    }
+
+    /// The view follows the lobby (connected, slot, leader, players), the
+    /// screens' commands reach the host, and a started race shows as the
+    /// level to load with the humans in race order.
+    #[test]
+    fn the_view_follows_the_lobby_and_the_start() {
+        let mut lan = Lan::new(&["Ann", "Bob"]);
+        let mut w = world(Some(lan.clients.remove(0)));
+        let step = |lan: &mut Lan, w: &mut World, cmds: Vec<NetCmd>| {
+            lan.host_frame();
+            let v = run(w, cmds);
+            let now = lan.now;
+            for c in &mut lan.clients {
+                c.update(now, |_, _| mp_sim::input::InputFrame::default());
+            }
+            v
+        };
+        let mut v = NetView::default();
+        for _ in 0..30 {
+            v = step(&mut lan, &mut w, vec![]);
+        }
+        assert!(v.connected);
+        assert_eq!(v.status, "");
+        assert!(v.slot.is_some());
+        assert!(v.leader, "the first to join leads");
+        assert_eq!(v.lobby.players.len(), 2);
+        assert_eq!(v.me().map(|p| p.name.as_str()), Some("Ann"));
+        assert_eq!(v.pending_level, None);
+        assert!(v.humans.is_empty());
+
+        // Ready and a new car reach the host, and come back in the lobby.
+        step(
+            &mut lan,
+            &mut w,
+            vec![
+                NetCmd::Ready(true),
+                NetCmd::SetMe {
+                    name: "Ann".into(),
+                    car: "rally".into(),
+                    color: 0x1f4fd8,
+                },
+            ],
+        );
+        for _ in 0..10 {
+            v = step(&mut lan, &mut w, vec![]);
+        }
+        let me = v.me().unwrap();
+        assert!(me.ready);
+        assert_eq!((me.car.as_str(), me.color), ("rally", 0x1f4fd8));
+
+        let s = Settings {
+            ai: AiFill::None,
+            ..Settings::default()
+        };
+        step(
+            &mut lan,
+            &mut w,
+            vec![NetCmd::Configure(s.clone()), NetCmd::Go(true)],
+        );
+        for _ in 0..30 {
+            v = step(&mut lan, &mut w, vec![]);
+            if v.pending_level.is_some() {
+                break;
+            }
+        }
+        assert_eq!(v.pending_level.as_deref(), Some("coast"));
+        assert_eq!(v.lobby.settings.as_ref().map(|s| s.ai), Some(AiFill::None));
+        assert!(!v.ended);
+        let names: Vec<&str> = v.humans.iter().map(|h| h.name.as_str()).collect();
+        assert_eq!(names.len(), 2);
+        assert!(
+            names.contains(&"Ann") && names.contains(&"Bob"),
+            "{names:?}"
+        );
+    }
+
+    /// What the client hears becomes the lobby's status line, and the race
+    /// in hand's end; Leave drops the connection and clears everything.
+    #[test]
+    fn host_events_become_the_status_line_and_leave_clears_it() {
+        let mut lan = Lan::new(&["Ann"]);
+        let mut w = world(Some(lan.clients.remove(0)));
+        for _ in 0..10 {
+            lan.host_frame();
+            run(&mut w, vec![]);
+        }
+        let say = |w: &mut World, e: ClientEvent| {
+            client_of(w).events.push(e);
+            run(w, vec![])
+        };
+        let v = say(&mut w, ClientEvent::Rejected("the lobby is full".into()));
+        assert_eq!(v.status, "The host said no: the lobby is full");
+        assert_eq!(say(&mut w, ClientEvent::Welcome(0)).status, "");
+        assert!(say(&mut w, ClientEvent::RaceEnded).ended);
+        assert!(!say(&mut w, ClientEvent::RaceStarted).ended);
+        let v = say(&mut w, ClientEvent::Lobby);
+        assert_eq!(v.status, "", "a lobby update says nothing");
+        assert!(v.connected);
+        // The link drops.
+        client_of(&mut w).net.close(0);
+        let v = run(&mut w, vec![]);
+        assert_eq!(v.status, "Lost the host");
+        assert!(!v.connected);
+
+        let v = run(&mut w, vec![NetCmd::Leave]);
+        assert_eq!(v, NetView::default());
+        assert!(w.non_send::<Net>().client.is_none());
+    }
+
+    /// Leaving tells the host: the other player sees the lobby without
+    /// them, and leads.
+    #[test]
+    fn leaving_frees_the_lead_for_the_next_player() {
+        let mut lan = Lan::new(&["Ann", "Bob"]);
+        let leader = lan.settle();
+        assert_eq!(leader, 0);
+        let mut w = world(Some(lan.clients.remove(0)));
+        run(&mut w, vec![NetCmd::Leave]);
+        for _ in 0..30 {
+            lan.lobby_frame();
+        }
+        let bob = &lan.clients[0];
+        assert!(bob.is_leader());
+        assert!(
+            bob.lobby
+                .players
+                .iter()
+                .all(|p| p.name == "Bob" || !p.connected),
+            "{:?}",
+            bob.lobby.players
+        );
+    }
+
+    /// The view is written only when it changed, so the lobby screen is
+    /// rebuilt only then.
+    #[test]
+    fn an_unchanged_view_is_not_marked_changed() {
+        let mut w = world(None);
+        run(&mut w, vec![]);
+        let t0 = w.resource_ref::<NetView>().last_changed();
+        w.increment_change_tick();
+        run(&mut w, vec![]);
+        assert_eq!(w.resource_ref::<NetView>().last_changed(), t0);
+        run(&mut w, vec![NetCmd::Leave]);
+        assert_eq!(
+            w.resource_ref::<NetView>().last_changed(),
+            t0,
+            "leaving with nothing open changes nothing"
+        );
     }
 }

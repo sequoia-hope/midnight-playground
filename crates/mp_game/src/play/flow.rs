@@ -680,7 +680,7 @@ pub fn smoke_race(lr: LevelRuntime, opts: RaceOpts, frame_dt: f64) -> Result<Smo
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use mp_sim::input::Input as SimInput;
     use mp_sim::race::step;
@@ -846,5 +846,273 @@ mod tests {
             centers.iter().any(|c| c == "PURSUIT"),
             "{centers:?} {toasts:?}"
         );
+    }
+
+    /// An online race with two humans and this player second (`me` = 1),
+    /// not stepped: for the event handling.
+    pub(crate) fn second_of_two() -> Race {
+        use mp_sim::race::{Human, MultiOpts};
+        let lr = std::sync::Arc::new(LevelRuntime::new(mp_levels::level_by_id("coast")).unwrap());
+        let st = SimState::new_multi(
+            &lr,
+            &MultiOpts {
+                seed: 1,
+                humans: vec![
+                    Human {
+                        car: "sports",
+                        color: None,
+                    },
+                    Human {
+                        car: "muscle",
+                        color: Some(0x1f4fd8),
+                    },
+                ],
+                grid: vec![1, 0],
+                field: Some(4),
+                rubber_band: false,
+                ghost: true,
+            },
+        );
+        let opts = RaceOpts {
+            car: "muscle",
+            seed: 1,
+            pursuit: false,
+            heat: 1.0,
+        };
+        Race::online(
+            lr,
+            st,
+            1,
+            Setup {
+                opts,
+                autodrive: false,
+                touch: false,
+            },
+            TouchControls::default(),
+        )
+    }
+
+    /// Another human's lap, finish, bonus or knocks aren't this player's
+    /// news; the countdown, GO! and the results are everyone's.
+    #[test]
+    fn online_only_this_players_events_reach_the_hud_and_the_pad() {
+        let mut race = second_of_two();
+        assert_eq!(race.me(), 1);
+        assert!(race.online_now());
+        let impact = |player| SimEvent::Phys {
+            player,
+            e: PhysEvent::Impact {
+                strength: 0.5,
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                side: 1,
+            },
+        };
+        let hit = |player| SimEvent::CarHit {
+            hit: mp_sim::collisions::Hit {
+                a: 0,
+                b: 1,
+                strength: 0.5,
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            player,
+        };
+        for e in [
+            SimEvent::Lap {
+                player: 0,
+                lap: 2,
+                time: 61.0,
+                best: true,
+            },
+            SimEvent::Finished {
+                player: 0,
+                place: 1,
+            },
+            SimEvent::PerfectStart { player: 0 },
+            SimEvent::Bonus {
+                player: 0,
+                text: "DRIFT".into(),
+                nitro: 0.2,
+                points: 0.0,
+            },
+            SimEvent::WrongWay { player: 0 },
+            impact(0),
+            hit(Some(0)),
+        ] {
+            race.on_event(&e);
+            assert_eq!(race.hud, Hud::default(), "{e:?}");
+            assert!(race.kicks.is_empty(), "{e:?}");
+        }
+        race.on_event(&SimEvent::Countdown(3));
+        assert_eq!(race.hud.center.as_deref(), Some("3"));
+        race.on_event(&SimEvent::Finished {
+            player: 1,
+            place: 2,
+        });
+        assert_eq!(race.hud.center.as_deref(), Some("2nd PLACE"));
+        race.on_event(&SimEvent::Lap {
+            player: 1,
+            lap: 2,
+            time: 61.0,
+            best: false,
+        });
+        assert_eq!(race.hud.toast.as_deref(), Some("LAP 1:01.00"));
+        race.kicks.clear();
+        race.on_event(&impact(1));
+        assert_eq!(race.kicks.len(), 1, "a wall hit of mine is a jolt");
+        race.on_event(&hit(Some(1)));
+        assert_eq!(race.kicks.len(), 2);
+        race.on_event(&SimEvent::Results);
+        assert_eq!(race.mode, Mode::Results);
+        assert!(race.results.is_some());
+    }
+
+    /// Online, pause doesn't stop the race (MULTIPLAYER 2.9): the ticks
+    /// go on with this player's hands off the wheel (AWAY), and the
+    /// controls come back on resume.
+    #[test]
+    fn online_pause_is_hands_off_and_the_race_goes_on() {
+        use crate::net::tests::{FRAME, Lan};
+        use mp_net::proto::{AiFill, Settings};
+        let mut lan = Lan::new(&["Ann", "Bob"]);
+        let mut races = lan.start(
+            Settings {
+                ai: AiFill::None,
+                ..Settings::default()
+            },
+            true,
+        );
+        let frame = |lan: &mut Lan, races: &mut [Race]| {
+            lan.host_frame();
+            let now = lan.now;
+            for (c, r) in lan.clients.iter_mut().zip(races.iter_mut()) {
+                r.frame_online(FRAME, c, now);
+            }
+        };
+        for _ in 0..(6 * 60) {
+            frame(&mut lan, &mut races);
+        }
+        assert_eq!(races[0].state(), RaceStateKind::Racing);
+        let driving = *races[0].session.inputs.last().unwrap();
+        assert_eq!(driving.flags & AWAY, 0);
+
+        races[0].input.key_down("Escape", false);
+        frame(&mut lan, &mut races);
+        races[0].input.key_up("Escape");
+        assert_eq!(races[0].mode, Mode::Paused);
+        let t = races[0].session.curr.tick;
+        let mut away = 0;
+        for _ in 0..60 {
+            frame(&mut lan, &mut races);
+            for f in &races[0].session.inputs {
+                assert_eq!(
+                    *f,
+                    InputFrame {
+                        flags: AWAY,
+                        ..InputFrame::default()
+                    }
+                );
+                away += 1;
+            }
+        }
+        assert!(away > 0);
+        assert!(
+            races[0].session.curr.tick >= t + 100,
+            "the race went on: {} → {}",
+            t,
+            races[0].session.curr.tick
+        );
+        assert_eq!(races[0].mode, Mode::Paused);
+
+        races[0].input.key_down("Escape", false);
+        frame(&mut lan, &mut races);
+        assert_eq!(races[0].mode, Mode::Race);
+        for _ in 0..10 {
+            frame(&mut lan, &mut races);
+        }
+        let f = races[0].session.inputs.last().unwrap();
+        assert_eq!(f.flags & AWAY, 0, "back at the wheel");
+        assert_eq!(lan.clients[0].stats.desyncs, 0);
+    }
+
+    /// Offline, the pause key toggles; Results ignores it, and a paused
+    /// frame neither ticks nor counts.
+    #[test]
+    fn pause_only_from_a_race_in_progress() {
+        let mut race = pursuit_race("sierra");
+        race.pause(false);
+        assert_eq!(race.mode, Mode::Race, "resume when not paused: nothing");
+        race.pause(true);
+        race.pause(true);
+        assert_eq!(race.mode, Mode::Paused);
+        let (t, frames) = (race.session.curr.tick, race.frames);
+        race.frame(0.05);
+        assert_eq!((race.session.curr.tick, race.frames), (t, frames));
+        race.pause(false);
+        race.mode = Mode::Results;
+        race.pause(true);
+        assert_eq!(race.mode, Mode::Results);
+        race.input.key_down("Escape", false);
+        race.frame(0.05);
+        assert_eq!(race.mode, Mode::Results, "the key does nothing there");
+    }
+
+    /// The HUD's timers count down and clear their texts.
+    #[test]
+    fn the_hud_texts_time_out() {
+        let mut h = Hud::default();
+        h.center("GO!", 1.0);
+        h.toast("PERFECT START", 1.6);
+        h.toast("LAP", 2.0);
+        assert_eq!((h.centers, h.toasts), (1, 2));
+        h.tick(0.5);
+        assert_eq!(h.center.as_deref(), Some("GO!"));
+        h.tick(0.5);
+        assert_eq!(h.center, None);
+        assert_eq!(h.center_timer, 0.0);
+        assert_eq!(h.toast.as_deref(), Some("LAP"));
+        h.tick(5.0);
+        assert_eq!(h.toast, None);
+        assert_eq!(h.toast_timer, 0.0);
+    }
+
+    #[test]
+    fn ordinals() {
+        let got: Vec<String> = (1..=12).map(ordinal).collect();
+        assert_eq!(
+            got,
+            [
+                "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "11th",
+                "12th"
+            ]
+        );
+    }
+
+    /// A restart is a new start: the field back on the grid, nothing kept
+    /// of the run before but the pursuit's options.
+    #[test]
+    fn a_restart_starts_afresh() {
+        let mut race = pursuit_race("sierra");
+        for _ in 0..120 {
+            race.frame(1.0 / 60.0);
+        }
+        let starts = race.starts;
+        race.input.key_down("KeyW", false);
+        race.results = Some(Vec::new());
+        race.mode = Mode::Results;
+        let opts = race.setup.opts;
+        race.restart(opts);
+        assert!(race.starts > starts);
+        assert_eq!(race.session.curr.tick, 0);
+        assert_eq!(race.session.prev.tick, 0);
+        assert_eq!(race.mode, Mode::Race);
+        assert!(race.results.is_none());
+        assert_eq!(race.hud, Hud::default());
+        assert!(race.input.pressed.is_empty());
+        assert!(race.hush_pads);
+        assert_eq!(race.springs.len(), slots(&race.session.curr).count());
     }
 }

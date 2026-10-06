@@ -684,4 +684,91 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// `store.get(k, d)`'s default for a value of the wrong type, as the
+    /// JS's typed reads do: a string is no number, a number no string,
+    /// `null` nothing.
+    #[test]
+    fn a_value_of_the_wrong_type_reads_as_the_default() {
+        let store = seeded(&[
+            ("mr.a", "\"0.5\""),
+            ("mr.b", "0.5"),
+            ("mr.c", "null"),
+            ("mr.d", "1"),
+            ("mr.e", ""),
+        ]);
+        assert_eq!(store.num("a", 2.0), 2.0);
+        assert_eq!(store.num_or_null("a"), None);
+        assert_eq!(store.string("b", "x"), "x");
+        assert_eq!(store.num("c", 3.0), 3.0);
+        assert_eq!(store.num_or_null("c"), None);
+        assert!(store.bool("d", true), "1 is not true");
+        assert!(!store.bool("d", false));
+        assert_eq!(store.get("e"), None, "an empty string does not parse");
+        assert_eq!(store.num("missing", 4.0), 4.0);
+        // A NaN saved is `null`, and reads back as missing.
+        let mut store = Store::memory();
+        store.set_num("best.coast", f64::NAN);
+        assert_eq!(store.raw("best.coast").as_deref(), Some("null"));
+        assert_eq!(store.num_or_null("best.coast"), None);
+    }
+
+    /// Setting a key again replaces its value where it is: the order is
+    /// the first insertion's, as `localStorage` keeps it.
+    #[test]
+    fn rewriting_a_key_keeps_its_place() {
+        let mut m = Memory::default();
+        m.set_item("a", "1");
+        m.set_item("b", "2");
+        m.set_item("a", "3");
+        assert_eq!(
+            m.items,
+            [("a".to_string(), "3".to_string()), ("b".into(), "2".into())]
+        );
+        assert_eq!(m.get_item("a").as_deref(), Some("3"));
+        assert_eq!(m.get_item("c"), None);
+    }
+
+    /// The multiplayer name and colour (`mpName`, `mpColor`) are stored as
+    /// the other settings are, a colour as a plain integer.
+    #[test]
+    fn the_multiplayer_keys() {
+        let mut store = Store::memory();
+        store.set_str("mpName", "Ann \"Speedy\"");
+        store.set_num("mpColor", f64::from(0xd81e36u32));
+        assert_eq!(store.raw("mpColor").as_deref(), Some("14163510"));
+        assert_eq!(store.num("mpColor", 0.0) as u32, 0xd81e36);
+        assert_eq!(store.string("mpName", "Driver"), "Ann \"Speedy\"");
+    }
+
+    /// A broken file, a file that isn't an object, or values that aren't
+    /// strings: whatever can't be read is left out, and the store works.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn the_file_store_survives_a_broken_file() {
+        let dir = std::env::temp_dir().join(format!("mp-store-broken-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("storage.json");
+        for text in ["{not json", "[1,2]", "", "null"] {
+            std::fs::write(&path, text).unwrap();
+            let s = Store::new(FileStore::open(path.clone()));
+            assert_eq!(s.raw("car"), None, "{text:?}");
+        }
+        std::fs::write(&path, r#"{"mr.car":"\"rally\"","mr.hq":false,"mr.x":1}"#).unwrap();
+        let mut s = Store::new(FileStore::open(path.clone()));
+        assert_eq!(s.raw("car").as_deref(), Some("\"rally\""));
+        assert_eq!(s.raw("hq"), None, "not a string: left out");
+        s.set_str("car", "super");
+        s.set_bool("mph", false);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            r#"{"mr.car":"\"super\"","mr.mph":"false"}"#
+        );
+        // A store whose folder isn't there yet makes it.
+        let deep = dir.join("a/b/storage.json");
+        Store::new(FileStore::open(deep.clone())).set_num("sfxVol", 0.5);
+        assert!(deep.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

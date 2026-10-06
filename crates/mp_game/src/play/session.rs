@@ -233,4 +233,86 @@ mod tests {
         assert!(s.alpha() < 1.0);
         assert_eq!(s.advance(0.0, |_| InputFrame::default()), 0);
     }
+
+    /// Offline, alpha is the part of a tick the frames have not stepped.
+    #[test]
+    fn alpha_is_the_unstepped_part_of_a_tick() {
+        let mut s = Session::new(sierra(), OPTS);
+        assert_eq!(s.alpha(), 0.0);
+        assert_eq!(s.advance(DT / 2.0, |_| InputFrame::default()), 0);
+        assert!((s.alpha() - 0.5).abs() < 1e-9);
+        assert_eq!(s.advance(DT, |_| InputFrame::default()), 1);
+        assert!((s.alpha() - 0.5).abs() < 1e-9);
+        // A negative frame time (a clock that went back) steps nothing.
+        assert_eq!(s.advance(-1.0, |_| InputFrame::default()), 0);
+        assert!((s.alpha() - 0.5).abs() < 1e-9);
+        assert_eq!(s.prev.tick + 1, s.curr.tick);
+    }
+
+    /// Online the network client decides the ticks: the session copies its
+    /// states and events, asks for one input per new tick, hears the frame
+    /// once, and draws at the client's alpha.
+    #[test]
+    fn online_the_client_steps_and_the_session_copies() {
+        use crate::net::tests::Lan;
+        use mp_net::proto::{AiFill, Settings};
+        let mut lan = Lan::new(&["Ann", "Bob"]);
+        let mut races = lan.start(
+            Settings {
+                ai: AiFill::None,
+                ..Settings::default()
+            },
+            false,
+        );
+        let first: Vec<u32> = races.iter().map(|r| r.session.curr.tick).collect();
+        for r in &races {
+            assert_eq!(r.session.alpha(), 0.0, "before the first frame");
+            assert!(r.online_now());
+        }
+        let mut asked = [0u32; 2];
+        let mut ran = [0u32; 2];
+        let mut events = [0usize; 2];
+        for _ in 0..(5 * 60) {
+            lan.host_frame();
+            let now = lan.now;
+            for (i, (c, r)) in lan.clients.iter_mut().zip(races.iter_mut()).enumerate() {
+                let s = &mut r.session;
+                let mut heard = 0;
+                let mut seen = None;
+                let n = s.advance_online(
+                    c,
+                    now,
+                    |_| {
+                        asked[i] += 1;
+                        InputFrame::default()
+                    },
+                    |_, st, ev, _| {
+                        heard += 1;
+                        seen = Some(st.tick);
+                        events[i] += ev.len();
+                    },
+                );
+                ran[i] += n;
+                assert_eq!(s.ticks, n);
+                assert_eq!(s.inputs.len(), usize::from(n > 0));
+                assert!(heard <= 1, "the frame is heard once");
+                assert_eq!(heard == 1, n > 0 || !s.events.is_empty());
+                if let Some(t) = seen {
+                    assert_eq!(t, s.curr.tick, "it hears the newest state");
+                }
+                let cr = c.race.as_ref().unwrap();
+                assert_eq!(hash(&s.curr), hash(cr.state()));
+                assert_eq!(hash(&s.prev), hash(cr.prev()));
+                assert!(cr.events.is_empty(), "the session took the events");
+                assert_eq!(s.alpha(), c.alpha());
+                assert!((0.0..=1.0).contains(&s.alpha()));
+            }
+        }
+        for i in 0..2 {
+            assert!(ran[i] > 300, "five seconds of race ran: {}", ran[i]);
+            assert_eq!(asked[i], ran[i], "one input per new tick");
+            assert_eq!(races[i].session.curr.tick - first[i], ran[i]);
+            assert!(events[i] > 0, "the countdown's events came through");
+        }
+    }
 }
