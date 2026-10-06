@@ -38,9 +38,24 @@ fn circles(b: &dyn Body) -> [f64; 5] {
 }
 
 pub fn resolve_collisions<S: BodySet + ?Sized>(bodies: &mut S, t: &Track, events: &mut Vec<Hit>) {
+    resolve_collisions_except(bodies, t, events, 0);
+}
+
+/// [`resolve_collisions`], with the first `ghosts` bodies passing through
+/// each other (multiplayer's ghost mode: players are first in the agent
+/// list, and still collide with everything else).
+pub fn resolve_collisions_except<S: BodySet + ?Sized>(
+    bodies: &mut S,
+    t: &Track,
+    events: &mut Vec<Hit>,
+    ghosts: usize,
+) {
     let n = bodies.count();
     for i in 0..n {
         for j in i + 1..n {
+            if j < ghosts {
+                continue;
+            }
             let (a, b) = (bodies.body(i), bodies.body(j));
             if a.kinematic_only() && b.kinematic_only() && !a.crashy() && !b.crashy() {
                 continue;

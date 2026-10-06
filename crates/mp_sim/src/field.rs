@@ -9,7 +9,7 @@ use mp_track::Track;
 
 use crate::ai::AiDriver;
 use crate::body::{AgentView, Body, BodyId, PhysicsBody, player_view};
-use crate::collisions::{Hit, resolve_collisions};
+use crate::collisions::{Hit, resolve_collisions_except};
 use crate::pursuit::{PAgent, Pursuit, RacerBody, Racers};
 use crate::race::PlayerCar;
 use crate::traffic::{Agent, Traffic, TrafficCar};
@@ -111,6 +111,25 @@ impl Field<'_> {
 
     /// `resolveCollisions(agents, hits)` over the pools, in agent order.
     pub fn collide(&mut self, t: &Track, agents: &[BodyId]) -> Vec<Hit> {
+        self.collide_except(t, agents, false)
+    }
+
+    /// [`Field::collide`]; with `ghost_players`, the players pass through
+    /// each other (they lead the agent list).
+    pub fn collide_except(
+        &mut self,
+        t: &Track,
+        agents: &[BodyId],
+        ghost_players: bool,
+    ) -> Vec<Hit> {
+        let ghosts = if ghost_players {
+            agents
+                .iter()
+                .take_while(|id| matches!(id, BodyId::Player(_)))
+                .count()
+        } else {
+            0
+        };
         let mut hits = Vec::new();
         let mut players: Vec<Option<PhysicsBody>> = self
             .players
@@ -166,7 +185,7 @@ impl Field<'_> {
             };
             bodies.push(b);
         }
-        resolve_collisions(&mut bodies[..], t, &mut hits);
+        resolve_collisions_except(&mut bodies[..], t, &mut hits, ghosts);
         hits
     }
 }

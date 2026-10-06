@@ -18,11 +18,12 @@ use mp_math::{clamp, js, kernel, wrap_angle};
 use mp_track::{Level, Mode, Track};
 
 use crate::ai::{AiCtx, AiDriver, AiOpts};
+use crate::autopilot::autopilot;
 use crate::body::{AgentView, BodyId};
 use crate::collisions::Hit;
 use crate::dims::dims;
 use crate::field::{Field, RacerAccess};
-use crate::input::{Input, InputFrame, RESET};
+use crate::input::{AUTOPILOT, Input, InputFrame, RESET};
 use crate::park::{PARK_GAP, PARK_ROW, Park};
 use crate::physics::{CarPhysics, CarSpec, PhysEvent, car_spec};
 use crate::police::Mode as PoliceMode;
@@ -83,8 +84,10 @@ pub struct RaceState {
     /// Cars parked in each lane past the finish (`parkRows`).
     pub park_rows: Option<Vec<i32>>,
     /// Circuits: each racer's s at the last progress update (`progS`):
-    /// the player, then the rivals.
+    /// the players, then the rivals.
     pub prog_s: Vec<f64>,
+    /// A multiplayer race's rules and end ([`SimState::new_multi`]).
+    pub multi: Option<Multi>,
 }
 
 /// Race's state about a player (SPEC 4.3: per player, in `PlayerCar`).
@@ -120,6 +123,9 @@ pub struct PlayerRules {
     pub passed: Vec<Option<f64>>,
     /// Per traffic car: hit by the player, which cancels its near miss.
     pub near_miss_hit: Vec<bool>,
+    /// Multiplayer: the perfect-start moment of players after the first
+    /// (player 0's is `RaceState::throttle_at`, as in the JS).
+    pub throttle_at: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -159,6 +165,7 @@ impl PlayerRules {
             odo: None,
             passed: vec![None; n_cars],
             near_miss_hit: vec![false; n_cars],
+            throttle_at: None,
         }
     }
 }
@@ -198,7 +205,10 @@ pub enum SimEvent {
     /// A countdown number: 3, 2, 1.
     Countdown(i32),
     Go,
-    PerfectStart,
+    /// Player `player` got on the throttle at the right moment.
+    PerfectStart {
+        player: usize,
+    },
     /// A physics event of player `player` (shift, land, wall impact,
     /// touchdown).
     Phys {
@@ -411,6 +421,7 @@ impl SimState {
                 finish_prog,
                 park_rows: None,
                 prog_s,
+                multi: None,
             },
             players: vec![PlayerCar {
                 v,
@@ -442,6 +453,7 @@ impl SimState {
                     odo: None,
                     passed: vec![None; n_cars],
                     near_miss_hit: vec![false; n_cars],
+                    throttle_at: None,
                 },
             }],
             rivals,
@@ -449,6 +461,179 @@ impl SimState {
             pv,
             rng,
         }
+    }
+}
+
+/// A human in a multiplayer race.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Human {
+    pub car: &'static str,
+    /// The car's colour, if not its own.
+    pub color: Option<u32>,
+}
+
+/// How a multiplayer race is set up (MULTIPLAYER.md, section 2).
+#[derive(Clone, Debug, PartialEq)]
+pub struct MultiOpts {
+    pub seed: u32,
+    /// The humans; player `i` of the race is `humans[i]`.
+    pub humans: Vec<Human>,
+    /// Indexes into `humans` in grid order (a permutation of them).
+    pub grid: Vec<usize>,
+    /// The field AI rivals fill to, humans included; `None` for every rival
+    /// the level has. At most [`MAX_FIELD`] cars race.
+    pub field: Option<usize>,
+    pub rubber_band: bool,
+    /// Humans pass through each other.
+    pub ghost: bool,
+}
+
+/// A multiplayer race's own state.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Multi {
+    pub rubber_band: bool,
+    pub ghost: bool,
+    /// Seconds left for the others once the first human has finished.
+    pub end_timer: Option<f64>,
+    /// Seconds from the race's end to the results.
+    pub end_delay: f64,
+    pub reported: bool,
+}
+
+/// The most cars in a race (four rows of two).
+pub const MAX_FIELD: usize = 8;
+/// Seconds the others have to finish after the first human (MULTIPLAYER 2.8).
+pub const FINISH_WINDOW: f64 = 45.0;
+/// The players' names in the simulation; the client shows the names people
+/// chose.
+const PLAYER_NAMES: [&str; MAX_FIELD] = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"];
+/// Names for rivals beyond the level's own, when the field is filled.
+const EXTRA_RIVALS: [&str; MAX_FIELD] = [
+    "Nova", "Juno", "Rook", "Vega", "Echo", "Lynx", "Onyx", "Sable",
+];
+
+impl SimState {
+    /// A race for several humans (MULTIPLAYER.md). With one human, every
+    /// rival and the default rules it is exactly [`SimState::new`].
+    pub fn new_multi(lr: &LevelRuntime, o: &MultiOpts) -> SimState {
+        let nh = o.humans.len();
+        assert!((1..=MAX_FIELD).contains(&nh), "1 to 8 humans");
+        let mut sorted = o.grid.clone();
+        sorted.sort_unstable();
+        assert!(
+            sorted.iter().copied().eq(0..nh),
+            "the grid is an order of the humans"
+        );
+        let t = &*lr.track;
+        let mut st = SimState::new(
+            lr,
+            RaceOpts {
+                car: o.humans[0].car,
+                seed: o.seed,
+                pursuit: false,
+                heat: 1.0,
+            },
+        );
+
+        // The AI field.
+        let want_ai = o
+            .field
+            .map_or(st.rivals.len(), |f| f.saturating_sub(nh))
+            .min(MAX_FIELD - nh);
+        st.rivals.truncate(want_ai);
+        let defs = &lr.level.rivals;
+        while st.rivals.len() < want_ai && !defs.is_empty() {
+            let i = st.rivals.len();
+            let r = &defs[i % defs.len()];
+            let name = EXTRA_RIVALS[(i - defs.len()) % EXTRA_RIVALS.len()];
+            let rv = Vehicle::new(dims(r.kind).expect("dims"), r.kind, 1400.0, name, r.color);
+            let opts = AiOpts {
+                skill: Some(r.skill),
+                name,
+                power: Some(r.power),
+                bias: Some((if i % 2 == 1 { 1.0 } else { -1.0 }) * 0.6),
+                line_factor: Some(0.8 + (i % 3) as f64 * 0.08),
+            };
+            let mut ai = AiDriver::new(rv, opts, &mut st.rng.ai);
+            ai.color = r.color;
+            st.rivals.push(ai);
+        }
+
+        // The humans.
+        let n_cars = st.traffic.cars.len();
+        st.players = o
+            .humans
+            .iter()
+            .enumerate()
+            .map(|(i, h)| {
+                let mut spec = car_spec(h.car).expect("a car in CAR_SPECS");
+                spec.color = h.color.unwrap_or(spec.color);
+                let name = if nh == 1 { "You" } else { PLAYER_NAMES[i] };
+                let v = Vehicle::new(
+                    dims(h.car).expect("dims"),
+                    h.car,
+                    spec.mass,
+                    name,
+                    spec.color,
+                );
+                let mut phys = CarPhysics::new(&v, spec);
+                phys.locked = true;
+                PlayerCar {
+                    v,
+                    phys,
+                    spec,
+                    rules: PlayerRules::new(n_cars),
+                }
+            })
+            .collect();
+
+        // The grid: rows of two; humans from fourth place back among five
+        // or more rivals, from the front otherwise (as the one player is).
+        let nai = st.rivals.len();
+        let humans = o.grid.iter().map(|&h| Err(h));
+        let order: Vec<Result<usize, usize>> = if nai >= 5 {
+            (0..3)
+                .map(Ok)
+                .chain(humans)
+                .chain((3..nai).map(Ok))
+                .collect()
+        } else {
+            humans.chain((0..nai).map(Ok)).collect()
+        };
+        for (k, c) in order.into_iter().enumerate() {
+            let (row, col) = ((k / 2) as f64, k % 2);
+            let s = t.start_s - 5.0 - row * 10.0 - col as f64 * 3.0;
+            let lat = if col == 1 { 2.4 } else { -2.4 };
+            match c {
+                Err(h) => {
+                    let p = &mut st.players[h];
+                    p.phys.reset(&mut p.v, t, t.wrap(s), lat);
+                    p.v.prog = Some(s);
+                }
+                Ok(i) => {
+                    let a = &mut st.rivals[i];
+                    a.k.s = t.wrap(s);
+                    a.k.lat = lat;
+                    a.k.speed = 0.0;
+                    a.prog = Some(s);
+                    a.write_pos(t);
+                }
+            }
+        }
+        st.race.prog_s = st
+            .players
+            .iter()
+            .map(|p| p.v.s)
+            .chain(st.rivals.iter().map(|a| a.k.s))
+            .collect();
+        st.race.multi = Some(Multi {
+            rubber_band: o.rubber_band,
+            ghost: o.ghost,
+            end_timer: None,
+            end_delay: 0.0,
+            reported: false,
+        });
+        st
     }
 }
 
@@ -467,7 +652,10 @@ fn js_order(x: f64) -> Ordering {
 /// One line of the standings.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Standing {
+    /// A human's car (any player's).
     pub player: bool,
+    /// Which player, for a human's car.
+    pub human: Option<usize>,
     pub name: &'static str,
     pub color: u32,
     pub s: f64,
@@ -480,19 +668,25 @@ pub struct Standing {
 /// circuit `prog`, elsewhere s). A stable sort, as JS's.
 pub fn standings(st: &SimState) -> Vec<Standing> {
     let laps = st.race.laps > 0;
-    let p = &st.players[0];
-    let mut list = vec![Standing {
-        player: true,
-        name: "You",
-        color: p.spec.color,
-        s: p.v.s,
-        prog: if laps { p.v.prog } else { Some(p.v.s) },
-        finished: p.rules.finished,
-        time: p.rules.finish_time,
-    }];
+    let mut list: Vec<Standing> = st
+        .players
+        .iter()
+        .enumerate()
+        .map(|(i, p)| Standing {
+            player: true,
+            human: Some(i),
+            name: p.v.name,
+            color: p.spec.color,
+            s: p.v.s,
+            prog: if laps { p.v.prog } else { Some(p.v.s) },
+            finished: p.rules.finished,
+            time: p.rules.finish_time,
+        })
+        .collect();
     for a in &st.rivals {
         list.push(Standing {
             player: false,
+            human: None,
             name: a.name,
             color: a.color,
             s: a.k.s,
@@ -523,6 +717,7 @@ pub struct ResultRow {
     pub place: usize,
     pub name: &'static str,
     pub player: bool,
+    pub human: Option<usize>,
     pub color: u32,
     pub time: f64,
     pub estimated: bool,
@@ -545,6 +740,7 @@ pub fn results(st: &SimState) -> Vec<ResultRow> {
                 place: i + 1,
                 name: r.name,
                 player: r.player,
+                human: r.human,
                 color: r.color,
                 time,
                 estimated: !r.finished,
@@ -688,20 +884,22 @@ fn cool_down(t: &Track, p: &mut PlayerCar, me: usize, agents: &[AgentView], dt: 
 }
 
 /// `crash()`: a crash costs the cruise multiplier.
-fn crash(race: &RaceState, r: &mut PlayerRules, events: &mut Vec<SimEvent>) {
+fn crash(race: &RaceState, r: &mut PlayerRules, player: usize, events: &mut Vec<SimEvent>) {
     if !race.cruise || race.state == RaceStateKind::Countdown {
         return;
     }
-    events.push(SimEvent::Crash { player: 0 });
+    events.push(SimEvent::Crash { player });
     r.mult = 1.0;
     r.mult_timer = 0.0;
 }
 
 /// `bonus()`: nitro, and in a cruise the points (a chain raises the
 /// multiplier).
+#[allow(clippy::too_many_arguments)]
 fn bonus(
     race: &RaceState,
     p: &mut PlayerCar,
+    player: usize,
     text: String,
     nitro: f64,
     points: f64,
@@ -721,7 +919,7 @@ fn bonus(
         scored = gained;
     }
     events.push(SimEvent::Bonus {
-        player: 0,
+        player,
         text,
         nitro,
         points: scored,
@@ -729,22 +927,30 @@ fn bonus(
 }
 
 /// `resetPlayer()`: back on the road five metres back, on the tarmac.
-fn reset_player(t: &Track, race: &RaceState, p: &mut PlayerCar, events: &mut Vec<SimEvent>) {
+fn reset_player(
+    t: &Track,
+    race: &RaceState,
+    p: &mut PlayerCar,
+    player: usize,
+    events: &mut Vec<SimEvent>,
+) {
     let s = if t.is_loop {
         t.wrap(p.v.s - 5.0)
     } else {
         js::max(t.start_s, p.v.s - 5.0)
     };
-    crash(race, &mut p.rules, events);
+    crash(race, &mut p.rules, player, events);
     let f = t.frame(s);
     let lat = clamp(p.v.lat, -f.hw * 0.5, f.hw * 0.5);
     p.phys.reset(&mut p.v, t, s, lat);
     p.rules.reset_cooldown = 2.0;
-    events.push(SimEvent::Reset { player: 0 });
+    events.push(SimEvent::Reset { player });
 }
 
-/// One tick (`Race.update`, SPEC 4.3's tick order). `inputs[0]` is the
-/// player's.
+/// One tick (`Race.update`, SPEC 4.3's tick order). `inputs[i]` is player
+/// `i`'s (a missing one is no input). With one player this is the JS's
+/// update exactly; with several, every per-player part of the tick runs for
+/// each player in turn, in player order (MULTIPLAYER.md).
 pub fn step(
     lr: &LevelRuntime,
     st: &mut SimState,
@@ -754,20 +960,42 @@ pub fn step(
     let t = &*lr.track;
     let dt = DT;
     st.tick += 1;
-    let frame = inputs.first().copied().unwrap_or_default();
-    let inp = frame.input();
+    let np = st.players.len();
+    let frames: Vec<InputFrame> = (0..np)
+        .map(|i| inputs.get(i).copied().unwrap_or_default())
+        .collect();
+    // A player who dropped out is driven by the autopilot (MULTIPLAYER 2.7).
+    let inps: Vec<Input> = (0..np)
+        .map(|i| {
+            if frames[i].flags & AUTOPILOT != 0 {
+                let mut inp = Input::default();
+                autopilot(&mut inp, &st.players[i].v, t);
+                InputFrame::quantise(&inp).input()
+            } else {
+                frames[i].input()
+            }
+        })
+        .collect();
     let race = &mut st.race;
 
     // ── State machine ──────────────────────────────────────────
     if race.state == RaceStateKind::Countdown {
         race.countdown -= dt;
         // Perfect start = get on the throttle in the last moment before GO.
-        if inp.throttle > 0.5 {
-            if race.throttle_at.is_none() {
-                race.throttle_at = Some(race.countdown);
+        // (Player 0's moment is the race's `throttle_at`, as in the JS.)
+        for i in 0..np {
+            let ta = if i == 0 {
+                &mut race.throttle_at
+            } else {
+                &mut st.players[i].rules.throttle_at
+            };
+            if inps[i].throttle > 0.5 {
+                if ta.is_none() {
+                    *ta = Some(race.countdown);
+                }
+            } else {
+                *ta = None;
             }
-        } else {
-            race.throttle_at = None;
         }
         let n = race.countdown.ceil();
         if n < race.last_beep && n >= 1.0 {
@@ -776,15 +1004,24 @@ pub fn step(
         }
         if race.countdown <= 0.0 {
             race.state = RaceStateKind::Racing;
-            let p = &mut st.players[0];
-            p.phys.locked = false;
+            for p in st.players.iter_mut() {
+                p.phys.locked = false;
+            }
             events.push(SimEvent::Go);
-            if race.throttle_at.is_some_and(|ta| ta < 0.75) {
-                let fx = kernel::cos(p.v.yaw);
-                let fz = kernel::sin(p.v.yaw);
-                p.v.vx += fx * 6.0;
-                p.v.vz += fz * 6.0;
-                events.push(SimEvent::PerfectStart);
+            for i in 0..np {
+                let ta = if i == 0 {
+                    race.throttle_at
+                } else {
+                    st.players[i].rules.throttle_at
+                };
+                if ta.is_some_and(|ta| ta < 0.75) {
+                    let p = &mut st.players[i];
+                    let fx = kernel::cos(p.v.yaw);
+                    let fz = kernel::sin(p.v.yaw);
+                    p.v.vx += fx * 6.0;
+                    p.v.vz += fz * 6.0;
+                    events.push(SimEvent::PerfectStart { player: i });
+                }
             }
         }
     }
@@ -793,52 +1030,66 @@ pub fn step(
         race.time += dt;
     }
 
-    // ── Player ─────────────────────────────────────────────────
-    {
+    // ── Players ────────────────────────────────────────────────
+    for i in 0..np {
         let blocks_reset = st
             .pv
             .as_ref()
             .is_some_and(|pv| pv.held() || pv.pursuit.bust > 0.0);
-        let p = &mut st.players[0];
+        let p = &mut st.players[i];
         p.rules.reset_cooldown = js::max(0.0, p.rules.reset_cooldown - dt);
-        if frame.flags & RESET != 0 && started && p.rules.reset_cooldown == 0.0 && !blocks_reset {
-            reset_player(t, &st.race, p, events);
+        if frames[i].flags & RESET != 0 && started && p.rules.reset_cooldown == 0.0 && !blocks_reset
+        {
+            reset_player(t, &st.race, p, i, events);
         }
     }
     // ── Agents list for AI/traffic awareness ───────────────────
     let mut agents = field(st).agents();
-    let ctrl = if st.players[0].rules.finished {
-        let views = field(st).views(&agents);
-        cool_down(t, &mut st.players[0], 0, &views, dt)
-    } else if st.pv.as_ref().is_some_and(|pv| pv.held()) {
-        hold_controls(&mut st.players[0])
-    } else {
-        inp
-    };
-    if st.players[0].rules.finished || st.pv.as_ref().is_some_and(|pv| pv.held()) {
-        events.push(SimEvent::Controls {
-            player: 0,
-            throttle: ctrl.throttle,
-        });
-    }
-    {
-        let p = &mut st.players[0];
+    for i in 0..np {
+        // The pursuit holds player 0 (Hot Pursuit is single-player).
+        let held = i == 0 && st.pv.as_ref().is_some_and(|pv| pv.held());
+        let ctrl = if st.players[i].rules.finished {
+            let views = field(st).views(&agents);
+            cool_down(t, &mut st.players[i], i, &views, dt)
+        } else if held {
+            hold_controls(&mut st.players[i])
+        } else {
+            inps[i]
+        };
+        if st.players[i].rules.finished || held {
+            events.push(SimEvent::Controls {
+                player: i,
+                throttle: ctrl.throttle,
+            });
+        }
+        let p = &mut st.players[i];
         p.phys.update(&mut p.v, t, dt, &ctrl);
     }
 
+    let laps = st.race.laps > 0;
     let player_s = st.players[0].v.s;
-    let player_prog = if st.race.laps > 0 {
-        st.players[0].v.prog
-    } else {
-        None
-    };
+    let player_prog = if laps { st.players[0].v.prog } else { None };
     for i in 0..st.rivals.len() {
         let views = field(st).views(&agents);
+        // Whom this rival rubber-bands against (MULTIPLAYER 2.1).
+        let (ps, pp) = match &st.race.multi {
+            None => (player_s, player_prog),
+            Some(m) if !m.rubber_band => {
+                // Its own position: a gap of zero, no banding.
+                let a = &st.rivals[i];
+                (a.k.s, if laps { a.prog } else { None })
+            }
+            Some(_) => {
+                let k = nearest_human(st, i);
+                let v = &st.players[k].v;
+                (v.s, if laps { v.prog } else { None })
+            }
+        };
         let ctx = AiCtx {
             cars: &views,
             me: agents.iter().position(|&r| r == BodyId::Rival(i)),
-            player_s,
-            player_prog,
+            player_s: ps,
+            player_prog: pp,
             started,
             time: st.race.time,
         };
@@ -850,24 +1101,39 @@ pub fn step(
             st.rivals[i].park = Some(park);
         }
     }
-    if st.race.laps > 0 {
+    if laps {
         track_progress(t, st);
     }
-    let odo = {
-        let s = st.players[0].v.s;
-        let r = &mut st.players[0].rules;
-        let d_s = t.ds(r.last_s.unwrap_or(s), s);
-        r.last_s = Some(s);
-        r.dist += d_s.abs();
-        let odo = r.odo.unwrap_or(s) + d_s; // unwrapped position (loops)
-        r.odo = Some(odo);
-        odo
-    };
+    let odos: Vec<f64> = (0..np)
+        .map(|i| {
+            let s = st.players[i].v.s;
+            let r = &mut st.players[i].rules;
+            let d_s = t.ds(r.last_s.unwrap_or(s), s);
+            r.last_s = Some(s);
+            r.dist += d_s.abs();
+            let odo = r.odo.unwrap_or(s) + d_s; // unwrapped position (loops)
+            r.odo = Some(odo);
+            odo
+        })
+        .collect();
     {
+        // Traffic lives ahead of the leading player and stays until the
+        // last has passed (one player: both are player 0).
+        let (lead, trail) = lead_and_trail(st);
+        let lead_s = st.players[lead].v.s;
+        let trail_s = st.players[trail].v.s;
         let list = field(st).traffic_agents(&agents);
-        let dist = if t.is_loop { odo } else { player_s };
-        st.traffic
-            .update(t, dt, player_s, &list, 0.0, dist, &mut st.rng.traffic);
+        let dist = if t.is_loop { odos[lead] } else { lead_s };
+        st.traffic.update(
+            t,
+            dt,
+            lead_s,
+            &list,
+            0.0,
+            dist,
+            trail_s,
+            &mut st.rng.traffic,
+        );
     }
     if st.pv.is_some() {
         let list = field(st).pursuit_agents(&agents);
@@ -896,7 +1162,8 @@ pub fn step(
     }
 
     // ── Collisions ─────────────────────────────────────────────
-    let hits = field(st).collide(t, &agents);
+    let ghost = st.race.multi.as_ref().is_some_and(|m| m.ghost);
+    let hits = field(st).collide_except(t, &agents, ghost);
     for a in &mut st.rivals {
         a.write_pos(t);
     }
@@ -906,19 +1173,21 @@ pub fn step(
     if let Some(pv) = &mut st.pv {
         pv.pursuit.write_pos(t);
     }
-    let pb = BodyId::Player(0);
+    let human = |id: BodyId| match id {
+        BodyId::Player(k) => Some(k),
+        _ => None,
+    };
     for h in hits {
         let (a, b) = (agents[h.a], agents[h.b]);
         if st.pv.is_some() {
             pursuit_on_hit(t, st, a, b, h.strength, events);
         }
-        let involves_player = a == pb || b == pb;
-        let other = if a == pb { b } else { a };
-        let other_traffic = match other {
-            BodyId::Traffic(i) => Some(i),
-            _ => None,
-        };
-        if let Some(i) = other_traffic
+        let (ha, hb) = (human(a), human(b));
+        // `other`: the body that isn't the player, or `a` when no player is
+        // in the hit (so only the earlier of two others can be flagged, as
+        // in the JS).
+        let other = if ha.is_some() { b } else { a };
+        if let BodyId::Traffic(i) = other
             && h.strength > 0.15
         {
             let c = &mut st.traffic.cars[i];
@@ -926,126 +1195,134 @@ pub fn step(
         }
         events.push(SimEvent::CarHit {
             hit: h,
-            player: involves_player.then_some(0),
+            player: ha.or(hb),
         });
-        if involves_player {
-            if let Some(i) = other_traffic {
-                st.players[0].rules.near_miss_hit[i] = true;
+        for k in [ha, hb].into_iter().flatten() {
+            let other_k = if Some(k) == ha { b } else { a };
+            if let BodyId::Traffic(i) = other_k {
+                st.players[k].rules.near_miss_hit[i] = true;
             }
             if h.strength > 0.2 {
-                crash(&st.race, &mut st.players[0].rules, events);
+                crash(&st.race, &mut st.players[k].rules, k, events);
             }
         }
     }
-    let phys_events = std::mem::take(&mut st.players[0].phys.events);
-    for e in phys_events {
-        match e {
-            PhysEvent::Impact { strength, .. } => {
-                if strength > 0.35 {
-                    crash(&st.race, &mut st.players[0].rules, events);
+    for i in 0..np {
+        let phys_events = std::mem::take(&mut st.players[i].phys.events);
+        for e in phys_events {
+            match e {
+                PhysEvent::Impact { strength, .. } => {
+                    if strength > 0.35 {
+                        crash(&st.race, &mut st.players[i].rules, i, events);
+                    }
+                    // PursuitView.onWallImpact
+                    if i == 0 && st.pv.is_some() && strength > 0.2 {
+                        hurt(st, strength * DAMAGE_WALL, t);
+                    }
                 }
-                // PursuitView.onWallImpact
-                if st.pv.is_some() && strength > 0.2 {
-                    hurt(st, strength * DAMAGE_WALL, t);
+                PhysEvent::Land { air, .. } if air > 0.55 => {
+                    events.push(SimEvent::Phys { player: i, e });
+                    bonus(
+                        &st.race,
+                        &mut st.players[i],
+                        i,
+                        format!("AIR {}s", to_fixed1(air)),
+                        0.12,
+                        0.0,
+                        false,
+                        events,
+                    );
+                    continue;
                 }
+                _ => {}
             }
-            PhysEvent::Land { air, .. } if air > 0.55 => {
-                events.push(SimEvent::Phys { player: 0, e });
-                bonus(
-                    &st.race,
-                    &mut st.players[0],
-                    format!("AIR {}s", to_fixed1(air)),
-                    0.12,
-                    0.0,
-                    false,
-                    events,
-                );
-                continue;
-            }
-            _ => {}
+            events.push(SimEvent::Phys { player: i, e });
         }
-        events.push(SimEvent::Phys { player: 0, e });
     }
 
     // ── Bonuses: drift, near miss, overtakes ───────────────────
-    {
-        let p = &mut st.players[0];
-        p.rules.bonus_cooldown = js::max(0.0, p.rules.bonus_cooldown - dt);
-        if p.phys.drifting {
-            p.rules.last_drift = p.phys.drift_time;
-        } else if p.rules.last_drift > 1.2 {
-            let ld = p.rules.last_drift;
-            bonus(
-                &st.race,
-                p,
-                format!("DRIFT {}s", to_fixed1(ld)),
-                0.0,
-                js::round(ld * 150.0),
-                false,
-                events,
-            );
-            p.rules.last_drift = 0.0;
-        } else {
-            p.rules.last_drift = 0.0;
-        }
-    }
-    let psp = {
-        let v = &st.players[0].v;
-        kernel::hypot(v.vx, v.vz)
-    };
-    for ci in 0..st.traffic.cars.len() {
-        let c: &TrafficCar = &st.traffic.cars[ci];
-        if !c.active {
-            continue;
-        }
-        let p = &st.players[0];
-        let ds = t.ds(p.v.s, c.k.s);
-        let prev = p.rules.passed[ci];
-        let (clat, chw, cdir, cspeed) = (c.k.lat, c.k.v.half_w, c.k.dir, c.k.speed);
-        st.players[0].rules.passed[ci] = Some(ds);
-        if let Some(prev) = prev
-            && prev > 0.0
-            && ds <= 0.0
+    for i in 0..np {
         {
-            let p = &st.players[0];
-            let gap = (clat - p.v.lat).abs() - chw - p.v.half_w;
-            let rel = if cdir == 1 {
-                psp - cspeed
-            } else {
-                psp + cspeed
-            };
-            let lat = clat - p.v.lat;
-            if !p.rules.near_miss_hit[ci] && gap < 1.4 && rel > 12.0 {
-                st.players[0].rules.near_misses += 1;
-                events.push(SimEvent::NearMiss {
-                    player: 0,
-                    traffic: ci,
-                    lat,
-                    rel,
-                });
+            let p = &mut st.players[i];
+            p.rules.bonus_cooldown = js::max(0.0, p.rules.bonus_cooldown - dt);
+            if p.phys.drifting {
+                p.rules.last_drift = p.phys.drift_time;
+            } else if p.rules.last_drift > 1.2 {
+                let ld = p.rules.last_drift;
                 bonus(
                     &st.race,
-                    &mut st.players[0],
-                    "NEAR MISS".to_string(),
-                    0.08,
-                    250.0,
-                    true,
+                    p,
+                    i,
+                    format!("DRIFT {}s", to_fixed1(ld)),
+                    0.0,
+                    js::round(ld * 150.0),
+                    false,
                     events,
                 );
-            } else if rel > 20.0 && gap < 4.0 {
-                events.push(SimEvent::Whoosh {
-                    player: 0,
-                    traffic: ci,
-                    lat,
-                    rel,
-                });
+                p.rules.last_drift = 0.0;
+            } else {
+                p.rules.last_drift = 0.0;
+            }
+        }
+        let psp = {
+            let v = &st.players[i].v;
+            kernel::hypot(v.vx, v.vz)
+        };
+        for ci in 0..st.traffic.cars.len() {
+            let c: &TrafficCar = &st.traffic.cars[ci];
+            if !c.active {
+                continue;
+            }
+            let p = &st.players[i];
+            let ds = t.ds(p.v.s, c.k.s);
+            let prev = p.rules.passed[ci];
+            let (clat, chw, cdir, cspeed) = (c.k.lat, c.k.v.half_w, c.k.dir, c.k.speed);
+            st.players[i].rules.passed[ci] = Some(ds);
+            if let Some(prev) = prev
+                && prev > 0.0
+                && ds <= 0.0
+            {
+                let p = &st.players[i];
+                let gap = (clat - p.v.lat).abs() - chw - p.v.half_w;
+                let rel = if cdir == 1 {
+                    psp - cspeed
+                } else {
+                    psp + cspeed
+                };
+                let lat = clat - p.v.lat;
+                if !p.rules.near_miss_hit[ci] && gap < 1.4 && rel > 12.0 {
+                    st.players[i].rules.near_misses += 1;
+                    events.push(SimEvent::NearMiss {
+                        player: i,
+                        traffic: ci,
+                        lat,
+                        rel,
+                    });
+                    bonus(
+                        &st.race,
+                        &mut st.players[i],
+                        i,
+                        "NEAR MISS".to_string(),
+                        0.08,
+                        250.0,
+                        true,
+                        events,
+                    );
+                } else if rel > 20.0 && gap < 4.0 {
+                    events.push(SimEvent::Whoosh {
+                        player: i,
+                        traffic: ci,
+                        lat,
+                        rel,
+                    });
+                }
             }
         }
     }
 
     // Wrong way / finish.
-    {
-        let p = &mut st.players[0];
+    for i in 0..np {
+        let p = &mut st.players[i];
         let f = t.frame(p.v.s);
         let along = kernel::cos(p.v.yaw) * f.fx + kernel::sin(p.v.yaw) * f.fz;
         let spd = p.v.speed;
@@ -1055,7 +1332,7 @@ pub fn step(
             p.rules.wrong_way = 0.0;
         }
         if p.rules.wrong_way > 1.5 {
-            events.push(SimEvent::WrongWay { player: 0 });
+            events.push(SimEvent::WrongWay { player: i });
         }
         // Stuck? Offer the reset key.
         p.rules.stuck = Some(if started && !p.rules.finished && spd < 1.5 {
@@ -1065,47 +1342,95 @@ pub fn step(
         });
     }
 
-    if st.race.cruise && started {
-        cruise_score(&mut st.players[0].rules, dt, psp);
-    }
-    if st.race.laps > 0 && started && !st.players[0].rules.finished {
-        lap_check(t, st, events);
-    }
-    let prog_now = if st.race.laps > 0 {
-        st.players[0].v.prog.unwrap_or(f64::NAN)
-    } else {
-        st.players[0].v.s
-    };
-    if !st.race.cruise
-        && !st.players[0].rules.finished
-        && prog_now >= st.race.finish_prog
-        && started
-    {
-        let time = st.race.time;
-        let laps = st.race.laps > 0;
+    for i in 0..np {
+        if st.race.cruise && started {
+            let v = &st.players[i].v;
+            let psp = kernel::hypot(v.vx, v.vz);
+            cruise_score(&mut st.players[i].rules, dt, psp);
+        }
+        if laps && started && !st.players[i].rules.finished {
+            lap_check(t, st, i, events);
+        }
+        let prog_now = if laps {
+            st.players[i].v.prog.unwrap_or(f64::NAN)
+        } else {
+            st.players[i].v.s
+        };
+        if !st.race.cruise
+            && !st.players[i].rules.finished
+            && prog_now >= st.race.finish_prog
+            && started
         {
-            let r = &mut st.players[0].rules;
-            r.finished = true;
-            r.finish_time = Some(time);
-            if laps {
-                let lt = time - r.lap_start;
-                r.lap_times.push(lt);
+            let time = st.race.time;
+            {
+                let r = &mut st.players[i].rules;
+                r.finished = true;
+                r.finish_time = Some(time);
+                if laps {
+                    let lt = time - r.lap_start;
+                    r.lap_times.push(lt);
+                }
+            }
+            let (s, lat) = (st.players[i].v.s, st.players[i].v.lat);
+            let park = park_spot(t, &mut st.race, s, lat);
+            st.players[i].rules.park = Some(park);
+            let place = standings(st)
+                .iter()
+                .position(|r| r.human == Some(i))
+                .unwrap()
+                + 1;
+            events.push(SimEvent::Finished { player: i, place });
+            match &mut st.race.multi {
+                None => {
+                    st.race.state = RaceStateKind::Finished;
+                    st.players[i].rules.finish_delay = 3.2;
+                }
+                // The first human home starts the others' countdown.
+                Some(m) => {
+                    if m.end_timer.is_none() {
+                        m.end_timer = Some(FINISH_WINDOW);
+                    }
+                }
             }
         }
-        let (s, lat) = (st.players[0].v.s, st.players[0].v.lat);
-        let park = park_spot(t, &mut st.race, s, lat);
-        st.players[0].rules.park = Some(park);
-        let place = standings(st).iter().position(|r| r.player).unwrap() + 1;
-        events.push(SimEvent::Finished { player: 0, place });
-        st.race.state = RaceStateKind::Finished;
-        st.players[0].rules.finish_delay = 3.2;
+    }
+    let racing = st.race.state == RaceStateKind::Racing;
+    let any_home = st.players.iter().any(|p| p.rules.finished);
+    let all_home = st
+        .players
+        .iter()
+        .zip(&frames)
+        .all(|(p, f)| p.rules.finished || f.flags & AUTOPILOT != 0);
+    if let Some(m) = &mut st.race.multi
+        && racing
+    {
+        // The race ends when every player still driving has finished, or
+        // when the countdown runs out (MULTIPLAYER 2.8).
+        if let Some(e) = &mut m.end_timer {
+            *e -= dt;
+        }
+        if (any_home && all_home) || m.end_timer.is_some_and(|e| e <= 0.0) {
+            st.race.state = RaceStateKind::Finished;
+            m.end_delay = 3.2;
+        }
     }
     if st.race.state == RaceStateKind::Finished {
-        let r = &mut st.players[0].rules;
-        r.finish_delay -= dt;
-        if r.finish_delay <= 0.0 && !r.reported {
-            r.reported = true;
-            events.push(SimEvent::Results);
+        match &mut st.race.multi {
+            None => {
+                let r = &mut st.players[0].rules;
+                r.finish_delay -= dt;
+                if r.finish_delay <= 0.0 && !r.reported {
+                    r.reported = true;
+                    events.push(SimEvent::Results);
+                }
+            }
+            Some(m) => {
+                m.end_delay -= dt;
+                if m.end_delay <= 0.0 && !m.reported {
+                    m.reported = true;
+                    events.push(SimEvent::Results);
+                }
+            }
         }
     }
 
@@ -1113,6 +1438,49 @@ pub fn step(
     if st.pv.is_some() {
         pursuit_events(t, st, events);
     }
+}
+
+/// Multiplayer: the human nearest rival `i` in race progress (on a circuit
+/// `prog`, elsewhere s), the first of equals (MULTIPLAYER 2.1).
+fn nearest_human(st: &SimState, i: usize) -> usize {
+    let a = &st.rivals[i];
+    let laps = st.race.laps > 0;
+    let mut best = (0, f64::INFINITY);
+    for (k, p) in st.players.iter().enumerate() {
+        let gap = if laps {
+            a.prog.unwrap_or(f64::NAN) - p.v.prog.unwrap_or(f64::NAN)
+        } else {
+            a.k.s - p.v.s
+        };
+        if gap.abs() < best.1 {
+            best = (k, gap.abs());
+        }
+    }
+    best.0
+}
+
+/// The players furthest ahead and furthest behind in race progress (the
+/// first of equals); player 0 twice with one player.
+fn lead_and_trail(st: &SimState) -> (usize, usize) {
+    let laps = st.race.laps > 0;
+    let prog = |p: &PlayerCar| {
+        if laps {
+            p.v.prog.unwrap_or(f64::NAN)
+        } else {
+            p.v.s
+        }
+    };
+    let (mut lead, mut trail) = (0, 0);
+    for k in 1..st.players.len() {
+        let x = prog(&st.players[k]);
+        if x > prog(&st.players[lead]) {
+            lead = k;
+        }
+        if x < prog(&st.players[trail]) {
+            trail = k;
+        }
+    }
+    (lead, trail)
 }
 
 /// The pools of a state, borrowed apart.
@@ -1257,7 +1625,7 @@ fn pursuit_events(t: &Track, st: &mut SimState, events: &mut Vec<SimEvent>) {
                 v.vz *= 0.97;
             }
             PursuitEvent::Busted { player: true, .. } => {
-                crash(&st.race, &mut st.players[0].rules, events)
+                crash(&st.race, &mut st.players[0].rules, 0, events)
             }
             PursuitEvent::Release {
                 racer,
@@ -1357,16 +1725,16 @@ fn to_fixed1(x: f64) -> String {
 /// Circuits: carry each racer's unwrapped progress on by how far it moved
 /// along the loop this tick (a reset back down the road counts too).
 fn track_progress(t: &Track, st: &mut SimState) {
-    {
-        let p = &mut st.players[0];
-        let last = st.race.prog_s[0];
+    let np = st.players.len();
+    for (i, p) in st.players.iter_mut().enumerate() {
+        let last = st.race.prog_s[i];
         p.v.prog = Some(p.v.prog.unwrap_or(f64::NAN) + t.ds(last, p.v.s));
-        st.race.prog_s[0] = p.v.s;
+        st.race.prog_s[i] = p.v.s;
     }
     for (i, a) in st.rivals.iter_mut().enumerate() {
-        let last = st.race.prog_s[1 + i];
+        let last = st.race.prog_s[np + i];
         a.prog = Some(a.prog.unwrap_or(f64::NAN) + t.ds(last, a.k.s));
-        st.race.prog_s[1 + i] = a.k.s;
+        st.race.prog_s[np + i] = a.k.s;
     }
     for a in &mut st.rivals {
         if !a.finished && a.prog.unwrap_or(f64::NAN) >= st.race.finish_prog {
@@ -1376,9 +1744,9 @@ fn track_progress(t: &Track, st: &mut SimState) {
     }
 }
 
-/// The player's lap: announce each new one and keep the lap times.
-fn lap_check(t: &Track, st: &mut SimState, events: &mut Vec<SimEvent>) {
-    let p = &mut st.players[0];
+/// A player's lap: announce each new one and keep the lap times.
+fn lap_check(t: &Track, st: &mut SimState, player: usize, events: &mut Vec<SimEvent>) {
+    let p = &mut st.players[player];
     let done = ((p.v.prog.unwrap_or(f64::NAN) - t.start_s) / t.n as f64).floor(); // laps completed
     let r = &mut p.rules;
     if done < r.lap as f64 || done >= st.race.laps as f64 {
@@ -1390,7 +1758,7 @@ fn lap_check(t: &Track, st: &mut SimState, events: &mut Vec<SimEvent>) {
     r.lap = done as i32 + 1;
     let best = js::min_n(&r.lap_times) == lt && r.lap_times.len() > 1;
     events.push(SimEvent::Lap {
-        player: 0,
+        player,
         lap: r.lap,
         time: lt,
         best,

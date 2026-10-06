@@ -338,7 +338,9 @@ impl Traffic {
 
     /// `playerS`: position on the track; `player_dist`: unwrapped distance
     /// driven (same as playerS on point-to-point tracks). `agents` is the
-    /// tick's agent list.
+    /// tick's agent list. `trail_s`: with several players, the last one's
+    /// position, so cars stay until everyone has passed them (with one, the
+    /// player's own).
     #[allow(clippy::too_many_arguments)]
     pub fn update(
         &mut self,
@@ -348,6 +350,7 @@ impl Traffic {
         agents: &[Agent],
         _night: f64,
         player_dist: f64,
+        trail_s: f64,
         rng: &mut dyn Rng,
     ) {
         let mut n = 0;
@@ -357,13 +360,14 @@ impl Traffic {
                 continue;
             }
             let ds = t.ds(player_s, c.k.s);
+            let ds_back = t.ds(trail_s, c.k.s);
             let off_deck = c.opposite
                 && !t.is_loop
                 && self
                     .opposite_carriageway
                     .as_ref()
                     .is_some_and(|oc| c.k.s < oc.s0 - 5.0 || c.k.s > oc.s1);
-            if ds < (if c.opposite { -120.0 } else { -260.0 })
+            if ds_back < (if c.opposite { -120.0 } else { -260.0 })
                 || ds > 1400.0
                 || c.crashed > 25.0
                 || off_deck
