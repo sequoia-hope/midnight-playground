@@ -149,7 +149,8 @@ class EngineLab extends AudioWorkletProcessor {
     this.tick1 = new Biquad(); this.tick2 = new Biquad();
     this.whinePh = 0;
     this.turboPh = [0, 0]; this.hissBp = new Biquad(); this.bovBp = new Biquad(); this.bovT = -1; this.bovAmp = 0;
-    this.pops = []; for (let i = 0; i < MAX_POPS; i++) this.pops.push({ t: 0, len: 1, amp: 0, pipe: 0, on: false });
+    this.pops = []; for (let i = 0; i < MAX_POPS; i++) this.pops.push({ t: 0, tau: 1, amp: 0, sharp: 1, pipe: 0, on: false, at2: -1, amp2: 0 });
+    this.flameLp = new OnePole(2500);
     this.idleWob = new OnePole(1.5); this.idleWob2 = new OnePole(0.4);
     this.dcL = new Biquad().set('highpass', 18, 0.6); this.dcR = new Biquad().set('highpass', 18, 0.6);
     // Psychoacoustic bass: isolate the sub band, normalise it by its own
@@ -238,7 +239,7 @@ class EngineLab extends AudioWorkletProcessor {
       secs.forEach(([f, q, db], i) => pp.secs[i].set('peaking', f * P.mufflerTune, q, db * P.mufflerGain));
       pp.radLp.setHz(P.radHz);
       pp.body.set('lowshelf', 120, 0.7, P.body);
-      pp.popBp.set('bandpass', P.popHz, 0.9);
+      pp.popBp.set('highpass', P.popHz, 0.6);
     }
     this.intakeGuide.loss.setHz(3000);
     this.tick1.set('bandpass', 4300, 9); this.tick2.set('bandpass', 7400, 12);
@@ -257,12 +258,23 @@ class EngineLab extends AudioWorkletProcessor {
     this.intakeGuide.len = Math.max(1.5, (P.intakeLen / 343) * sr);
   }
 
+  // A pop: unburnt charge lighting in the hot pipe. It is a pressure pulse
+  // (a small explosion), not noise: a fast rise and a few milliseconds'
+  // decay, which then rings the pipe, muffler and tail like a firing pulse
+  // does. Most are small, short and bright (the crackle); now and then one is
+  // big and long and so carries the bass (the bang). About a third come with
+  // a second, smaller flame front a few milliseconds later.
   spawnPop(amp, pipe) {
     for (const p of this.pops) {
       if (p.on) continue;
       const r = this.rng;
-      p.on = true; p.t = 0; p.amp = amp; p.pipe = pipe;
-      p.len = this.sr * (0.004 + r.next() * 0.018);
+      const size = Math.pow(r.next(), 2.2); // 0 small .. 1 big; mostly small
+      p.on = true; p.t = 0; p.pipe = pipe;
+      p.amp = amp * (0.35 + 1.0 * size);
+      p.tau = this.sr * (0.0003 + 0.0011 * size + 0.0002 * r.next());
+      p.sharp = 1.6 - 0.6 * size;
+      p.at2 = r.next() < 0.35 ? this.sr * (0.0015 + 0.004 * r.next()) : -1;
+      p.amp2 = p.amp * (0.3 + 0.35 * r.next());
       return;
     }
   }
@@ -278,7 +290,7 @@ class EngineLab extends AudioWorkletProcessor {
     // sometimes lights in the pipe.
     if (this.limitCut && r.next() < 0.55) {
       h.on = true; h.t = 0; h.amp = 0.12; h.tau = Math.max(this.sr * 0.0003, ((P.tauDeg * 1.4) / (6 * rpm)) * this.sr); h.sharp = 0.9;
-      if (r.next() < 0.22 * P.pops) this.spawnPop(0.5 + 0.5 * r.next(), ev.bank);
+      if (r.next() < 0.06 * P.pops) this.spawnPop(0.5 + 0.5 * r.next(), ev.bank);
       return;
     }
     // Cycle-to-cycle variation: largest at idle and on overrun, smallest under load.
@@ -295,9 +307,10 @@ class EngineLab extends AudioWorkletProcessor {
     // Valve train: a faint tick per event.
     this.tickKick += P.mech * (0.3 + 0.7 * r.next()) * (0.4 + 0.6 * rn);
     // Overrun crackle: unburnt fuel lighting in the hot pipe, off-throttle at high rpm.
-    // Pops per second: a few on a long overrun, a burst just after a lift,
-    // more with anti-lag; spread over the firing events.
-    const perSec = P.pops * (over * clamp((rn - 0.3) / 0.4, 0, 1) * (4 + 22 * this.liftBurst) + P.antiLag * (this.thr < 0.15 ? 1 : 0) * rn * 6);
+    // Pops per second: an occasional one on a long overrun, a few just after
+    // a lift, more with anti-lag; spread over the firing events. Kept sparse
+    // on purpose: the owner found a steady crackle harsh, accurate or not.
+    const perSec = P.pops * (over * clamp((rn - 0.3) / 0.4, 0, 1) * (1 + 5 * this.liftBurst) + P.antiLag * (this.thr < 0.15 ? 1 : 0) * rn * 1.5);
     if (r.next() < perSec / ((rpm / 120) * this.n)) this.spawnPop((0.4 + 0.6 * r.next()) * (0.5 + 0.5 * rn), ev.bank);
   }
 
@@ -372,14 +385,21 @@ class EngineLab extends AudioWorkletProcessor {
       if (P.pipes < 2) { b0 += b1; b1 = 0; }
       else if (P.xpipe > 0) { const x = P.xpipe, m0 = b0; b0 = (1 - x) * b0 + x * b1; b1 = (1 - x) * b1 + x * m0; }
 
-      // Pops: a noise burst in the pipe and a crack at the tail.
+      // Pops: pressure pulses (see spawnPop), roughened by flame turbulence,
+      // into the pipe; their bright edge also leaves at the tail.
       let pop0 = 0, pop1 = 0;
+      const flame = this.flameLp.run(r.bi());
       for (const pp of this.pops) {
         if (!pp.on) continue;
-        const env = Math.min(1, pp.t / (sr * 0.0004)) * Math.exp(-pp.t / pp.len);
-        const s = pp.amp * env * r.bi() * 0.45;
+        const u = pp.t / pp.tau;
+        let s = pp.amp * Math.pow(u * Math.exp(1 - u), pp.sharp);
+        if (pp.at2 >= 0 && pp.t >= pp.at2) {
+          const u2 = (pp.t - pp.at2) / pp.tau;
+          s += pp.amp2 * Math.pow(u2 * Math.exp(1 - u2), pp.sharp);
+        }
+        s *= 1 + 1.2 * flame;
         if (pp.pipe && P.pipes >= 2) pop1 += s; else pop0 += s;
-        if (++pp.t > pp.len * 7) pp.on = false;
+        if (++pp.t > pp.tau * 14 + Math.max(0, pp.at2)) pp.on = false;
       }
 
       let oL = 0, oR = 0;
@@ -389,15 +409,17 @@ class EngineLab extends AudioWorkletProcessor {
         let s = j ? b1 : b0;
         s = pp.dcIn.run(s);
         if (turboAmt) s = pp.turb.run(s) * (1 - 0.3 * turboAmt);
+        // Pops light in the pipe, so they take the same steepening as the
+        // firing pulses rather than standing over the mix and ducking it.
+        const pop = j ? pop1 : pop0;
+        s += pop;
         // High-level pressure waves steepen and compress: asymmetric soft clip.
         const d = s * sat;
         s = (d >= 0 ? Math.tanh(d) : Math.tanh(0.75 * d) / 0.75) * satN;
-        const pop = j ? pop1 : pop0;
-        s += pop * 0.6;
         let m = pp.guide.step(s, P.pipeR, P.pipeRc) * (1 + P.pipeR);
         m = pp.mlp2.run(pp.mlp.run(m));
         for (let q = 0; q < pp.nSec; q++) m = pp.secs[q].run(m);
-        m += pp.popBp.run(pop) * 1.4;
+        m += pp.popBp.run(pop) * 0.25;
         const tl = pp.tail.step(m, P.tailR, 0.25);
         // Open-end radiation: the low end radiates less (high-pass-ish shelf).
         let rad = tl - (1 - P.radLow) * pp.radLp.run(tl);

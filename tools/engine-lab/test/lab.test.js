@@ -176,6 +176,33 @@ test('without pops, a drive cycle has no clicks', async () => {
   }
 });
 
+// Energy in a band (RBJ band-pass, Q 1.4) over the whole signal.
+function bandEnergy(x, f) {
+  const w = (2 * Math.PI * f) / RATE, al = Math.sin(w) / 2.8, a0 = 1 + al;
+  const b0 = al / a0, b2 = -al / a0, a1 = (-2 * Math.cos(w)) / a0, a2 = (1 - al) / a0;
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0, e = 0;
+  for (const v of x) { const y = b0 * v + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = v; y2 = y1; y1 = y; e += y * y; }
+  return e;
+}
+
+test('a pop is a pressure pulse with body, not a burst of hiss', async () => {
+  for (const key of ['crossV8', 'audiV8', 'i4turbo']) {
+    // The pops alone: firing pulses, intake and mechanics silenced.
+    const p = { ...presetParams(key), intake: 0, mech: 0, turbo: 0, antiLag: 0, pops: 10 };
+    const node = await engine(p, { rpm: p.idle, throttle: 0 });
+    const fire = node.fire.bind(node);
+    let pops = 0;
+    const spawn = node.spawnPop.bind(node);
+    node.spawnPop = (a, b) => { pops++; spawn(a, b); };
+    node.fire = (ev) => { fire(ev); node.hdr[ev.hdr].amp = 0; };
+    const { L } = render(node, 12, driven(p, 'drive'));
+    assert.ok(pops > 5, `${key}: ${pops} pops on the overrun`);
+    const low = bandEnergy(L, 63) + bandEnergy(L, 125) + bandEnergy(L, 250);
+    const high = bandEnergy(L, 1000) + bandEnergy(L, 2000) + bandEnergy(L, 4000);
+    assert.ok(low > 2 * high, `${key}: low/high ${(low / high).toFixed(2)}`);
+  }
+});
+
 test('the same seed renders the same sound, another seed a different one', async () => {
   const p = presetParams('audiV8');
   const a = render(await engine(p, { rpm: 3000, throttle: 0.6 }, 7), 0.5).L;
