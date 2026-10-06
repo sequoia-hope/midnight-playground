@@ -1,6 +1,7 @@
 # Multiplayer: race together (design note, ROADMAP WP 10.1)
 
-Status: **draft for the owner's approval.** SPEC section 9 fixes the
+Status: **approved by the owner (2026-10-06)** as proposed; the open points
+are in section 7. SPEC section 9 fixes the
 machinery (server-authoritative, every client simulating the whole world
 with rollback, WebSocket first, `mr-host`). This note settles the game
 rules SPEC 9.6 left open, plus the lobby and the results, so WPs 10.2 to
@@ -165,11 +166,12 @@ repeated so one lost packet costs nothing.
 - **End to end** (WP 10.7): four browser tabs complete a race.
 - **Owner:** a race with real people over the tailnet.
 
-## 7. Questions for the owner
+## 7. Open points
 
-1. Rubber-banding to the nearest human (2.1): agreed?
-2. Grid: reverse order after the first race (2.2): agreed, or random every
-   time?
-3. Collisions on by default, ghost as an option (2.4)?
-4. The 45-second finish countdown (2.8): right length?
-5. A points table across a session's races (4.4): wanted?
+The rules in section 2 are approved as proposed. Still open:
+
+1. **Guests outside the tailnet** (SPEC 9.5): default for the first
+   release is to invite them to the tailnet; a public name with a
+   certificate, or waiting for M11's WebRTC, are the alternatives.
+2. **The points table** across a session's races (4.4): keep or drop.
+3. **The 45-second finish countdown** (2.8): length.
