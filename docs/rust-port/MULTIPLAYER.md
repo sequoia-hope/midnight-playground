@@ -206,6 +206,39 @@ link** shared in Slack, Signal, Discord or a stream's chat:
   the host is the authority and could cheat, which is acceptable among
   friends.
 
+## 6.2 What is built (2026-10-06)
+
+- **WP 10.2** `mp_net::proto` (messages, encoding, fuzzed decoding) and
+  `mp_net::transport` (the `Transport` trait; `SimNet`, an in-process
+  network with latency, jitter, loss, reordering and cuts).
+- **WP 10.6 (the simulation's part)** `SimState::new_multi` and a
+  per-player `step` (section 2's rules). One human is single-player
+  exactly, tick for tick, on every level (`mp_sim/tests/multi.rs`).
+- **WP 10.3, 10.4** `mp_net::host` (lobby, leader, authoritative race,
+  input relay, hashes, rejoin, grid rules, points) and `mp_net::client`
+  (prediction, rollback, clock, hash checks, rebuild). Soak:
+  `cargo test --release -p mp_net -- --ignored` races eight players on
+  mixed links to the points with no desync.
+- **WP 10.5** `mp-host` (files, WebSocket at `…/ws`, the session).
+  `MP_HOST=1 ./serve.sh` runs it on the project's port.
+- **Not yet:** the game client's side (WP 10.7): the lobby screens, the
+  WebSocket transport in the browser, drawing the other humans' cars, the
+  name tags and the points screen.
+
+Two choices differ from SPEC 9.1 and 9.2 (DECISIONS records them):
+
+- **No state snapshots on the wire.** The host sends a state hash every 30
+  ticks; a client that disagrees rebuilds the race from its start and the
+  confirmed inputs, which it already has. The simulation is deterministic
+  across devices by construction (the math kernel), so a mismatch can only
+  come from a bug, which the rebuild then also shows (it is counted). This
+  avoids serialising the whole simulation state, and a rejoining player is
+  sent the inputs so far instead of a snapshot.
+- **The host's relayed inputs travel on the reliable channel.** Clients'
+  inputs go unreliable with the last eight ticks repeated; the host's
+  final inputs must all arrive, in order, and WebSocket is reliable
+  anyway. WebRTC (M11) may move them to unreliable with redundancy.
+
 ## 7. Open points
 
 The rules in section 2 are approved as proposed. Still open:
