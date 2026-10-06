@@ -98,7 +98,7 @@ function baseUrl() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const base = baseUrl();
-const flags = ['--ignore-gpu-blocklist', '--enable-gpu', '--use-angle=vulkan', '--enable-precise-memory-info'];
+const flags = ['--ignore-gpu-blocklist', '--mute-audio', '--enable-gpu', '--use-angle=vulkan', '--enable-precise-memory-info'];
 if (!capped) flags.push('--disable-gpu-vsync', '--disable-frame-rate-limit');
 if (race) flags.push('--autoplay-policy=no-user-gesture-required');
 if (game === 'rust' && backend === 'webgpu') flags.push('--enable-unsafe-webgpu', '--enable-features=Vulkan');

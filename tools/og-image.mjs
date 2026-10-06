@@ -26,7 +26,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const browser = await puppeteer.launch({
   executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
   headless: 'new',
-  args: ['--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist'],
+  args: ['--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist', '--mute-audio'],
 });
 try {
   const page = await browser.newPage();
