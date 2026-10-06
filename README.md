@@ -201,6 +201,14 @@ serves `main` as-is (there is no build step), so every push to `main` goes live
 within a minute or two. Links to it unfurl with a picture in Slack, iMessage,
 Discord and the like (the `og:` tags in `index.html`).
 
+**Midnight Playground**, the Rust port in progress (plan in
+`docs/rust-port/`), is at
+**https://loaf.cama-minor.ts.net/midnight-racer/dist/next/**. That address
+is on the owner's tailnet, so it opens only on devices in the tailnet or
+ones the machine has been shared with. It serves that machine's working
+tree, so it's whatever `cargo xtask web --release` last built there. It
+needs a browser with WebGPU.
+
 To run it locally:
 
 ```sh
