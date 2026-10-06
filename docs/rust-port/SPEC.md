@@ -461,6 +461,8 @@ The port does not build these, but the API must not block them:
   `VehicleModel`. Later ones: the same arcade equations off the corridor,
   and a rigid-body car on Rapier (which has a ray-cast vehicle controller, a
   cross-platform determinism mode, and no Bevy dependency).
+  `docs/vehicle-dynamics/SPEC.md` now designs the later models (and
+  chooses its own solver over Rapier, decision VD-1).
 - **More than one track.** `LevelRuntime` holds its Track by value; nothing
   assumes there is only one road in the world.
 
