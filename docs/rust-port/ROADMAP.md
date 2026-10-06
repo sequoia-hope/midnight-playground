@@ -341,7 +341,7 @@ show what the architecture is keeping room for.
 | b. Free-roam driving | The arcade handling off the road corridor: ground from a height field, collision with static geometry | SPEC 4.5 seams |
 | c. RL environment | `mr_sim::Env`, batched stepping, `mr_py`; first task: train rivals on the existing tracks | M1 only |
 | d. Open world | Chunked world generation and streaming of scene data; a road network instead of one route | b |
-| e. Realistic physics | A rigid-body car on Rapier as a second vehicle model | b |
+| e. Realistic physics | Sim handling (per-wheel tyre model) and soft-body tyres as further vehicle models: `docs/vehicle-dynamics/SPEC.md` | b |
 | f. Authored assets | glTF models, image textures and audio files beside generated content | M9 |
 | g. New modes | Weapons and pickups, kart-style items, playing as the police | M10 |
 
