@@ -21,7 +21,7 @@
     "marisol": {
       "name": "Marisol",
       "station": "The Tide, 88.1 FM",
-      "about": "A licensed coastal station broadcasting from the harbour town: deep house, disco edits, slow-burning sets. Mid-forties, a low, warm, unhurried late-night voice, dry humour. Has driven these roads for twenty years and notices small things. Off the air she rides a road bike up the climbs everyone else drives, and photographs the coast: fog, light, old cars. Plugged into the street racing scene, but would never say so on air. Goes to the rave, dances for four hours at the back, and still runs the Monday meeting. When she's tired, it's from other people's nonsense. Kind in a quiet, practical way.",
+      "about": "A licensed coastal station broadcasting from the harbour town: deep house, disco edits, slow-burning sets. Mid-forties, a low, warm, unhurried late-night voice, dry humour. Has driven these roads for twenty years and notices small things. Off the air she rides a road bike up the climbs everyone else drives, and photographs the coast: fog, light, old cars. Plugged into the street racing scene, but would never say so on air. Goes to the rave and stays to the end, naps in the car, then wakes up for strike and helps with the load-out, because someone responsible has to. A leader who never says she is one, and never brags. Gets in at eleven; ten if she has to. When she's tired, it's from other people's nonsense. Kind in a quiet, practical way.",
       "lines": {
         "ident": [
           "You're on The Tide. Eighty-eight point one. Coastside, after dark.",
@@ -40,7 +40,7 @@
         ],
         "morning": [
           "Good morning, coastside.\n\nIt is five fifty-two. The fog is sitting on the harbour like it pays rent there, the pelicans are already at work, and somebody parked a very loud car outside the bakery. You know who you are.\n\nIf you're just waking up, welcome. If you never went to bed, I see you, and I'm not telling anyone.\n\nThis is The Tide, eighty-eight point one. Coffee's on. Let's go to work.",
-          "Good morning. It's Monday. I danced until three, and I will still be the most functional person in my building by nine. That's not bragging. That's a warning.",
+          "Good morning. It's Monday. If you need me today, I'm in at eleven. If you really need me, ten. Let's not make it ten.",
           "Morning, everyone. The sun is up somewhere behind the hill. We'll take its word for it.",
           "Six a.m. on The Tide. The night shift is driving home, the day shift is driving in, and for about ten minutes on Highway 1, everyone's equally tired."
         ],
@@ -93,9 +93,9 @@
           }
         ],
         "raves": [
-          "Went to the thing in the redwoods on Saturday. Good sound system. I stood at the back, danced for four hours, and left before anybody needed talking down. That's maturity.",
+          "Went to the thing in the redwoods on Saturday. Good sound system. Danced until the sun came up, slept in the car for an hour, and woke up in time to help with the load-out. Honestly, the best part. Quiet forest, coffee, a crew that knows what it's doing.",
           "There's a gathering out past the state park this weekend. I'm not giving directions on air. If you need directions, you're not ready.",
-          "People ask if I still go out. I go out. I just don't make it everyone else's problem.",
+          "People ask if I still go out. Of course I go out. Where do you think I find the records?",
           "Best set I heard all year was at sunrise, in a clearing, off a generator that kept cutting out. Every time it came back, the whole forest cheered."
         ],
         "tired": [
@@ -147,7 +147,7 @@
     "kit": {
       "name": "Kit",
       "station": "Ridgeline Radio",
-      "about": "A pirate station broadcasting from a van parked somewhere up on Skyline: techno, breakbeat, drum and bass. Late twenties, quick and sharp, playful and a bit conspiratorial. Listens to the police scanner and is plugged into the street racing scene, the forest raves and every good camping spot on the ridge. Off the air she hikes everything, knows every plant on the mountain, and is always making something: tracks, stickers, an antenna out of a coat hanger. Kind at heart and wants to be, but young and brash: she doesn't always read people right, picks the odd fight, and then tries, clumsily, to make it right. Goes to the rave and is wrecked for two days afterwards.",
+      "about": "A pirate station broadcasting from a van parked somewhere up on Skyline: techno, breakbeat, drum and bass. Late twenties, quick and sharp, playful and a bit conspiratorial. Listens to the police scanner and is plugged into the street racing scene, the forest raves and every good camping spot on the ridge. Off the air she hikes everything, knows every plant on the mountain, is vegan, and is always making something: tracks, stickers, an antenna out of a coat hanger. Kind at heart and wants to be, but young and brash: she doesn't always read people right, picks the odd fight, and then tries, clumsily, to make it right. Goes to the rave and is wrecked for two days afterwards.",
       "lines": {
         "ident": [
           "Ridgeline Radio! Broadcasting from a van, on a hill, in the fog, on a frequency the government would prefer we didn't.",
@@ -189,7 +189,7 @@
           "Okay, the scanner's getting chatty. Lots of units heading for the coast road. Which means the ridge is wide open. I'm just reading the news.",
           "Rumour on the ridge: there's a crew from the city coming down this weekend to take the Skyline record. Defend your mountain.",
           "To the guy who called me a menace on the forum: I read it. I was mad. I'm less mad now. I'm still a menace. But I'm a menace who hopes your week gets better.",
-          "Okay. Alice's Restaurant, Skyline and 84, this Sunday, everybody's going. You can get anything you want. Except, apparently, a table, because I got there at nine and it was already wall-to-wall Ducatis.",
+          "Okay. Alice's Restaurant, Skyline and 84, this Sunday, everybody's going. You can get anything you want at Alice's Restaurant. Except a hearty vegan meal. I've checked. I've checked many times. I'm bringing a sandwich.",
           "Overheard at Alice's this morning: two guys arguing about tyre pressure for forty-five minutes. I said, have you tried just driving? They did not appreciate that. I apologised. Mostly.",
           "Rumour from Alice's: somebody parked a black three thousand G T out front last night, left the engine ticking, and vanished up Skyline before anyone could ask. Mysterious. Love it."
         ],
@@ -240,7 +240,8 @@
           "Made a new antenna today out of a coat hanger, a cake tin and pure spite. You're hearing it right now. You're welcome, science.",
           "I've been printing stickers in the van. Little mushrooms. Little pelicans. If you see one on a road sign, that wasn't me. It was me.",
           "Someone left a fern on my windshield with a note that said, for the van. Whoever you are, she's thriving. Her name is Gerald.",
-          "Wildflowers are coming up along the fire road. Purple ones, orange ones, the ones that smell like honey. Do not pick them. I will find you. Kindly. But I will."
+          "Wildflowers are coming up along the fire road. Purple ones, orange ones, the ones that smell like honey. Do not pick them. I will find you. Kindly. But I will.",
+          "Vegan tip for the ridge: the taco truck at the bottom of 84 does a mushroom thing on Thursdays that will change your life. Don't tell them I sent you. Actually, do."
         ],
         "callers": [
           "Got a text: Kit, play something for the delivery drivers. Every song tonight is for the delivery drivers. You're the real night crew.",
