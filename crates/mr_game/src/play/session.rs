@@ -35,6 +35,9 @@ pub struct Session {
     pub events: Vec<SimEvent>,
     /// The ticks the last `advance` ran.
     pub ticks: u32,
+    /// The inputs of the ticks the last `advance` ran, in order (for the
+    /// run recording, `crate::recording`).
+    pub inputs: Vec<InputFrame>,
 }
 
 impl Session {
@@ -47,6 +50,7 @@ impl Session {
             acc: 0.0,
             events: Vec::new(),
             ticks: 0,
+            inputs: Vec::new(),
         }
     }
 
@@ -67,6 +71,7 @@ impl Session {
         mut observe: impl FnMut(&LevelRuntime, &SimState, &[SimEvent], &InputFrame),
     ) -> u32 {
         self.events.clear();
+        self.inputs.clear();
         self.acc += frame_dt.clamp(0.0, MAX_FRAME);
         let mut n = 0;
         // A hair of tolerance, so 1/20 s is six ticks whatever the rounding.
@@ -76,6 +81,7 @@ impl Session {
             let from = self.events.len();
             step(&self.lr, &mut self.curr, &[frame], &mut self.events);
             observe(&self.lr, &self.curr, &self.events[from..], &frame);
+            self.inputs.push(frame);
             self.acc -= DT;
             n += 1;
         }
