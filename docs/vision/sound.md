@@ -78,6 +78,13 @@ bank angle, header and pipe lengths, muffler tuning. A cross-plane V8, a
 flat-plane V8, a V10, a V12, a turbo four, the 3000GT's twin-turbo V6,
 and the S4's V8 come from one model with different numbers.
 
+**Exhaust as a tuning option.** The exhaust system is its own parameter
+group, so a car can carry a stock and an aftermarket one: the lab's
+`audiV8awe` is the S4's V8 with an AWE Tuning cat-back (straight-through,
+larger bore: less loss, more low drone, bigger tips, a little more
+burble) beside the stock `audiV8`. In the game this becomes a garage
+choice (cars and classes, ROADMAP).
+
 **The reference** that this approach can sound real: AngeTheGreat's
 open-source Engine Simulator, which simulates combustion and exhaust
 acoustics and produces convincingly real engines. It is far too heavy to

@@ -127,7 +127,24 @@ export const PRESETS = {
   },
 };
 
-export const ORDER = ['crossV8', 'flatV8', 'v10', 'v12', 'v6tt', 'audiV8', 'i4turbo'];
+// The owner's 2004 S4 had an AWE Tuning cat-back: the same engine, a
+// throatier exhaust. A first tuning-option pair (stock vs aftermarket): a
+// straight-through, larger-bore system loses less in the pipe and the
+// muffler (higher low-pass, less loss), drones more around 100-130 Hz
+// (stronger low sections), radiates more low end from bigger tips, and
+// lets a little more overrun burble through. The engine numbers stay.
+PRESETS.audiV8awe = {
+  ...PRESETS.audiV8,
+  name: 'Audi 4.2 V8 with an AWE cat-back (aftermarket)',
+  headers: [...PRESETS.audiV8.headers],
+  pipeLen: 2.6, pipeR: -0.55, pipeLossHz: 3600,
+  mufflerLp: 3400, sections: [[112, 2.6, 7], [240, 3.5, 4], [600, 4, 1], [1500, 3, -1]],
+  tailLen: 0.42, radHz: 62, radLow: 0.5, body: 4,
+  drive: 1.9, pops: 1.15, popHz: 760,
+  level: 1.4,
+};
+
+export const ORDER = ['crossV8', 'flatV8', 'v10', 'v12', 'v6tt', 'audiV8', 'audiV8awe', 'i4turbo'];
 
 // Live tweak sliders: [key, label, min, max, step]. headerScale, headerSpread,
 // mufflerTune and mufflerGain are multipliers on the preset's own numbers.
