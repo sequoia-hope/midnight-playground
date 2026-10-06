@@ -8877,7 +8877,8 @@ Rust only:
 
 - Sideways: `--b` 14vmin + 26 px (60 to 104; was 12vmin + 26, 58 to 96):
   72.8 → 80.6 px on the iPhone; the slider 66vmin (200 to 320; was 62vmin):
-  242 → 257 px; full lock 0.17 of the short side (was 0.15): 58.5 → 66 px.
+  242 → 257 px tall, as wide as the JS's (D1085); full lock 0.17 of the
+  short side (was 0.15): 58.5 → 66 px.
 - Upright: `--b` a fifth of the width, held to (w − 62) / 4.16 so the
   Buttons choices' ◂ ▸ and pedal pads still share the bottom row (78 px);
   the ◂ ▸ pads and the GAS and BRAKE pads 1.4 times as tall (118 and 142
@@ -8926,3 +8927,43 @@ applies the volumes, as `startRace` does; natively, where nothing needs a
 gesture, it also wakes the sound itself, so the music starts with the
 menu. On the web the sound still waits for the first tap or key (the
 browser's autoplay rule). A deviation (DEVIATIONS.md).
+
+## D1085. The sideways slider keeps the JS's lane: headless Chrome's 800 px touch region
+
+2026-10-06. After D1084, analog-controls' "the pedal slider ..." test
+failed against the Rust build every time, with the driving aids off
+(`light gas pulls away slower (15.3 vs 11.0 m/s)`), and passed on main
+before it. Not the simulation: logged step by step, both builds put the
+field in the same places at the same race time. The test's steps took
+more race time: each slide (a CDP `touchMove`, the harness's two frames,
+an 80 ms sleep) took 10 frames instead of 8 or 9, so at `timescale=2` the
+test reset the car at s = startS + 40 about 0.25 s of race time later,
+just as the five rivals came through there, and one rammed it during the
+"light gas" pull.
+
+Why a slide took a frame longer: on the emulated 915 × 412 phone
+(puppeteer's device emulation of a browser whose window was 800 px wide),
+Chrome dispatches DOM touch events only for touches left of x = 800 CSS
+px, a sharp edge at every height, whatever `--window-size` or
+`defaultViewport` say. Left of it, a touchMove goes to the page as a
+`touchmove` (behind winit's non-passive `touchstart` listener on the
+canvas, aligned to the next frame) and CDP acks it after about 45 ms;
+right of it only pointer events go, acked after about 33 ms. The game
+reads pointer events, so it sees the same input either way; only the
+test's clock shifts. D1084's wider sideways slider moved the slider's
+centre on that device from x = 804 to 795, across the edge.
+
+So sideways the slider keeps the JS's width and lane (its unit is the
+JS's `--b`, clamp(58, 12vmin + 26, 96)) and grows only in height; the
+pads, the stick and the upright layout keep D1084's sizes. The slide
+steps are 8 frames again and the suite passes. The edge is a property of
+the emulation, not of phones; a test whose outcome hangs on where the
+field is when it drops the car in its path stays fragile, and putting
+the car clear of the field (say 400 m on) would end that, but the test is
+the frozen JS game's.
+
+## D1086. The owner on the driving aids
+
+2026-10-06. After playing on the iPhone: "mobile feels good with the driving
+line and assist!" The touch defaults stay as D1083 set them: guide line
+Full, steering assist Light.
