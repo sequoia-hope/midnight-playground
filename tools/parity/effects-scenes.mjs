@@ -104,7 +104,7 @@ async function stageJs(def, hide) {
 }
 
 fs.mkdirSync(OUT, { recursive: true });
-const flags = ['--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist'];
+const flags = ['--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist', '--mute-audio'];
 if (side === 'rust' && backend === 'webgpu') flags.push('--enable-unsafe-webgpu', '--enable-features=Vulkan');
 if (side === 'rust' && backend === 'webgl2') flags.push('--disable-blink-features=WebGPU', '--disable-features=WebGPU');
 const browser = await puppeteer.launch({ executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome', headless: 'new', args: flags, protocolTimeout: timeoutMs });

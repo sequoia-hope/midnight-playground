@@ -536,7 +536,7 @@ pub fn app(o: Options, hq: bool) -> App {
     .insert_resource(Opts { o, hq })
     .init_state::<AppState>()
     .add_systems(Startup, (spawn_camera, no_light_clustering))
-    .add_systems(First, status::tick)
+    .add_systems(First, status::tick.after(bevy::time::TimeSystems))
     .add_systems(Update, make_track)
     .add_systems(Update, unload_scene.before(receive_scene))
     .add_systems(Update, receive_scene.run_if(in_state(AppState::Waiting)))
