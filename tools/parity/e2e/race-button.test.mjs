@@ -2,7 +2,7 @@
 // (which runs against it with `npm run test:e2e:rust`, WP 6.7): a second tap
 // while the race is starting starts one race. The JS suite's version holds
 // three's compileAsync and traps `window.__race`; here the client counts
-// its races (`__mr.races`).
+// its races (`__mp.races`).
 //
 //   cargo xtask web --release && node --test tools/parity/e2e/race-button.test.mjs
 
@@ -31,7 +31,7 @@ test('phone: a second tap while the race is starting starts exactly one race', a
     await game.page.touchscreen.tap(x, y);
     await expectRaceStarts(game);
     await sleep(1500);
-    assert.equal(await game.eval('window.__mr.races'), 1);
+    assert.equal(await game.eval('window.__mp.races'), 1);
     assert.deepEqual(game.errors, []);
   } finally { await game.close(); }
 });

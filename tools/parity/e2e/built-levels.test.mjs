@@ -23,22 +23,22 @@ for (const level of ['desert', 'streets']) {
     // The saved level, not `?level=` (which races at once, D570).
     const game = await openGame(browser, { query: 'world=gen&timescale=2&autodrive=1', storage: { 'mr.level': level } });
     try {
-      assert.equal(await game.eval('window.__mr.level'), level);
+      assert.equal(await game.eval('window.__mp.level'), level);
       assert.equal((await game.ui('#lvl-name')).value, NAMES[level]);
       await startFromMenu(game, { timeout: 60000 });
       await waitRacing(game, 30000);
-      const s0 = await game.eval('window.__mr.race.s');
+      const s0 = await game.eval('window.__mp.race.s');
       await sleep(8000);
-      const r = await game.eval(() => ({ state: window.__mr.race.state, time: window.__mr.race.time, s: window.__mr.race.s }));
+      const r = await game.eval(() => ({ state: window.__mp.race.state, time: window.__mp.race.time, s: window.__mp.race.s }));
       assert.equal(r.state, 'racing');
       assert.ok(r.time > 5, `the race clock runs (${r.time})`);
       assert.ok(r.s > s0 + 50, `the autopilot drives on (s ${s0} → ${r.s})`);
-      await game.eval(() => window.__mr.stage({ cmd: 'finish', rivalWon: false }));
-      await game.waitFor(() => window.__mr.race.finished, { timeout: 30000, what: 'the player to cross the line' });
+      await game.eval(() => window.__mp.stage({ cmd: 'finish', rivalWon: false }));
+      await game.waitFor(() => window.__mp.race.finished, { timeout: 30000, what: 'the player to cross the line' });
       await expectScreen(game, 'results', 30000);
       // SPEC 6.6: the wasm memory's high-water mark under 512 MB, the race's
       // cars and sound included.
-      const mb = await game.eval(() => Math.round(window.__mr.wasmMemoryBytes() / 1048576));
+      const mb = await game.eval(() => Math.round(window.__mp.wasmMemoryBytes() / 1048576));
       t.diagnostic(`${level}: wasm memory after the race ${mb} MB`);
       assert.ok(mb < 512, `wasm memory ${mb} MB`);
       assert.deepEqual(game.errors, []);
@@ -49,10 +49,10 @@ for (const level of ['desert', 'streets']) {
 test('level tabs: Desert Run → Downtown Streets → Desert Run (world=gen)', async () => {
   const game = await openGame(browser, { query: 'world=gen&timescale=2', storage: { 'mr.level': 'desert' } });
   try {
-    assert.equal(await game.eval('window.__mr.level'), 'desert');
+    assert.equal(await game.eval('window.__mp.level'), 'desert');
     for (const id of ['streets', 'desert']) {
       await game.click(`#lvl-tab-${id}`);
-      await game.waitFor(`window.__mr.level === ${JSON.stringify(id)} && window.__mr.mode === 'menu' && window.__mr.ready`,
+      await game.waitFor(`window.__mp.level === ${JSON.stringify(id)} && window.__mp.mode === 'menu' && window.__mp.ready`,
         { timeout: 300000, interval: 250, what: `${id} to build` });
       await game.frames(5);
       assert.equal((await game.ui('#lvl-name')).value, NAMES[id]);

@@ -25,7 +25,7 @@
 // from 3.999 through every light to GO and racing (-1), then back; then 360
 // ticks of 1/120 s with the player at 60 m/s and the countdown running from
 // 4 to 0 (cd = 4 - (k + 1) / 90). Writes parity/golden/animators/seaside.json;
-// crates/mr_worldgen/tests/seaside_animators.rs replays it on the Rust build
+// crates/mp_worldgen/tests/seaside_animators.rs replays it on the Rust build
 // (WorldBuild::update_sky, the night parameters, WorldBuild::update, then
 // WorldBuild::countdown).
 

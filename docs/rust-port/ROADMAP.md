@@ -62,9 +62,9 @@ turns the JS game into reference data.
 |---|---|---|---|
 | 0.1 | Workspace, empty crates with the dependency rules, `xtask` (`check-deps`, `web`, `size`), `CLAUDE.md`, `DEVIATIONS.md`, `DECISIONS.md`. The web output is a bare wasm-bindgen module that writes a line to the page: it proves the pipeline without choosing an engine version | Cargo workspace at the repo root; `cargo xtask web` produces `dist/next/` | Builds native and wasm; `check-deps` passes; the page opens on a phone at the tailnet address |
 | 0.2 | CI: format, clippy, tests, wasm tests, `check-deps`, web build, size report, JS unit tests. No deploy: GitHub Pages stays the JS game until M9 | `.github/workflows/` | Green on `main`; the live site is unchanged |
-| 0.3 | The math kernel and the first hooks. `mr_math`'s kernel on `libm` (every inexact `Math` function, with n-argument `hypot`; SPEC 4.2), built to wasm for the oracle. JS hooks: replace those `Math` functions with the kernel and make any other inexact one throw; rewrite `**` as `Math.pow` in simulation and world-generation code; optional generator parameters in `AIDriver`, and in `PursuitView` and `Pursuit` through to `PoliceDriver`; fixed dt with several ticks per frame; quantised inputs | `crates/mr_math` (kernel only), `tools/parity/kernel/`, hooks in `src/` | JS suites pass with hooks off and with the kernel on; kernel in wasm and native give identical bits on a million inputs per function |
+| 0.3 | The math kernel and the first hooks. `mp_math`'s kernel on `libm` (every inexact `Math` function, with n-argument `hypot`; SPEC 4.2), built to wasm for the oracle. JS hooks: replace those `Math` functions with the kernel and make any other inexact one throw; rewrite `**` as `Math.pow` in simulation and world-generation code; optional generator parameters in `AIDriver`, and in `PursuitView` and `Pursuit` through to `PoliceDriver`; fixed dt with several ticks per frame; quantised inputs | `crates/mp_math` (kernel only), `tools/parity/kernel/`, hooks in `src/` | JS suites pass with hooks off and with the kernel on; kernel in wasm and native give identical bits on a million inputs per function |
 | 0.4 | Simulation references, all taken with the kernel on. The trace record format and the recorder (SPEC 4.6), which fails on any page error; the scenario catalogue; module traces from Node; whole-race recordings from headless Chrome for every level, in race mode and Hot Pursuit; the fuzz excursion and ticks-per-second baselines of the JS. Dumps the simulation needs from the JS world: `runout`, the opposite carriageway's range and lanes, vehicle dimensions for all kinds | `parity/trace-format.md`, `parity/scenarios.md`, `tools/parity/sim-*.mjs`, `parity/golden/sim/` | Two runs of every recording give identical files |
-| 0.5 | Scene export, taken with the kernel on. `mr_scene` types and the `.mrscene` reader and writer; `MaterialKind` tags on every JS material; the exporter (walks `__world.root` and the car models); Track and terrain dumps. An option exports terrain, road and sky only | `crates/mr_scene`, `tools/parity/scene-export.mjs` | Every mesh has a kind; the file read back by `mr_scene` has the same per-mesh digests (counts, bounds, texture hashes) as the live scene; all six levels export |
+| 0.5 | Scene export, taken with the kernel on. `mp_scene` types and the `.mrscene` reader and writer; `MaterialKind` tags on every JS material; the exporter (walks `__world.root` and the car models); Track and terrain dumps. An option exports terrain, road and sky only | `crates/mp_scene`, `tools/parity/scene-export.mjs` | Every mesh has a kind; the file read back by `mp_scene` has the same per-mesh digests (counts, bounds, texture hashes) as the live scene; all six levels export |
 | 0.6 | Pictures. Screenshot stations with traffic and particles frozen; material test scenes built from the exposed JS patch functions; the comparison metric; the report page | `tools/parity/shots.mjs`, `cargo xtask parity shots`, `parity/report/` | JS against JS gives the noise floor; thresholds in SPEC 12 confirmed or raised |
 | 0.7 | Audio reference: engine wave arrays, kit and SFX buffers, offline renders, a call log for a scripted drive | `parity/golden/audio/` | Reproducible. Then tag `js-reference` |
 | 0.8 | Baselines on the reference phones: the JS game in a race and in the fly camera along each route (`?s=&v=`): frame rate, load time, memory | `docs/rust-port/BASELINE.md` | Owner reads the phone numbers |
@@ -89,14 +89,14 @@ lines of tests).
 
 | WP | Ports | Output | Gate |
 |---|---|---|---|
-| 1.1 | `util/math.js`; the JS-semantics helpers (SPEC 4.2) | `mr_math` complete | L1 (`math.test.js`); `mulberry32`, `hash2` and noise bit-exact against the JS run with the kernel |
-| 1.2 | `track/Track.js`, `roadTypes.js`, level files, Seaside loader; `tools/seaside/build.py` gains a binary output; the world data and dimension tables from WP 0.4 | `mr_track`, `mr_levels`, `mr_sim::dims`, `assets/seaside/` | L1 (`track`, `levels`, `seaside` tests); every Track array identical to the JS dump |
-| 1.3 | `CarPhysics.js`, `Vehicle.js` state | `mr_sim::{physics, vehicle}` | L1 (`physics.test.js`); module traces identical. **This is the proof that bit-identical works: do it before 1.4 to 1.6 and stop if it cannot be made to pass** |
-| 1.4 | `Kinematic.js`, `AIDriver.js`, `Traffic.js`, `Collisions.js` | `mr_sim::{kinematic, ai, traffic, collisions}` | L1 (`ai`, `traffic` tests); module traces identical |
-| 1.5 | Race rules from `Race.js`; the autopilot from `main.js` | `mr_sim::race`, `SimState`, `step`, `SimEvent`, `hash`, `trace_record` (begun in 1.3 for the player's fields) | Whole-race recordings identical for every level in race mode, and the cruise run |
-| 1.6 | `Pursuit.js`, `PoliceDriver.js`, game rules from `PursuitView.js` | `mr_sim::pursuit` | L1 (`pursuit.test.js`); module traces and whole Hot Pursuit races identical |
+| 1.1 | `util/math.js`; the JS-semantics helpers (SPEC 4.2) | `mp_math` complete | L1 (`math.test.js`); `mulberry32`, `hash2` and noise bit-exact against the JS run with the kernel |
+| 1.2 | `track/Track.js`, `roadTypes.js`, level files, Seaside loader; `tools/seaside/build.py` gains a binary output; the world data and dimension tables from WP 0.4 | `mp_track`, `mp_levels`, `mp_sim::dims`, `assets/seaside/` | L1 (`track`, `levels`, `seaside` tests); every Track array identical to the JS dump |
+| 1.3 | `CarPhysics.js`, `Vehicle.js` state | `mp_sim::{physics, vehicle}` | L1 (`physics.test.js`); module traces identical. **This is the proof that bit-identical works: do it before 1.4 to 1.6 and stop if it cannot be made to pass** |
+| 1.4 | `Kinematic.js`, `AIDriver.js`, `Traffic.js`, `Collisions.js` | `mp_sim::{kinematic, ai, traffic, collisions}` | L1 (`ai`, `traffic` tests); module traces identical |
+| 1.5 | Race rules from `Race.js`; the autopilot from `main.js` | `mp_sim::race`, `SimState`, `step`, `SimEvent`, `hash`, `trace_record` (begun in 1.3 for the player's fields) | Whole-race recordings identical for every level in race mode, and the cruise run |
+| 1.6 | `Pursuit.js`, `PoliceDriver.js`, game rules from `PursuitView.js` | `mp_sim::pursuit` | L1 (`pursuit.test.js`); module traces and whole Hot Pursuit races identical |
 | 1.7 | Determinism, snapshot, fuzz and speed tests (SPEC 4.6) | Tests and a benchmark | Native and wasm hashes equal; fuzz within the JS excursion; not slower than the JS |
-| 1.8 | `mr-sim` command-line runner: run a race with the autopilot, print results, dump a trace or a state at a tick | A binary in `mr_sim` | Used by the gates above |
+| 1.8 | `mp-sim` command-line runner: run a race with the autopilot, print results, dump a trace or a state at a tick | A binary in `mp_sim` | Used by the gates above |
 
 **Order:** 1.1, then 1.2, then 1.3 alone. Then 1.4, then 1.5, then 1.6.
 1.7 and 1.8 grow alongside.
@@ -117,7 +117,7 @@ carries this game on the phones. Runs beside M1.
 | 2.2 | Scene loader: `.mrscene` to Bevy meshes, instances and textures, with CPU copies dropped. A fly camera on the same parameters as the JS one | All six exports load |
 | 2.3 | `three_std` shading library, the plain material kinds, the environment map from the sky, the post chain (bloom, tone mapping), fog, the shadow map, the sky dome | L4 material test scenes within threshold, on desktop |
 | 2.4 | Terrain, asphalt, markings and sea kinds. Every kind not yet written draws with the plain standard material, marked as a stand-in; points as quads; thirty moving stand-in cars | The terrain-road-sky export of Sierra within threshold at five stations, on desktop |
-| 2.5 | Screenshots of the Rust build: WebGPU flags and the wasm MIME type in the harness, a minimal `window.__mr.ready`, native `--screenshot` | The gates of 2.3 and 2.4 run from one command |
+| 2.5 | Screenshots of the Rust build: WebGPU flags and the wasm MIME type in the harness, a minimal `window.__mp.ready`, native `--screenshot` | The gates of 2.3 and 2.4 run from one command |
 | 2.6 | Pipeline warm-up; frame-time, memory and size measurement; ten reloads | Numbers recorded in `BASELINE.md` |
 | 2.7 | A WebGL2 build of the same client, selected by the page when WebGPU is missing or fails | Compiles in CI; loads on the iPhone |
 
@@ -160,7 +160,7 @@ Size XL (about 11,000 lines).
 | WP | Ports | Gate |
 |---|---|---|
 | 3.1 | `three_geom`: the three.js generators and merge (SPEC 5.2) | Each generator against a three.js dump |
-| 3.2 | `mr_canvas`: the Canvas 2D subset and text (SPEC 5.3); the font gallery | The shared textures in `world/textures.js` within threshold |
+| 3.2 | `mp_canvas`: the Canvas 2D subset and text (SPEC 5.3); the font gallery | The shared textures in `world/textures.js` within threshold |
 | 3.3 | Builders: `valley/Builder`, `beach/ColorBuilder`, `city/geom`, `Road.js` extrude; `WorldBuild`, `Animator`, night parameters; the job list | Unit tests on builders |
 | 3.4 | `Terrain.js`, `TerrainMesh.js`, the colouriser | L2 heights; L3 terrain digest |
 | 3.5 | `Road.js`, `Sky.js` (parameters and keys), `Sea.js`, `World.js` | L3 road digest; L4 road and sky stations |
@@ -186,7 +186,7 @@ desktop web and native.
 
 | WP | Ports | Gate |
 |---|---|---|
-| 4.1 | `CarModel.js`: thirteen kinds, detail levels, far model, light setters. Size M | L3 digests per kind; dimensions equal `mr_sim::dims`; L4 against `tools/car-test.html` views |
+| 4.1 | `CarModel.js`: thirteen kinds, detail levels, far model, light setters. Size M | L3 digests per kind; dimensions equal `mp_sim::dims`; L4 against `tools/car-test.html` views |
 | 4.2 | Session and tick loop (loopback), interpolation, `Vehicle.sync` | Motion is smooth at 60 and 120 Hz; no drift from the simulation |
 | 4.3 | `CameraRig.js`, the intro camera | L4 stations in chase, far and bumper views |
 | 4.4 | `Effects.js`: smoke, sparks, skids, flames, headlight pools; the headlight spot | L4 staged effect scenes |
@@ -234,7 +234,7 @@ time after M2.
 | 6.4 | Gamepad: bindings, remapping, menu navigation, rumble | L1 (`gamepad.test.js`); `gamepad` e2e |
 | 6.5 | Touch controls: stick, slider, buttons, auto gas | L1 (`touch.test.js`); `touch-controls`, `analog-controls` e2e |
 | 6.6 | Tilt, fullscreen and landscape lock through the gesture bridge; visibility pause | L1 (`tilt.test.js`); `tilt` e2e |
-| 6.7 | The full test bridge (`window.__mr`, begun in WP 2.5) and the harness `target` option | The e2e suites run against the Rust build |
+| 6.7 | The full test bridge (`window.__mp`, begun in WP 2.5) and the harness `target` option | The e2e suites run against the Rust build |
 | 6.8 | Native: window state, F11, `--query`, `--smoke-test` | Smoke test in CI |
 | 6.9 | The level viewer (SPEC 8.6): free fly, orbit, overview and ride cameras; the panel; keyboard, mouse, pad and touch; links that carry the pose. Rust only (D679) | `viewer` e2e; the owner reviews every level with it on desktop and phone |
 
@@ -311,7 +311,7 @@ existing levels (SPEC 9).
 | 10.2 | Protocol, the transport trait, loopback and the lossy test transport | Unit tests |
 | 10.3 | Session: lobby, authoritative stepping, input relay, snapshots | Eight headless clients for an hour with latency and jitter: no desync that a snapshot does not repair |
 | 10.4 | Client: prediction, rollback, clock sync, correction smoothing | Two cars side by side at 50 ms simulated latency: contact looks the same on both |
-| 10.5 | `mr-host`: static files, wss, TLS options, the port rule; `serve.sh` switches to it | `proj doctor` clean; phones join over https |
+| 10.5 | `mp-host`: static files, wss, TLS options, the port rule; `serve.sh` switches to it | `proj doctor` clean; phones join over https |
 | 10.6 | Multiplayer simulation rules from 10.1; names and colours | Tests |
 | 10.7 | Lobby and results UI; join by address or QR code | Multi-tab e2e: four tabs complete a race |
 
@@ -341,7 +341,7 @@ table; the vision behind it is `docs/vision/WORLD.md`.
 |---|---|---|
 | a. Renderer upgrades | Cascaded shadows, real local lights, better anti-aliasing: what WebGPU allows once exact parity is no longer the goal | M9 |
 | b. Free-roam driving | The arcade handling off the road corridor: ground from a height field, collision with static geometry | SPEC 4.5 seams |
-| c. RL environment | `mr_sim::Env`, batched stepping, `mr_py`; first task: train rivals on the existing tracks | M1 only |
+| c. RL environment | `mp_sim::Env`, batched stepping, `mp_py`; first task: train rivals on the existing tracks | M1 only |
 | d. Open world | Chunked world generation and streaming of scene data; a road network instead of one route | b |
 | e. Realistic physics | Sim handling (per-wheel tyre model) and soft-body tyres as further vehicle models: `docs/vehicle-dynamics/SPEC.md` | b |
 | f. Authored assets | glTF models, image textures and audio files beside generated content | M9 |

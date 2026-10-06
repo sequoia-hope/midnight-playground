@@ -1,7 +1,7 @@
 // The car models of the browser's models export (roadmap WP 4.1): every
 // kind CarModel.js builds, at high detail and at low detail with its far
 // model, and the police liveries of the muscle and sports cars (DECISIONS
-// D29), as a small digest, so that mr_worldgen::car_model can be held to
+// D29), as a small digest, so that mp_worldgen::car_model can be held to
 // the JS (L3, per kind) in CI and in wasm, without the cache.
 //
 //   node tools/parity/car-model-golden.mjs [--check]
@@ -21,7 +21,7 @@
 //     materials in order of first use over all models, each described as
 //     tools/parity/road-plan.mjs `materialView` describes it (textures by
 //     their sampler) and hashed in a canonical form (keys sorted, every
-//     number as its f64 bits), which crates/mr_worldgen/tests/car_model.rs
+//     number as its f64 bits), which crates/mp_worldgen/tests/car_model.rs
 //     makes the same way;
 //   - per texture a material uses, the 8×8 block means of its pixels (as
 //     tools/parity/textures.mjs writes them), for WP 3.2's threshold gate
@@ -106,7 +106,7 @@ function blocks(width, height, rgba) {
   return out;
 }
 
-// One node's line (crates/mr_worldgen/tests/car_model.rs `node_line`).
+// One node's line (crates/mp_worldgen/tests/car_model.rs `node_line`).
 function nodeLine({ H, D }, n) {
   let ml = '-', groups = '-', sphere = '-';
   if (n.mesh !== undefined && n.mesh !== null) {

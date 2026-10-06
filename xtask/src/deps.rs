@@ -19,7 +19,7 @@ struct Rule {
     /// hash maps in the source (SPEC 3.2, 4.2).
     pure: bool,
     /// No float methods that call the platform's math library (`x.sin()`,
-    /// `f64::exp`, `mul_add`, ...): the kernel in `mr_math` is used instead
+    /// `f64::exp`, `mul_add`, ...): the kernel in `mp_math` is used instead
     /// (SPEC 4.2, 5.4).
     exact_math: bool,
 }
@@ -44,96 +44,96 @@ const NO_BEVY: &[&str] = &["bevy*"];
 
 const RULES: &[Rule] = &[
     Rule {
-        krate: "mr_math",
+        krate: "mp_math",
         allowed: &[],
         banned: SIM_BANNED,
         pure: true,
         exact_math: true,
     },
     Rule {
-        krate: "mr_track",
-        allowed: &["mr_math"],
+        krate: "mp_track",
+        allowed: &["mp_math"],
         banned: SIM_BANNED,
         pure: true,
         exact_math: true,
     },
     Rule {
-        krate: "mr_levels",
-        allowed: &["mr_math", "mr_track"],
+        krate: "mp_levels",
+        allowed: &["mp_math", "mp_track"],
         banned: SIM_BANNED,
         pure: true,
         exact_math: true,
     },
     Rule {
-        krate: "mr_sim",
-        allowed: &["mr_math", "mr_track", "mr_levels"],
+        krate: "mp_sim",
+        allowed: &["mp_math", "mp_track", "mp_levels"],
         banned: SIM_BANNED,
         pure: true,
         exact_math: true,
     },
     Rule {
-        krate: "mr_scene",
+        krate: "mp_scene",
         allowed: &[],
         banned: NO_ENGINE,
         pure: false,
         exact_math: false,
     },
     Rule {
-        krate: "mr_canvas",
-        allowed: &["mr_math"],
+        krate: "mp_canvas",
+        allowed: &["mp_math"],
         banned: WORLD_BANNED,
         pure: false,
         exact_math: false,
     },
     Rule {
-        krate: "mr_worldgen",
-        allowed: &["mr_scene", "mr_canvas", "mr_math", "mr_track", "mr_levels"],
+        krate: "mp_worldgen",
+        allowed: &["mp_scene", "mp_canvas", "mp_math", "mp_track", "mp_levels"],
         banned: WORLD_BANNED,
         pure: false,
         exact_math: true,
     },
     Rule {
-        krate: "mr_audio",
-        allowed: &["mr_math"],
+        krate: "mp_audio",
+        allowed: &["mp_math"],
         banned: NO_BEVY,
         pure: false,
         exact_math: false,
     },
     Rule {
-        krate: "mr_net",
-        allowed: &["mr_math", "mr_track", "mr_levels", "mr_sim"],
+        krate: "mp_net",
+        allowed: &["mp_math", "mp_track", "mp_levels", "mp_sim"],
         banned: NO_BEVY,
         pure: false,
         exact_math: false,
     },
     Rule {
-        krate: "mr_host",
-        allowed: &["mr_math", "mr_track", "mr_levels", "mr_sim", "mr_net"],
+        krate: "mp_host",
+        allowed: &["mp_math", "mp_track", "mp_levels", "mp_sim", "mp_net"],
         banned: NO_BEVY,
         pure: false,
         exact_math: false,
     },
     Rule {
-        krate: "mr_game",
+        krate: "mp_game",
         allowed: &[
-            "mr_math",
-            "mr_track",
-            "mr_levels",
-            "mr_sim",
-            "mr_net",
-            "mr_scene",
-            "mr_canvas",
-            "mr_worldgen",
-            "mr_audio",
+            "mp_math",
+            "mp_track",
+            "mp_levels",
+            "mp_sim",
+            "mp_net",
+            "mp_scene",
+            "mp_canvas",
+            "mp_worldgen",
+            "mp_audio",
         ],
         banned: &[],
         pure: false,
         exact_math: false,
     },
-    // The kernel's wasm build for the JS oracle (WP 0.3): mr_math only.
+    // The kernel's wasm build for the JS oracle (WP 0.3): mp_math only.
     Rule {
         krate: "mr_kernel",
-        allowed: &["mr_math"],
+        allowed: &["mp_math"],
         banned: SIM_BANNED,
         pure: false,
         exact_math: true,
@@ -297,7 +297,7 @@ fn check_source(rule: &Rule, crate_dir: &Path, problems: &mut Vec<String>) -> Re
                 for m in INEXACT {
                     if calls_method(code, m) {
                         problems.push(format!(
-                            "{rel}:{}: `{m}` calls the platform's math; use mr_math's kernel",
+                            "{rel}:{}: `{m}` calls the platform's math; use mp_math's kernel",
                             n + 1
                         ));
                     }
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn every_sim_crate_is_pure() {
-        for k in ["mr_math", "mr_track", "mr_levels", "mr_sim"] {
+        for k in ["mp_math", "mp_track", "mp_levels", "mp_sim"] {
             let r = RULES.iter().find(|r| r.krate == k).unwrap();
             assert!(r.pure && r.exact_math, "{k}");
         }

@@ -1,6 +1,6 @@
 // Seaside Raceway's canvas textures as Chrome draws them with the bundled
 // fonts (roadmap WP 7.4, as coast-textures.mjs does for WP 7.1: WP 3.2's
-// threshold gate needs a reference drawn with the same faces as mr_canvas,
+// threshold gate needs a reference drawn with the same faces as mp_canvas,
 // and the scene export is drawn with the machine's own fonts; the banner
 // atlas is lettered).
 //
@@ -21,7 +21,7 @@
 // summary (the entries; per picture its size, SHA-256 and 8x8 block means,
 // of the colour as it is and premultiplied;
 // the font manifest's hash; the Chrome version) to
-// parity/golden/seaside/textures.json. crates/mr_worldgen/tests/seaside.rs
+// parity/golden/seaside/textures.json. crates/mp_worldgen/tests/seaside.rs
 // compares the Rust pictures with it. --check captures twice and fails if a
 // picture changed or the golden would.
 
@@ -54,7 +54,7 @@ function init(seedSrc, seed, faces) {
     for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
     const face = new FontFace(f.family, bytes, { weight: f.weight, style: f.style });
     document.fonts.add(face);
-    window.__mrFonts = (window.__mrFonts || []).concat([face.load()]);
+    window.__mpFonts = (window.__mpFonts || []).concat([face.load()]);
   }
 }
 
@@ -66,8 +66,8 @@ async function capture() {
       init, initArgs: [seedRandom.toString(), RANDOM_SEED, faces],
     });
     const out = await game.eval(async (groups) => {
-      await Promise.all(window.__mrFonts || []);
-      const loaded = (window.__mrFonts || []).length;
+      await Promise.all(window.__mpFonts || []);
+      const loaded = (window.__mpFonts || []).length;
       const THREE = window.__THREE;
       const world = window.__world;
       const renderer = world.renderer;

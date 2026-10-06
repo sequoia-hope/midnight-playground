@@ -1,5 +1,5 @@
 // What the scenery tells the road before it is built, and the road, sky and
-// sea of the browser's scene exports (roadmap WP 3.5), so that mr_worldgen's
+// sea of the browser's scene exports (roadmap WP 3.5), so that mp_worldgen's
 // Road, Sky and Sea can be held to the JS (the L3 road digest) in CI and in
 // wasm, without the cache.
 //
@@ -34,7 +34,7 @@
 // The time of day along the route: a Sky made under Node, updated at 41
 // points from the start to the finish (dt 0, the focus on the road there),
 // everything update() sets hashed in a fixed order (the `skyRoute` hash;
-// see crates/mr_worldgen/tests/road.rs `sky_route`).
+// see crates/mp_worldgen/tests/road.rs `sky_route`).
 //
 // Writes parity/golden/road/<level>.json. Numbers of the plan are hex f64
 // bits. --check regenerates in memory and fails if a file would change.
@@ -98,11 +98,11 @@ function exported(name) {
   return { H: JSON.parse(json.toString('utf8')), D: JSON.parse(fs.readFileSync(dig, 'utf8')) };
 }
 
-// mr_worldgen's tests make the same line from mr_scene's digest.
+// mp_worldgen's tests make the same line from mp_scene's digest.
 const meshLine = (m) => `${m.vertices} ${m.indices} ${Object.entries(m.attributes).map(([k, v]) => k + '=' + v).join(',')} ${m.index}`;
 
 // A material with each texture reference replaced by what the texture is
-// (as crates/mr_worldgen/tests/road.rs `material_view` does), and a
+// (as crates/mp_worldgen/tests/road.rs `material_view` does), and a
 // ShaderMaterial's GLSL by its SHA-256.
 function materialView({ H, D }, i) {
   const walk = (v) => {
@@ -111,7 +111,7 @@ function materialView({ H, D }, i) {
       const keys = Object.keys(v);
       if (keys.length === 1 && keys[0] === 'texture' && typeof v.texture === 'number') {
         const t = H.textures[v.texture];
-        // The header leaves a texture's url out when it has none; mr_scene
+        // The header leaves a texture's url out when it has none; mp_scene
         // reads that as null.
         const desc = walk({ ...t, url: t.url ?? null });
         desc.pixels = null;
@@ -188,7 +188,7 @@ function sea(ex) {
 }
 
 // Sky.update at SKY_SAMPLES points along the route: every value it sets,
-// as f64 bits, in the order crates/mr_worldgen/tests/road.rs writes them.
+// as f64 bits, in the order crates/mp_worldgen/tests/road.rs writes them.
 const SKY_SAMPLES = 41;
 function skyRoute(level, track) {
   const scene = new THREE.Scene();

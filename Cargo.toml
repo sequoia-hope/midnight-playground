@@ -1,4 +1,4 @@
-# Midnight Racer in Rust. The plan is docs/rust-port/SPEC.md and ROADMAP.md;
+# Midnight Playground, the Rust port of Midnight Racer. The plan is docs/rust-port/SPEC.md and ROADMAP.md;
 # the dependency rules between these crates (SPEC 3.2) are enforced by
 # `cargo xtask check-deps`. The JS game at the repo root is untouched by this.
 [workspace]
@@ -13,15 +13,15 @@ publish = false
 repository = "https://github.com/sequoia-hope/midnight-racer"
 
 [workspace.dependencies]
-mr_math = { path = "crates/mr_math" }
-mr_track = { path = "crates/mr_track" }
-mr_levels = { path = "crates/mr_levels" }
-mr_sim = { path = "crates/mr_sim" }
-mr_scene = { path = "crates/mr_scene" }
-mr_canvas = { path = "crates/mr_canvas" }
-mr_worldgen = { path = "crates/mr_worldgen" }
-mr_audio = { path = "crates/mr_audio" }
-mr_net = { path = "crates/mr_net" }
+mp_math = { path = "crates/mp_math" }
+mp_track = { path = "crates/mp_track" }
+mp_levels = { path = "crates/mp_levels" }
+mp_sim = { path = "crates/mp_sim" }
+mp_scene = { path = "crates/mp_scene" }
+mp_canvas = { path = "crates/mp_canvas" }
+mp_worldgen = { path = "crates/mp_worldgen" }
+mp_audio = { path = "crates/mp_audio" }
+mp_net = { path = "crates/mp_net" }
 # The CLI that post-processes the wasm must be this exact version;
 # `cargo xtask web` checks it.
 wasm-bindgen = "=0.2.129"

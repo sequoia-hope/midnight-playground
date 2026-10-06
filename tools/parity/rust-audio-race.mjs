@@ -83,7 +83,7 @@ try {
   page.on('console', (m) => {
     const t = m.text();
     if (m.type() === 'error' && !/Failed to load resource/.test(t)) errors.push(t);
-    if (process.env.MR_VERBOSE) console.log(`[page ${m.type()}] ${t}`);
+    if (process.env.MP_VERBOSE) console.log(`[page ${m.type()}] ${t}`);
   });
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.setRequestInterception(true);
@@ -106,8 +106,8 @@ try {
   await page.goto(`${ORIGIN}/dist/next/index.html?${query}`);
   const t0 = Date.now();
   const look = () => evaluate(`({
-    state: window.__mr?.state, ready: window.__mr?.ready, error: window.__mr?.error,
-    audio: window.__mr?.audio, race: window.__mr?.race && { tick: window.__mr.race.tick, mode: window.__mr.race.mode },
+    state: window.__mp?.state, ready: window.__mp?.ready, error: window.__mp?.error,
+    audio: window.__mp?.audio, race: window.__mp?.race && { tick: window.__mp.race.tick, mode: window.__mp.race.mode },
   })`);
 
   // 1. The race and its audio graph exist; nothing plays.
@@ -153,9 +153,9 @@ try {
     if (Date.now() - t0 > timeoutMs) throw new Error(`race at tick ${tick} after ${timeoutMs} ms`);
     await sleep(500);
   }
-  const cost = await evaluate('window.__mr.audio');
+  const cost = await evaluate('window.__mp.audio');
   console.log(`the audio on the main thread: graph built in ${cost.prepareMs.toFixed(1)} ms behind the loading screen; per frame ${cost.frameMsMean.toFixed(3)} ms on average, ${cost.frameMsMax.toFixed(2)} ms at most (at tick ${cost.frameMsMaxTick})`);
-  const all = (await evaluate('window.__mr.audioLog || []')).map((l) => JSON.parse(l));
+  const all = (await evaluate('window.__mp.audioLog || []')).map((l) => JSON.parse(l));
   const start = all.findIndex((c) => c[1] === 'setPaused');
   if (start < 0) throw new Error('no startRace calls in the log');
   console.log(`before startRace: ${all.slice(0, start).map((c) => c[1]).join(', ') || 'nothing'}`);

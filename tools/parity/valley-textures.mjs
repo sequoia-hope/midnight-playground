@@ -13,7 +13,7 @@
 // on one corn run (the corn strip). The wood signs draw their plank noise
 // from Math.random, so each canvas, as it is created, finds Math.random
 // reset to the seeded stream (0x5eed) at the position the scene export had
-// there (crates/mr_worldgen/src/valley/mod.rs SIGN_RANDOM_AT).
+// there (crates/mp_worldgen/src/valley/mod.rs SIGN_RANDOM_AT).
 //
 // Writes PNGs to parity/cache/<key>/textures/valley/ and the summary
 // (Chrome version, fonts manifest hash, per image the SHA-256 of its RGBA and
@@ -29,7 +29,7 @@ import { cacheDir, ROOT } from './lib/jstree.mjs';
 import { RANDOM_SEED } from './lib/seed-random.mjs';
 
 const CHECK = process.argv.includes('--check');
-// As SIGN_RANDOM_AT in crates/mr_worldgen/src/valley/mod.rs.
+// As SIGN_RANDOM_AT in crates/mp_worldgen/src/valley/mod.rs.
 const SIGN_RANDOM_AT = [11880, 12132, 19468];
 
 // In the page: every texture, by the game's code.

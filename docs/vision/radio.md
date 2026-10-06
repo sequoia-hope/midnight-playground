@@ -111,12 +111,12 @@ in a row, a long night drive in the cruise mode.
 
 ## 5. Code (Rust, after cutover)
 
-- `mr_audio::dj`: beside `mr_audio::radio` (the police radio), reusing its
+- `mp_audio::dj`: beside `mp_audio::radio` (the police radio), reusing its
   fetching and decoding. Plays clips, ducks the music, generates the
   tuner sweep and the reception noise.
-- `mr_audio::music`: playlists per station instead of one playlist; a
+- `mp_audio::music`: playlists per station instead of one playlist; a
   hook at song changes for the director.
-- **The director** lives in the client (`mr_game`). It reads `SimEvent`s
+- **The director** lives in the client (`mp_game`). It reads `SimEvent`s
   and the player's records. It is presentation, not simulation: its random
   choices use its own generator, never the simulation's streams, and in
   multiplayer each player hears their own radio.

@@ -1,5 +1,5 @@
 // What Old Mill Valley (src/world/Valley.js, zone 1 of Sierra) contributes to
-// the browser's scene export, small enough to commit, so that mr_worldgen's
+// the browser's scene export, small enough to commit, so that mp_worldgen's
 // port can be held to it in CI and in wasm (roadmap WP 3.7, the L3 gate for
 // zone 1; DECISIONS D331).
 //
@@ -48,7 +48,7 @@ function exported(name) {
   return { H, D: JSON.parse(fs.readFileSync(dig, 'utf8')), buf, bin };
 }
 
-// As tools/parity/road-plan.mjs and crates/mr_worldgen/tests/valley.rs.
+// As tools/parity/road-plan.mjs and crates/mp_worldgen/tests/valley.rs.
 const meshLine = (m) => `${m.vertices} ${m.indices} ${Object.entries(m.attributes).map(([k, v]) => k + '=' + v).join(',')} ${m.index}`;
 
 function materialView({ H, D }, i) {

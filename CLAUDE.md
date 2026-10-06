@@ -1,4 +1,8 @@
-# Midnight Racer: working rules for agents
+# Midnight Playground (formerly Midnight Racer): working rules for agents
+
+The Rust port is called **Midnight Playground**; its crates are `mp_*`
+(DECISIONS D1100). The JS game keeps the name Midnight Racer, and so do the
+addresses (repo, Pages, `proj` name, tailnet path) until cutover.
 
 Two games live in this repo:
 
@@ -26,7 +30,7 @@ Two games live in this repo:
 5. **One implementation for every platform**; platform differences sit
    behind small traits.
 6. **Deterministic by construction**: fixed tick, seeded streams in the
-   state, and every inexact math function through `mr_math`'s kernel. Never
+   state, and every inexact math function through `mp_math`'s kernel. Never
    call `f64::sin` and friends, `powi`, or `mul_add` in the simulation or
    world generation (`check-deps` rejects them).
 
@@ -42,8 +46,8 @@ and carry on with the option that best preserves parity.
 | Crate dependency rules (SPEC 3.2) | `cargo xtask check-deps` |
 | Web build into `dist/next/` | `cargo xtask web` (add `--release` for the optimised build) |
 | Wasm size report | `cargo xtask size` (after a release web build) |
-| A headless race (results, `--trace`, `--state-at`, `bench`) | `cargo run --release -p mr_sim --bin mr-sim -- race --level sierra` |
-| Native client | `cargo run -p mr_game` |
+| A headless race (results, `--trace`, `--state-at`, `bench`) | `cargo run --release -p mp_sim --bin mp-sim -- race --level sierra` |
+| Native client | `cargo run -p mp_game` |
 | JS unit tests | `npm run test:unit` (and `npm run test:unit:kernel`, with the parity kernel) |
 | Rebuild and check the parity kernel | `cargo xtask kernel` (CI: `cargo xtask kernel --check`) |
 | JS browser tests | `npm run test:e2e` (headless Chrome on the GPU, ~3 min) |
@@ -57,13 +61,13 @@ Toolchain: stable Rust with the `wasm32-unknown-unknown` target
 ## Crate rules (SPEC 3.2)
 
 ```
-mr_math ← mr_track ← mr_levels ← mr_sim ← mr_net ← mr_host
-mr_scene ← mr_worldgen   (also mr_canvas, mr_math, mr_track, mr_levels)
-mr_game uses mr_sim, mr_net, mr_scene, mr_worldgen, mr_audio
+mp_math ← mp_track ← mp_levels ← mp_sim ← mp_net ← mp_host
+mp_scene ← mp_worldgen   (also mp_canvas, mp_math, mp_track, mp_levels)
+mp_game uses mp_sim, mp_net, mp_scene, mp_worldgen, mp_audio
 ```
 
-Only `mr_game` depends on Bevy. The simulation crates (`mr_math`,
-`mr_track`, `mr_levels`, `mr_sim`) have `#![forbid(unsafe_code)]` and no
+Only `mp_game` depends on Bevy. The simulation crates (`mp_math`,
+`mp_track`, `mp_levels`, `mp_sim`) have `#![forbid(unsafe_code)]` and no
 clock, threads, `rand`, or hash maps. `xtask/src/deps.rs` holds the rule for
 every crate; a new crate needs one there.
 

@@ -166,7 +166,7 @@ decision is revisited, narrowly:
   directly in the native backend.
 - The existing Web Audio graph stays for everything that sounds fine,
   and becomes the mixer around the new voices.
-- **Deterministic:** the DSP is plain Rust on `mr_math`'s kernel, so a
+- **Deterministic:** the DSP is plain Rust on `mp_math`'s kernel, so a
   rendered song or engine sweep is the same on every platform, and
   offline renders become regression tests.
 - **Budgets measured on the phones** before each new voice ships, as

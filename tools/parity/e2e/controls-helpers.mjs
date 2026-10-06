@@ -1,8 +1,8 @@
 // test/e2e/controls-helpers.js for the Rust build (roadmap WP 6.5, 6.6):
 // start a race the way a player does, read the car, and hold on-screen
-// pads with real CDP touches. `__race` is `__mr.race` (the car, the
+// pads with real CDP touches. `__race` is `__mp.race` (the car, the
 // camera's right as `camRight`, `input.touch` as `touch`), the staging
-// (`phys.reset`, `phys.nitro`, `touch.autoGas`) is `__mr.stage`, a pad is
+// (`phys.reset`, `phys.nitro`, `touch.autoGas`) is `__mp.stage`, a pad is
 // found by its id (`touch-throttle`, `touch-reset`, `touch-slider`, …).
 
 import { sleep } from './harness.mjs';
@@ -11,22 +11,22 @@ export { sleep };
 
 // Wait for secs of race time to pass (a busy GPU slows the simulation).
 export async function simWait(game, secs, { timeout = 30000 } = {}) {
-  const t0 = await game.eval(() => window.__mr.race.time);
-  await game.waitFor(`window.__mr.race.time >= ${t0 + secs}`, { timeout, interval: 25, what: `${secs} s of race time` });
+  const t0 = await game.eval(() => window.__mp.race.time);
+  await game.waitFor(`window.__mp.race.time >= ${t0 + secs}`, { timeout, interval: 25, what: `${secs} s of race time` });
 }
 
 // Tap (phone) or click (desktop) Race, then wait for GO.
 export async function startRace(game, { how = 'tap', racing = true } = {}) {
   await (how === 'tap' ? game.tap('#btn-start') : game.click('#btn-start'));
-  await game.waitFor(() => !!window.__mr.race && ['countdown', 'racing'].includes(window.__mr.race.state)
-    && window.__mr.screen === 'none' && window.__mr.mode === 'race', { timeout: 60000, what: 'the race to start' });
-  if (racing) await game.waitFor(() => window.__mr.race.state === 'racing', { timeout: 30000, what: 'GO' });
+  await game.waitFor(() => !!window.__mp.race && ['countdown', 'racing'].includes(window.__mp.race.state)
+    && window.__mp.screen === 'none' && window.__mp.mode === 'race', { timeout: 60000, what: 'the race to start' });
+  if (racing) await game.waitFor(() => window.__mp.race.state === 'racing', { timeout: 30000, what: 'GO' });
 }
 
 // The player's car and controls, as plain numbers.
 export function car(game) {
   return game.eval(() => {
-    const r = window.__mr.race;
+    const r = window.__mp.race;
     return {
       speed: r.speed, s: r.s, lat: r.lat, yaw: r.yaw, steerAngle: r.steerAngle, gear: r.gear,
       nitro: r.nitro, nitroActive: r.nitroActive, camMode: r.camMode,
@@ -40,7 +40,7 @@ export function car(game) {
 // Also `{ fromFinish: m }` for a place short of the line, `{ latFrac }`
 // for a share of the road's half width, `{ yaw }` to turn it.
 export function placeCar(game, { ahead = 40, lat = 0, speed = 0, ...more } = {}) {
-  return game.eval((c) => window.__mr.stage({ cmd: 'place', ...c }), { ahead, lat, speed, ...more })
+  return game.eval((c) => window.__mp.stage({ cmd: 'place', ...c }), { ahead, lat, speed, ...more })
     .then(() => game.frames(2));
 }
 
@@ -53,13 +53,13 @@ export const pageErrors = (game) => game.errors.filter((e) => !/Ignored attempt 
 
 // Camera-right in the world (x, z): where "right" is on the screen.
 export function cameraRight(game) {
-  return game.eval(() => window.__mr.race.camRight);
+  return game.eval(() => window.__mp.race.camRight);
 }
 
 // Heading · camera-right: positive when the car points to the right of the
 // screen (the JS suites' `Math.cos(yaw) * right.x + Math.sin(yaw) * right.z`).
 export async function turnFrom(game, right) {
-  const yaw = await game.eval(() => window.__mr.race.yaw);
+  const yaw = await game.eval(() => window.__mp.race.yaw);
   return Math.cos(yaw) * right.x + Math.sin(yaw) * right.z;
 }
 
@@ -113,13 +113,13 @@ export function stickTo(game, p, dx, others = []) {
 // drift, on the DRIFT strip beside it at that height.
 export function sliderPoint(game, u, { drift = false, id = 0 } = {}) {
   return game.eval((u, drift, id) => {
-    const t = window.__mr.ui('touch-slider'), d = window.__mr.ui('touch-drift');
+    const t = window.__mp.ui('touch-slider'), d = window.__mp.ui('touch-drift');
     return { x: drift ? d.x + d.w / 2 : t.x + t.w / 2, y: t.y + t.h - t.h * u, id };
   }, u, drift, id);
 }
 
 // Whether a control is shown (`el.getClientRects().length > 0`).
 export const shown = (game, id) => game.eval((i) => {
-  const u = window.__mr.ui(i);
+  const u = window.__mp.ui(i);
   return !!u && u.visible && u.w > 0 && u.h > 0;
 }, id);

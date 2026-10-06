@@ -1,5 +1,5 @@
 // The level viewer, "god mode" (SPEC 8.6, roadmap WP 6.9): every level
-// opens in it, each camera answers `__mr.viewer.set` and real input (keys,
+// opens in it, each camera answers `__mp.viewer.set` and real input (keys,
 // mouse, wheel, a fake pad as gamepad.test.mjs installs it, touches in
 // phone emulation, held sideways and upright), the panel's toggles work, a
 // link reopens the same picture, and the menu's "Level viewer" button
@@ -7,7 +7,7 @@
 //
 //   cargo xtask web --release && node --test tools/parity/e2e/viewer.test.mjs
 //
-// MR_VIEWER_LEVELS=coast,seaside limits the per-level test.
+// MP_VIEWER_LEVELS=coast,seaside limits the per-level test.
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,18 +20,18 @@ let browser;
 before(async () => { browser = await launch(); });
 after(async () => { await browser?.close(); });
 
-const LEVELS = process.env.MR_VIEWER_LEVELS ? process.env.MR_VIEWER_LEVELS.split(',') : LEVEL_IDS;
+const LEVELS = process.env.MP_VIEWER_LEVELS ? process.env.MP_VIEWER_LEVELS.split(',') : LEVEL_IDS;
 const errorsOf = (game) => game.errors.filter((e) => !/Ignored attempt to cancel a touchstart event/.test(e));
-const vw = (game) => game.eval(() => window.__mr.viewer);
+const vw = (game) => game.eval(() => window.__mp.viewer);
 
 async function openViewer(query, o = {}) {
   const game = await openGame(browser, { query, ...o });
-  await game.waitFor(() => window.__mr.viewer?.ready === true, { timeout: 60000, what: 'the viewer' });
+  await game.waitFor(() => window.__mp.viewer?.ready === true, { timeout: 60000, what: 'the viewer' });
   await game.frames(4);
   return game;
 }
-const settled = (game) => game.waitFor(() => !window.__mr.viewer.flying, { timeout: 10000, what: 'the flight to land' });
-const set = async (game, o) => { await game.eval((x) => window.__mr.viewer.set(x), o); await game.frames(3); };
+const settled = (game) => game.waitFor(() => !window.__mp.viewer.flying, { timeout: 10000, what: 'the flight to land' });
+const set = async (game, o) => { await game.eval((x) => window.__mp.viewer.set(x), o); await game.frames(3); };
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 
 for (const level of LEVELS) {
@@ -41,7 +41,7 @@ for (const level of LEVELS) {
       let v = await vw(game);
       assert.equal(v.level, level);
       assert.equal(v.mode, 'free');
-      assert.equal(await game.eval('window.__mr.screen'), 'viewer');
+      assert.equal(await game.eval('window.__mp.screen'), 'viewer');
       assert.ok(v.zone, 'a zone name');
       assert.ok(v.groups.length >= 3, `scene groups: ${v.groups}`);
       assert.ok(v.fog && !v.far && v.anim && v.follow);
@@ -53,7 +53,7 @@ for (const level of LEVELS) {
       assert.ok(!v.fog && v.far, 'the overview turns fog off and the far plane out');
       assert.ok(Math.abs(v.pose.pitch + Math.PI / 2) < 1e-3, 'straight down');
       assert.ok(v.pose.y > 300, `high above (${v.pose.y})`);
-      assert.ok(await game.eval(() => window.__mr.ui('vw-zone-0')?.visible), 'the first zone is named on the map');
+      assert.ok(await game.eval(() => window.__mp.ui('vw-zone-0')?.visible), 'the first zone is named on the map');
       // Orbit about a point of the route, then the ride along it.
       await set(game, { mode: 'orbit', cam: [v.orbit.x + 80, v.orbit.y + 60, v.orbit.z, Math.PI / 2, -0.6], orbit: [v.orbit.x, v.orbit.y, v.orbit.z] });
       v = await vw(game);
@@ -218,7 +218,7 @@ async function differ(game, a, b) {
 }
 
 test('a link reopens the same view', async (t) => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mr-viewer-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mp-viewer-'));
   // Frozen animators and a pinned time of day, so the two pictures can
   // match: the link carries both.
   const a = await openViewer('view=god&level=coast&anim=0&t=0.3&panel=0', { downloads: dir });
@@ -230,7 +230,7 @@ test('a link reopens the same view', async (t) => {
     await a.shot('link-a.png', dir);
     // The address follows the view once it settles.
     await a.waitFor(() => location.search.includes('cam='), { what: 'the address to carry the pose' });
-    link = await a.eval(() => window.__mr.viewer.link);
+    link = await a.eval(() => window.__mp.viewer.link);
     assert.ok(/mode=orbit/.test(link) && /cam=/.test(link) && /orbit=/.test(link) && /anim=0/.test(link) && /t=0.3/.test(link), link);
     t.diagnostic(link);
   } finally { await a.close(); }
@@ -256,14 +256,14 @@ test('the menu\'s Level viewer button opens the viewer on the chosen level', asy
       await Promise.all([game.page.waitForNavigation({ timeout: 30000 }), game.page.mouse.click(x, y)]);
     };
     await navClick('#btn-viewer');
-    await game.waitFor(() => window.__mr?.viewer?.ready === true, { timeout: 120000, interval: 250, what: 'the viewer after the button' });
+    await game.waitFor(() => window.__mp?.viewer?.ready === true, { timeout: 120000, interval: 250, what: 'the viewer after the button' });
     const v = await vw(game);
     assert.equal(v.level, 'seaside');
     assert.ok(await game.eval(() => new URLSearchParams(location.search).get('view') === 'god'));
     // And back.
     await navClick('#vw-menu');
-    await game.waitFor(() => window.__mr?.screen === 'menu' && window.__mr.ready, { timeout: 120000, interval: 250, what: 'the menu again' });
-    assert.equal(await game.eval('window.__mr.level'), 'seaside');
+    await game.waitFor(() => window.__mp?.screen === 'menu' && window.__mp.ready, { timeout: 120000, interval: 250, what: 'the menu again' });
+    assert.equal(await game.eval('window.__mp.level'), 'seaside');
     assert.deepEqual(errorsOf(game), []);
   } finally { await game.close(); }
 });
@@ -277,7 +277,7 @@ test('gamepad: sticks, triggers, bumpers, Y and A', async () => {
       window.__pad = pad;
       Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [pad, null, null, null] });
     });
-    await game.waitFor(() => window.__mr.pads?.connected === true, { what: 'the pad' });
+    await game.waitFor(() => window.__mp.pads?.connected === true, { what: 'the pad' });
     const axis = (i, x) => game.eval((j, v) => { window.__pad.axes[j] = v; }, i, x);
     const btn = (i, on) => game.eval((j, v) => { const b = window.__pad.buttons[j]; b.pressed = v; b.value = v ? 1 : 0; }, i, on);
     const press = async (i) => { await btn(i, true); await sleep(120); await btn(i, false); await sleep(120); };

@@ -143,7 +143,7 @@ try {
     const page = await context.newPage();
     await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
     page.on('pageerror', (e) => errors.push(`${def.name}: ${e}`));
-    page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|KHR_parallel/.test(m.text())) errors.push(`${def.name}: ${m.text()}`); if (process.env.MR_VERBOSE) console.log(`[page] ${m.text()}`); });
+    page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|KHR_parallel/.test(m.text())) errors.push(`${def.name}: ${m.text()}`); if (process.env.MP_VERBOSE) console.log(`[page] ${m.text()}`); });
     const t0 = Date.now();
     if (side === 'js') {
       const ORIGIN = 'https://midnight-racer.test';
@@ -168,14 +168,14 @@ try {
       await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dir });
       await page.goto(`${serverBase()}/dist/next/index.html?level=${def.level}&freeze=1&${camQuery(def.cam)}&pv=${def.name}`);
       for (;;) {
-        const s = await page.evaluate(() => ({ st: window.__mr?.state, err: window.__mr?.error, ready: window.__mr?.ready, staged: window.__mr?.pvStaged || 0, quiet: window.__mr?.flyQuiet || 0 }));
+        const s = await page.evaluate(() => ({ st: window.__mp?.state, err: window.__mp?.error, ready: window.__mp?.ready, staged: window.__mp?.pvStaged || 0, quiet: window.__mp?.flyQuiet || 0 }));
         if (s.err || s.st === 'failed') throw new Error(`${def.name}: ${s.err}`);
         if (s.ready && s.staged >= 4 && s.quiet >= 3) break;
         if (Date.now() - t0 > timeoutMs) throw new Error(`${def.name}: not staged (${JSON.stringify(s)})`);
         await sleep(100);
       }
       fs.rmSync(file, { force: true });
-      await page.evaluate((n) => window.__mr.screenshot(n), `${def.name}.png`);
+      await page.evaluate((n) => window.__mp.screenshot(n), `${def.name}.png`);
       let size = -1;
       for (let i = 0; i < 200; i++) {
         const k = fs.existsSync(file) ? fs.statSync(file).size : -1;
@@ -184,7 +184,7 @@ try {
         await sleep(100);
       }
       if (!fs.existsSync(file)) errors.push(`${def.name}: no screenshot`);
-      console.log(`${def.name}: ${((Date.now() - t0) / 1000).toFixed(1)} s, ${await page.evaluate(() => window.__mr.backend)}`);
+      console.log(`${def.name}: ${((Date.now() - t0) / 1000).toFixed(1)} s, ${await page.evaluate(() => window.__mp.backend)}`);
     }
     if (side === 'js') await context.close(); else await page.close();
   }

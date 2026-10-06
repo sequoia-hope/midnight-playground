@@ -1,6 +1,6 @@
 // The L2 golden for Seaside Raceway's survey data (roadmap WP 1.2): the
 // centreline and the ground functions as src/levels/seaside/load.js
-// decodes them from circuit.js and ground.js, which mr_levels::seaside must
+// decodes them from circuit.js and ground.js, which mp_levels::seaside must
 // reproduce from assets/seaside/survey.bin. Taken with the parity kernel on
 // (nothing here calls it, but every golden is).
 //

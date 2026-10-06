@@ -1,6 +1,6 @@
 //! `cargo xtask parity scene-check [files...]` (roadmap WP 0.5): reads each
 //! `.mrscene` the JS exporter wrote (`tools/parity/scene-export.mjs`) with
-//! `mr_scene`, recomputes its digest and compares it with the digest the
+//! `mp_scene`, recomputes its digest and compares it with the digest the
 //! exporter took from the live three.js scene (`<name>.digest.json` beside
 //! it). It also writes each scene back out and reads it again, and checks
 //! that the digest file is the one the committed golden names
@@ -10,7 +10,7 @@
 //! `parity/cache/<js-tree-key>/scenes/`.
 
 use crate::{Result, root};
-use mr_scene::digest::{SceneDigest, compare, digest, sha256_hex};
+use mp_scene::digest::{SceneDigest, compare, digest, sha256_hex};
 use sha2::{Digest as _, Sha256};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -60,7 +60,7 @@ pub fn run(args: &[String]) -> Result {
 fn check(file: &Path) -> Result<String> {
     let t0 = Instant::now();
     let bytes = std::fs::read(file).map_err(|e| e.to_string())?;
-    let scene = mr_scene::read(&bytes)?;
+    let scene = mp_scene::read(&bytes)?;
     let t_read = t0.elapsed();
     let mine = digest(&scene);
     let t_digest = t0.elapsed() - t_read;
@@ -80,8 +80,8 @@ fn check(file: &Path) -> Result<String> {
         ));
     }
 
-    // Written back by mr_scene and read again: the same scene.
-    let again = mr_scene::read(&mr_scene::write(&scene)?)?;
+    // Written back by mp_scene and read again: the same scene.
+    let again = mp_scene::read(&mp_scene::write(&scene)?)?;
     if again != scene {
         return Err("writing the scene and reading it back changed it".into());
     }

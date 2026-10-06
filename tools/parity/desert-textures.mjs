@@ -1,6 +1,6 @@
 // Desert's lettered canvas textures as Chrome draws them with the bundled
 // fonts (roadmap WP 7.3, as city-textures.mjs does for WP 3.8: WP 3.2's
-// threshold gate needs a reference drawn with the same faces as mr_canvas,
+// threshold gate needs a reference drawn with the same faces as mp_canvas,
 // and the scene export is drawn with the machine's own fonts).
 //
 //   node tools/parity/desert-textures.mjs [--check]
@@ -14,7 +14,7 @@
 // banner), in order of first use. Writes the RGBA to
 // parity/cache/<key>/desert/<level>-canvas-<k>.rgba and a summary (size,
 // SHA-256, 8x8 block means, the font manifest's hash, the Chrome version)
-// to parity/golden/desert/textures.json. crates/mr_worldgen/tests/desert.rs
+// to parity/golden/desert/textures.json. crates/mp_worldgen/tests/desert.rs
 // compares the Rust pictures with it. --check captures again and fails if
 // a picture changed.
 
@@ -47,7 +47,7 @@ function init(seedSrc, seed, faces) {
     for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
     const face = new FontFace(f.family, bytes, { weight: f.weight, style: f.style });
     document.fonts.add(face);
-    window.__mrFonts = (window.__mrFonts || []).concat([face.load()]);
+    window.__mpFonts = (window.__mpFonts || []).concat([face.load()]);
   }
 }
 
@@ -59,8 +59,8 @@ async function capture(level) {
       init, initArgs: [seedRandom.toString(), RANDOM_SEED, faces],
     });
     const out = await game.eval(async () => {
-      await Promise.all(window.__mrFonts || []);
-      const loaded = (window.__mrFonts || []).length;
+      await Promise.all(window.__mpFonts || []);
+      const loaded = (window.__mpFonts || []).length;
       const g = window.__world.scene.getObjectByName('desert');
       const mats = [];
       g.traverse((o) => {

@@ -1,7 +1,7 @@
 // What the scenery tells the terrain before its heights are final (roadmap
 // WP 3.4): every level's flattens, carves and Desert's railway bed, as the
 // scenery modules' plan() registers them in World.build, so that
-// mr_worldgen's Terrain can be held to the JS heights (L2) and the JS
+// mp_worldgen's Terrain can be held to the JS heights (L2) and the JS
 // terrain mesh (L3) before the scenery itself is ported (WP 3.6 on).
 //
 //   NODE_OPTIONS=--import=./tools/parity/kernel/register.mjs \
@@ -98,8 +98,8 @@ function points(t, T, total = 10000, along = 6000) {
 // The digest of the terrain meshes in the cached scene export (the base
 // export if there is one; the meshes under the group `terrain`), as one
 // SHA-256 over a line per mesh: vertex and index counts, each attribute's
-// name and SHA-256 in order, the index's SHA-256. mr_worldgen's
-// tests/terrain.rs makes the same lines from mr_scene's digest of its own
+// name and SHA-256 in order, the index's SHA-256. mp_worldgen's
+// tests/terrain.rs makes the same lines from mp_scene's digest of its own
 // meshes, so the L3 gate runs without the cache (and in wasm).
 function sceneMeshes(id) {
   const dir = path.join(ROOT, 'parity/cache', jsTreeKey(), 'scenes');

@@ -119,23 +119,23 @@ decision record justifies one: each is a reason an upgrade stalls.
 ```
 Cargo.toml                 workspace root (repo root)
 crates/
-  mr_math/       scalar math on libm, mulberry32, hash2, simplex, fbm, ridged
-  mr_track/      level definition types, Track (1 m samples), road types
-  mr_levels/     the six levels as data; Seaside's survey data loader
-  mr_sim/        vehicles, physics, AI, traffic, collisions, race rules,
+  mp_math/       scalar math on libm, mulberry32, hash2, simplex, fbm, ridged
+  mp_track/      level definition types, Track (1 m samples), road types
+  mp_levels/     the six levels as data; Seaside's survey data loader
+  mp_sim/        vehicles, physics, AI, traffic, collisions, race rules,
                  pursuit; SimState and step()
-  mr_scene/      scene data types and the .mrscene file format; data only
-  mr_canvas/     the Canvas 2D subset the texture generators use (tiny-skia)
-  mr_worldgen/   terrain, road, sky, sea, scenery, car models, textures;
-                 produces a mr_scene::Scene plus animators
-  mr_audio/      Web Audio shaped facade and backends; engine, SFX, music,
+  mp_scene/      scene data types and the .mrscene file format; data only
+  mp_canvas/     the Canvas 2D subset the texture generators use (tiny-skia)
+  mp_worldgen/   terrain, road, sky, sea, scenery, car models, textures;
+                 produces a mp_scene::Scene plus animators
+  mp_audio/      Web Audio shaped facade and backends; engine, SFX, music,
                  radio
-  mr_net/        protocol, transports, session (server), prediction and
+  mp_net/        protocol, transports, session (server), prediction and
                  rollback (client)
-  mr_game/       the Bevy client: states, rendering adapter and shaders,
+  mp_game/       the Bevy client: states, rendering adapter and shaders,
                  camera, effects, HUD and menus, input, platform glue
-  mr_host/       native host binary: static files, WebSocket, authority
-  mr_py/         (later) PyO3 bindings: a Gymnasium environment
+  mp_host/       native host binary: static files, WebSocket, authority
+  mp_py/         (later) PyO3 bindings: a Gymnasium environment
 xtask/           build, parity and size tooling (cargo xtask ...)
 assets/          fonts, Seaside survey data, radio clips
 tools/parity/    reference capture from the JS game (Node, headless Chrome)
@@ -147,25 +147,25 @@ docs/rust-port/  this spec, the roadmap, DEVIATIONS.md, DECISIONS.md
 ### 3.2 Dependency rules
 
 ```
-mr_math ← mr_track ← mr_levels ← mr_sim ← mr_net ← mr_host
+mp_math ← mp_track ← mp_levels ← mp_sim ← mp_net ← mp_host
 
-mr_scene ← mr_worldgen   (also uses mr_canvas, mr_math, mr_track, mr_levels)
+mp_scene ← mp_worldgen   (also uses mp_canvas, mp_math, mp_track, mp_levels)
 
-mr_game uses mr_sim, mr_net, mr_scene, mr_worldgen, mr_audio
+mp_game uses mp_sim, mp_net, mp_scene, mp_worldgen, mp_audio
 ```
 
-- `mr_math`, `mr_track`, `mr_levels`, `mr_sim`: no Bevy, wgpu, web-sys,
+- `mp_math`, `mp_track`, `mp_levels`, `mp_sim`: no Bevy, wgpu, web-sys,
   `std::time`, threads, `rand`, or hash-map iteration. `#![forbid(unsafe_code)]`.
   They build for `wasm32-unknown-unknown` and native.
-- `mr_scene`: plain data and its reader and writer. No Bevy, no wgpu. Both
-  `mr_worldgen` (which produces scenes) and `mr_game` (which draws them)
+- `mp_scene`: plain data and its reader and writer. No Bevy, no wgpu. Both
+  `mp_worldgen` (which produces scenes) and `mp_game` (which draws them)
   depend on it, so the client can load an exported scene before any world
   generation exists.
-- `mr_canvas`, `mr_worldgen`: no Bevy, no wgpu. `rayon` is allowed behind a
+- `mp_canvas`, `mp_worldgen`: no Bevy, no wgpu. `rayon` is allowed behind a
   native-only feature.
-- `mr_audio`: no Bevy. Backends are features (`web`, `native`, `null`).
-- `mr_net`: no Bevy. Transports are features.
-- Only `mr_game` depends on Bevy.
+- `mp_audio`: no Bevy. Backends are features (`web`, `native`, `null`).
+- `mp_net`: no Bevy. Transports are features.
+- Only `mp_game` depends on Bevy.
 
 `cargo xtask check-deps` enforces this from `cargo tree` and runs in CI.
 
@@ -174,9 +174,9 @@ mr_game uses mr_sim, mr_net, mr_scene, mr_worldgen, mr_audio
 ```
 devices ─► input layer ─► InputFrame (quantised)
                                │
-              session.advance(frame_dt, input)      mr_net (loopback in
+              session.advance(frame_dt, input)      mp_net (loopback in
                                │                    single-player)
-                 0..n fixed ticks: mr_sim::step
+                 0..n fixed ticks: mp_sim::step
                                │
               prev state, curr state, alpha, events
                                │
@@ -189,7 +189,7 @@ The client never reads simulation state mid-tick and never writes it. It
 draws an interpolation between the last two ticks and reacts to the events
 those ticks produced.
 
-## 4. Simulation core (`mr_math`, `mr_track`, `mr_levels`, `mr_sim`)
+## 4. Simulation core (`mp_math`, `mp_track`, `mp_levels`, `mp_sim`)
 
 ### 4.1 Time
 
@@ -227,7 +227,7 @@ trace that is merely close stops being close within seconds, so a tolerance
 does not work. Bit-identical is achievable because `+ - * /` and `sqrt` on
 doubles are exact in both languages; the rest is discipline:
 
-- **One math kernel for both sides.** `mr_math` implements every `Math`
+- **One math kernel for both sides.** `mp_math` implements every `Math`
   function that is not exact by definition, on the `libm` crate (software
   implementations, the same bits on every platform): `sin`, `cos`, `tan`,
   `asin`, `acos`, `atan`, `atan2`, `exp`, `log`, `log2`, `pow`, `tanh` and
@@ -236,7 +236,7 @@ doubles are exact in both languages; the rest is discipline:
   one, two and three: `abs` for one, `libm`'s for two, and the square root
   of the left-to-right sum of squares for more. The simulation and world
   generation never call `f64::sin` and friends, which use the platform's
-  library on native. For the reference run, `mr_math` is compiled to wasm
+  library on native. For the reference run, `mp_math` is compiled to wasm
   and the JS oracle replaces those `Math` functions with it; any other
   inexact `Math` function is replaced by one that throws, so nothing slips
   through unnoticed (roadmap WP 0.3). The functions that are exact (`sqrt`,
@@ -247,7 +247,7 @@ doubles are exact in both languages; the rest is discipline:
   exactly. No attempt is made to reproduce V8's own math library. Every
   dump and golden that Rust is compared with (traces, Track arrays, terrain
   heights, world data, scene exports) is taken with the kernel on.
-- **JS semantics, in `mr_math::js`.** Port each use through a helper that
+- **JS semantics, in `mp_math::js`.** Port each use through a helper that
   behaves as JavaScript does:
   - `Math.sign(0)` is 0 and `Math.sign(-0)` is -0, where `f64::signum`
     gives ±1. This decides the handbrake and coasting terms at a standstill
@@ -414,7 +414,7 @@ computed by scenery code in JS, not by the level files:
 
 `LevelRuntime` carries both. Until world generation is ported, the numbers
 (`runout`, `s0`, `s1`, the lanes) are dumped from the JS world (roadmap
-WP 0.4) into `mr_levels`; when the scenery that computes them is ported
+WP 0.4) into `mp_levels`; when the scenery that computes them is ported
 (M3, M7), a test checks it reproduces the same values. The carriageway's
 height is not dumped: it is a formula, `oppY(f) = f.y + max(0.04, HALF *
 f.bank - 0.2)` (`city/freeway.js:64`), and is ported as that formula so the
@@ -422,7 +422,7 @@ cars' heights come out identical.
 
 **Vehicle dimensions.** Length, width, wheel radius and wheelbase per kind
 come from `CarModel.js` (thirteen kinds, `:1254-2010`) and the sawhorse from
-`PursuitView.js`. Physics and collisions read them. `mr_sim::dims` holds
+`PursuitView.js`. Physics and collisions read them. `mp_sim::dims` holds
 the table from M1, checked against a dump from JS; the car model port in M4
 must agree with it.
 
@@ -430,24 +430,24 @@ must agree with it.
 so both sides integrate identical values.
 
 **Autodrive.** The `?autodrive=1` autopilot (`src/main.js:526-540`) is ported
-into `mr_sim` as an input generator. Tests, the headless CLI and RL baselines
+into `mp_sim` as an input generator. Tests, the headless CLI and RL baselines
 use it.
 
 ### 4.4 Port map
 
 | JS | Lines | Rust |
 |---|---|---|
-| `src/util/math.js` | 106 | `mr_math` |
-| `src/track/Track.js`, `roadTypes.js` | 513 | `mr_track` |
-| `src/levels/*.js` | 690 | `mr_levels` (data and the Streets grid, cruise loop path) |
-| `src/levels/seaside/load.js`, `circuit.js`, `ground.js` | n/a | `mr_levels::seaside`; `tools/seaside/build.py` gains a binary output (`assets/seaside/`) |
-| `src/vehicles/CarPhysics.js` | 361 | `mr_sim::physics` (`CAR_SPECS`, `step`, `collide_walls`) |
-| `src/vehicles/Vehicle.js` (state only) | 95 | `mr_sim::vehicle`; `sync()` and the body springs go to `mr_game` |
-| Dimensions in `CarModel.js`; `runout` and the opposite carriageway from `City.js`, `Harbor.js`, `Streets.js` | n/a | `mr_sim::dims`, `mr_levels` world data (section 4.3) |
-| `src/vehicles/Kinematic.js`, `AIDriver.js`, `Traffic.js` | 494 | `mr_sim::{kinematic, ai, traffic}` |
-| `src/vehicles/Collisions.js` | 93 | `mr_sim::collisions` (the `Body` trait replaces duck typing) |
-| `src/game/Race.js` (rules) | ~300 of 570 | `mr_sim::race` |
-| `src/game/Pursuit.js`, `PoliceDriver.js`, parts of `PursuitView.js` | ~1,200 | `mr_sim::pursuit` |
+| `src/util/math.js` | 106 | `mp_math` |
+| `src/track/Track.js`, `roadTypes.js` | 513 | `mp_track` |
+| `src/levels/*.js` | 690 | `mp_levels` (data and the Streets grid, cruise loop path) |
+| `src/levels/seaside/load.js`, `circuit.js`, `ground.js` | n/a | `mp_levels::seaside`; `tools/seaside/build.py` gains a binary output (`assets/seaside/`) |
+| `src/vehicles/CarPhysics.js` | 361 | `mp_sim::physics` (`CAR_SPECS`, `step`, `collide_walls`) |
+| `src/vehicles/Vehicle.js` (state only) | 95 | `mp_sim::vehicle`; `sync()` and the body springs go to `mp_game` |
+| Dimensions in `CarModel.js`; `runout` and the opposite carriageway from `City.js`, `Harbor.js`, `Streets.js` | n/a | `mp_sim::dims`, `mp_levels` world data (section 4.3) |
+| `src/vehicles/Kinematic.js`, `AIDriver.js`, `Traffic.js` | 494 | `mp_sim::{kinematic, ai, traffic}` |
+| `src/vehicles/Collisions.js` | 93 | `mp_sim::collisions` (the `Body` trait replaces duck typing) |
+| `src/game/Race.js` (rules) | ~300 of 570 | `mp_sim::race` |
+| `src/game/Pursuit.js`, `PoliceDriver.js`, parts of `PursuitView.js` | ~1,200 | `mp_sim::pursuit` |
 
 ### 4.5 Seams for later
 
@@ -530,7 +530,7 @@ Numbers are written as the bits of an `f64` (or an `i32` for integers and
 enum codes), little-endian, in a fixed field order. Presentation-only fields
 are left out: body pitch and roll and their rates (`Vehicle.js:82-85`),
 brake light, anything the HUD keeps. The per-tick hash is 64-bit FNV-1a over
-the record's bytes. On the Rust side this is `mr_sim::trace_record()`, a
+the record's bytes. On the Rust side this is `mp_sim::trace_record()`, a
 separate function from `hash()`, which is free to cover the real state.
 
 A golden stores the hash for every tick and the full record every 120 ticks,
@@ -546,7 +546,7 @@ operation order, a JS semantic from section 4.2, a float width, an iteration
 order, or a draw from the wrong stream. Find the first differing field at
 the first differing tick.
 
-## 5. World generation (`mr_canvas`, `mr_worldgen`)
+## 5. World generation (`mp_canvas`, `mp_worldgen`)
 
 About 26,000 lines of JS build the worlds: terrain and road (3,500),
 scenery (20,500) and car models (2,400). They are ported one to one into a
@@ -554,11 +554,11 @@ crate that outputs data, not engine objects.
 
 ### 5.1 Scene description
 
-The scene types live in `mr_scene`, so the client can use them without the
+The scene types live in `mp_scene`, so the client can use them without the
 world generator.
 
 ```rust
-// mr_scene: plain data
+// mp_scene: plain data
 pub struct Scene {
     pub meshes: Vec<MeshDesc>,        // positions, normals, uvs, colours,
                                       // named custom attributes, indices
@@ -570,7 +570,7 @@ pub struct Scene {
     pub night_params: Vec<NightParam>,// material property, day and night value
 }
 
-// mr_worldgen: what a level build returns
+// mp_worldgen: what a level build returns
 pub struct WorldBuild {
     pub scene: Scene,
     pub animators: Vec<Box<dyn Animator>>,
@@ -600,7 +600,7 @@ pub struct WorldBuild {
 ### 5.2 The three.js geometry subset
 
 The builders rely on three.js generators and, in places, on their exact
-vertex order and UV layout. `mr_worldgen::three_geom` is a line-by-line port
+vertex order and UV layout. `mp_worldgen::three_geom` is a line-by-line port
 (three.js is MIT) of: Box, Cylinder, Cone, Plane, Circle, Sphere,
 Icosahedron, Torus, Capsule, Lathe, Tube, Extrude (with bevel), Shape and
 `ShapeUtils.triangulateShape` (earcut), `CatmullRomCurve3`, and
@@ -620,9 +620,9 @@ Two that need care:
   for the others (data textures, Seaside's photo). UVs and shader math stay
   exactly as in JS.
 
-### 5.3 Canvas 2D (`mr_canvas`)
+### 5.3 Canvas 2D (`mp_canvas`)
 
-Almost every texture is drawn with the browser's Canvas 2D API. `mr_canvas`
+Almost every texture is drawn with the browser's Canvas 2D API. `mp_canvas`
 implements the subset in use on tiny-skia, with the same method names, so
 texture code ports nearly line for line: rectangles, paths, arcs and
 ellipses, `roundRect`, linear and radial gradients, `globalAlpha`, the
@@ -656,7 +656,7 @@ order as the JS.
 ### 5.5 Building in steps
 
 Wasm has one thread, so a level build must yield to keep the loading bar
-moving. `mr_worldgen` exposes a build as a list of jobs with the JS progress
+moving. `mp_worldgen` exposes a build as a list of jobs with the JS progress
 labels ("Surveying the route", "Shaping the land", "Sculpting terrain",
 "Paving roads", "Filling the sea", then each scenery's label). On the web the
 client runs jobs for a time slice per frame. On native, independent jobs run
@@ -692,7 +692,7 @@ memory never shrinks, so the high-water mark is a budget (section 6.6).
   difference under 3/255 per channel, with a side-by-side sheet for review.
   Text regions are compared with the same fonts loaded on both sides.
 
-## 6. Rendering (`mr_game::render`)
+## 6. Rendering (`mp_game::render`)
 
 ### 6.1 What to match
 
@@ -826,7 +826,7 @@ measured in M0):
   JS game's. (At G1 there is no menu yet; the gate there uses time to the
   client's first rendered frame, before any scene loads.)
 
-## 7. Audio (`mr_audio`)
+## 7. Audio (`mp_audio`)
 
 ### 7.1 Decision
 
@@ -849,7 +849,7 @@ browser's nodes keeps the exact sound and the exact cost on the web.
 
 ### 7.2 Facade
 
-`mr_audio::wa` exposes handles and methods shaped like Web Audio, limited to
+`mp_audio::wa` exposes handles and methods shaped like Web Audio, limited to
 what the game uses: Oscillator (built-in types and periodic waves),
 BufferSource (loop, playback rate), Gain, BiquadFilter (lowpass, highpass,
 bandpass, peaking, both shelves), WaveShaper (curve, oversampling),
@@ -863,13 +863,13 @@ automation (`setValueAtTime`, linear and exponential ramps,
 
 | JS | Rust | Notes |
 |---|---|---|
-| `Audio.js` graph, buses, `Gate` | `mr_audio::{graph, gate}` | The `Gate` (disconnect idle voices, tails, no steering before the context runs) is kept as is |
-| `Audio.js` engine cycles, profiles, steering | `mr_audio::engine` | `engineCycle` and `rumbleCycle` are pure math: port and test against JS output arrays |
-| `Audio.js` turbo, electric, damage, environment, rivals, sirens, tyres | `mr_audio::voices` | |
-| `Audio.js` one-shots | `mr_audio::oneshots` | |
-| `audio/samples.js` | `mr_audio::samples` | Pure sample math; outputs compared to JS buffers within 1e-5 |
-| `audio/Music.js`, `tracks.js` | `mr_audio::{music, tracks}` | Lookahead scheduler pumped from the frame loop and from a timer; song data as Rust constants |
-| `audio/radioLines.js`, `RadioVoice.js` | `mr_audio::radio` | Clips stay as MP3 files under `assets/radio/`; fetched on the web, read from disk native |
+| `Audio.js` graph, buses, `Gate` | `mp_audio::{graph, gate}` | The `Gate` (disconnect idle voices, tails, no steering before the context runs) is kept as is |
+| `Audio.js` engine cycles, profiles, steering | `mp_audio::engine` | `engineCycle` and `rumbleCycle` are pure math: port and test against JS output arrays |
+| `Audio.js` turbo, electric, damage, environment, rivals, sirens, tyres | `mp_audio::voices` | |
+| `Audio.js` one-shots | `mp_audio::oneshots` | |
+| `audio/samples.js` | `mp_audio::samples` | Pure sample math; outputs compared to JS buffers within 1e-5 |
+| `audio/Music.js`, `tracks.js` | `mp_audio::{music, tracks}` | Lookahead scheduler pumped from the frame loop and from a timer; song data as Rust constants |
+| `audio/radioLines.js`, `RadioVoice.js` | `mp_audio::radio` | Clips stay as MP3 files under `assets/radio/`; fetched on the web, read from disk native |
 | `music.html` | an in-game Music player screen | Sections, solo, seek, repeat, level meter and spectrum |
 
 The client calls the same interface the JS game does: `update(state)` each
@@ -902,7 +902,7 @@ when the page is hidden; never await a resume.
   the same browser nodes, so it is checked by a recorded call log matching
   the JS call log for the same scenario.
 
-## 8. UI, HUD, input and platform (`mr_game`)
+## 8. UI, HUD, input and platform (`mp_game`)
 
 ### 8.1 UI
 
@@ -989,7 +989,7 @@ camera (`s`, `h`, `back`, `lat`, `yaw`, `pitch`), `timescale`, `stats`,
 
 The e2e harness (`test/e2e/harness.js`) drives the JS game through
 `window.__race`, `__game`, `__audio` and friends, and through DOM selectors.
-The Rust web build exposes `window.__mr`:
+The Rust web build exposes `window.__mp`:
 
 - `ready`, `mode`, `screen`
 - `ui(id)` returns `{x, y, w, h, visible, enabled, value}` for a test id
@@ -1054,10 +1054,10 @@ built level (section 6.4: built whole) seen through a free camera.
   budgets (section 6.6). Overview and the extended far plane draw more than
   any race view; they are measured and may cost more, but must not crash a
   phone.
-- **Test bridge.** `__mr.viewer` reports the mode and pose and takes a pose,
+- **Test bridge.** `__mp.viewer` reports the mode and pose and takes a pose,
   so the e2e harness and the parity tools can place the camera.
 
-## 9. Multiplayer (`mr_net`, `mr_host`)
+## 9. Multiplayer (`mp_net`, `mp_host`)
 
 ### 9.1 Model
 
@@ -1122,7 +1122,7 @@ pub enum Channel { Reliable, Unreliable }   // WebSocket maps both to itself
 
 ### 9.4 The host program
 
-`mr-host` is one native binary:
+`mp-host` is one native binary:
 
 - Serves the built web client as static files, with the cache rules of
   `tools/serve.py`, and precompressed wasm.
@@ -1146,9 +1146,9 @@ therefore has to start from an https page.
 
 | How players load the game | What it needs | Notes |
 |---|---|---|
-| From `mr-host` over https | A certificate browsers trust for the host's name. For devices on the owner's tailnet, `tailscale serve` in front of the host does this with no certificate handling in the game. For guests not on the tailnet, a public DNS name that resolves to the LAN address with a certificate from DNS validation. | First multiplayer release. Works with no internet once set up. Everything works, tilt included. |
+| From `mp-host` over https | A certificate browsers trust for the host's name. For devices on the owner's tailnet, `tailscale serve` in front of the host does this with no certificate handling in the game. For guests not on the tailnet, a public DNS name that resolves to the LAN address with a certificate from DNS validation. | First multiplayer release. Works with no internet once set up. Everything works, tilt included. |
 | From GitHub Pages, peers connect by WebRTC | A signalling service reachable over wss (a small public service) to introduce the peers. Game traffic then stays on the LAN. | Second release; the same transport as tab-hosting. The native host can join as a WebRTC peer. Needs internet for the introduction. |
-| From GitHub Pages, WebTransport to `mr-host` with a certificate hash in the join link | Host generates a short-lived self-signed certificate; Chrome 100+, Firefox 125+, Safari 26.4+ | Experimental. Safari's WebTransport is new and Rust server interop with it is still being fixed. Not planned; revisit after the second release. |
+| From GitHub Pages, WebTransport to `mp-host` with a certificate hash in the join link | Host generates a short-lived self-signed certificate; Chrome 100+, Firefox 125+, Safari 26.4+ | Experimental. Safari's WebTransport is new and Rust server interop with it is still being fixed. Not planned; revisit after the second release. |
 
 An https page cannot open `ws://` to a LAN address (mixed content), which is
 why "Pages plus a plain WebSocket host" is not on the list.
@@ -1168,7 +1168,7 @@ Because the game is always served under some sub-path (this mount, the
 `dist/next/` directory, the Pages project path), every URL the client uses
 must be relative: assets, the wasm, and later the WebSocket endpoint.
 
-The same front covers tailnet multiplayer: `mr-host` can stay plain http
+The same front covers tailnet multiplayer: `mp-host` can stay plain http
 behind `tailscale serve`, and its own `--tls-cert` option is only needed for
 guests outside the tailnet.
 
@@ -1191,11 +1191,11 @@ the foreground, because background tabs are throttled.
 Not part of the port, but the simulation is built for it and it can start
 any time after M1:
 
-- `mr_sim::Env`: `reset(level, car, seed)`, `step(action)`, an observation
+- `mp_sim::Env`: `reset(level, car, seed)`, `step(action)`, an observation
   vector (speed, lateral offset, heading error, curvature and width ahead at
   fixed distances, wall distances, nearby cars), reward terms, and state
   save and restore.
-- Batched stepping across cores in Rust; `mr_py` exposes it to Python as a
+- Batched stepping across cores in Rust; `mp_py` exposes it to Python as a
   Gymnasium vector environment through PyO3.
 - Observations are state vectors. Rendering pixels headless is a separate
   later decision.
@@ -1325,8 +1325,9 @@ not (`Sky.js:271`); `input.enabled` is never set false.
 5. For LAN games with guests who are not on the tailnet: is a public DNS
    name with a certificate acceptable, or should guests wait for the WebRTC
    release (section 9.5)?
-6. Is "Midnight Racer" still the name once it is a suite? Crate names use
-   `mr_` either way.
+6. ~~Is "Midnight Racer" still the name once it is a suite?~~ Answered
+   2026-10-06: the Rust game is **Midnight Playground**, its crates `mp_`
+   (DECISIONS D1100).
 
 ## Appendix A. Ecosystem facts (checked 2026-10-03)
 

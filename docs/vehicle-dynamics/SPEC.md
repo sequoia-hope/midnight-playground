@@ -44,7 +44,7 @@ library.
    goldens. A sim car sits beside it and never changes it.
 2. **Same rules as the simulation core** (port SPEC 4.2). The code is a
    library with no engine, clock, threads or global state. All values are
-   `f64`, and every inexact function goes through `mr_math`'s kernel: no
+   `f64`, and every inexact function goes through `mp_math`'s kernel: no
    `f64::sin`, `powi` or `mul_add`. Results are bit-identical on native and
    wasm, so multiplayer rollback, replays and RL seeds keep working.
 3. **One wheel interface.** The chassis, suspension and drivetrain are shared.
@@ -61,27 +61,27 @@ library.
 ## 2. Where the code lives
 
 ```
-mr_math ← mr_vdyn ← mr_terrain
-mr_math ← mr_track ← mr_levels ← mr_sim   (mr_sim also uses mr_vdyn, mr_terrain)
-mr_worldgen also reads mr_terrain, to draw it
+mp_math ← mp_vdyn ← mp_terrain
+mp_math ← mp_track ← mp_levels ← mp_sim   (mp_sim also uses mp_vdyn, mp_terrain)
+mp_worldgen also reads mp_terrain, to draw it
 ```
 
-- **`mr_vdyn`** (new) holds the vehicle dynamics: the rigid body, the
+- **`mp_vdyn`** (new) holds the vehicle dynamics: the rigid body, the
   suspension, the drivetrain, the tyre models, the assists and the `Ground`
-  trait. It depends only on `mr_math`. It knows nothing about tracks, races
+  trait. It depends only on `mp_math`. It knows nothing about tracks, races
   or levels. It has the same rules as the other simulation crates:
   `#![forbid(unsafe_code)]`, no clock, threads, `rand` or hash maps, and a
   rule in `xtask/src/deps.rs`.
-- **`mr_terrain`** (new, at milestone V5) holds collision ground beyond the
+- **`mp_terrain`** (new, at milestone V5) holds collision ground beyond the
   road ribbon: height fields, rock primitives and surface materials. It
-  depends on `mr_math` and `mr_vdyn` (it implements `mr_vdyn::Ground`);
-  `mr_vdyn` never depends on it. `mr_worldgen` reads `mr_terrain` to *draw*
+  depends on `mp_math` and `mp_vdyn` (it implements `mp_vdyn::Ground`);
+  `mp_vdyn` never depends on it. `mp_worldgen` reads `mp_terrain` to *draw*
   that ground. The rule matches levels today: **collision geometry is
   generated on the simulation side, and world generation dresses it. The
   simulation never depends on world generation.**
-- **`mr_sim`** gains an adapter that implements `Ground` for `Track`, and a
+- **`mp_sim`** gains an adapter that implements `Ground` for `Track`, and a
   `VehicleModel` enum on `PlayerCar` (section 8).
-- **`mr_py`** (already planned in port SPEC 10) wraps environments built on
+- **`mp_py`** (already planned in port SPEC 10) wraps environments built on
   any tier.
 
 ## 3. Time
@@ -273,7 +273,7 @@ body view** every tick, so nothing downstream changes:
   slip angle with the same thresholds as the arcade (0.18 rad on, 0.06 rad
   off), so drift scoring carries over. Nitro is a temporary torque boost;
   `spiked` scales `μ0`; `locked` holds the car.
-- **Collisions** (`mr_sim::collisions`) work on planar velocity and spin.
+- **Collisions** (`mp_sim::collisions`) work on planar velocity and spin.
   For a sim car, the change in planar velocity and yaw rate that the
   collision pass computes is applied back to the rigid body as an impulse
   at the centre of mass plus a yaw impulse. That is approximate but
@@ -405,14 +405,14 @@ pub trait Ground {
 pub struct Surface { pub mu: f64, pub rolling: f64, pub loose: f64, pub id: u16 }
 ```
 
-- **`TrackGround`** (in `mr_sim`) wraps `Track`: `project`, `surface_y`,
+- **`TrackGround`** (in `mp_sim`) wraps `Track`: `project`, `surface_y`,
   the frame's bank and grade for the normal, `loose_at` for `loose`, and the
   corridor walls as colliders. The SDF of a ribbon is its height difference
   along the normal, which is close enough within the corridor.
-- **`mr_terrain`** (V5) adds height fields with bilinear height and an
+- **`mp_terrain`** (V5) adds height fields with bilinear height and an
   analytic normal, rock primitives (spheres, capsules, convex hulls) unioned
   into the SDF, and materials per region. The crawler test area is
-  generated there from a seed, and `mr_worldgen` draws it.
+  generated there from a seed, and `mp_worldgen` draws it.
 - **Rapier** is not used for vehicles (decision VD-1). It stays available
   later as a broad-phase and collider backend behind `Ground::colliders` for
   open-world geometry, if writing our own stops being cheaper.
@@ -450,7 +450,7 @@ stiff, direct-drive wheel to feel good. The split is:
   game's torque as a feed-forward term. That keeps it stable and
   low-latency whatever the frame rate.
 
-`mr_game`'s `Rumble` trait becomes a `Feedback` trait with a rumble channel
+`mp_game`'s `Rumble` trait becomes a `Feedback` trait with a rumble channel
 (as now) and a force channel. Backends:
 
 - **Native:** the owner's controller through hidapi (7.3), and standard
@@ -491,7 +491,7 @@ depends on the game.
 ```rust
 pub enum VehicleModel {
     Arcade(CarPhysics),
-    Sim(Box<SimCar>),   // mr_vdyn's vehicle plus the body-view writer
+    Sim(Box<SimCar>),   // mp_vdyn's vehicle plus the body-view writer
 }
 ```
 
@@ -502,10 +502,10 @@ arcade physics. Running rivals on Tier 1 is an experiment behind a flag
 
 ### 8.2 Vehicle definitions
 
-`mr_vdyn::VehicleDef`: chassis mass, inertia, centre of mass and aero;
+`mp_vdyn::VehicleDef`: chassis mass, inertia, centre of mass and aero;
 axles (independent or solid, wheels, steering, anti-roll bar); the
 drivetrain graph; a `TyreDef` per axle; the substep count; and the default
-assist preset. Definitions start as Rust data in a `mr_vdyn::cars` module
+assist preset. Definitions start as Rust data in a `mp_vdyn::cars` module
 (like `CAR_SPECS`), one per arcade car so "Sim handling" works on every car
 in the garage. A text format (RON) for user and owner-supplied vehicles
 comes at V6.
@@ -527,7 +527,7 @@ The client uses them when present and its own springs otherwise.
 
 A sim car exposes per-tick telemetry (per-tyre load, slip angle, slip
 ratio, sliding share, rack force, suspension travel, wheel speeds) through
-the headless CLI (`mr-sim race --trace`) and an in-game overlay. Tuning a
+the headless CLI (`mp-sim race --trace`) and an in-game overlay. Tuning a
 tyre model without it is guesswork.
 
 ## 9. Breadcrumbs: what to keep in mind before this starts
@@ -536,9 +536,9 @@ These are cheap now and expensive later. None of them may change a parity
 trace.
 
 1. **Do not reach further into `Track` from physics.** New code in
-   `mr_sim::physics` should not read more track fields than the JS does,
+   `mp_sim::physics` should not read more track fields than the JS does,
    so the `TrackGround` adapter stays small.
-2. **`PlayerCar.phys` will become an enum.** Code outside `mr_sim` should
+2. **`PlayerCar.phys` will become an enum.** Code outside `mp_sim` should
    read player car data through `Vehicle` and the `CarPhysics` fields
    listed in 4.7, not new ones, where it can.
 3. **Version the input and the network protocol** with room for a clutch
@@ -587,14 +587,14 @@ drivable build.
 
 | | What | Gate |
 |---|---|---|
-| **V0. Seams** | `Ground` trait and `TrackGround`; `VehicleModel` enum with only `Arcade`; render-view fields; input and protocol version with the new fields unused | Every parity golden bit-identical; `check-deps` rules for `mr_vdyn` |
-| **V1. Core** | `mr_vdyn`: rigid body, independent suspension, wheel spin with brake friction, brush tyre with relaxation, flat-ground test rig, telemetry | Section 10 unit and vehicle tests on flat ground; native and wasm hashes equal |
+| **V0. Seams** | `Ground` trait and `TrackGround`; `VehicleModel` enum with only `Arcade`; render-view fields; input and protocol version with the new fields unused | Every parity golden bit-identical; `check-deps` rules for `mp_vdyn` |
+| **V1. Core** | `mp_vdyn`: rigid body, independent suspension, wheel spin with brake friction, brush tyre with relaxation, flat-ground test rig, telemetry | Section 10 unit and vehicle tests on flat ground; native and wasm hashes equal |
 | **V2. Sim car on track** | One car (Vento GT) as a `VehicleDef`, "Sim handling" setting for the player, the automatic gearbox and *Casual* assists, wall contact, collisions | Drivable on keyboard and pad on desktop; owner drive |
 | **V3. Wheel and FFB** | Wheel-angle input, clutch, paddles, rack force, the `Feedback` force channel, the owner's controller backend | Owner drive on the wheel with assists off |
 | **V4. Every car, every device** | `VehicleDef`s for all garage cars, drivetrain variety (LSD, AWD, electric), assist presets, phone measurements, Tier 1 rivals behind a flag | Budgets measured and written down; decision on Tier 1 for phones and rivals |
-| **V5. Off-road ground** | `mr_terrain` (height field, rocks, materials), a crawler test area, solid axles, lockers and low range, multi-point rigid tyre | A crawler climbs the test rocks on rigid tyres; still on slopes |
+| **V5. Off-road ground** | `mp_terrain` (height field, rocks, materials), a crawler test area, solid axles, lockers and low range, multi-point rigid tyre | A crawler climbs the test rocks on rigid tyres; still on slopes |
 | **V6. Soft tyre** | `SoftTyre`: rings, beams, pressure, per-node bristle friction, skinned tyre mesh; then the owner's model | Balloon tyre wraps over a rock and holds the crawler still; per-tick cost measured |
-| **V7. Crawler RL** | `Env` for the crawler (observations: IMU, wheel speeds, suspension travel, height-map patch; actions: throttle, steer, lockers, or per-wheel torque for robots), seeded domain randomisation of tyre and terrain parameters, `mr_py` vector env | A baseline policy learns to climb a course |
+| **V7. Crawler RL** | `Env` for the crawler (observations: IMU, wheel speeds, suspension travel, height-map patch; actions: throttle, steer, lockers, or per-wheel torque for robots), seeded domain randomisation of tyre and terrain parameters, `mp_py` vector env | A baseline policy learns to climb a course |
 
 Later: a Magic Formula tyre behind the same enum, tyre temperatures and
 wear, real suspension geometry, deformable ground (sand, mud), and a soft
@@ -606,7 +606,7 @@ chassis.
   ray-cast vehicle controller. A vehicle is a handful of bodies with
   special-purpose constraints (suspension axes, spin, drivetrain), and the
   feel lives in exactly the parts a general engine abstracts away. Our own
-  `f64` code on `mr_math`'s kernel is deterministic by the same rules as the
+  `f64` code on `mp_math`'s kernel is deterministic by the same rules as the
   rest of the simulation, with no extra engine to audit. Rapier has no soft
   bodies, so Tier 2 would need our own code anyway. Rapier may come back as
   a collider backend for open-world ground (section 6).

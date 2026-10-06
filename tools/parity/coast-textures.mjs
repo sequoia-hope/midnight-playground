@@ -1,6 +1,6 @@
 // Level 2's canvas textures as Chrome draws them with the bundled fonts
 // (roadmap WP 7.1, as city-textures.mjs does for WP 3.8: WP 3.2's
-// threshold gate needs a reference drawn with the same faces as mr_canvas,
+// threshold gate needs a reference drawn with the same faces as mp_canvas,
 // and the scene export is drawn with the machine's own fonts).
 //
 //   node tools/parity/coast-textures.mjs [--check]
@@ -21,7 +21,7 @@
 // Writes the RGBA to parity/cache/<key>/coast/canvas-<k>.rgba and a summary
 // (per group the entries; per picture its size, SHA-256 and 8x8 block
 // means; the font manifest's hash; the Chrome version) to
-// parity/golden/coast/textures.json. crates/mr_worldgen/tests/coast.rs
+// parity/golden/coast/textures.json. crates/mp_worldgen/tests/coast.rs
 // compares the Rust pictures with it. --check captures twice and fails if a
 // picture changed or the golden would.
 
@@ -54,7 +54,7 @@ function init(seedSrc, seed, faces) {
     for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
     const face = new FontFace(f.family, bytes, { weight: f.weight, style: f.style });
     document.fonts.add(face);
-    window.__mrFonts = (window.__mrFonts || []).concat([face.load()]);
+    window.__mpFonts = (window.__mpFonts || []).concat([face.load()]);
   }
 }
 
@@ -66,8 +66,8 @@ async function capture() {
       init, initArgs: [seedRandom.toString(), RANDOM_SEED, faces],
     });
     const out = await game.eval(async (groups) => {
-      await Promise.all(window.__mrFonts || []);
-      const loaded = (window.__mrFonts || []).length;
+      await Promise.all(window.__mpFonts || []);
+      const loaded = (window.__mpFonts || []).length;
       const THREE = window.__THREE;
       const world = window.__world;
       const renderer = world.renderer;

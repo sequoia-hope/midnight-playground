@@ -1,5 +1,5 @@
 // Font gallery (roadmap WP 3.2, SPEC 5.3): the game's own sign and texture
-// strings drawn by mr_canvas with each candidate substitute for the system
+// strings drawn by mp_canvas with each candidate substitute for the system
 // fonts the JS names, so the owner can pick the bundled set.
 //
 //   node tools/parity/fonts-gallery.mjs
@@ -153,5 +153,5 @@ fs.mkdirSync(OUT, { recursive: true });
 const specFile = path.join(CACHE, 'gallery.json');
 fs.mkdirSync(CACHE, { recursive: true });
 fs.writeFileSync(specFile, JSON.stringify(spec, null, 1));
-execFileSync('cargo', ['run', '--release', '-q', '-p', 'mr_canvas', '--example', 'font-gallery', '--', specFile], { cwd: ROOT, stdio: 'inherit' });
+execFileSync('cargo', ['run', '--release', '-q', '-p', 'mp_canvas', '--example', 'font-gallery', '--', specFile], { cwd: ROOT, stdio: 'inherit' });
 console.log(`font gallery: ${path.relative(ROOT, OUT)}/index.html (served at /parity/report/fonts/)`);

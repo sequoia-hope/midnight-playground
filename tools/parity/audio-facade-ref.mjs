@@ -1,8 +1,8 @@
-// The conformance golden for mr_audio's null backend (roadmap WP 5.1, SPEC
+// The conformance golden for mp_audio's null backend (roadmap WP 5.1, SPEC
 // 7.5): one fixed script of Web Audio calls run on the recording fake
 // (tools/parity/lib/webaudio-fake.mjs), covering every operation of the call
 // log, AudioParam.value reads through each kind of automation event, and
-// each exception the fake throws. crates/mr_audio/tests/null_backend.rs runs
+// each exception the fake throws. crates/mp_audio/tests/null_backend.rs runs
 // the same script through the facade on the null backend and requires the
 // same log, problems and exceptions line for line, so the null backend
 // writes what the fake writes and its strict mode rejects what the fake

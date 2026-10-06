@@ -1,10 +1,10 @@
-// The golden for mr_worldgen's builders (roadmap WP 3.3): the JS builders
+// The golden for mp_worldgen's builders (roadmap WP 3.3): the JS builders
 // themselves, imported from the game under Node with the parity kernel —
 // valley/Builder.js (Builder, PaintBuilder), beach/ColorBuilder.js,
 // city/geom.js (GeoBuilder, staticMesh, instanced, trs, yawOf), Road.js's
 // extrude and run helpers over real level tracks — plus THREE.Color, the
 // built-in materials' parameters as the scene export writes them, and the
-// progress labels of World.build. crates/mr_worldgen/tests/builders.rs
+// progress labels of World.build. crates/mp_worldgen/tests/builders.rs
 // makes the same calls in the same order and requires the same bits; read
 // the two side by side.
 //

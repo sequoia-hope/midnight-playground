@@ -10,7 +10,7 @@
 //   cargo xtask web --release && node tools/parity/touch-shots.mjs [--side js|rust] [--only rest,thumbs,buttons,tilt]
 //
 // Both builds are answered from the working tree by request interception
-// (ui-shots.mjs's way); the Rust canvas is captured with `__mr.screenshot`.
+// (ui-shots.mjs's way); the Rust canvas is captured with `__mp.screenshot`.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -110,10 +110,10 @@ async function rustShot(browser, device, state, dir) {
   const g = await openGame(browser, { device, query: 'timescale=2', storage: STATES[state], downloads: dir });
   if (state === 'tilt') await g.cdp.send('DeviceOrientation.setDeviceOrientationOverride', pose({ angle: device === 'iphone' ? 90 : 0, turn: 0 }));
   await g.tap('#btn-start');
-  await g.waitFor(() => window.__mr.race?.state === 'racing' && window.__mr.screen === 'none', { timeout: 90000, what: 'racing' });
+  await g.waitFor(() => window.__mp.race?.state === 'racing' && window.__mp.screen === 'none', { timeout: 90000, what: 'racing' });
   const vw = await g.eval('innerWidth'), vh = await g.eval('innerHeight');
-  const slider = await g.eval(() => window.__mr.ui('touch-slider'));
-  const pad = (n) => g.eval((i) => { const u = window.__mr.ui('touch-' + i); return { x: u.x + u.w / 2, y: u.y + u.h / 2 }; }, n);
+  const slider = await g.eval(() => window.__mp.ui('touch-slider'));
+  const pad = (n) => g.eval((i) => { const u = window.__mp.ui('touch-' + i); return { x: u.x + u.w / 2, y: u.y + u.h / 2 }; }, n);
   const pads = { right: await pad('right'), throttle: await pad('throttle') };
   await act(state, g, { vw, vh, slider, pad: (n) => pads[n] });
   await g.shot(`${state}-rust.png`, dir);

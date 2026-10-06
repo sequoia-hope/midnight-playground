@@ -49,13 +49,13 @@
 //
 // Targets are numbered as the scene export numbers them under world.root
 // (nodes depth first; materials in order of first use; a texture by the
-// first material and key that hold it), which is how mr_worldgen numbers
+// first material and key that hold it), which is how mp_worldgen numbers
 // its scene. Numbers are hex f64 bits, arrays the SHA-256 of their bytes.
 //
 // Writes parity/golden/animators/sierra.json: the targets, the keys, the
 // first snapshot's values, every value per frame of FRAMES and, for the run
 // of TICKS (fixed 1/120 s ticks), a SHA-256 per tick of the lines
-// `key=value`. crates/mr_worldgen/tests/animators.rs replays the frames on
+// `key=value`. crates/mp_worldgen/tests/animators.rs replays the frames on
 // the Rust build (WorldBuild::update_sky, the night parameters, then
 // WorldBuild::update) and requires the same values. --check captures again
 // (twice with --browser) and fails if the golden would change.

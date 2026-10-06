@@ -1,6 +1,6 @@
 // The trace record (SPEC 4.6; parity/trace-format.md is the definition,
 // this is its JS writer). Both the JS reference runs and, later, the Rust
-// port (mr_sim::trace_record) write the same bytes for the same state, so a
+// port (mp_sim::trace_record) write the same bytes for the same state, so a
 // tick's record, or its FNV-1a 64 hash, says whether the two agree.
 //
 // Runs in Node (the module oracle) and in the page (the game oracle; the

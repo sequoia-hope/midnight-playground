@@ -10,7 +10,7 @@
 // probes/), and the case definitions with a small summary of each image
 // (size, SHA-256 of the RGBA, 8×8 block means) to
 // parity/golden/textures/{textures,probes}.json. The Rust side
-// (crates/mr_worldgen/tests/textures.rs, crates/mr_canvas/tests/probes.rs)
+// (crates/mp_worldgen/tests/textures.rs, crates/mp_canvas/tests/probes.rs)
 // draws the same cases and compares: every pixel when the cached PNGs are
 // there, the block means otherwise; the noise-only textures must be
 // bit-identical. --check captures again and fails if any image changed.

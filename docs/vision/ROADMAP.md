@@ -171,7 +171,7 @@ plan exists as data.
 
 **Goal:** the simulation as a research environment.
 
-- `mr_sim::Env` and `mr_py` (port SPEC 10); rivals trained with RL on the
+- `mp_sim::Env` and `mp_py` (port SPEC 10); rivals trained with RL on the
   existing tracks.
 - The crawler environment (vehicle-dynamics V7); dash camera and lidar
   sensor models.

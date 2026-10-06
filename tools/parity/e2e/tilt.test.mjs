@@ -38,14 +38,14 @@ test('iPhone: motion access is asked for in the Race tap and in the tap that pic
     await game.page.evaluateOnNewDocument(fakeIosPermission);
     await game.reload();
     // At load (no tap) it can't ask: the menu says what to do.
-    await game.waitFor(() => /Tap Race to allow motion access/.test(window.__mr.ui('tilt-note')?.value || ''), { what: 'the ask note' });
+    await game.waitFor(() => /Tap Race to allow motion access/.test(window.__mp.ui('tilt-note')?.value || ''), { what: 'the ask note' });
     assert.deepEqual(await game.eval('window.__asks'), [false]);
     await startRace(game, { racing: false });
-    await game.waitFor(() => ['waiting', 'none', 'live'].includes(window.__mr.race?.touch?.tilt?.state), { what: 'motion access granted in the tap' });
+    await game.waitFor(() => ['waiting', 'none', 'live'].includes(window.__mp.race?.touch?.tilt?.state), { what: 'motion access granted in the tap' });
     const asks = await game.eval('window.__asks');
     assert.ok(asks.includes(true), `asked inside the tap (${JSON.stringify(asks)})`);
     await tiltTo(game, pose({ turn: 0 }));
-    await game.waitFor(() => window.__mr.race.touch.tilt.state === 'live', { what: 'tilt live' });
+    await game.waitFor(() => window.__mp.race.touch.tilt.state === 'live', { what: 'tilt live' });
     assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 
@@ -55,10 +55,10 @@ test('iPhone: motion access is asked for in the Race tap and in the tap that pic
     await game.reload();
     await choose(game, '#opt-steer', 'tilt');
     await game.waitFor(() => window.__asks.includes(true), { what: 'the Tilt tap to ask' });
-    await game.waitFor(() => !/Tap Race/.test(window.__mr.ui('tilt-note')?.value || ''), { what: 'no ask note once granted' });
+    await game.waitFor(() => !/Tap Race/.test(window.__mp.ui('tilt-note')?.value || ''), { what: 'no ask note once granted' });
     await tiltTo(game, pose({ turn: 0 }));
     await startRace(game);
-    await game.waitFor(() => window.__mr.race.touch.tilt.state === 'live', { what: 'tilt live' });
+    await game.waitFor(() => window.__mp.race.touch.tilt.state === 'live', { what: 'tilt live' });
     assert.deepEqual(pageErrors(game), []);
   } finally { await game.close(); }
 });
@@ -71,7 +71,7 @@ test('phone: switching to another tab pauses the race, and it stays paused on re
     await other.bringToFront();
     await sleep(500);
     await game.page.bringToFront();
-    await game.waitFor(() => window.__mr.mode === 'paused', { what: 'the race to pause' });
+    await game.waitFor(() => window.__mp.mode === 'paused', { what: 'the race to pause' });
     assert.equal(await game.screen(), 'pause');
     await other.close();
     assert.deepEqual(pageErrors(game), []);

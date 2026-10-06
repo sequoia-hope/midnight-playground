@@ -228,7 +228,7 @@ Generated 2026-10-03 by reading the JS game at commit `7213a89`. It is a map for
   - Navigation away from `app://` is blocked and popups are denied.
   - `--url-query <qs>` is appended to `index.html` (`:163-164`).
   - `--smoke-test` polls `window.__ready` for up to 60 s, waits `--wait` ms (default 2500), reads the WebGL renderer string, optionally saves `capturePage()` to `--shot <png>`, filters console errors and warnings (ignoring favicon, 404, Autofill, fonts), prints JSON, and exits 0 or 1 (`:168-208`).
-  - `play.sh` installs Electron on first run and adds `--no-sandbox` when AppArmor blocks the sandbox (override with `MR_SANDBOX`). `tools/install-desktop-entry.sh` writes an XDG `.desktop` file.
+  - `play.sh` installs Electron on first run and adds `--no-sandbox` when AppArmor blocks the sandbox (override with `MP_SANDBOX`). `tools/install-desktop-entry.sh` writes an XDG `.desktop` file.
 - **serve.py** (`tools/serve.py`): ThreadingHTTPServer on `--port` (required) and `--bind` (default 0.0.0.0). `/vendor/` and `/audio/` are sent `no-cache`; everything else is `no-store`, with `If-Modified-Since` stripped so non-pinned files never get a 304. `serve.sh` gets the port from `$PORT` or `proj port`.
 - **Deploy:** GitHub Pages serves `main` as-is with no build step (`README.md:199-201`). `.nojekyll` is present and there is no `.github/` workflow. Tilt needs https, so it only works on the Pages build (`README:317`).
 
@@ -446,11 +446,11 @@ Run with `npm test`. Unit tests: `node --test 'test/unit/*.test.js'`. E2E tests:
 - Rubber-banding uses `prog`, not lap position.
 
 **E2E harness** (`test/e2e/harness.js`):
-- `launch()` starts puppeteer-core Chrome (`CHROME_PATH`, default `/usr/bin/google-chrome`) headless unless `MR_HEADFUL`, with flags `--use-angle=vulkan --enable-gpu --ignore-gpu-blocklist --autoplay-policy=document-user-activation-required`.
+- `launch()` starts puppeteer-core Chrome (`CHROME_PATH`, default `/usr/bin/google-chrome`) headless unless `MP_HEADFUL`, with flags `--use-angle=vulkan --enable-gpu --ignore-gpu-blocklist --autoplay-policy=document-user-activation-required`.
 - `DEVICES`: desktop 1280×800; phone 915×412 (mobile, touch, landscape, Pixel UA); phonePortrait 412×915.
 - `openGame(browser, {device, query, storage, path, init, initArgs})`:
   - creates a fresh browser context;
-  - uses request interception to serve the working tree at `https://midnight-racer.test` (403 if a path escapes, 404 otherwise, all other origins aborted), or `MR_BASE_URL` to test a running copy;
+  - uses request interception to serve the working tree at `https://midnight-racer.test` (403 if a path escapes, 404 otherwise, all other origins aborted), or `MP_BASE_URL` to test a running copy;
   - collects page errors, console errors and warnings, and HTTP ≥ 400;
   - emulates the device;
   - seeds `localStorage` through `evaluateOnNewDocument`;

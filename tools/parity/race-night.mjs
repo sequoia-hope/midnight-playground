@@ -84,7 +84,7 @@ try {
     return r.result.value;
   };
   page.on('pageerror', (e) => errors.push(String(e)));
-  page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|KHR_parallel/.test(m.text())) errors.push(m.text()); if (process.env.MR_VERBOSE) console.log(`[page] ${m.text()}`); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|KHR_parallel/.test(m.text())) errors.push(m.text()); if (process.env.MP_VERBOSE) console.log(`[page] ${m.text()}`); });
   await page.emulate({ userAgent: DEVICES[device].userAgent || await browser.userAgent(), viewport: DEVICES[device].viewport });
   await page.evaluateOnNewDocument((h) => { localStorage.setItem('mr.hq', JSON.stringify(h)); }, hq);
   const t0 = Date.now();
@@ -142,7 +142,7 @@ try {
     await page.goto(url);
     let perf = null;
     for (;;) {
-      const s = await ev(() => ({ st: window.__mr?.state, err: window.__mr?.error, tk: window.__mr?.race?.time, backend: window.__mr?.backend }));
+      const s = await ev(() => ({ st: window.__mp?.state, err: window.__mp?.error, tk: window.__mp?.race?.time, backend: window.__mp?.backend }));
       if (s.err || s.st === 'failed') throw new Error(`rust: ${s.err}`);
       if (perfSecs && !perf && s.tk >= tick - perfSecs * 1.1) perf = await ev(PERF, perfSecs);
       if (s.tk >= tick - 1.5) break;
@@ -154,13 +154,13 @@ try {
     // The page asks for the screenshot itself, the first frame the race
     // time reaches `tick` seconds (no round trip through the tool).
     await ev((n, t) => new Promise((res) => {
-      const f = () => { const r = window.__mr.race; if (r && r.time >= t) { window.__shotAt = [r.tick, r.time]; window.__mr.screenshot(n); res(); } else requestAnimationFrame(f); };
+      const f = () => { const r = window.__mp.race; if (r && r.time >= t) { window.__shotAt = [r.tick, r.time]; window.__mp.screenshot(n); res(); } else requestAnimationFrame(f); };
       requestAnimationFrame(f);
     }), name, tick);
     const a = await ev(() => window.__shotAt);
-    const b = await ev(() => [window.__mr.race.tick, window.__mr.race.time]);
+    const b = await ev(() => [window.__mp.race.tick, window.__mp.race.time]);
     for (let i = 0; i < 100 && !fs.existsSync(file); i++) await sleep(100);
-    const info = await ev(() => ({ backend: window.__mr.backend, time: window.__mr.race.time, s: window.__mr.race.s }));
+    const info = await ev(() => ({ backend: window.__mp.backend, time: window.__mp.race.time, s: window.__mp.race.s }));
     console.log(JSON.stringify({ file: fs.existsSync(file) ? file : 'no screenshot', ticks: [a, b], ...info, perf }));
   }
 } catch (e) {

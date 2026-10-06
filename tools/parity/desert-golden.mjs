@@ -1,6 +1,6 @@
 // Desert Run of the browser's scene export (roadmap WP 7.3): everything
 // Desert.js and desert/* contribute (the group `desert`), as a small digest,
-// so that mr_worldgen's Desert can be held to the JS (L3) in CI and in wasm,
+// so that mp_worldgen's Desert can be held to the JS (L3) in CI and in wasm,
 // without the cache. The pattern of tools/parity/city-golden.mjs, whose
 // file it does not touch.
 //
@@ -18,7 +18,7 @@
 //     materials in order of first use, each material described (textures by
 //     their sampler; canvas pixels are WP 3.2's threshold gate) and hashed in
 //     a canonical form (keys sorted, every number as its f64 bits), which
-//     crates/mr_worldgen/tests/desert.rs makes the same way;
+//     crates/mp_worldgen/tests/desert.rs makes the same way;
 //   - per texture a material uses, the 8×8 block means of its pixels (as
 //     tools/parity/textures.mjs writes them), for the threshold gate without
 //     the cache;

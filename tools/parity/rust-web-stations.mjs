@@ -2,9 +2,9 @@
 // at the JS shots' 1280 × 800 (WP 3.9, D496): one page in headless Chrome on
 // WebGPU (rust-web.mjs's flags and request interception: no server, no
 // port), the scenery frozen, then for each station of the JS run the fly
-// camera moved there (`__mr.flyTo`), three settled frames waited for
-// (`__mr.flyQuiet`: no pipeline compiling, the environment map built) and
-// `__mr.screenshot` saved. The client builds every level itself by default
+// camera moved there (`__mp.flyTo`), three settled frames waited for
+// (`__mp.flyQuiet`: no pipeline compiling, the environment map built) and
+// `__mp.screenshot` saved. The client builds every level itself by default
 // (D678), with no scene download, so any level fits through the
 // interception (D106's 100 MB limit). `--query world=export` draws the
 // exported scene instead; an export over that limit needs `--server`, which
@@ -77,7 +77,7 @@ const browser = await puppeteer.launch({
   args: backend === 'webgl2'
     ? ['--disable-blink-features=WebGPU', '--disable-features=WebGPU', '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist', '--mute-audio']
     : ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist', '--mute-audio'],
-  dumpio: !!process.env.MR_DUMPIO,
+  dumpio: !!process.env.MP_DUMPIO,
 });
 const errors = [];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -89,7 +89,7 @@ try {
   page.on('console', (m) => {
     const t = m.text();
     if (m.type() === 'error' && !/Failed to load resource/.test(t)) errors.push(t);
-    if (process.env.MR_VERBOSE) console.log(`[page ${m.type()}] ${t}`);
+    if (process.env.MP_VERBOSE) console.log(`[page ${m.type()}] ${t}`);
   });
   page.on('pageerror', (e) => errors.push(String(e)));
   if (!server) await page.setRequestInterception(true);
@@ -105,7 +105,7 @@ try {
   const t0 = Date.now();
   await page.goto(`${ORIGIN}/dist/next/index.html?level=${level}&freeze=1&s=${first.s}&h=${first.h}&back=${first.back}&lat=${first.lat}&yaw=${first.yaw}&pitch=${first.pitch}&${query}`);
   for (;;) {
-    const s = await page.evaluate(() => ({ state: window.__mr?.state, ready: window.__mr?.ready, error: window.__mr?.error }));
+    const s = await page.evaluate(() => ({ state: window.__mp?.state, ready: window.__mp?.ready, error: window.__mp?.error }));
     if (s.error || s.state === 'failed') throw new Error(`client failed: ${s.error}`);
     if (s.ready) break;
     if (Date.now() - t0 > timeoutMs) throw new Error(`not ready after ${timeoutMs} ms (state ${s.state})`);
@@ -113,10 +113,10 @@ try {
   }
   console.log(`${level}: ready in ${((Date.now() - t0) / 1000).toFixed(1)} s; ${stations.length} stations`);
   for (const st of stations) {
-    await page.evaluate((p) => window.__mr.flyTo(p), st);
+    await page.evaluate((p) => window.__mp.flyTo(p), st);
     const ts = Date.now();
     for (;;) {
-      const q = await page.evaluate(() => window.__mr.flyQuiet || 0);
+      const q = await page.evaluate(() => window.__mp.flyQuiet || 0);
       if (q >= 3) break;
       if (Date.now() - ts > 60000) throw new Error(`${st.name}: not settled`);
       await sleep(50);
@@ -124,7 +124,7 @@ try {
     const name = `${st.name}.png`;
     const file = path.join(out, name);
     fs.rmSync(file, { force: true });
-    await page.evaluate((n) => window.__mr.screenshot(n), name);
+    await page.evaluate((n) => window.__mp.screenshot(n), name);
     for (let i = 0; i < 200 && !fs.existsSync(file); i++) await sleep(50);
     // The download is written in place; wait for its size to hold.
     let size = -1;
@@ -137,7 +137,7 @@ try {
     if (!fs.existsSync(file)) errors.push(`${st.name}: no screenshot`);
     else process.stdout.write(`  ${st.name}\n`);
   }
-  const backendSeen = await page.evaluate(() => window.__mr.backend);
+  const backendSeen = await page.evaluate(() => window.__mp.backend);
   if (backendSeen !== backend) errors.push(`the page picked ${backendSeen}, expected ${backend}`);
 } catch (e) {
   errors.push(String(e.message || e));

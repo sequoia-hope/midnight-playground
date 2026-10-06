@@ -132,7 +132,7 @@ try {
     return r.result.value;
   };
   page.on('pageerror', (e) => errors.push(String(e)));
-  page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|KHR_parallel/.test(m.text())) errors.push(m.text()); if (process.env.MR_VERBOSE) console.log(`[page] ${m.text()}`); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|KHR_parallel/.test(m.text())) errors.push(m.text()); if (process.env.MP_VERBOSE) console.log(`[page] ${m.text()}`); });
   await page.emulate({ userAgent: DEVICES[device].userAgent || await browser.userAgent(), viewport: DEVICES[device].viewport });
   const t0 = Date.now();
   if (side === 'js') {
@@ -190,12 +190,12 @@ try {
     if (stage) {
       // Staged from the page's own frames, the first one at race time `at`.
       await ev((at, cmds) => {
-        const f = () => { const r = window.__mr?.race; if (r && r.time >= at) { for (const c of cmds) window.__mr.stage(c); } else requestAnimationFrame(f); };
+        const f = () => { const r = window.__mp?.race; if (r && r.time >= at) { for (const c of cmds) window.__mp.stage(c); } else requestAnimationFrame(f); };
         requestAnimationFrame(f);
       }, stageAt, STAGES[stage].rust(LINE));
     }
     for (;;) {
-      const s = await ev(() => ({ st: window.__mr?.state, err: window.__mr?.error, tk: window.__mr?.race?.time }));
+      const s = await ev(() => ({ st: window.__mp?.state, err: window.__mp?.error, tk: window.__mp?.race?.time }));
       if (s.err || s.st === 'failed') throw new Error(`rust: ${s.err}`);
       if (perfSecs && !perf && cd == null && s.tk >= time - perfSecs * 1.1) perf = await ev(PERF, perfSecs);
       if (cd != null ? s.tk != null : s.tk >= time - 1.5) break;
@@ -206,12 +206,12 @@ try {
     fs.rmSync(file, { force: true });
     await ev((n, t) => new Promise((res) => {
       const due = (r) => (typeof t === 'number' ? r.time >= t : r.state === 'countdown' && r.countdown <= Number(t.slice(2)));
-      const f = () => { const r = window.__mr.race; if (r && due(r)) { window.__shotAt = [r.tick, r.time, r.countdown]; window.__mr.screenshot(n); res(); } else requestAnimationFrame(f); };
+      const f = () => { const r = window.__mp.race; if (r && due(r)) { window.__shotAt = [r.tick, r.time, r.countdown]; window.__mp.screenshot(n); res(); } else requestAnimationFrame(f); };
       requestAnimationFrame(f);
     }), name, time);
     const a = await ev(() => window.__shotAt);
     for (let i = 0; i < 100 && !fs.existsSync(file); i++) await sleep(100);
-    const info = await ev(() => ({ backend: window.__mr.backend, s: window.__mr.race.s }));
+    const info = await ev(() => ({ backend: window.__mp.backend, s: window.__mp.race.s }));
     console.log(JSON.stringify({ file: fs.existsSync(file) ? file : 'no screenshot', at: a, ...info, perf }));
   }
 } catch (e) {

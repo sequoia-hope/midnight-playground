@@ -16,7 +16,7 @@ import { RecordingContext, ArrayStore, VirtualTimers, settle, mulberry32, enc, d
 export function facadeRecorder() {
   const log = [];
   let tick = 0;
-  window.__mrFacade = { log, get tick() { return tick; } };
+  window.__mpFacade = { log, get tick() { return tick; } };
   const num = (x) => (Object.is(x, -0) ? '-0' : Number.isFinite(x) ? String(x) : JSON.stringify(String(x)));
   const enc = (v) => {
     if (typeof v === 'number') return num(v);
