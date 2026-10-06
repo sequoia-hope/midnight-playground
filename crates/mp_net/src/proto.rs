@@ -138,6 +138,8 @@ pub enum Msg {
     Configure(Settings),
     /// The leader starts a race, or (false) aborts the one running.
     Go(bool),
+    /// This player has built the race (loaded the level) and can start.
+    Loaded,
 
     // ── Host to client ──
     Welcome {
@@ -168,11 +170,16 @@ pub enum Msg {
         tick: u32,
         hash: u64,
     },
-    /// The host's tick (with the fraction of the next) when it answered.
+    /// The host's clock (ms) when it answered.
     Pong {
         id: u32,
         t: f64,
-        host_tick: f64,
+        host_ms: f64,
+    },
+    /// The race's tick 0 starts at this time on the host's clock (ms): sent
+    /// once everyone has loaded, or after a wait.
+    Begin {
+        at: f64,
     },
     /// The race is over; back to the lobby.
     End,
@@ -393,6 +400,7 @@ impl Msg {
                 w.u8(8);
                 w.bool(*g);
             }
+            Msg::Loaded => w.u8(9),
             Msg::Welcome { slot } => {
                 w.u8(20);
                 w.u8(*slot);
@@ -453,11 +461,15 @@ impl Msg {
                 w.u32(*tick);
                 w.u64(*hash);
             }
-            Msg::Pong { id, t, host_tick } => {
+            Msg::Pong { id, t, host_ms } => {
                 w.u8(26);
                 w.u32(*id);
                 w.f64(*t);
-                w.f64(*host_tick);
+                w.f64(*host_ms);
+            }
+            Msg::Begin { at } => {
+                w.u8(28);
+                w.f64(*at);
             }
             Msg::End => w.u8(27),
         }
@@ -490,6 +502,7 @@ impl Msg {
             6 => Msg::Leave,
             7 => Msg::Configure(r.settings()?),
             8 => Msg::Go(r.bool()?),
+            9 => Msg::Loaded,
             20 => Msg::Welcome { slot: r.u8()? },
             21 => Msg::Reject { reason: r.str()? },
             22 => Msg::Lobby {
@@ -534,8 +547,9 @@ impl Msg {
             26 => Msg::Pong {
                 id: r.u32()?,
                 t: r.f64()?,
-                host_tick: r.f64()?,
+                host_ms: r.f64()?,
             },
+            28 => Msg::Begin { at: r.f64()? },
             27 => Msg::End,
             _ => return Err(DecodeError("unknown message")),
         };
@@ -640,8 +654,10 @@ mod tests {
             Msg::Pong {
                 id: 9,
                 t: 1234.5,
-                host_tick: 600.25,
+                host_ms: 600.25,
             },
+            Msg::Begin { at: 1500.5 },
+            Msg::Loaded,
             Msg::End,
         ]
     }

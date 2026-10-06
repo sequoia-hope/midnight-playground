@@ -36,6 +36,20 @@ pub trait Transport {
     fn close(&mut self, peer: PeerId);
 }
 
+/// A boxed transport is a transport (the client picks WebSocket or the
+/// loopback at run time).
+impl Transport for Box<dyn Transport> {
+    fn send(&mut self, peer: PeerId, channel: Channel, bytes: &[u8]) {
+        (**self).send(peer, channel, bytes)
+    }
+    fn poll(&mut self, out: &mut Vec<NetEvent>) {
+        (**self).poll(out)
+    }
+    fn close(&mut self, peer: PeerId) {
+        (**self).close(peer)
+    }
+}
+
 /// One direction of a link's conditions.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Conditions {

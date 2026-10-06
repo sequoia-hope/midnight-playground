@@ -160,6 +160,9 @@ fn players_meet_in_the_lobby_and_race() {
     let start = start.expect("the race starts");
     assert_eq!(start.humans.len(), 2);
     assert_eq!(start.settings.level, "coast");
+    // Both have "loaded": the host begins the race.
+    send(&mut a, &Msg::Loaded);
+    send(&mut b, &Msg::Loaded);
     // Inputs flow: send some, and the host relays ticks for both.
     let full = InputFrame {
         throttle: 255,

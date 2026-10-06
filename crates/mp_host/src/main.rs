@@ -82,7 +82,7 @@ fn levels(root: &std::path::Path) -> Levels {
             root.display()
         );
     }
-    let cache: RefCell<HashMap<String, Rc<LevelRuntime>>> = RefCell::default();
+    let cache: RefCell<HashMap<String, Arc<LevelRuntime>>> = RefCell::default();
     Rc::new(move |id: &str| {
         if !mp_net::host::known_level(id) {
             return None;
@@ -94,7 +94,7 @@ fn levels(root: &std::path::Path) -> Levels {
         if id == "seaside" {
             mp_levels::seaside::prepare(&mut level, survey.clone()?);
         }
-        let lr = Rc::new(LevelRuntime::new(level).ok()?);
+        let lr = Arc::new(LevelRuntime::new(level).ok()?);
         cache.borrow_mut().insert(id.into(), lr.clone());
         Some(lr)
     })
