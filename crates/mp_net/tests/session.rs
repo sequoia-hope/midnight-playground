@@ -5,6 +5,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use mp_net::client::{Client, ClientEvent};
 use mp_net::host::{Host, HostEvent, Levels, TICK_MS};
@@ -15,7 +16,7 @@ use mp_sim::input::{Input, InputFrame, RESET};
 use mp_sim::race::{LevelRuntime, SimState, hash};
 
 fn levels() -> Levels {
-    let cache: RefCell<HashMap<String, Rc<LevelRuntime>>> = RefCell::default();
+    let cache: RefCell<HashMap<String, Arc<LevelRuntime>>> = RefCell::default();
     Rc::new(move |id: &str| {
         if id == "seaside" {
             return None; // needs the survey data; not used here
@@ -24,7 +25,7 @@ fn levels() -> Levels {
         if let Some(lr) = c.get(id) {
             return Some(lr.clone());
         }
-        let lr = Rc::new(LevelRuntime::new(mp_levels::level_by_id(id)).ok()?);
+        let lr = Arc::new(LevelRuntime::new(mp_levels::level_by_id(id)).ok()?);
         c.insert(id.into(), lr.clone());
         Some(lr)
     })
@@ -62,7 +63,6 @@ impl World {
             .map(|(i, &c)| {
                 Client::new(
                     net.connect(c),
-                    lv.clone(),
                     &format!("Driver {i}"),
                     "sports",
                     0x111111 * i as u32,
@@ -86,6 +86,12 @@ impl World {
         self.host.update(self.now);
         let now = self.now;
         for c in &mut self.clients {
+            // The app loads the level, then builds the race.
+            if let Some(p) = &c.pending
+                && let Some(lr) = (self.levels)(&p.settings.level)
+            {
+                c.attach(lr);
+            }
             let lr = c.race.as_ref().map(|r| r.lr.clone());
             match lr {
                 Some(lr) => c.update(now, driver(&lr)),
@@ -303,7 +309,7 @@ fn a_dropped_player_is_driven_by_the_ai_and_can_come_back() {
     );
     // They come back under the same name: same slot, the race replayed.
     let end = w.net.connect(Conditions::LAN);
-    let mut c = Client::new(end, w.levels.clone(), "Driver 2", "sports", 0x222222);
+    let mut c = Client::new(end, "Driver 2", "sports", 0x222222);
     let now = w.now;
     c.update(now, |_, _| InputFrame::default());
     w.clients[2] = c;

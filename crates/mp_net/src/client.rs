@@ -20,12 +20,12 @@
 //! As with the host, time comes in from outside (`now`, ms).
 
 use std::collections::{BTreeMap, VecDeque};
-use std::rc::Rc;
+use std::sync::Arc;
 
 use mp_sim::input::{InputFrame, RESET};
 use mp_sim::race::{LevelRuntime, SimEvent, SimState, hash, step};
 
-use crate::host::{HASH_EVERY, Levels, TICK_MS, multi_opts};
+use crate::host::{HASH_EVERY, TICK_MS, multi_opts};
 use crate::proto::{Msg, PlayerInfo, PointsRow, RaceStart, Settings, Slot, VERSION};
 use crate::transport::{Channel, NetEvent, Transport};
 
@@ -84,7 +84,7 @@ pub struct NetStats {
 
 pub struct ClientRace {
     pub start: RaceStart,
-    pub lr: Rc<LevelRuntime>,
+    pub lr: Arc<LevelRuntime>,
     /// This player's index in the race.
     pub me: usize,
     n: usize,
@@ -172,13 +172,22 @@ impl ClientRace {
 
 pub struct Client<T: Transport> {
     pub net: T,
-    levels: Levels,
     pub name: String,
     pub car: String,
     pub color: u32,
     pub slot: Option<Slot>,
     pub lobby: LobbyView,
     pub race: Option<ClientRace>,
+    /// A race the host started that this client hasn't built yet: the app
+    /// loads the level, then calls [`Client::attach`].
+    pub pending: Option<RaceStart>,
+    /// When the race's tick 0 starts on the host's clock (ms).
+    begin_at: Option<f64>,
+    /// The host's inputs that came before the race was built (a rejoin
+    /// gets the whole race so far), handed to it when it is.
+    early: Vec<InputFrame>,
+    /// The tick this client aimed for last update, with its fraction.
+    target: f64,
     pub events: Vec<ClientEvent>,
     pub stats: NetStats,
     connected: bool,
@@ -187,23 +196,27 @@ pub struct Client<T: Transport> {
     ping_id: u32,
     last_ping: f64,
     pings: BTreeMap<u32, f64>,
-    /// Recent (rtt, host tick offset) samples; the best rtt's offset wins.
+    /// Recent (rtt, host clock offset in ms) samples; the best rtt's offset
+    /// wins.
     samples: VecDeque<(f64, f64)>,
     offset: Option<f64>,
     inbox: Vec<NetEvent>,
 }
 
 impl<T: Transport> Client<T> {
-    pub fn new(net: T, levels: Levels, name: &str, car: &str, color: u32) -> Client<T> {
+    pub fn new(net: T, name: &str, car: &str, color: u32) -> Client<T> {
         Client {
             net,
-            levels,
             name: name.into(),
             car: car.into(),
             color,
             slot: None,
             lobby: LobbyView::default(),
             race: None,
+            pending: None,
+            begin_at: None,
+            early: Vec::new(),
+            target: 0.0,
             events: Vec::new(),
             stats: NetStats::default(),
             connected: false,
@@ -271,9 +284,37 @@ impl<T: Transport> Client<T> {
         self.race = None;
     }
 
-    /// The host's tick now, as best we know.
+    /// The race's tick on the host now, as best we know (before tick 0 it
+    /// is negative; `None` until the race has begun and the clock is known).
     pub fn host_tick(&self, now: f64) -> Option<f64> {
-        self.offset.map(|o| now / TICK_MS + o)
+        Some((now + self.offset? - self.begin_at?) / TICK_MS)
+    }
+
+    /// How far the drawn frame is between the previous tick and the current
+    /// one (0..1), from where this client is aiming.
+    pub fn alpha(&self) -> f64 {
+        match &self.race {
+            Some(r) if self.target >= r.local() as f64 => {
+                (self.target - r.local() as f64).clamp(0.0, 1.0)
+            }
+            _ => 1.0,
+        }
+    }
+
+    /// Builds the race the host started, once the app has its level, and
+    /// tells the host this player is ready to go. Returns false if there is
+    /// no such race or the level differs.
+    pub fn attach(&mut self, lr: Arc<LevelRuntime>) -> bool {
+        let Some(start) = self.pending.take() else {
+            return false;
+        };
+        if start.settings.level != lr.level.id {
+            self.pending = Some(start);
+            return false;
+        }
+        self.begin(start, lr);
+        self.send(Channel::Reliable, &Msg::Loaded);
+        true
     }
 
     /// Handles the network, keeps the clock, and in a race steps forward to
@@ -361,13 +402,34 @@ impl<T: Transport> Client<T> {
                 };
                 self.events.push(ClientEvent::Lobby);
             }
-            Msg::Start(start) => self.begin(start),
+            Msg::Start(start) => {
+                // Built when the app has loaded the level (`attach`).
+                self.race = None;
+                self.begin_at = None;
+                self.early.clear();
+                self.pending = Some(start);
+                self.events.push(ClientEvent::RaceStarted);
+            }
+            Msg::Begin { at } => self.begin_at = Some(at),
             Msg::Inputs {
                 first,
                 humans,
                 frames,
             } => {
-                let Some(r) = &mut self.race else { return };
+                let Some(r) = &mut self.race else {
+                    // Not built yet: keep them in order for when it is.
+                    if let Some(p) = &self.pending {
+                        let n = p.humans.len();
+                        let have = (self.early.len() / n) as u32;
+                        if humans as usize == n && first <= have + 1 {
+                            let skip = (have + 1 - first) as usize * n;
+                            if skip < frames.len() {
+                                self.early.extend_from_slice(&frames[skip..]);
+                            }
+                        }
+                    }
+                    return;
+                };
                 if humans as usize != r.n {
                     return;
                 }
@@ -387,10 +449,10 @@ impl<T: Transport> Client<T> {
                     r.host_hashes.insert(tick, hash);
                 }
             }
-            Msg::Pong { id, t, host_tick } => {
+            Msg::Pong { id, t, host_ms } => {
                 if self.pings.remove(&id).is_some() {
                     let rtt = now - t;
-                    let offset = host_tick + rtt / 2.0 / TICK_MS - now / TICK_MS;
+                    let offset = host_ms + rtt / 2.0 - now;
                     self.samples.push_back((rtt, offset));
                     if self.samples.len() > 16 {
                         self.samples.pop_front();
@@ -402,27 +464,22 @@ impl<T: Transport> Client<T> {
                         .min_by(|a, b| a.0.total_cmp(&b.0))
                         .unwrap();
                     self.stats.rtt = best.0;
-                    // Before a race the host's tick is 0; the offset only
-                    // means something once one runs.
-                    if self.race.is_some() || self.offset.is_none() {
-                        self.offset = Some(best.1);
-                    }
+                    self.offset = Some(best.1);
                 }
             }
             Msg::End => {
                 self.race = None;
+                self.pending = None;
+                self.begin_at = None;
                 self.events.push(ClientEvent::RaceEnded);
             }
             _ => {}
         }
     }
 
-    fn begin(&mut self, start: RaceStart) {
+    fn begin(&mut self, start: RaceStart, lr: Arc<LevelRuntime>) {
         let Some(slot) = self.slot else { return };
         let Some(me) = start.humans.iter().position(|p| p.slot == slot) else {
-            return;
-        };
-        let Some(lr) = (self.levels)(&start.settings.level) else {
             return;
         };
         let init = SimState::new_multi(&lr, &multi_opts(&start));
@@ -435,18 +492,13 @@ impl<T: Transport> Client<T> {
             ring: VecDeque::from([init.clone()]),
             init,
             used: VecDeque::new(),
-            confirmed: Vec::new(),
+            confirmed: std::mem::take(&mut self.early),
             mine: BTreeMap::new(),
             host_hashes: BTreeMap::new(),
             our_hashes: BTreeMap::new(),
             events: Vec::new(),
             emitted_to: 0,
         });
-        // The clock is re-learned for the race (its tick 0 is new).
-        self.samples.clear();
-        self.offset = None;
-        self.last_ping = f64::NEG_INFINITY;
-        self.events.push(ClientEvent::RaceStarted);
     }
 
     /// Takes in the host's inputs: moves the confirmed base forward, rolls
@@ -556,12 +608,13 @@ impl<T: Transport> Client<T> {
             .min(200.0)
             / TICK_MS
             - rtt_ticks;
-        let target = (host + rtt_ticks / 2.0 + MARGIN_TICKS + spread.max(0.0) * 0.5).floor();
+        let aim = host + rtt_ticks / 2.0 + MARGIN_TICKS + spread.max(0.0) * 0.5;
+        self.target = aim;
         let Some(r) = &mut self.race else { return };
-        if target < 1.0 {
+        if aim < 1.0 {
             return;
         }
-        let target = target as u32;
+        let target = aim.floor() as u32;
         let behind = target.saturating_sub(r.local());
         let budget = if behind > 2 * MAX_AHEAD {
             CATCH_UP

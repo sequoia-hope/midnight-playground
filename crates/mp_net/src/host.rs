@@ -16,6 +16,7 @@
 
 use std::collections::BTreeMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use mp_math::Mulberry32;
 use mp_sim::input::{AUTOPILOT, AWAY, InputFrame, RESET};
@@ -28,15 +29,18 @@ use crate::transport::{Channel, NetEvent, PeerId, Transport};
 
 /// Builds a level's runtime by id (the host app knows where Seaside's
 /// survey data is).
-pub type Levels = Rc<dyn Fn(&str) -> Option<Rc<LevelRuntime>>>;
+pub type Levels = Rc<dyn Fn(&str) -> Option<Arc<LevelRuntime>>>;
 
 /// Ticks per second.
 pub const HZ: f64 = 1.0 / DT;
 /// The tick length in ms.
 pub const TICK_MS: f64 = DT * 1000.0;
-/// How long after the Start message the race's tick 0 begins, so every
-/// client has built the race before it matters.
-pub const START_DELAY_MS: f64 = 1500.0;
+/// Tick 0 begins this long after the Begin message goes out, so it reaches
+/// everyone first.
+pub const BEGIN_LEAD_MS: f64 = 500.0;
+/// The longest the host waits for everyone to load the level before it
+/// begins anyway (a slow phone then catches up).
+pub const LOAD_WAIT_MS: f64 = 30_000.0;
 /// A state hash goes out every this many ticks (SPEC 9.2's snapshot rate).
 pub const HASH_EVERY: u32 = 30;
 /// At most this many ticks are stepped in one update (a stalled host
@@ -59,10 +63,14 @@ struct Player {
 
 struct Race {
     start: RaceStart,
-    lr: Rc<LevelRuntime>,
+    lr: Arc<LevelRuntime>,
     st: SimState,
-    /// Host time of tick 0's start, ms.
-    t0: f64,
+    /// Host time of tick 0's start, ms, once everyone has loaded.
+    t0: Option<f64>,
+    /// When the Start went out, ms.
+    started_at: f64,
+    /// Which humans have loaded the level.
+    loaded: Vec<bool>,
     /// Each human's inputs from the network, by tick, not yet used.
     pending: Vec<BTreeMap<u32, InputFrame>>,
     /// Each human's last used input (what is repeated when one is late).
@@ -214,8 +222,23 @@ impl<T: Transport> Host<T> {
             }
             (Msg::Input { first, frames }, Some(i)) => self.input(i, first, frames),
             (Msg::Ping { id, t }, _) => {
-                let host_tick = self.race.as_ref().map_or(0.0, |r| (now - r.t0) / TICK_MS);
-                self.send(peer, Channel::Reliable, &Msg::Pong { id, t, host_tick });
+                self.send(
+                    peer,
+                    Channel::Reliable,
+                    &Msg::Pong {
+                        id,
+                        t,
+                        host_ms: now,
+                    },
+                );
+            }
+            (Msg::Loaded, Some(i)) => {
+                let slot = self.players[i].info.slot;
+                if let Some(r) = &mut self.race
+                    && let Some(h) = r.slots.iter().position(|&s| s == slot)
+                {
+                    r.loaded[h] = true;
+                }
             }
             (Msg::Configure(set), Some(i)) if self.is_leader(i) => {
                 let mut set = set;
@@ -320,9 +343,13 @@ impl<T: Transport> Host<T> {
             && r.slots.contains(&slot)
         {
             let start = Msg::Start(r.start.clone());
+            let begin = r.t0.map(|at| Msg::Begin { at });
             let n = r.slots.len();
             let log = r.log.clone();
             self.send(peer, Channel::Reliable, &start);
+            if let Some(b) = begin {
+                self.send(peer, Channel::Reliable, &b);
+            }
             for (k, chunk) in log.chunks(n * 600).enumerate() {
                 self.send(
                     peer,
@@ -400,7 +427,9 @@ impl<T: Transport> Host<T> {
             start,
             lr,
             st,
-            t0: now + START_DELAY_MS,
+            t0: None,
+            started_at: now,
+            loaded: vec![false; n],
             pending: vec![BTreeMap::new(); n],
             last: vec![InputFrame::default(); n],
             log: Vec::new(),
@@ -452,7 +481,25 @@ impl<T: Transport> Host<T> {
 
     fn step_race(&mut self, now: f64) {
         let Some(r) = &mut self.race else { return };
-        let due = ((now - r.t0) / TICK_MS).floor();
+        if r.t0.is_none() {
+            // Begin once every connected human has the level loaded, or the
+            // wait is over.
+            let all = r.slots.iter().zip(&r.loaded).all(|(&s, &l)| {
+                l || !self
+                    .players
+                    .iter()
+                    .any(|p| p.info.slot == s && p.peer.is_some())
+            });
+            if all || now - r.started_at > LOAD_WAIT_MS {
+                let at = now + BEGIN_LEAD_MS;
+                r.t0 = Some(at);
+                self.broadcast(Channel::Reliable, &Msg::Begin { at });
+            }
+            return;
+        }
+        let r = self.race.as_mut().unwrap();
+        let t0 = r.t0.unwrap();
+        let due = ((now - t0) / TICK_MS).floor();
         let mut out = Vec::new();
         let first = r.st.tick + 1;
         let mut ended = false;
