@@ -299,8 +299,11 @@ fn kit(
             .set("opacity", 0.0)
             .set("blending", ADDITIVE)
             .set("depthWrite", false)
+            // The JS's factor is -6: its slope term drew the pools over
+            // the bottom of the cars' tyres. Laid on the road, the pools
+            // keep only the constant nudge (D1042).
             .set("polygonOffset", true)
-            .set("polygonOffsetFactor", -6.0)
+            .set("polygonOffsetFactor", 0.0)
             .set("polygonOffsetUnits", -6.0),
     );
     // The smoke texture rides on a material nothing draws, to be exported.
@@ -778,11 +781,14 @@ pub fn frame(
         let alpha = s.alpha();
         let prev: Vec<_> = super::flow::slots(&s.prev).collect();
         let mut ins = Vec::with_capacity(cars.cars.len());
+        // Where each car is along the road, for laying its pool (D1042).
+        let mut hints = Vec::with_capacity(cars.cars.len());
         for (i, ((v, active), car)) in super::flow::slots(&s.curr).zip(&cars.cars).enumerate() {
             let a = match prev.get(i) {
                 Some((pv, true)) => *pv,
                 _ => v,
             };
+            hints.push(v.s);
             let mut c = car_in(a, v, alpha);
             c.visible = active;
             c.wheel_base = car.model.dims.wheel_base;
@@ -799,6 +805,7 @@ pub fn frame(
             for (k, car) in (0..n).zip(cars.cars.iter().skip(cars.police_base)) {
                 let (u, a) = (pu.police(k), pp.police(k));
                 let a = if a.active { &a.k.v } else { &u.k.v };
+                hints.push(u.k.v.s);
                 let mut c = car_in(a, &u.k.v, alpha);
                 c.visible = u.active;
                 c.wheel_base = car.model.dims.wheel_base;
@@ -844,6 +851,7 @@ pub fn frame(
             }
         }
         fx.fx.update(dt, night, &ins, &extras);
+        fx.fx.lay_pools(track, &hints);
         fx.write(writes);
     }
     fx.place(parts, lights);
@@ -893,9 +901,17 @@ impl Fx {
                     *v = vis(p.visible);
                 }
                 if p.visible {
+                    let rotation = match p.axes {
+                        Some([x, y, z]) => Quat::from_mat3(&Mat3::from_cols(
+                            Vec3::from_array(x.map(|c| c as f32)),
+                            Vec3::from_array(y.map(|c| c as f32)),
+                            Vec3::from_array(z.map(|c| c as f32)),
+                        )),
+                        None => Quat::from_rotation_y(p.rot_y as f32),
+                    };
                     *t = Transform {
                         translation: Vec3::new(p.x as f32, p.y as f32, p.z as f32),
-                        rotation: Quat::from_rotation_y(p.rot_y as f32),
+                        rotation,
                         scale: Vec3::new(p.sx as f32, 1.0, p.sz as f32),
                     };
                 }

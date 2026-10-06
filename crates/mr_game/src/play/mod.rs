@@ -27,6 +27,7 @@ mod fx_stage;
 pub mod gamepad;
 pub mod gamepad_io;
 mod hud;
+mod incar;
 pub mod input;
 mod models;
 pub mod police;
@@ -80,6 +81,9 @@ pub struct Params {
     pub shots: Option<String>,
     /// `?fx=0`: the race without its effects (a measurement switch).
     pub fx: bool,
+    /// `?camera=chase|far|bumper`: the race starts in that camera mode, as
+    /// if C had been pressed (a test hook, D1041).
+    pub camera: Option<usize>,
 }
 
 impl Params {
@@ -112,6 +116,7 @@ impl Params {
             touch: get("touch").map(|v| v == "1"),
             shots: get("shots").map(str::to_owned),
             fx: get("fx") != Some("0"),
+            camera: get("camera").and_then(|c| camera::MODES.iter().position(|m| m.name == c)),
         }
     }
 
@@ -314,6 +319,9 @@ fn start(
         if setup.autodrive { ", autodrive" } else { "" }
     );
     let mut race = Race::new(lr, setup, tc);
+    if let Some(m) = play.params.camera {
+        race.rig.mode = m;
+    }
     race.set_pursuit_opts(flow::PursuitOpts {
         cops: play.params.cops,
         flash: play.params.flash,
@@ -582,6 +590,8 @@ fn draw(
         return;
     };
     let roots: Vec<Entity> = models.cars.iter().map(|c| c.root).collect();
+    // Where the player's car is drawn, for the bumper view (D1040).
+    let mut player_root = None;
     for (i, ((v, active), &root_e)) in flow::slots(&s.curr).zip(roots.iter()).enumerate() {
         let Ok((mut t, mut vis)) = cars.get_mut(root_e) else {
             continue;
@@ -604,6 +614,9 @@ fn draw(
         };
         let p = pose::Pose::lerp(&track, &a, &pose::Pose::of(v), alpha);
         let (pos, q) = pose::root(&track, &p);
+        if i == 0 {
+            player_root = Some((pos, q));
+        }
         *t = Transform::from_translation(pos.as_vec3()).with_rotation(q.as_quat());
         if let Some(sp) = race.springs.get_mut(i) {
             if dt > 0.0 {
@@ -633,6 +646,11 @@ fn draw(
         .update(dt, &track, &car, look_back, p0.phys.nitro_active, aspect);
     if st.race.state == RaceStateKind::Countdown {
         view = race.rig.intro(dt, &car, view);
+    }
+    // The bumper view's eye is inside the player's car: not drawn from
+    // there (the owner's report, D1040).
+    if let Some((pos, q)) = player_root {
+        models.hide_round_eye(0, pos, q, view.eye, &mut node_vis);
     }
     if let Ok((mut t, mut proj)) = cam.single_mut() {
         *t = Transform::from_translation(view.eye.as_vec3())
