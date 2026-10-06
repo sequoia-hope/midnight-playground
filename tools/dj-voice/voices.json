@@ -1,0 +1,23 @@
+{
+  "about": "Three candidate voices per DJ, each a plain-English description for Qwen3-TTS VoiceDesign. design.py speaks the DJ's ref_text in each and saves voices/<candidate>.flac; render.py clones the DJ's 'chosen' candidate for every line. To switch, change 'chosen' and run render.py again (it re-records that DJ).",
+  "djs": {
+    "marisol": {
+      "chosen": "marisol-warm",
+      "ref_text": "You're on The Tide, eighty-eight point one. It's a little after two, the fog's sitting on the harbour, and the coast road is all yours. I'm Marisol. Here's something slow. Let it take its time.",
+      "candidates": {
+        "marisol-warm": "A woman in her mid-forties, a low, warm alto voice, a late-night radio DJ on a coastal station. Unhurried and intimate, close to the microphone, relaxed pauses, dry understated humour, a calm American West Coast accent.",
+        "marisol-smoky": "A late-night female radio host around forty-five with a deep, slightly smoky, velvety voice. Slow, confident and wry, speaking softly into a studio microphone at two in the morning, amused but never loud.",
+        "marisol-clear": "A Californian woman in her forties, a rich, clear mid-low voice, speaking as a seasoned FM radio DJ: warm, composed and quietly witty, measured pacing, the voice of someone who has seen everything and is not impressed."
+      }
+    },
+    "kit": {
+      "chosen": "kit-bright",
+      "ref_text": "Ridgeline Radio! Live from a van on Skyline, in the fog, on a coat hanger antenna. I'm Kit, I have not slept, and the scanner says the ridge is wide open tonight. Okay. Here comes the drop. Hold on.",
+      "candidates": {
+        "kit-bright": "A woman in her late twenties with a bright, energetic mid-range voice and a little rasp, a pirate radio DJ broadcasting from a van. Fast, animated and playful, slightly conspiratorial, laughs easily, a casual American West Coast accent.",
+        "kit-rasp": "A young woman, about twenty-eight, with a husky, slightly hoarse voice after a long night out, hosting an underground radio show. Quick, excitable and funny, running sentences together, tired but buzzing.",
+        "kit-punk": "An upbeat American woman in her late twenties with a sharp, clear voice and attitude, a scrappy pirate radio host: rapid-fire, cheeky, enthusiastic, breaking into a grin mid-sentence."
+      }
+    }
+  }
+}
