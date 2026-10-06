@@ -141,9 +141,17 @@ Purely visual aids (the guide line) stay local. To check in WP 10.6.
 3. **The host starts** when everyone is ready. The countdown runs on the
    shared tick, so it ends at the same moment everywhere.
 4. **Results** list everyone. Then back to the lobby, where the host picks
-   the next race; the session keeps a points table across races (10, 8, 6,
-   5, 4, 3, 2, 1 for humans and AI alike).
-5. **Late joiners** wait in the lobby until the current race ends (a
+   the next race.
+5. **The points table** (approved, on by default): a running score across
+   the session's races, like a cup. Points by finishing position: 10, 8,
+   6, 5, 4, 3, 2, 1, for humans and AI alike; DNF scores nothing; no
+   fastest-lap bonus at first. After each race's results, the table shows
+   each player's total, places gained or lost, and the gap to the leader.
+   The host sets **races per session** in the lobby (open-ended, 3, 4 or
+   6); a set number ends with final standings and a winner. With the
+   reverse grid (2.2) the leader starts at the back, which keeps it close.
+   The table lives in the host's session state, not the simulation.
+6. **Late joiners** wait in the lobby until the current race ends (a
    spectator view is a later feature).
 
 ## 5. Parameters (from SPEC 9.2)
@@ -173,5 +181,4 @@ The rules in section 2 are approved as proposed. Still open:
 1. **Guests outside the tailnet** (SPEC 9.5): default for the first
    release is to invite them to the tailnet; a public name with a
    certificate, or waiting for M11's WebRTC, are the alternatives.
-2. **The points table** across a session's races (4.4): keep or drop.
-3. **The 45-second finish countdown** (2.8): length.
+2. **The 45-second finish countdown** (2.8): length.
