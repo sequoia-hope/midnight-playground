@@ -1298,10 +1298,10 @@ fn stub(info: &SceneryInfo) -> Option<Box<dyn Scenery>> {
 
 fn progress_cases(c: &mut Cases) {
     let mut out = Vec::new();
-    for level in mp_levels::levels() {
-        if level.id == "seaside" {
-            continue;
-        }
+    // In the JS menu's order, as the golden has them (the Rust menu lists
+    // Coast first, D1102).
+    for id in ["sierra", "coast", "streets", "desert", "cruise"] {
+        let level = mp_levels::level_by_id(id);
         let id = level.id.to_string();
         let world = mp_worldgen::world::World::new(level);
         let build = Build::new(world, level_jobs(Stages::default(), stub));
