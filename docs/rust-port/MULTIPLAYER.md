@@ -148,7 +148,9 @@ Purely visual aids (the guide line) stay local. To check in WP 10.6.
    fastest-lap bonus at first. After each race's results, the table shows
    each player's total, places gained or lost, and the gap to the leader.
    The host sets **races per session** in the lobby (open-ended, 3, 4 or
-   6); a set number ends with final standings and a winner. With the
+   6); a set number ends with final standings and a winner. The lobby
+   then shows the final standings; the leader's next Start begins a new
+   session with an empty table. With the
    reverse grid (2.2) the leader starts at the back, which keeps it close.
    The table lives in the host's session state, not the simulation.
 6. **Late joiners** wait in the lobby until the current race ends (a

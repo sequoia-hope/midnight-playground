@@ -248,7 +248,11 @@ impl Transport for SimEnd {
         let seq = n.seq;
         let from = self.me as PeerId;
         let ev = NetEvent::Message(if to == 0 { from } else { 0 }, bytes.to_vec());
-        if c.latency == 0.0 && c.jitter == 0.0 {
+        // Straight to the inbox on a perfect link, unless something for the
+        // same end is still in flight (sent before the link became perfect):
+        // then behind it, so reliable order holds.
+        let queued = n.in_flight.iter().any(|p| p.to == to && p.from == from);
+        if c.latency == 0.0 && c.jitter == 0.0 && !queued {
             n.inbox[to].push_back(ev);
         } else {
             n.in_flight.push(Packet {

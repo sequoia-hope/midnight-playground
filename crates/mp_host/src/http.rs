@@ -340,6 +340,78 @@ mod tests {
     }
 
     #[test]
+    fn every_way_of_spelling_a_climb_out_is_refused() {
+        let f = Files::new(PathBuf::from("/srv/game"));
+        let inside = |p: &str| PathBuf::from("/srv/game").join(p);
+        for (url, want) in [
+            ("/", Some(inside(""))),
+            ("", Some(inside(""))),
+            ("//etc/passwd", Some(inside("etc/passwd"))),
+            ("/a/./b", Some(inside("a/b"))),
+            ("/a%2Fb", Some(inside("a/b"))),
+            ("/%C3%A9t%C3%A9.txt", Some(inside("été.txt"))),
+            ("/a\\..\\b", Some(inside("a\\..\\b"))),
+            ("/a/../b", None),
+            ("/..", None),
+            ("/%2E%2E/etc", None),
+            ("/%2e%2e%2fetc", None),
+            ("/sub/..%2f..%2fetc", None),
+            ("/%2f%2e%2e", None),
+            ("/.%2e/x", None),
+            ("/%", None),
+            ("/%2", None),
+            ("/%g0", None),
+            ("/%ff", None),
+            ("/%C3", None),
+        ] {
+            assert_eq!(f.resolve(url), want, "{url}");
+            if let Some(p) = f.resolve(url) {
+                assert!(p.starts_with("/srv/game"), "{url}");
+            }
+        }
+    }
+
+    #[test]
+    fn dates_are_http_dates_across_leap_years_and_centuries() {
+        let at = |s: u64| http_date(SystemTime::UNIX_EPOCH + Duration::from_secs(s));
+        assert_eq!(at(1_709_164_800), "Thu, 29 Feb 2024 00:00:00 GMT");
+        assert_eq!(at(951_868_800), "Wed, 01 Mar 2000 00:00:00 GMT");
+        assert_eq!(at(4_107_542_400), "Mon, 01 Mar 2100 00:00:00 GMT");
+        assert_eq!(at(946_684_799), "Fri, 31 Dec 1999 23:59:59 GMT");
+        assert_eq!(at(2_147_483_648), "Tue, 19 Jan 2038 03:14:08 GMT");
+    }
+
+    #[test]
+    fn content_types_follow_serve_py() {
+        for (file, want) in [
+            ("index.html", "text/html; charset=utf-8"),
+            ("a/b.js", "text/javascript; charset=utf-8"),
+            ("m.mjs", "text/javascript; charset=utf-8"),
+            ("s.css", "text/css; charset=utf-8"),
+            ("d.json", "application/json"),
+            ("site.webmanifest", "application/json"),
+            ("i.png", "image/png"),
+            ("i.jpg", "image/jpeg"),
+            ("i.jpeg", "image/jpeg"),
+            ("i.svg", "image/svg+xml"),
+            ("a.mp3", "audio/mpeg"),
+            ("a.flac", "audio/flac"),
+            ("a.ogg", "audio/ogg"),
+            ("a.wav", "audio/wav"),
+            ("f.woff2", "font/woff2"),
+            ("f.ttf", "font/ttf"),
+            ("README.md", "text/plain; charset=utf-8"),
+            ("x.txt", "text/plain; charset=utf-8"),
+            ("app.wasm.br", "application/octet-stream"),
+            ("survey.bin", "application/octet-stream"),
+            ("Makefile", "application/octet-stream"),
+            (".hidden", "application/octet-stream"),
+        ] {
+            assert_eq!(content_type(Path::new(file)), want, "{file}");
+        }
+    }
+
+    #[test]
     fn wasm_is_application_wasm() {
         assert_eq!(content_type(Path::new("a/b.wasm")), "application/wasm");
         assert_eq!(

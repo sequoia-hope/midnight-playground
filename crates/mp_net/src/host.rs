@@ -410,6 +410,12 @@ impl<T: Transport> Host<T> {
         if humans.is_empty() {
             return false;
         }
+        // A set number of races (MULTIPLAYER 4.5) ends the session with the
+        // final standings in the lobby; the next start begins a new one.
+        if self.session_over() {
+            self.points.clear();
+            self.raced = 0;
+        }
         let seed = (self.seed.next_f64() * 4294967296.0) as u32;
         let grid = self.grid(&humans, seed);
         let start = RaceStart {
@@ -443,6 +449,12 @@ impl<T: Transport> Host<T> {
             .push(HostEvent::RaceStarted { race: self.raced });
         self.send_lobby();
         true
+    }
+
+    /// The session's set number of races has been run: the points table is
+    /// the final standings.
+    pub fn session_over(&self) -> bool {
+        self.settings.races > 0 && self.raced >= u32::from(self.settings.races)
     }
 
     /// The humans' grid order, as indexes into `humans` (MULTIPLAYER 2.2).
@@ -707,9 +719,12 @@ pub fn clean_name(s: &str) -> String {
     let t: String = s
         .chars()
         .filter(|c| !c.is_control())
-        .take(16)
         .collect::<String>()
         .trim()
+        .chars()
+        .take(16)
+        .collect::<String>()
+        .trim_end()
         .to_string();
     if t.is_empty() { "Driver".into() } else { t }
 }
