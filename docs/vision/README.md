@@ -5,6 +5,7 @@
 | `WORLD.md` | The vision: what the game becomes |
 | `ROADMAP.md` | The order of work after the port, as milestones M12 onward |
 | `sound.md` | Engines and music: the sound milestone (draft) |
+| `radio.md` | Stations and DJs in the game (draft) |
 | `../vehicle-dynamics/SPEC.md` | Sim handling, soft-body tyres, the force-feedback wheel |
 
 ## How this is kept
@@ -87,11 +88,18 @@ these documents:
 - **DJ chatter side quest:** two DJs, both women, both kind, both plugged
   into the street racing scene (you listen because you race).
   **Marisol** (The Tide, 88.1): mid-forties, warm, understated, into
-  cycling and film photography; goes to the forest rave and still runs
-  Monday; tired from other people's nonsense. **Kit** (Ridgeline Radio, a
-  pirate van on Skyline): late twenties, creative, into plants, hiking and
+  cycling and film photography; stays to the end of the forest rave, naps, then
+  helps with strike and load-out; a leader who never says so and never
+  brags; in at eleven, ten if she has to; tired from other people's nonsense. **Kit** (Ridgeline Radio, a
+  pirate van on Skyline): late twenties, vegan, creative, into plants, hiking and
   camping; brash, sometimes combative, wants to be kind and doesn't always
   manage it; wrecked after a rave. The classic long "Goooood morning"
   opener, fake local ads, raves, camping. Scripts and the listening page:
   `tools/dj-voice/`, `tools/dj-voice.html`; the owner's local agent
   records them.
+- **Radio integration:** asked for the basic plan to put radio in the
+  game. → `radio.md`: stations over the existing songs first (R1, right
+  after cutover), then context, player memory, and real stations.
+- **Tuner sounds:** changing station should sound like the driver turning
+  the dial (static, whistles, the station locking in). → `radio.md` 2.1,
+  with live stations and reception noise for the pirate station.
