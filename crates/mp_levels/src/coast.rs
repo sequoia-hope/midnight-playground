@@ -59,7 +59,7 @@ pub fn level() -> Level {
     Level {
         id: "coast",
         mode: Mode::Race,
-        num: "LEVEL 2",
+        num: "LEVEL 1",
         title: "Coast Highway",
         desc: "Leave before dawn on the cliff road above the ocean, cruise the beach boulevard of Seabright as the sun comes up, and finish over the harbour bridge in Port Meridian.",
         laps: None,
