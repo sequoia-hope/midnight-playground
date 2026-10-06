@@ -54,7 +54,7 @@ export function launch() {
     executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
     headless: process.env.MR_HEADFUL ? false : 'new',
     args: [
-      '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist',
+      '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist', '--mute-audio',
       '--autoplay-policy=document-user-activation-required',
     ],
     protocolTimeout: 600000,

@@ -145,8 +145,10 @@ impl Status {
     }
 }
 
-/// Counts frames and keeps a smoothed frame time.
-pub fn tick(time: Res<Time>, mut status: ResMut<Status>) {
+/// Counts frames and keeps a smoothed frame time, by the wall clock's
+/// frame interval (`Time<Real>`): the generic clock is the virtual one,
+/// which Bevy caps at 250 ms a frame, so it hid the length of a stall.
+pub fn tick(time: Res<Time<Real>>, mut status: ResMut<Status>) {
     status.frames += 1;
     status.pipelines_waiting = PIPELINES_WAITING.load(Ordering::Relaxed);
     if status.state == "warming" || status.state == "running" {

@@ -1,0 +1,158 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stream probe</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; top: 0; left: 0; }
+  #hud { position: absolute; right: 12px; top: 12px; width: 46%; padding: 10px 12px;
+         background: rgba(40, 40, 40, .85); color: #ff9a3c; font: 15px/1.35 monospace;
+         white-space: pre-wrap; }
+  #go { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        font: 28px sans-serif; padding: 16px 28px; display: none; }
+</style>
+</head>
+<body>
+<video id="v" playsinline autoplay></video>
+<div id="hud">connecting…</div>
+<button id="go">Start</button>
+<script>
+// Plain ES2017 for old WebViews (Chrome 66): no optional chaining, no ??.
+var v = document.getElementById('v');
+var hud = document.getElementById('hud');
+var lines = { conn: 'connecting…', stats: '', keys: '', pads: '', native: '', lat: '' };
+function show() {
+  hud.textContent = [navigator.userAgent.replace(/^.*?(Chrome\/[\d.]+).*$/, '$1'),
+    lines.conn, lines.stats, 'keys: ' + lines.keys, 'pads (Gamepad API): ' + lines.pads,
+    'pads (Android): ' + lines.native, 'press→picture: ' + lines.lat,
+    'OK / Enter / pad A: measure latency'].join('\n');
+}
+show();
+var dc = null;
+function send(o) { if (dc && dc.readyState === 'open') dc.send(JSON.stringify(o)); }
+
+var pc = new RTCPeerConnection({ iceServers: [] });
+pc.addTransceiver('video', { direction: 'recvonly' });
+pc.addTransceiver('audio', { direction: 'recvonly' });
+dc = pc.createDataChannel('input', { ordered: true });
+dc.onopen = function () { send({ type: 'hello', ua: navigator.userAgent, w: innerWidth, h: innerHeight, dpr: devicePixelRatio }); };
+pc.ontrack = function (e) {
+  if (!v.srcObject) v.srcObject = e.streams[0] || new MediaStream([e.track]);
+  else v.srcObject.addTrack(e.track);
+  var p = v.play();
+  if (p && p.catch) p.catch(function (err) {
+    lines.conn = 'autoplay blocked: ' + err.name; show();
+    var b = document.getElementById('go'); b.style.display = 'block';
+    b.onclick = function () { b.style.display = 'none'; v.play(); };
+  });
+};
+pc.onconnectionstatechange = function () { lines.conn = 'connection: ' + pc.connectionState; show(); send({ type: 'state', state: pc.connectionState }); };
+pc.oniceconnectionstatechange = function () { if (!pc.connectionState) { lines.conn = 'ice: ' + pc.iceConnectionState; show(); } };
+
+pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).then(function () {
+  // Wait for ICE gathering so the offer carries the candidates (no trickle).
+  return new Promise(function (res) {
+    if (pc.iceGatheringState === 'complete') return res();
+    pc.onicegatheringstatechange = function () { if (pc.iceGatheringState === 'complete') res(); };
+    setTimeout(res, 3000);
+  });
+}).then(function () {
+  return fetch('offer', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type }) });
+}).then(function (r) { return r.json(); }).then(function (a) {
+  return pc.setRemoteDescription(a);
+}).catch(function (e) { lines.conn = 'error: ' + e; show(); });
+
+// Decode stats every 2 s.
+var last = null;
+setInterval(function () {
+  pc.getStats().then(function (rep) {
+    var s = {};
+    rep.forEach(function (r) {
+      if (r.type === 'inbound-rtp' && (r.kind === 'video' || r.mediaType === 'video')) s.in = r;
+      if (r.type === 'track' && r.kind === 'video') s.track = r;
+      if (r.type === 'codec' && /video/.test(r.mimeType || '')) s.codec = r.mimeType;
+    });
+    var t = s.track || {}, i = s.in || {};
+    var dec = t.framesDecoded != null ? t.framesDecoded : i.framesDecoded;
+    var now = performance.now();
+    var fps = last && dec != null ? ((dec - last.dec) * 1000 / (now - last.t)).toFixed(1) : '?';
+    last = { dec: dec, t: now };
+    var o = { type: 'stats', codec: s.codec, fps: fps, framesDecoded: dec, framesDropped: t.framesDropped,
+      w: t.frameWidth, h: t.frameHeight, lost: i.packetsLost, jitter: i.jitter, decoder: i.decoderImplementation,
+      bytes: i.bytesReceived, videoW: v.videoWidth, videoH: v.videoHeight };
+    lines.stats = (o.codec || '?') + ' ' + o.videoW + 'x' + o.videoH + ' decoded ' + fps + ' fps, dropped ' +
+      o.framesDropped + ', lost ' + o.lost + (o.decoder ? ', ' + o.decoder : '');
+    show();
+    send(o);
+  });
+}, 2000);
+
+// Keys: what the remote and a keyboard deliver to the page.
+var keyLog = [];
+addEventListener('keydown', function (e) {
+  keyLog.push(e.key + '/' + e.code + '/' + e.keyCode); if (keyLog.length > 6) keyLog.shift();
+  lines.keys = keyLog.join(' '); show();
+  send({ type: 'key', key: e.key, code: e.code, keyCode: e.keyCode, repeat: e.repeat });
+  if (e.key === 'Enter' || e.keyCode === 13 || e.keyCode === 23) ping('key');
+});
+
+// Latency: a ping turns the stream's marker square white; time until the
+// picture shows it, sampled from the video each frame.
+var cv = document.createElement('canvas'); cv.width = 64; cv.height = 36;
+var cx = cv.getContext('2d');
+var pending = null, lats = [];
+function ping(src) {
+  if (pending) return;
+  pending = { t: performance.now(), src: src };
+  send({ type: 'ping', src: src });
+}
+function sample() {
+  if (pending && v.videoWidth) {
+    cx.drawImage(v, 0, 0, 64, 36);
+    var px = cx.getImageData(5, 5, 1, 1).data; // the marker: 40..240 of 1280x720
+    if (px[0] > 200 && px[1] > 200 && px[2] > 200) {
+      var ms = performance.now() - pending.t;
+      lats.push(ms); if (lats.length > 10) lats.shift();
+      var sorted = lats.slice().sort(function (a, b) { return a - b; });
+      lines.lat = Math.round(ms) + ' ms (median of ' + lats.length + ': ' + Math.round(sorted[sorted.length >> 1]) + ' ms)';
+      send({ type: 'latency', ms: Math.round(ms), src: pending.src });
+      pending = null; show();
+    } else if (performance.now() - pending.t > 3000) { pending = null; lines.lat = 'no marker seen in 3 s'; show(); }
+  }
+  pollPads();
+  requestAnimationFrame(sample);
+}
+requestAnimationFrame(sample);
+
+// Gamepads through the Gamepad API.
+var prevA = {};
+function pollPads() {
+  var list = navigator.getGamepads ? navigator.getGamepads() : [];
+  var out = [];
+  for (var i = 0; i < list.length; i++) {
+    var p = list[i]; if (!p) continue;
+    var pressed = [];
+    for (var b = 0; b < p.buttons.length; b++) if (p.buttons[b].pressed) pressed.push(b);
+    out.push(p.index + ': ' + p.id.slice(0, 30) + ' [' + p.mapping + '] btn ' + pressed.join(',') +
+      ' ax ' + Array.prototype.map.call(p.axes, function (x) { return x.toFixed(1); }).join(' '));
+    var a = p.buttons[0] && p.buttons[0].pressed;
+    if (a && !prevA[i]) { ping('pad'); send({ type: 'pad', id: p.id, mapping: p.mapping, buttons: pressed }); }
+    prevA[i] = a;
+  }
+  var txt = out.length ? out.join(' | ') : (navigator.getGamepads ? 'none' : 'no getGamepads');
+  if (txt !== lines.pads) { lines.pads = txt; show(); }
+}
+addEventListener('gamepadconnected', function (e) { send({ type: 'gamepadconnected', id: e.gamepad.id, mapping: e.gamepad.mapping }); });
+
+// What the Android app sees (the probe app forwards key and joystick events).
+window.nativeInput = function (o) {
+  lines.native = JSON.stringify(o).slice(0, 120); show();
+  send({ type: 'native', ev: o });
+  if (o.kind === 'key' && o.action === 0 && (o.code === 96 || o.code === 23 || o.code === 66)) ping('native');
+};
+</script>
+</body>
+</html>
