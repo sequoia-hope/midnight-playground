@@ -278,6 +278,94 @@ impl Transport for SimEnd {
     }
 }
 
+/// Several transports as one, for a host that listens on more than one
+/// (MULTIPLAYER 8.1, DECISIONS D1125): the host tab's own player on the
+/// in-process loopback and everyone else on WebRTC; `mp-host --room` on
+/// WebSocket and WebRTC. Each inner peer gets its own number here, from 1,
+/// never reused; the session sees only those.
+#[derive(Default)]
+pub struct Mux {
+    parts: Vec<Box<dyn Transport>>,
+    /// Ours → (part, its peer).
+    to_inner: std::collections::BTreeMap<PeerId, (usize, PeerId)>,
+    /// (part, its peer) → ours.
+    to_outer: std::collections::BTreeMap<(usize, PeerId), PeerId>,
+    next: PeerId,
+    buf: Vec<NetEvent>,
+}
+
+impl Mux {
+    pub fn new() -> Mux {
+        Mux {
+            next: 1,
+            ..Mux::default()
+        }
+    }
+
+    /// Adds a transport; returns its index.
+    pub fn add(&mut self, t: Box<dyn Transport>) -> usize {
+        self.parts.push(t);
+        self.parts.len() - 1
+    }
+
+    /// The transport at `i` (to reach what only it has, such as a status).
+    pub fn part_mut(&mut self, i: usize) -> Option<&mut Box<dyn Transport>> {
+        self.parts.get_mut(i)
+    }
+
+    /// Which transport, and which of its peers, our `peer` is.
+    pub fn inner(&self, peer: PeerId) -> Option<(usize, PeerId)> {
+        self.to_inner.get(&peer).copied()
+    }
+
+    fn outer(&mut self, part: usize, inner: PeerId) -> PeerId {
+        if let Some(&p) = self.to_outer.get(&(part, inner)) {
+            return p;
+        }
+        let p = self.next.max(1);
+        self.next = p + 1;
+        self.to_outer.insert((part, inner), p);
+        self.to_inner.insert(p, (part, inner));
+        p
+    }
+}
+
+impl Transport for Mux {
+    fn send(&mut self, peer: PeerId, channel: Channel, bytes: &[u8]) {
+        if let Some(&(part, inner)) = self.to_inner.get(&peer) {
+            self.parts[part].send(inner, channel, bytes);
+        }
+    }
+
+    fn poll(&mut self, out: &mut Vec<NetEvent>) {
+        let mut buf = std::mem::take(&mut self.buf);
+        for part in 0..self.parts.len() {
+            self.parts[part].poll(&mut buf);
+            for ev in buf.drain(..) {
+                out.push(match ev {
+                    NetEvent::Connected(p) => NetEvent::Connected(self.outer(part, p)),
+                    NetEvent::Message(p, b) => NetEvent::Message(self.outer(part, p), b),
+                    NetEvent::Disconnected(p) => {
+                        // A peer never seen has nothing to say goodbye to.
+                        let Some(o) = self.to_outer.remove(&(part, p)) else {
+                            continue;
+                        };
+                        self.to_inner.remove(&o);
+                        NetEvent::Disconnected(o)
+                    }
+                });
+            }
+        }
+        self.buf = buf;
+    }
+
+    fn close(&mut self, peer: PeerId) {
+        if let Some(&(part, inner)) = self.to_inner.get(&peer) {
+            self.parts[part].close(inner);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -375,5 +463,75 @@ mod tests {
         a.send(0, Channel::Reliable, b"late");
         net.advance_to(100.0);
         assert!(msgs(&mut h).is_empty());
+    }
+
+    /// Two networks behind one `Mux`: each inner peer gets its own number,
+    /// messages and closes reach the right one, and a number is never
+    /// reused after a disconnect.
+    #[test]
+    fn a_mux_numbers_every_inner_peer_and_routes_to_it() {
+        let lan = SimNet::new(1);
+        let far = SimNet::new(2);
+        let mut mux = Mux::new();
+        assert_eq!(mux.add(Box::new(lan.host())), 0);
+        assert_eq!(mux.add(Box::new(far.host())), 1);
+        let mut a = lan.connect(Conditions::PERFECT);
+        let mut b = far.connect(Conditions::PERFECT);
+        let mut c = lan.connect(Conditions::PERFECT);
+        let mut ev = Vec::new();
+        mux.poll(&mut ev);
+        // The parts are polled in order: the LAN's two, then the far one.
+        assert_eq!(
+            ev,
+            vec![
+                NetEvent::Connected(1),
+                NetEvent::Connected(2),
+                NetEvent::Connected(3)
+            ]
+        );
+        assert_eq!(mux.inner(1), Some((0, a.id())));
+        assert_eq!(mux.inner(2), Some((0, c.id())));
+        assert_eq!(mux.inner(3), Some((1, b.id())));
+        // Both inner networks number their first client 1: no mix-up.
+        assert_eq!(a.id(), b.id());
+
+        b.send(0, Channel::Reliable, b"from b");
+        a.send(0, Channel::Unreliable, b"from a");
+        ev.clear();
+        mux.poll(&mut ev);
+        assert_eq!(
+            ev,
+            vec![
+                NetEvent::Message(1, b"from a".to_vec()),
+                NetEvent::Message(3, b"from b".to_vec())
+            ]
+        );
+        mux.send(3, Channel::Reliable, b"to b");
+        mux.send(2, Channel::Reliable, b"to c");
+        mux.send(9, Channel::Reliable, b"to nobody");
+        assert_eq!(msgs(&mut b), vec![b"to b".to_vec()]);
+        assert_eq!(msgs(&mut c), vec![b"to c".to_vec()]);
+        assert!(msgs(&mut a).is_empty());
+
+        // Closing ours closes theirs; the disconnect comes back numbered.
+        mux.close(1);
+        ev.clear();
+        mux.poll(&mut ev);
+        assert_eq!(ev, vec![NetEvent::Disconnected(1)]);
+        assert_eq!(mux.inner(1), None);
+        let mut ev_a = Vec::new();
+        a.poll(&mut ev_a);
+        assert!(ev_a.contains(&NetEvent::Disconnected(0)));
+        // A newcomer gets a fresh number, not the freed one.
+        let _d = lan.connect(Conditions::PERFECT);
+        ev.clear();
+        mux.poll(&mut ev);
+        assert_eq!(ev, vec![NetEvent::Connected(4)]);
+        // A peer that comes and goes between two polls: both, in order.
+        far.cut(&far.connect(Conditions::PERFECT));
+        ev.clear();
+        mux.poll(&mut ev);
+        assert_eq!(ev, vec![NetEvent::Connected(5), NetEvent::Disconnected(5)]);
+        assert!(mux.part_mut(1).is_some() && mux.part_mut(2).is_none());
     }
 }

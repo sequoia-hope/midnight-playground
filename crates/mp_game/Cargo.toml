@@ -16,7 +16,8 @@ path = "src/main.rs"
 
 [dependencies]
 mp_sim.workspace = true
-mp_net.workspace = true
+# With WebRTC: hosting in a tab, joining by link (MULTIPLAYER 8).
+mp_net = { workspace = true, features = ["rtc"] }
 mp_scene.workspace = true
 mp_worldgen.workspace = true
 mp_audio.workspace = true

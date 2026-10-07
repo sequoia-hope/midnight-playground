@@ -6,7 +6,12 @@
 //! - accepts WebSocket connections on any path ending in `/ws` (the game is
 //!   always served under a sub-path, so clients connect relative to it),
 //! - and runs the lobby and the authoritative race headless
-//!   (`mp_net::host::Host`).
+//!   (`mp_net::host::Host`),
+//! - relays WebRTC signalling at `…/signal/<room>` (DECISIONS D1123), so
+//!   joining by link works on a LAN with no internet,
+//! - and with `--room --signal <wss://…/>` opens a room on a signalling
+//!   server, prints its link, and takes WebRTC guests (from GitHub Pages,
+//!   no certificate needed) beside the WebSocket ones (D1126).
 //!
 //! The port: `--port`, then `$PORT`, then `proj port`, else it stops with
 //! an error. There is no default (CLAUDE.md). On the tailnet, `serve.sh`'s
@@ -20,50 +25,38 @@ mod net;
 
 use std::net::TcpListener;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use mp_net::host::{Host, HostEvent, Levels};
+use mp_net::rtc::{RtcNet, RtcOptions};
+use mp_net::signal::{JoinLink, Role};
+use mp_net::transport::Mux;
+
+/// Where the game is published (the site root since the cutover, D1112):
+/// the link `--room` prints opens it.
+const PAGES: &str = "https://sequoia-hope.github.io/midnight-playground/";
+
+/// The link to a room: the page, the signalling server in its query (the
+/// page may not have it built in, D1124), the room and secret after `#`.
+fn join_url(page: &str, signal: &str, link: &JoinLink) -> String {
+    let page = page.split('#').next().unwrap_or(page);
+    let sep = if page.contains('?') { '&' } else { '?' };
+    format!(
+        "{page}{sep}signal={}#{}",
+        mp_net::signal::query_escape(signal),
+        link.fragment()
+    )
+}
 
 fn usage() -> ! {
     eprintln!(
-        "usage: mp-host [--port N] [--bind ADDR] [--root DIR]\n\
-         The port is --port, else $PORT, else `proj port`; there is no default."
+        "usage: mp-host [--port N] [--bind ADDR] [--root DIR] [--room --signal URL [--page URL]]\n\
+         The port is --port, else $PORT, else `proj port`; there is no default.\n\
+         --room opens a WebRTC room on the signalling server --signal (wss://…/) and\n\
+         prints the link to join it, on --page (the game's address; GitHub Pages's by default)."
     );
     std::process::exit(2)
-}
-
-fn port(arg: Option<u16>) -> u16 {
-    if let Some(p) = arg {
-        return p;
-    }
-    if let Ok(p) = std::env::var("PORT") {
-        return p.parse().unwrap_or_else(|_| {
-            eprintln!("mp-host: $PORT is not a port: {p:?}");
-            std::process::exit(2)
-        });
-    }
-    let proj = std::env::var("HOME")
-        .map(|h| format!("{h}/scripts/proj"))
-        .ok()
-        .filter(|p| std::path::Path::new(p).exists())
-        .unwrap_or_else(|| "proj".into());
-    match Command::new(proj).arg("port").output() {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
-            .trim()
-            .parse()
-            .unwrap_or_else(|_| {
-                eprintln!("mp-host: `proj port` gave no port");
-                std::process::exit(2)
-            }),
-        _ => {
-            eprintln!(
-                "mp-host: no --port, no $PORT, and `proj port` failed: refusing to guess one"
-            );
-            std::process::exit(2)
-        }
-    }
 }
 
 /// The levels, with Seaside's survey data from the repository.
@@ -103,6 +96,7 @@ fn levels(root: &std::path::Path) -> Levels {
 fn main() {
     let mut args = std::env::args().skip(1);
     let (mut port_arg, mut bind, mut root) = (None, "0.0.0.0".to_string(), None);
+    let (mut room, mut signal, mut page) = (false, None, PAGES.to_string());
     while let Some(a) = args.next() {
         match a.as_str() {
             "--port" => {
@@ -114,6 +108,9 @@ fn main() {
             }
             "--bind" => bind = args.next().unwrap_or_else(|| usage()),
             "--root" => root = args.next().map(PathBuf::from),
+            "--room" => room = true,
+            "--signal" => signal = Some(args.next().unwrap_or_else(|| usage())),
+            "--page" => page = args.next().unwrap_or_else(|| usage()),
             _ => usage(),
         }
     }
@@ -129,25 +126,46 @@ fn main() {
         })
         .unwrap_or_else(|| PathBuf::from("."));
     let root = std::fs::canonicalize(&root).unwrap_or(root);
-    let port = port(port_arg);
+    if room && signal.is_none() {
+        eprintln!("mp-host: --room needs --signal wss://…/ (the signalling server)");
+        std::process::exit(2)
+    }
+    let port = mp_host::port("mp-host", port_arg);
     let listener = TcpListener::bind((bind.as_str(), port)).unwrap_or_else(|e| {
         eprintln!("mp-host: can't listen on {bind}:{port}: {e}");
         std::process::exit(1)
     });
     println!(
-        "mp-host: serving {} on http://{bind}:{port}/ (multiplayer WebSocket at …/ws)",
+        "mp-host: serving {} on http://{bind}:{port}/ (multiplayer WebSocket at …/ws, signalling at …/signal/<room>)",
         root.display()
     );
 
-    let (net, incoming) = net::WsNet::new();
+    let (ws, incoming) = net::WsNet::new();
     let files = Arc::new(http::Files::new(root.clone()));
+    let rooms = mp_host::signal::Rooms::new();
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let files = files.clone();
             let incoming = incoming.clone();
-            std::thread::spawn(move || http::serve(stream, &files, &incoming));
+            let rooms = rooms.clone();
+            std::thread::spawn(move || http::serve(stream, &files, &incoming, &rooms));
         }
     });
+    let mut net = Mux::new();
+    net.add(Box::new(ws));
+    if let Some(signal) = signal.filter(|_| room) {
+        let link = mp_net::rtc::new_link();
+        println!(
+            "mp-host: room open on {signal}; join at {}",
+            join_url(&page, &signal, &link)
+        );
+        net.add(Box::new(RtcNet::open(RtcOptions {
+            signal,
+            link,
+            role: Role::Host,
+            ice: None,
+        })));
+    }
 
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
