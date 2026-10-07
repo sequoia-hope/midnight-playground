@@ -1071,7 +1071,10 @@ pub fn step(
             });
         }
         let p = &mut st.players[i];
-        p.phys.update(&mut p.v, t, dt, &ctrl);
+        match &mut p.model {
+            VehicleModel::Arcade => p.phys.update(&mut p.v, t, dt, &ctrl),
+            VehicleModel::Sim(sim) => sim.update(&mut p.v, &mut p.phys, t, dt, &ctrl, &frames[i]),
+        }
     }
 
     let laps = st.race.laps > 0;
@@ -1816,6 +1819,15 @@ pub fn hash(st: &SimState) -> u64 {
                 o(&mut rec, x);
             }
             rec.extend(p.rules.near_miss_hit.iter().map(|&b| u8::from(b)));
+        }
+    }
+    // A sim car's own state (docs/vehicle-dynamics/SPEC.md 10): only there
+    // when one is driving, so arcade races hash as they always did.
+    for (i, p) in st.players.iter().enumerate() {
+        if let VehicleModel::Sim(sim) = &p.model {
+            rec.extend_from_slice(b"vdyn");
+            rec.push(i as u8);
+            sim.hash_into(&mut rec);
         }
     }
     crate::trace::fnv1a64(&rec)

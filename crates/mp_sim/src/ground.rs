@@ -104,7 +104,8 @@ impl Ground for TrackGround<'_> {
         let p = t.project(cx, cz, self.hint);
         let f = t.frame(p.s);
         let y = t.surface_y(p.s, p.lat);
-        // The corridor's walls as planes facing the road.
+        // The corridor's walls as planes facing the road, from the frame
+        // nearest the box's centre.
         out.push(Collider::Plane {
             point: Vec3::new(f.x + f.rx * f.wall_r, y, f.z + f.rz * f.wall_r),
             normal: Vec3::new(-f.rx, 0.0, -f.rz),
@@ -113,5 +114,25 @@ impl Ground for TrackGround<'_> {
             point: Vec3::new(f.x - f.rx * f.wall_l, y, f.z - f.rz * f.wall_l),
             normal: Vec3::new(f.rx, 0.0, f.rz),
         });
+        // The ends of a point-to-point road, where the arcade stops cars
+        // (one metre in from the start, three short of the runout's end).
+        if !t.is_loop {
+            let reach = (aabb.max.x - aabb.min.x).max(aabb.max.z - aabb.min.z);
+            if p.s < 1.0 + reach {
+                let e = t.frame(1.0);
+                out.push(Collider::Plane {
+                    point: Vec3::new(e.x, e.y, e.z),
+                    normal: Vec3::new(e.fx, 0.0, e.fz),
+                });
+            }
+            let end = t.road_end() - 3.0;
+            if p.s > end - reach {
+                let e = t.frame(end);
+                out.push(Collider::Plane {
+                    point: Vec3::new(e.x, e.y, e.z),
+                    normal: Vec3::new(-e.fx, 0.0, -e.fz),
+                });
+            }
+        }
     }
 }
