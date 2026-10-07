@@ -158,6 +158,77 @@ Tape and bus saturation, a glue compressor per bus, better reverbs
 (generated impulse responses per space: tunnel, forest, city canyon),
 proper stereo, and loudness targets per station.
 
+### 3.4 What makes a generated track grab (the composer)
+
+The first grammars (2026-10-07) had real instruments and a real mix and
+still did not grab, and the reasons were structural, not sonic:
+
+- **Every step was a coin flip.** A lane made step by step from independent
+  probabilities has no shape: no motif, no question and answer, no pickup
+  into the downbeat. It is statistically uniform, and the ear hears that.
+- **No melody.** Random arpeggio indexes and a random acid lane; nothing
+  to sing back.
+- **Harmony with no pull.** The chords were pleasant and static, and the
+  bass only ever played the current chord, never led into the next one.
+- **Déjà vu was a random walk.** Each block mutated the previous one, so the
+  loop drifted away from its identity. Marbles locks; it does not walk.
+- **A flat tension curve.** Nothing changed every 4 or 8 bars, and the
+  drop was the groove plus a boom instead of the fullest, brightest point.
+
+The composer (`music-lab/compose.js`) is what the grammars now share, and
+each point above has its answer:
+
+- **One hook per track.** A motif is a rhythm (per-beat cells or a whole-bar
+  figure such as the tresillo) plus a contour (intervals in scale steps,
+  shaped as a rise, fall, arch, valley or wave). Realising it over a chord
+  snaps the strong beats to chord tones, so the same figure follows the
+  harmony and is recognisable when it comes back over a different chord.
+  Eight bars are two phrases: the first ends open (3rd or 5th), the second
+  closed (the root). The hook is stated **thinned** in the breakdown (the
+  downbeat notes only, same shape), **in full** at the drop, and
+  **answered** (a third up) in the drop's second half.
+- **Keys and chords, not chord names.** A scale (minor, dorian, phrygian,
+  harmonic minor, major, mixolydian), diatonic chords on its degrees with
+  the extensions a genre wants, and progression families: the axis loops
+  (i VI III VII, i VII VI VII, VI VII i) that carry trance, eurobeat and
+  big house; still verses; deep two-chord vamps; drones for techno and psy.
+- **The bass leads.** A lane degree `n` plays the next chord's root, so a
+  bass line picks up into every change.
+- **Rhythm with a shape.** Euclidean patterns (E(5,16) is the "x..x..x."
+  family, E(3,8) the tresillo), cells chosen once per bar and repeated,
+  metric accents, 4-bar phrases with a turnaround, 8-bar blocks with the
+  kick out before the crash, odd-length percussion that phases.
+- **Déjà vu that returns.** Variations are made from the core once; each
+  8-bar block plays the core (probability déjà vu) or a variation, and the
+  first block of every section is the core.
+- **A form.** Intro, groove, break, build, drop, and the seams placed by
+  it: crash and sub boom into a rise, downlifter into a fall, riser,
+  snare build (beats, 8ths, 16ths, roll) and gap before a drop.
+
+**Genres**, each a vocabulary over the same composer: house (deep: dorian
+9ths, organ or EP riff; anthem: axis chords, piano stabs, a choir, a hook),
+techno (acid: phrygian drone, a 303 motif under slow filter motion, dub
+chords, phasing percussion; melodic: a 16th sequence on a pluck, chords
+every two bars, a wide pad), trance (the rolling off-beat bass from bar
+one, a pluck arpeggio, the supersaw hook alone over pads in a long break,
+the snare build, the drop), **eurobeat** (the touge: octave bass on the
+8ths, gated snare, a dense saw-lead chorus, brass hits, a 16th riff, and
+the last chorus a whole step up), psytrance (the rolling root bass between
+the kicks, a 303 squelch, FM zaps in phrygian), drum & bass (liquid: 2-step
+with ghost snares, sub and reese on long notes, 7ths on EP, a pretty hook;
+roller: darker, bass on the 8ths) and UK garage (the kick skips, snare on 2
+and 4, swung skippy hats, organ bass with pickups, chopped chords, vowel
+stabs).
+
+**What gets someone in the zone.** On the dance floor it is a steady pulse
+with slow, directed change: the hypnotic genres (techno, psy, trance) hold
+one idea and move the filter, and the drop is a release that was earned by
+the break. On twisty mountain roads it is eurobeat and trance: a tempo
+above 150, an off-beat engine of a bass, a lead that sings, a key change at
+the end. The instruments added for these: a seven-oscillator supersaw with
+the JP-8000 spread, a formant choir (vowel band-passes after the voices),
+trance and psy basses, an FM piano, a zap.
+
 ## 4. Architecture
 
 Port SPEC 7.1 kept the browser's own Web Audio nodes and rejected one Rust
@@ -209,11 +280,14 @@ decision is revisited, narrowly:
     Music.js does, and A (the game's music today) plays in step for
     comparison. Every part was levelled against A by soloing it in both,
     so A/B compares sound, not loudness.
-  - genre grammars (`music-lab/gen.js`): house and techno from a seed,
-    with a Marbles-style déjà vu control over how much 8-bar blocks repeat
-    or mutate, section automation (techno's slow acid filter motion), and
-    a live energy control (layers drop out and the mix closes down) for
-    the game to drive.
+  - genre grammars (`music-lab/gen.js`) over the composer
+    (`music-lab/compose.js`, section 3.4): house, techno, trance, eurobeat,
+    psytrance, drum & bass and UK garage from a seed, each with one hook
+    stated sparse in the break and in full at the drop, bass pickups into
+    the next chord, 8-bar blocks with a turnaround, a Marbles-style déjà
+    vu control over how often a block plays the core pattern, section
+    automation, and a live energy control (layers drop out and the mix
+    closes down) for the game to drive.
   - the mix (`music-lab/engine.js`): channels with drive, high-pass, pan
     and sends, sidechain pump, a feedback-delay-network reverb, ping-pong
     delay, glue compressor and tape saturation on the bus.
