@@ -191,6 +191,8 @@ pub fn plugin(app: &mut App) {
         .init_resource::<NetCmds>()
         .init_resource::<NetStatsRes>()
         .add_systems(First, frame.after(bevy::time::TimeSystems));
+    #[cfg(target_arch = "wasm32")]
+    app.add_systems(Last, ws_web::publish);
 }
 
 /// Carries out the screens' commands, keeps the lobby going between races,
