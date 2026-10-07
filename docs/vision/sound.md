@@ -190,6 +190,38 @@ decision is revisited, narrowly:
 | **S4. Arrangements** | Genre grammars, seeded variation, game-driven energy | A house track and a techno track the owner would listen to outside the game |
 | **S5. Stations** | Stations by genre, DJ voices, the mix | The owner leaves the radio on for a session (vision ROADMAP M16) |
 
+## 5.1 Where it stands (2026-10-07)
+
+- **S2, engines:** the engine lab (`tools/engine-lab.html`) and its Rust
+  port `mp_exhaust`, which plays the player's car in the game (D1110).
+- **S3 and S4, music: the Music Lab** (`tools/music-lab.html`), a listening
+  prototype in the same style. Per sample in an AudioWorklet:
+  - instruments (`music-lab/instruments.js`): a TB-303 (accent with the
+    accent capacitor's build-up, fixed-time slide, the 18 dB filter), a
+    Juno-style poly (DCO saw, PWM pulse, sub, noise, HPF, saturating
+    ladder, chorus I / II / I+II), a Moog-style mono (three drifting
+    oscillators, ladder with drive, glide, vibrato), a 4-operator FM voice
+    (EP, bell, stack, organ algorithms), and TR-808 and TR-909 kits
+    synthesised per hit. Every oscillator drifts a little, per voice.
+    Not yet: the Mutable Instruments ports (Plaits first).
+  - the game's seven songs, re-voiced: each game patch maps to a lab
+    patch (`BPATCH`), the sequencer plays the game's song format as
+    Music.js does, and A (the game's music today) plays in step for
+    comparison. Every part was levelled against A by soloing it in both,
+    so A/B compares sound, not loudness.
+  - genre grammars (`music-lab/gen.js`): house and techno from a seed,
+    with a Marbles-style déjà vu control over how much 8-bar blocks repeat
+    or mutate, section automation (techno's slow acid filter motion), and
+    a live energy control (layers drop out and the mix closes down) for
+    the game to drive.
+  - the mix (`music-lab/engine.js`): channels with drive, high-pass, pan
+    and sends, sidechain pump, a feedback-delay-network reverb, ping-pong
+    delay, glue compressor and tape saturation on the bus.
+- **Cost:** a busy song takes 15 to 35 % of one desktop core in the
+  worklet's JavaScript (the page shows the audio thread's load). The Rust
+  port, once the owner has picked the sound, is the step that makes it
+  cheap enough for phones in the game, as `mp_exhaust` did for engines.
+
 ## 6. Questions for the owner
 
 1. **Reference music:** which artists or tracks in house and techno (and

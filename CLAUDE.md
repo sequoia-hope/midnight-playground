@@ -18,6 +18,11 @@ Two games live in this repo:
 
 ## Principles (SPEC 1.1)
 
+**Since D1111 (2026-10-07) parity with the JS game is no longer the goal.**
+The owner judges the Rust game on its own; principles 1 and 2 below now
+apply only as history and as regression checks that still pass. Principles
+3 to 6 stand: multiplayer relies on determinism.
+
 1. **The JS game is the oracle.** Parity is measured by tests, numeric
    traces, geometry digests and side-by-side pictures, not by "looks right".
 2. **Port, don't improve.** Same structure, names, constants, order of
