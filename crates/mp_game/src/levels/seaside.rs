@@ -25,7 +25,7 @@ use mp_levels::SeasideData;
 use mp_worldgen::stages::{LevelSetup, level_stages};
 use mp_worldgen::terrain_mesh::{GroundPhoto, TerrainSetup, seaside_ground_color};
 use mp_worldgen::textures::Texture;
-use mp_worldgen::world::{Build, Scenery, SceneryInfo, World, level_jobs};
+use mp_worldgen::world::{Build, Scenery, SceneryInfo, World, level_jobs_with};
 use std::sync::{Arc, Mutex};
 
 /// Where the photo is, as the scene export names it (the texture's `url`).
@@ -166,12 +166,13 @@ pub fn new_build(draws: bool) -> Build {
     };
     Build::new(
         world,
-        level_jobs(
+        level_jobs_with(
             level_stages(LevelSetup {
                 terrain,
                 road: None,
             }),
             seaside_scenery,
+            crate::animate::extra_modules,
         ),
     )
 }

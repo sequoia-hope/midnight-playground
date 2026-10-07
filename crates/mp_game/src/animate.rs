@@ -45,7 +45,7 @@ use bevy::prelude::*;
 use mp_scene::{MaterialKind, Scene};
 use mp_worldgen::world::{
     Build, CameraView, Change, SceneEdit, SceneRef, Scenery, SceneryInfo, UpdateCtx, World,
-    WorldBuild, level_jobs,
+    WorldBuild, level_jobs_with,
 };
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -168,10 +168,22 @@ fn new_build(level: &str, draws: bool) -> Build {
     Build::new(
         World::new(mp_levels::level_by_id(level)),
         match level {
-            "desert" => level_jobs(level_stages(setup), crate::levels::desert::scenery),
-            "streets" => level_jobs(level_stages(setup), crate::levels::streets::scenery),
-            "coast" => level_jobs(level_stages(setup), crate::levels::coast::scenery),
-            _ => level_jobs(level_stages(setup), level1_scenery),
+            "desert" => level_jobs_with(
+                level_stages(setup),
+                crate::levels::desert::scenery,
+                extra_modules,
+            ),
+            "streets" => level_jobs_with(
+                level_stages(setup),
+                crate::levels::streets::scenery,
+                extra_modules,
+            ),
+            "coast" => level_jobs_with(
+                level_stages(setup),
+                crate::levels::coast::scenery,
+                extra_modules,
+            ),
+            _ => level_jobs_with(level_stages(setup), level1_scenery, extra_modules),
         },
     )
 }
@@ -1397,7 +1409,26 @@ fn write_attribute(
     }
 }
 
+/// The living world (birds, people: `mp_worldgen::life`) on the levels
+/// world generation builds; `?life=0` leaves it out.
+pub static LIFE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// The extra scenery modules for a level: the living world, unless off.
+pub fn extra_modules(level: &mp_track::Level) -> Vec<Box<dyn mp_worldgen::world::Scenery>> {
+    if LIFE.load(std::sync::atomic::Ordering::Relaxed) {
+        mp_worldgen::life::modules(level)
+    } else {
+        Vec::new()
+    }
+}
+
 pub fn plugin(app: &mut App) {
+    if let Some(o) = app.world().get_resource::<Opts>() {
+        LIFE.store(
+            o.o.param("life") != Some("0"),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
     app.init_resource::<WorldGen>()
         .init_resource::<AnimBlocks>()
         .init_resource::<MeshWrites>()
