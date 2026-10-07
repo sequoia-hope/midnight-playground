@@ -52,12 +52,17 @@ jobs:
         env:
           MP_SIGNAL_URL: ${{ vars.MP_SIGNAL_URL }}
         run: cargo xtask web --release
-      # The Rust build at the root; Pages compresses on the fly, so the .br
-      # and .gz copies stay out. Then the JS game's tracked files under
-      # legacy/, and a forward from the old dist/next/ address.
+      # The tools at the root too (the labs, benches and voice studios count
+      # as part of the game, D1112), with what their pages load: the JS
+      # sources, vendor/, audio/, assets/ and the music player. Then the
+      # Rust build over them (its index.html is the site's); Pages
+      # compresses on the fly, so the .br and .gz copies stay out. Then the
+      # JS game's tracked files under legacy/, and a forward from the old
+      # dist/next/ address.
       - name: Assemble the site
         run: |
           mkdir -p _site/legacy _site/dist/next
+          git archive HEAD tools src vendor audio assets music.html | tar -x -C _site
           cp -r dist/next/. _site/
           find _site \( -name '*.br' -o -name '*.gz' \) -delete
           git archive HEAD | tar -x -C _site/legacy

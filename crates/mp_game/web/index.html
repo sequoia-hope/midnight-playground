@@ -39,6 +39,13 @@
            transition: width 120ms linear; }
   #msg { margin: 0; color: #9aa3b8; font-size: 14px; min-height: 1.5em; }
   #msg.error { color: #ff8a8a; white-space: pre-wrap; max-width: 46em; }
+  /* The build line, at the foot of the menu only (never over a race). */
+  #build { position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 4px);
+           text-align: center; font: 11px/1.4 system-ui, sans-serif; color: #8b93a8; opacity: 0.75;
+           pointer-events: none; padding: 0 12px; }
+  #build[hidden] { display: none; }
+  #build a { color: #b9c2d8; pointer-events: auto; text-decoration: none; border-bottom: 1px dotted #6b7388; }
+  #build a:hover { color: #fff; }
   #nogpu p { max-width: 34em; margin: 0; color: #c5cbdb; }
   /* The loading screen as the JS game draws it (src/game/hud.css: .screen,
      #loading, .logo, .load-bar, #load-fill, #load-label), in the bundled
@@ -71,6 +78,7 @@
      8.4). ?perf=1 runs the measurement (perf.js). Every URL here is
      relative: the build is always served under a sub-path. -->
 <canvas id="game" tabindex="0"></canvas>
+<div id="build" hidden></div>
 <div id="loading" class="screen">
   <div class="logo">MIDNIGHT<span>PLAYGROUND</span></div>
   <div class="bar"><i id="bar"></i></div>
@@ -205,9 +213,32 @@
       history.replaceState(null, '', withParams({ s: '80', v: '60' }));
     }
 
+    // The build line at the foot of the menu: that this is the Rust build,
+    // which renderer, the commit, the day and the compiler (build.json),
+    // and the way to the tools and the JavaScript game. Beside dist/next/
+    // (the registered server) those are two levels up; on Pages, where
+    // this build is the site's root, they are beside it (D1112).
+    function showBuild(build, backend) {
+      const el = document.getElementById('build');
+      const up = location.pathname.includes('/dist/next/') ? '../../' : '';
+      const parts = [
+        'Midnight Playground',
+        `Rust + Bevy, ${backend === 'webgl2' ? 'WebGL2' : 'WebGPU'}`,
+        build.commit ? `build ${build.commit}` : null,
+        build.date || null,
+        build.rustc ? `rustc ${build.rustc.split(' ')[0]}` : null,
+        build.profile && build.profile !== 'web-release' ? `${build.profile} profile` : null,
+      ].filter(Boolean);
+      el.textContent = parts.join(' · ') + ' · ';
+      const link = (href, text) => { const a = document.createElement('a'); a.href = href; a.textContent = text; return a; };
+      el.append(link(up + 'tools/', 'Tools'), ' · ', link(up ? up : 'legacy/', 'JavaScript version'));
+      setInterval(() => { el.hidden = window.__mp?.screen !== 'menu'; }, 400);
+    }
+
     // 2. The client: wasm with progress (0–30 % of the bar).
     const build = await fetch('build.json', { cache: 'no-cache' }).then((r) => r.json()).catch(() => ({}));
     const name = backend === 'webgl2' ? 'mp_game_webgl2' : 'mp_game';
+    showBuild(build, backend);
     const glue = await import(`./${name}.js`);
     show(0, `Loading the client (${backend === 'webgl2' ? 'WebGL2' : 'WebGPU'})…`);
     const wasmBytes = await download(`${name}_bg.wasm`, (n, t) => show(t ? 0.3 * n / t : null, `Loading the client… ${MB(n)}`));
