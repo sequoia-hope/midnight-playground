@@ -211,9 +211,11 @@ where each corner's shape says they should.
 to `main` rebuilds the game (`cargo xtask web --release`) and publishes it a
 few minutes later (`.github/workflows/pages.yml`): the Rust game at the root,
 the JavaScript game under `legacy/`, and the old `dist/next/` address
-forwarding to the root. The labs and tools ride along with the legacy
-files, for example the Music Lab at
-`https://sequoia-hope.github.io/midnight-playground/legacy/tools/music-lab.html`.
+forwarding to the root. The tools are part of the game and live beside
+it: **https://sequoia-hope.github.io/midnight-playground/tools/** lists
+them (the Music Lab, the Engine Sound Lab, the benches and voice studios),
+and the menu's build line links there, under the commit, date and
+compiler the page was built from.
 
 **Locally,** build the web client and serve the repository:
 

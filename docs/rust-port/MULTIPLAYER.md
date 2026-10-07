@@ -246,6 +246,14 @@ link** shared in Slack, Signal, Discord or a stream's chat:
     Multiplayer again rejoins that race instead of opening the lobby.
     Wanted: the leader can end the race from the pause menu, and a race
     with no one connected ends by itself, back to the lobby.
+    **Done (2026-10-07):** the pause menu's "End the race for everyone"
+    (the leader only) sends the abort, and every client whose race ended
+    before its results goes back to the lobby; the host ends a race (no
+    points) when its last connected player goes; and Leave, unlike a
+    dropped connection, doesn't take your car back in the race you left:
+    pressing Multiplayer again waits in the lobby for the next one
+    (`host_rules.rs`: `when_everyone_has_gone_…`,
+    `a_player_who_leaves_on_purpose_…`).
   - **Frame stutter.** Not multiplayer's: the web build stuttered in
     single player too, and the machine's GPU was at 98% from a leaked
     headless Chrome. Two headless clients on localhost held 60 fps with no

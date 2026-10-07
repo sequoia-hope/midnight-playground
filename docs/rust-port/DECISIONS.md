@@ -9157,6 +9157,18 @@ main URL and document the JavaScript version as legacy. This is ROADMAP WP
   `github.io` origin.
 - The local names (`proj` name, tailnet path `/midnight-racer/`) are the
   owner's machine's and stay as they are.
+- **The tools are part of the game** (the owner, the same day): Pages
+  also publishes `tools/` at the root, with what their pages load (`src/`,
+  `vendor/`, `audio/`, `assets/`, `music.html`), so the labs are at
+  `…/tools/music-lab.html` and so on, not only under `legacy/`.
+  `tools/index.html` lists them.
+- **A build line at the foot of the menu** (the owner): "Midnight
+  Playground · Rust + Bevy, WebGPU · build <commit> · <date> · rustc
+  <version>", with links to the tools and the JavaScript version. The page
+  shell draws it from `build.json` (which `cargo xtask web` now fills with
+  the commit, a `+` when the tree had changes, the UTC date and `rustc
+  -V`), and shows it only while `__mp.screen` is the menu, never over a
+  race.
 ## Multiplayer M11: WebRTC, signalling, a tab as host (MULTIPLAYER.md 8)
 
 ## D1120. WebRTC through `matchbox_socket` 0.14.0, behind `mp_net`'s `rtc` feature
