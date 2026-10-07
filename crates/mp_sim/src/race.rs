@@ -24,6 +24,7 @@ use crate::collisions::Hit;
 use crate::dims::dims;
 use crate::field::{Field, RacerAccess};
 use crate::input::{AUTOPILOT, Input, InputFrame, RESET};
+use crate::model::VehicleModel;
 use crate::park::{PARK_GAP, PARK_ROW, Park};
 use crate::physics::{CarPhysics, CarSpec, PhysEvent, car_spec};
 use crate::police::Mode as PoliceMode;
@@ -131,9 +132,13 @@ pub struct PlayerRules {
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlayerCar {
     pub v: Vehicle,
+    /// The arcade model, and the body view's readouts (gear, rpm, nitro,
+    /// drift, events, ...) whichever model moves the car (`model`).
     pub phys: CarPhysics,
     pub spec: CarSpec,
     pub rules: PlayerRules,
+    /// Which model moves the car (docs/vehicle-dynamics/SPEC.md 8.1).
+    pub model: VehicleModel,
 }
 
 impl PlayerRules {
@@ -181,6 +186,7 @@ impl PlayerCar {
             phys,
             spec,
             rules: PlayerRules::new(0),
+            model: VehicleModel::Arcade,
         }
     }
 }
@@ -455,6 +461,7 @@ impl SimState {
                     near_miss_hit: vec![false; n_cars],
                     throttle_at: None,
                 },
+                model: VehicleModel::Arcade,
             }],
             rivals,
             traffic,
@@ -583,6 +590,7 @@ impl SimState {
                     phys,
                     spec,
                     rules: PlayerRules::new(n_cars),
+                    model: VehicleModel::Arcade,
                 }
             })
             .collect();

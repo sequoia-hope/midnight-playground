@@ -7,8 +7,12 @@
 
 use mp_sim::input::InputFrame;
 
-/// Bumped whenever a message changes shape.
-pub const VERSION: u16 = 1;
+/// Bumped whenever a message changes shape. 2: an input frame carries the
+/// clutch byte (docs/vehicle-dynamics/SPEC.md 7.1).
+pub const VERSION: u16 = 2;
+
+/// Bytes of one [`InputFrame`] on the wire.
+const FRAME_BYTES: usize = 6;
 
 /// The most players in a race (four rows of two; MULTIPLAYER 2.2).
 pub const MAX_PLAYERS: usize = 8;
@@ -225,6 +229,7 @@ impl W {
         self.u8(f.throttle);
         self.u8(f.brake);
         self.u8(f.flags);
+        self.u8(f.clutch);
     }
     fn frames(&mut self, fs: &[InputFrame]) {
         self.u16(fs.len() as u16);
@@ -299,19 +304,20 @@ impl R<'_> {
         String::from_utf8(self.take(n)?.to_vec()).map_err(|_| DecodeError("bad utf-8"))
     }
     fn frame(&mut self) -> Result<InputFrame, DecodeError> {
-        let b = self.take(5)?;
+        let b = self.take(FRAME_BYTES)?;
         Ok(InputFrame {
             steer: i16::from_le_bytes([b[0], b[1]]),
             throttle: b[2],
             brake: b[3],
             flags: b[4],
+            clutch: b[5],
         })
     }
     fn frames(&mut self) -> Result<Vec<InputFrame>, DecodeError> {
         let n = self.u16()? as usize;
         // Checked before allocating: a forged count can't ask for more than
         // the message holds.
-        if n * 5 > self.b.len() - self.at {
+        if n * FRAME_BYTES > self.b.len() - self.at {
             return Err(SHORT);
         }
         (0..n).map(|_| self.frame()).collect()
@@ -571,6 +577,7 @@ mod tests {
             throttle: t,
             brake: 3,
             flags: 5,
+            clutch: t / 2,
         }
     }
 

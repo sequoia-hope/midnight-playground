@@ -9,6 +9,7 @@ publish.workspace = true
 mp_math.workspace = true
 mp_track.workspace = true
 mp_levels.workspace = true
+mp_vdyn.workspace = true
 
 [dev-dependencies]
 serde_json = { version = "1", features = ["float_roundtrip"] }

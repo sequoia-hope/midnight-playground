@@ -1,8 +1,14 @@
 # Vehicle dynamics: sim handling, tyre models and soft-body tyres
 
-Status: **design only.** Nothing here is built. Work starts after the Rust
-port reaches cutover (ROADMAP M9), except the seams in section 9, which may
-land earlier only if they leave every parity trace bit-identical.
+Status (2026-10-07): **V0 and V1 built.** The seams are in `mp_sim`
+(`ground::TrackGround`, `model::VehicleModel`, `Vehicle.pose`, the
+clutch byte and shift bits, protocol version 2) with every golden
+bit-identical; `mp_vdyn` has the rigid body, independent suspension,
+wheels with brake friction, the brush tyre with relaxation, substeps, the
+flat-ground rig and telemetry, and passes section 10's flat-ground tests
+natively and in wasm. Where the build departs from this text, DECISIONS
+D1140 to D1142 say how and why. V2 is next. (Originally: work starts
+after the Rust port's cutover, ROADMAP M9.)
 
 This is the design document that ROADMAP "M12 and beyond" row e (realistic
 physics) asks for, widened to cover off-road crawlers and the RL work in
