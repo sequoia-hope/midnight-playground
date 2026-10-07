@@ -7,7 +7,10 @@
 //          slide (no retrigger, fixed-time portamento).
 //   juno   a Juno-style polysynth: DCO saw + PWM pulse + square sub + noise
 //          per voice, a high-pass, a saturating 4-pole ladder, ADSRs, then
-//          the BBD chorus (I, II, I+II) on the whole instrument.
+//          the BBD chorus (I, II, I+II) on the whole instrument. `unison`
+//          up to 7 detuned oscillators per voice (the JP-8000 supersaw,
+//          with its spread: the outer pairs further apart than the inner),
+//          and `vowel` a formant bank after the voices (a choir).
 //   mono   a Moog-style monosynth: up to three drifting oscillators, ladder
 //          with drive, filter and amp ADSRs, glide, vibrato, bend.
 //   fm     a DX-style 4-operator FM voice with a few algorithms (EP, bell,
@@ -88,13 +91,13 @@ export class TB303 {
 class JunoVoice {
   constructor(seed) {
     this.r = rng(seed);
-    this.osc = [new Osc(this.r()), new Osc(this.r()), new Osc(this.r())];
+    this.osc = Array.from({ length: 7 }, () => new Osc(this.r()));
     this.drift = this.osc.map(() => new Drift(this.r, 3.5));
     this.f = new Ladder(); this.hp = new OnePole(20);
     this.env = new ADSR(); this.fenv = new ADSR();
     this.left = 0; this.age = 0; this.midi = -1; this.on = false;
     this.cutVar = 1 + (this.r() * 2 - 1) * 0.06; // per-voice component spread
-    this.inc = new Float64Array(3); this.k = 0; this.pw = 0.5;
+    this.inc = new Float64Array(7); this.k = 0; this.pw = 0.5;
   }
   start(p, midi, vel, durS, glideFrom, t) {
     this.midi = midi; this.vel = vel; this.left = Math.max(1, durS | 0); this.age = t; this.on = true;
@@ -112,7 +115,7 @@ class JunoVoice {
     if (this.left > 0 && --this.left === 0) { this.env.off(); this.fenv.off(); }
     const a = this.env.run();
     if (this.env.done) { this.on = false; return 0; }
-    const n = Math.min(3, p.unison ?? 1);
+    const n = Math.min(7, p.unison ?? 1);
     const fe = this.fenv.run();
     if ((this.k = (this.k + 1) & 15) === 1) {
       this.cur += (this.hz - this.cur) * (1 - Math.pow(1 - this.glideK, 16));
@@ -121,7 +124,9 @@ class JunoVoice {
       const vibAmt = vib && this.vibT > vd ? Math.min(1, (this.vibT - vd) / 0.25) * vib : 0;
       const det = p.detune ?? 0;
       for (let i = 0; i < n; i++) {
-        const c = (n > 1 ? (i / (n - 1) - 0.5) * det : 0) + this.drift[i].run(16) + vibAmt;
+        // Spread over ±detune/2, the outer oscillators further apart.
+        const u = n > 1 ? (i / (n - 1)) * 2 - 1 : 0;
+        const c = Math.sign(u) * Math.pow(Math.abs(u), 1.3) * det * 0.5 + this.drift[i].run(16) + vibAmt;
         this.inc[i] = this.cur * cents(c);
       }
       const kt = Math.pow(2, ((this.midi - 60) / 12) * (p.keytrack ?? 0.5));
@@ -203,12 +208,15 @@ class MonoVoice {
 }
 
 // ── DX-style 4-op FM voice ───────────────────────────────────────
-// Algorithms: which operators modulate which, carriers last.
+// Algorithms: mods[i] lists the operators that modulate operator i (ops are
+// 0-based here; the DX names are 1-based), car the carriers that are heard.
+// Operators run from 3 down to 0, so a modulator's sample is ready for the
+// operator below it.
 const ALGOS = {
-  ep: { mods: [[], [0], [], [2]], car: [0, 2] }, // 2→1, 4→3
-  pair: { mods: [[], [0], [], []], car: [0] }, // 2→1
-  bell: { mods: [[], [0], [], [2]], car: [0, 2] },
-  stack: { mods: [[], [0], [1], [2]], car: [0] }, // 4→3→2→1
+  ep: { mods: [[1], [], [3], []], car: [0, 2] }, // 2→1, 4→3
+  pair: { mods: [[1], [], [], []], car: [0] }, // 2→1
+  bell: { mods: [[1], [], [3], []], car: [0, 2] },
+  stack: { mods: [[1], [2], [3], []], car: [0] }, // 4→3→2→1
   organ: { mods: [[], [], [], []], car: [0, 1, 2, 3] },
 };
 class FMVoice {
@@ -267,6 +275,16 @@ class FMVoice {
   }
 }
 
+// Vowel formants (a tenor's first three), for the choir: centre frequencies
+// and relative levels of three band-passes on the summed voices.
+const VOWELS = {
+  a: [[650, 1], [1080, 0.5], [2650, 0.25]],
+  e: [[400, 1], [1700, 0.4], [2600, 0.25]],
+  i: [[290, 1], [1870, 0.3], [2800, 0.25]],
+  o: [[400, 1], [800, 0.6], [2600, 0.15]],
+  u: [[350, 1], [600, 0.5], [2700, 0.1]],
+};
+
 // A polyphonic instrument around any of the poly voices, with an LFO, the
 // chorus and voice stealing.
 export class Poly {
@@ -277,8 +295,23 @@ export class Poly {
     this.ch = new Chorus(); this.ch.set(patch.chorus ?? 0);
     this.lfoPh = 0; this.vibPh = 0; this.t = 0;
     this.out = [0, 0];
+    this.formant = [new SVF(), new SVF(), new SVF()];
   }
   setPatch(p) { this.p = p; this.ch.set(p.chorus ?? 0); }
+  // The vowel bank: the LFO drifts the formants a little, as a mouth does.
+  _vowel(x, lfo) {
+    const V = VOWELS[this.p.vowel];
+    if (!V) return x;
+    let y = 0;
+    for (let i = 0; i < 3; i++) {
+      const f = this.formant[i];
+      if ((this.t & 7) === i || f.hz < 0) f.set(V[i][0] * (1 + lfo * 0.04), this.p.vowelQ ?? 9);
+      f.run(x);
+      y += f.bp * V[i][1];
+    }
+    const mix = this.p.vowelMix ?? 0.8;
+    return x * (1 - mix) + y * mix * 2.2;
+  }
   trigger(midis, vel, durS, opt = {}) {
     this.t++;
     if (this.kind === 'mono') { this.voices[0].start(this.p, midis[midis.length - 1], vel, durS, opt.glideFrom); return; }
@@ -299,6 +332,7 @@ export class Poly {
       this.vibPh += (p.vibRate ?? 5.5) / SR; if (this.vibPh > 1) this.vibPh -= 1;
       const vib = p.vib ? p.vib * Math.sin(TAU * this.vibPh) : 0;
       for (const v of this.voices) if (!v.done) x += v.run(p, lfo, vib);
+      if (p.vowel) { this.t++; x = this._vowel(x, lfo); }
     } else {
       for (const v of this.voices) if (!v.done) x += v.run(p);
     }
@@ -549,6 +583,26 @@ export const BPATCH = {
   organ: { kind: 'fm', algo: 'organ', ops: [{ r: 1, l: 1, a: 0.002, d: 0.3, s: 0.7, r: 0.08 }, { r: 2, l: 0.6, a: 0.002, d: 0.2, s: 0.5, r: 0.08 }, { r: 3, l: 0.35, a: 0.001, d: 0.08, s: 0.2, r: 0.06 }, { r: 4.02, l: 0.25, a: 0.001, d: 0.05, s: 0, r: 0.05 }], r: 0.08, chorus: 1, gain: 0.19 },
   dubChord: { kind: 'juno', saw: 1, pulse: 0.5, pw: 0.4, unison: 2, detune: 9, cutoff: 900, res: 0.35, fenv: 1.8, fa: 0.001, fd: 0.16, fs: 0.05, a: 0.002, d: 0.22, s: 0.15, r: 0.2, hpf: 220, chorus: 1, gain: 0.45 },
   rumble: { kind: 'mono', osc: [{ w: 'sine' }, { w: 'tri', lvl: 0.4 }], cutoff: 260, res: 0.1, fenv: 0.8, fd: 0.12, fs: 0, drive: 2.5, a: 0.002, d: 0.22, s: 0.2, r: 0.1, gain: 0.12 },
+  // The supersaw (JP-8000): seven detuned saws, high-passed so the bass
+  // keeps the low end, wide chorus. As a lead, and slower as a pad.
+  supersaw: { kind: 'juno', saw: 1, pulse: 0, unison: 7, detune: 36, cutoff: 5000, res: 0.05, fenv: 0.8, fa: 0.01, fd: 0.4, fs: 0.6, a: 0.01, d: 0.3, s: 0.85, r: 0.25, hpf: 260, chorus: 2, lfoRate: 0.4, gain: 0.11 },
+  superPadWide: { kind: 'juno', saw: 1, pulse: 0.2, pwm: 0.4, unison: 5, detune: 30, cutoff: 1600, res: 0.1, fenv: 0.9, fa: 1.5, fd: 2, fs: 0.7, a: 0.6, d: 1, s: 0.9, r: 1.4, hpf: 200, chorus: 2, lfoRate: 0.3, gain: 0.1 },
+  // Trance bass: a short saw with sub, the filter closing fast (the
+  // "rolling" off-beat bass is this played on the 16ths between the kicks).
+  tranceBass: { kind: 'mono', osc: [{ w: 'saw' }, { w: 'pulse', det: 4, pw: 0.5, lvl: 0.5 }], sub: 0.5, cutoff: 180, res: 0.3, fenv: 2.4, fd: 0.1, fs: 0.05, drive: 1.4, a: 0.002, d: 0.14, s: 0.5, r: 0.04, gain: 0.13 },
+  // Psy bass: saw plus square an octave down, very short, a hard filter
+  // snap, driven; one note per step and always the root.
+  psyBass: { kind: 'mono', osc: [{ w: 'saw' }, { w: 'pulse', oct: -1, pw: 0.5, lvl: 0.7 }], cutoff: 150, res: 0.42, fenv: 2.8, fd: 0.07, fs: 0, drive: 2.2, a: 0.001, d: 0.1, s: 0.3, r: 0.02, keytrack: 0.2, gain: 0.15 },
+  // Eurobeat lead: bright, three saws, fast vibrato after a moment, glide.
+  euroLead: { kind: 'mono', osc: [{ w: 'saw', det: -14 }, { w: 'saw', det: 14 }, { w: 'pulse', oct: 1, pw: 0.3, lvl: 0.3 }], cutoff: 4200, res: 0.12, fenv: 0.8, fa: 0.005, fd: 0.25, fs: 0.7, a: 0.004, d: 0.2, s: 0.9, r: 0.12, vib: 18, vibRate: 6, vibDelay: 0.18, glide: 0.03, drive: 0.7, gain: 0.07 },
+  // A piano for house: two FM pairs, a bright hammer that fades at once.
+  piano: { kind: 'fm', algo: 'ep', ops: [{ r: 1, l: 1, a: 0.001, d: 1.4, s: 0.1, r: 0.3 }, { r: 1, l: 2.0, d: 0.22, s: 0.08, v: 0.8 }, { r: 2, det: 3, l: 0.45, a: 0.001, d: 0.9, s: 0.05, r: 0.3 }, { r: 7, l: 1.1, d: 0.06, s: 0, v: 0.9 }], r: 0.3, chorus: 0, gain: 0.2 },
+  // A choir: pulse with PWM through the vowel bank, slow and wide.
+  choir: { kind: 'juno', saw: 0.4, pulse: 0.8, pwm: 0.5, sub: 0, unison: 3, detune: 12, cutoff: 3500, res: 0.05, fenv: 0, a: 0.5, d: 1, s: 1, r: 1.2, hpf: 150, chorus: 2, lfoRate: 0.35, vowel: 'a', vowelMix: 0.85, vowelQ: 8, gain: 0.07 },
+  // A trance pluck: the arp's voice, bright attack, no sustain.
+  pluckTrance: { kind: 'juno', saw: 1, pulse: 0.3, pw: 0.3, unison: 3, detune: 14, cutoff: 900, res: 0.25, fenv: 3, fa: 0.001, fd: 0.13, fs: 0, a: 0.001, d: 0.22, s: 0, r: 0.15, hpf: 200, chorus: 2, gain: 0.16 },
+  // A psy lead: FM zap, a fast falling index, short.
+  zap: { kind: 'fm', algo: 'stack', ops: [{ r: 1, l: 1, a: 0.001, d: 0.3, s: 0.2, r: 0.1 }, { r: 2, l: 2.6, d: 0.07, s: 0.1, v: 0.9 }, { r: 3, l: 1.2, d: 0.04, s: 0 }, { r: 1, l: 0.4, d: 0.05, s: 0 }], fbk: 0.3, r: 0.1, chorus: 1, gain: 0.1 },
 };
 
 // The game's patch for a part: by identity, else the closest by fields
@@ -588,7 +642,7 @@ export function makeInstrument(lab, seed) {
 // Knobs for the page, per kind: [key, label, min, max, step].
 export const KNOBS = {
   tb303: [['cutoff', 'Cutoff (Hz)', 60, 3000, 1], ['res', 'Resonance', 0, 1, 0.01], ['env', 'Env mod', 0, 1, 0.01], ['decay', 'Decay (s)', 0.05, 2, 0.01], ['accent', 'Accent', 0, 1, 0.01], ['drive', 'Drive', 0, 3, 0.01], ['glide', 'Slide time (s)', 0.01, 0.2, 0.001], ['gain', 'Level', 0, 1.5, 0.01]],
-  juno: [['saw', 'Saw', 0, 1, 0.01], ['pulse', 'Pulse', 0, 1, 0.01], ['pw', 'Pulse width', 0.05, 0.95, 0.01], ['pwm', 'PWM (LFO)', 0, 1, 0.01], ['sub', 'Sub', 0, 1, 0.01], ['noise', 'Noise', 0, 0.5, 0.01], ['unison', 'Unison', 1, 3, 1], ['detune', 'Detune (c)', 0, 40, 0.5], ['hpf', 'HPF (Hz)', 20, 1000, 1], ['cutoff', 'Cutoff (Hz)', 80, 12000, 1], ['res', 'Resonance', 0, 1, 0.01], ['fenv', 'Env (oct)', 0, 5, 0.01], ['keytrack', 'Keytrack', 0, 1, 0.01], ['fa', 'F attack', 0.001, 3, 0.001], ['fd', 'F decay', 0.01, 3, 0.01], ['fs', 'F sustain', 0, 1, 0.01], ['a', 'Attack', 0.001, 3, 0.001], ['d', 'Decay', 0.01, 3, 0.01], ['s', 'Sustain', 0, 1, 0.01], ['r', 'Release', 0.01, 4, 0.01], ['lfoRate', 'LFO (Hz)', 0.05, 8, 0.01], ['chorus', 'Chorus (0, I, II, I+II)', 0, 3, 1], ['drive', 'Drive', 0, 3, 0.01], ['gain', 'Level', 0, 1.5, 0.01]],
+  juno: [['saw', 'Saw', 0, 1, 0.01], ['pulse', 'Pulse', 0, 1, 0.01], ['pw', 'Pulse width', 0.05, 0.95, 0.01], ['pwm', 'PWM (LFO)', 0, 1, 0.01], ['sub', 'Sub', 0, 1, 0.01], ['noise', 'Noise', 0, 0.5, 0.01], ['unison', 'Unison', 1, 7, 1], ['detune', 'Detune (c)', 0, 40, 0.5], ['hpf', 'HPF (Hz)', 20, 1000, 1], ['cutoff', 'Cutoff (Hz)', 80, 12000, 1], ['res', 'Resonance', 0, 1, 0.01], ['fenv', 'Env (oct)', 0, 5, 0.01], ['keytrack', 'Keytrack', 0, 1, 0.01], ['fa', 'F attack', 0.001, 3, 0.001], ['fd', 'F decay', 0.01, 3, 0.01], ['fs', 'F sustain', 0, 1, 0.01], ['a', 'Attack', 0.001, 3, 0.001], ['d', 'Decay', 0.01, 3, 0.01], ['s', 'Sustain', 0, 1, 0.01], ['r', 'Release', 0.01, 4, 0.01], ['lfoRate', 'LFO (Hz)', 0.05, 8, 0.01], ['chorus', 'Chorus (0, I, II, I+II)', 0, 3, 1], ['drive', 'Drive', 0, 3, 0.01], ['gain', 'Level', 0, 1.5, 0.01]],
   mono: [['cutoff', 'Cutoff (Hz)', 40, 12000, 1], ['res', 'Resonance', 0, 1, 0.01], ['fenv', 'Env (oct)', 0, 5, 0.01], ['keytrack', 'Keytrack', 0, 1, 0.01], ['drive', 'Drive', 0, 4, 0.01], ['sub', 'Sub', 0, 1, 0.01], ['noise', 'Noise', 0, 0.5, 0.01], ['fa', 'F attack', 0.001, 2, 0.001], ['fd', 'F decay', 0.01, 2, 0.01], ['fs', 'F sustain', 0, 1, 0.01], ['a', 'Attack', 0.001, 2, 0.001], ['d', 'Decay', 0.01, 2, 0.01], ['s', 'Sustain', 0, 1, 0.01], ['r', 'Release', 0.01, 3, 0.01], ['glide', 'Glide (s)', 0, 0.4, 0.001], ['vib', 'Vibrato (c)', 0, 40, 0.5], ['gain', 'Level', 0, 1.5, 0.01]],
   fm: [['fbk', 'Feedback', 0, 1.5, 0.01], ['r', 'Release', 0.01, 3, 0.01], ['chorus', 'Chorus (0, I, II, I+II)', 0, 3, 1], ['gain', 'Level', 0, 1.5, 0.01]],
 };

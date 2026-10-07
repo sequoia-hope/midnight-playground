@@ -6,8 +6,9 @@ import assert from 'node:assert/strict';
 
 import { setRate, Osc, Ladder, ADSR, rng } from '../dsp.js';
 import { BPATCH, KITS, Drums, kitVoice, makeInstrument, voiceTrack, patchName } from '../instruments.js';
-import { Seq, compileTrack, DRUM_LANES } from '../seq.js';
+import { Seq, compileTrack, DRUM_LANES, noteToMidi } from '../seq.js';
 import { GENRES } from '../gen.js';
+import { euclid, motif, thin, realise, chordOn, progression, SCALES, R, expand } from '../compose.js';
 import { Engine } from '../engine.js';
 import { TRACKS, PATCHES } from '../../../src/game/audio/tracks.js';
 
@@ -108,6 +109,21 @@ test('every patch plays a finite, audible, bounded note and then stops', () => {
   }
 });
 
+test('FM operators modulate their carriers; the supersaw spreads seven oscillators; the choir is finite', () => {
+  // A pure sine has nothing above its fundamental; the EP's modulator adds it.
+  const sine = { kind: 'fm', algo: 'pair', ops: [{ r: 1, l: 1, d: 2, s: 1 }, { r: 1, l: 0, d: 2, s: 1 }], r: 0.3, gain: 0.2 };
+  const fm = { ...sine, ops: [{ r: 1, l: 1, d: 2, s: 1 }, { r: 1, l: 2, d: 2, s: 1 }] };
+  const over = (lab) => { const { L } = renderInst(lab, [{ t: 0, midis: [60], dur: 1 }], 1); return bandPower(L.subarray(RATE / 2, RATE / 2 + 4096), 700, 3000); };
+  assert.ok(over(fm) > over(sine) * 20, `harmonics ${over(fm)} vs ${over(sine)}`);
+  const { L } = renderInst(BPATCH.supersaw, [{ t: 0, midis: [57], dur: 1 }], 1.5);
+  assert.ok(finite(L) && peak(L) > 0.01 && peak(L) < 1.5);
+  const c = renderInst(BPATCH.choir, [{ t: 0, midis: [60, 64, 67], dur: 1 }], 2).L;
+  assert.ok(finite(c) && rms(c.subarray(RATE / 2, RATE)) > 1e-3, 'choir sounds');
+  // The vowel bank shapes the spectrum: the 'a' first formant band carries more than far above it.
+  const a = bandPower(c.subarray(RATE / 2, RATE / 2 + 8192), 550, 800), hi = bandPower(c.subarray(RATE / 2, RATE / 2 + 8192), 4000, 6000);
+  assert.ok(a > hi, 'formant over the top');
+});
+
 test('the 303 slides: no new envelope, and the pitch glides', () => {
   const lab = { ...BPATCH.acid, res: 0, env: 0, drive: 0 };
   // A2 for one step, sliding into A3.
@@ -194,7 +210,7 @@ test('mute, solo and energy layers drop what they should', () => {
   const count = (setup) => {
     const s = new Seq(T);
     setup(s);
-    s.seekBar(24); // 'g1': the full groove
+    s.seekBar(16); // the full groove
     const lanes = new Set();
     for (let i = 0; i < 64; i++) for (const e of s.step()) if (e.k === 'drum') lanes.add(e.lane); else if (e.k === 'note') lanes.add(e.part);
     return lanes;
@@ -227,11 +243,104 @@ test('the grammars are seeded: same seed, same track; new seed, new track', () =
   }
 });
 
-test('déjà vu: 1 repeats every block, 0 keeps changing', () => {
-  const locked = GENRES.techno(7, { dejavu: 1 }), free = GENRES.techno(7, { dejavu: 0 });
-  const acid = (T) => Object.values(T.parts.acid.pat);
-  assert.equal(new Set(acid(locked)).size, 1);
-  assert.ok(new Set(acid(free)).size >= 6);
+test('déjà vu: 1 plays the core in every block, 0 leaves it', () => {
+  const keys = (T) => T.sections.flatMap((s) => Object.values(s.p)).filter((k) => /^[a-z]\d$/.test(k));
+  const locked = GENRES.trance(7, { dejavu: 1 }), free = GENRES.trance(7, { dejavu: 0 });
+  assert.ok(keys(locked).every((k) => k.endsWith('0')));
+  assert.ok(keys(free).some((k) => !k.endsWith('0')));
+  // The variants are made from the core once: each differs from it in a few steps.
+  const core = locked.parts.bass.pat.b0;
+  for (const k of ['b1', 'b2']) {
+    const v = locked.parts.bass.pat[k];
+    const diff = [...v].filter((c, i) => c !== core[i]).length;
+    assert.ok(diff >= 1 && diff <= 12, `${k} differs in ${diff} steps`);
+  }
+});
+
+test('the composer: Euclid, chords, motifs in the scale, the hook answered and thinned', () => {
+  assert.equal(euclid(3, 8), 'x..x..x.');
+  assert.equal(euclid(5, 16), 'x..x..x..x..x...');
+  assert.equal(euclid(5, 16, 1), '.x..x..x..x..x..');
+  assert.equal(chordOn(SCALES.minor, 9, 0, '7'), 'Am7');
+  assert.equal(chordOn(SCALES.minor, 9, 5, '7'), 'Fmaj7');
+  assert.equal(chordOn(SCALES.minor, 9, 6, ''), 'G');
+  assert.equal(chordOn(SCALES.dorian, 2, 3, '9'), 'G9');
+  assert.equal(progression(SCALES.minor, 9, [0, 5, 2, 6]), 'Am F C G');
+  const r = R(11);
+  const m = motif(r, { bars: 2, density: 'medium' });
+  assert.equal(m.onsets[0], 0);
+  assert.equal(m.ivs.length, m.onsets.length - 1);
+  const chords = ['Am', 'F', 'C', 'G', 'Am', 'F', 'C', 'G'];
+  const toks = realise(m, { scale: SCALES.minor, tonic: 69, chords, lo: -2, hi: 9, gate: 8 }).split(' ');
+  assert.equal(toks.length, 128);
+  const notes = toks.map((t, i) => [t, i]).filter(([t]) => /^[A-G]/.test(t));
+  assert.ok(notes.length >= 8);
+  const pc = (t) => noteToMidi(t.replace('!', '')) % 12;
+  for (const [t] of notes) assert.ok([9, 11, 0, 2, 4, 5, 7].includes(pc(t)), `${t} in A minor`);
+  // Strong beats sit on chord tones; the eighth bar ends on the chord's root.
+  const tones = { Am: [9, 0, 4], F: [5, 9, 0], C: [0, 4, 7], G: [7, 11, 2] };
+  for (const [t, i] of notes) if (i % 4 === 0) assert.ok(tones[chords[Math.floor(i / 16)]].includes(pc(t)), `${t} at ${i} on ${chords[Math.floor(i / 16)]}`);
+  const last = notes.filter(([, i]) => i >= 112).at(-1);
+  assert.equal(pc(last[0]), 7, 'closes on G, the last chord');
+  // The thinned hook keeps the downbeat notes and loses some others.
+  const th = thin(m);
+  assert.ok(th.onsets.length < m.onsets.length && th.onsets[0] === 0);
+  assert.equal(th.ivs.length, th.onsets.length - 1);
+  assert.equal(th.ivs.reduce((a, b) => a + b, 0), m.ivs.reduce((a, b) => a + b, 0), 'same net contour');
+});
+
+test('every genre: the hook is stated sparse before the drop and in full at it, and the bass picks up the next chord', () => {
+  for (const [name, g] of Object.entries(GENRES)) {
+    const T = g(9);
+    const lead = T.parts.lead || T.parts.blip;
+    assert.ok(lead && lead.pat.hook && lead.pat.sparse && lead.pat.answer, name + ' has a hook');
+    const secs = T.sections.filter((s) => s.p.lead || s.p.blip);
+    const uses = secs.map((s) => s.p.lead || s.p.blip);
+    const drop = T.sections.findIndex((s) => s.drop);
+    assert.ok(drop > 0, name + ' has a drop');
+    assert.ok(uses.includes('hook') && uses.includes('sparse'), name + ' states the hook both ways');
+    // Sparse before a drop (eurobeat's first chorus follows a verse, so its
+    // sparse statement sits before the second), full from the first.
+    const lastDrop = T.sections.length - 1 - [...T.sections].reverse().findIndex((s) => s.drop);
+    assert.ok(T.sections.slice(0, lastDrop).some((s) => (s.p.lead || s.p.blip) === 'sparse'), name + ' sparse before a drop');
+    assert.equal(T.sections[drop].p.lead || T.sections[drop].p.blip, 'hook', name + ' full hook at the drop');
+  }
+  // The pickup: 'n' plays the next bar's chord root.
+  const T = { bpm: 120, prog: { a: 'Am F' }, drums: {}, parts: { bass: { type: 'bass', lo: 33, pat: { a: 'r.............n.' } } }, sections: [{ bars: 2, drums: null, p: { bass: 'a' } }] };
+  const s = new Seq(T);
+  const notes = [];
+  for (let i = 0; i < 32; i++) for (const e of s.step()) if (e.k === 'note') notes.push(e.midis[0]);
+  assert.deepEqual(notes, [33, 41, 41, 33]);
+});
+
+test('every genre renders: the drop is louder and brighter than the intro, over 25 seeds', () => {
+  for (const [name, g] of Object.entries(GENRES)) {
+    for (let seed = 1; seed <= 25; seed++) {
+      const T = g(seed);
+      compileTrack(T);
+      if (seed % 8 !== 1) continue;
+      let dropBar = 0;
+      for (const s of T.sections) { if (s.drop) break; dropBar += s.bars; }
+      const intro = renderEngine(T, { secs: 4, bar: 1 }), drop = renderEngine(T, { secs: 4, bar: dropBar + 1 });
+      assert.ok(finite(drop.L) && finite(drop.R), `${T.id} finite`);
+      assert.ok(peak(drop.L) <= 0.951, `${T.id} peak ${peak(drop.L)}`);
+      assert.ok(rms(drop.L) > rms(intro.L) * 1.2, `${T.id} drop ${rms(drop.L)} over intro ${rms(intro.L)}`);
+      const hi = (x) => bandPower(x.subarray(RATE, RATE + 8192), 3000, 8000);
+      assert.ok(hi(drop.L) > hi(intro.L), `${T.id} drop brighter`);
+    }
+  }
+});
+
+test('expand splits long sections into 8-bar blocks and keeps the seams where they belong', () => {
+  const S = [{ bars: 16, drums: 'g', vd: 2, crash: true, fill: 'clap', lp: [100, 1600], auto: { 'pad.cutoff': [0, 100] }, p: { bass: 'b' }, v: { bass: 3 } }];
+  const out = expand(S, R(1), 1);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].crash, true); assert.equal(out[1].crash, undefined);
+  assert.equal(out[1].fill, 'clap'); assert.equal(out[0].fill, undefined);
+  assert.deepEqual(out[0].auto['pad.cutoff'], [0, 50]); assert.deepEqual(out[1].auto['pad.cutoff'], [50, 100]);
+  assert.deepEqual(out[0].lp, [100, 400]);
+  assert.equal(out[0].p.bass, 'b0'); assert.equal(out[1].p.bass, 'b0');
+  assert.equal(out[0].drums, 'g0');
 });
 
 // ── Engine ───────────────────────────────────────────────────────
@@ -254,11 +363,13 @@ test('energy closes the mix down', () => {
   const T = GENRES.house(5);
   const full = renderEngine(T, { secs: 3, bar: 48 }).L, low = renderEngine(T, { secs: 3, bar: 48, energy: 0.15 }).L;
   const hi = (x) => bandPower(x.subarray(RATE, RATE + 8192), 3000, 8000);
-  assert.ok(hi(low) < hi(full) / 30, `high band ${10 * Math.log10(hi(full) / hi(low))} dB down`);
+  // What is left up there at low energy is the kick's click through the
+  // 480 Hz low-pass; the hats and the lead are out (lay) or filtered.
+  assert.ok(hi(low) < hi(full) / 4, `high band ${10 * Math.log10(hi(full) / hi(low))} dB down`);
 });
 
 test('section automation moves the patch', () => {
-  const T = GENRES.techno(4);
+  const T = GENRES.psytrance(4);
   const sec = T.sections.findIndex((s) => s.auto?.['acid.cutoff']);
   let bar = 0;
   for (let i = 0; i < sec; i++) bar += T.sections[i].bars;

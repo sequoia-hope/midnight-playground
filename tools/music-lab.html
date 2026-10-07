@@ -102,10 +102,12 @@ tracks made from genre grammars. <b>B</b> is the new sound; <b>A</b> is the game
 
   <div class="card">
     <h2>Make a track</h2>
-    <p>A seed and a genre make a whole track. <b>Déjà vu</b> (after Mutable Instruments' Marbles) is how much the patterns
-    repeat from one 8-bar block to the next: low wanders, high locks into a loop.</p>
+    <p>A seed and a genre make a whole track: one hook, stated sparse in the breakdown and in full at the drop; bass
+    that picks up the next chord; 8-bar blocks with a turnaround. <b>Déjà vu</b> (after Mutable Instruments' Marbles) is
+    how often a block plays the core pattern rather than one of its variations: high locks into a loop, low keeps
+    moving. The style line names the sub-style, key and progression.</p>
     <div class="row" style="margin-bottom:6px">
-      <select id="genre"><option value="house">House</option><option value="techno">Techno</option></select>
+      <select id="genre" aria-label="Genre"></select>
       <input type="number" id="seed" value="1" min="1" aria-label="Seed">
       <button id="dice" title="New seed">🎲</button>
       <button id="make">Make</button>

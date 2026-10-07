@@ -9,7 +9,9 @@
 //   section.auto  { 'part.param': [from, to] } ramps a patch parameter over
 //                 the section (techno's slow filter motion);
 //   T.lay         { lane or part: energy } mutes that lane or part while the
-//                 live energy (0..1) is below the value.
+//                 live energy (0..1) is below the value;
+//   bass 'n'      the next chord's root (a pickup into the change), 'N'
+//                 accented; the same note as 'r' when the chord stays.
 
 const PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 function pcOf(s) {
@@ -26,6 +28,7 @@ const QUAL = {
   '': [0, 4, 7], m: [0, 3, 7], 7: [0, 4, 7, 10], m7: [0, 3, 7, 10], maj7: [0, 4, 7, 11], sus2: [0, 2, 7], sus4: [0, 5, 7],
   5: [0, 7, 12], add9: [0, 4, 7, 14], madd9: [0, 3, 7, 14], m9: [0, 3, 7, 10, 14], maj9: [0, 4, 7, 11, 14], dim: [0, 3, 6],
   6: [0, 4, 7, 9], m6: [0, 3, 7, 9], '7sus4': [0, 5, 7, 10], aug: [0, 4, 8], 9: [0, 4, 7, 10, 14], m11: [0, 3, 7, 10, 14, 17],
+  m7b5: [0, 3, 6, 10], // lab: the half-diminished 7th on a scale's diminished degree (compose.js)
 };
 export function parseChord(name) {
   const [head, slash] = name.split('/');
@@ -114,9 +117,12 @@ export const FILLS = {
   dnb: { from: 8, lanes: { snare: '........X.oXxoXX', kick: 'x.........x.....' } },
   west: { from: 8, lanes: { tomL: '........x..x..x.', tomM: '..........x..x..', snare: '..............xX', kick: 'x.......x.......' } },
   crash: { from: 12, lanes: { snare: '............XXXX', kick: 'x.......x...x...' } },
-  // Lab: a clap build for house, a hat-and-rim one for techno.
+  // Lab: a clap build for house, a hat-and-rim one for techno, a kick roll
+  // for trance and psy, and a 2-step turnaround for garage.
   clap: { from: 8, lanes: { clap: '........x.x.xxxx', kick: 'x...x...x.......' } },
   perc: { from: 8, lanes: { rim: '........x..x.x.x', hat: '........xxxxxxxx', kick: 'x...x...x...x...' } },
+  kickroll: { from: 0, ramp: true, lanes: { kick: 'x...x...x.x.xxxx', snare: '........x.x.xxxx' } },
+  skip: { from: 8, lanes: { snare: '........x..x.xoX', kick: 'x.....x.x...x...' } },
 };
 const FILL_REPLACES = new Set(['snare', 'clap', 'hat', 'ohat', 'ride', 'shaker', 'rim', 'snap', 'tomL', 'tomM', 'tomH']);
 for (const f of Object.values(FILLS)) f.c = Object.entries(f.lanes).map(([v, str]) => ({ voice: v, steps: str.split('') }));
@@ -178,6 +184,9 @@ export class Seq {
       const ci = Math.floor((st * pbar.length) / 16);
       const chord = pbar[ci];
       const chordStart = (st * pbar.length) % 16 === 0;
+      // The chord after this one (for bass pickups): later in the bar, else
+      // the next bar's first; at the section's end, the section's own loop.
+      const nextChord = ci + 1 < pbar.length ? pbar[ci + 1] : prog[(bar + 1) % prog.length][0];
       const idx = bar * 16 + st;
       const fill = lastBar && sec.fill ? FILLS[sec.fill] : null;
       const inFill = fill && st >= fill.from;
@@ -205,7 +214,7 @@ export class Seq {
         if (!pat) continue;
         const e = pat[(bar * 16 + st) % pat.length];
         if (!e) continue;
-        const n = this._part(name, part, e, chord, chordStart, dt);
+        const n = this._part(name, part, e, chord, chordStart, dt, nextChord);
         if (n) ev.push(n);
       }
     }
@@ -236,14 +245,14 @@ export class Seq {
     if (sec.swell && left === 1 && this._on('revCrash')) ev.push({ k: 'drum', lane: 'revCrash', vel: 0.9, dt: 0, len: barDur });
   }
 
-  _part(name, part, e, chord, chordStart, dt) {
+  _part(name, part, e, chord, chordStart, dt, nextChord = chord) {
     const dur = e.len * this.stepDur;
     if (part.type === 'bass') {
       const lo = part.lo ?? 33;
       const root = lo + ((chord.bass - lo) % 12 + 12) % 12;
       const d = e.deg;
       const iv = d === 't' ? chord.iv[1] : d === 's' ? (chord.iv[3] ?? 10) : BASS_DEG[d] ?? 0;
-      const midi = root + iv;
+      const midi = d === 'n' ? lo + ((nextChord.bass - lo) % 12 + 12) % 12 : root + iv;
       const prev = this.last[name];
       const glideFrom = prev && prev.slide ? prev.midi : null;
       this.last[name] = { midi, slide: e.slide };
