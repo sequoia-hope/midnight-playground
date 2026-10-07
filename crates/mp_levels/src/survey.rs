@@ -388,12 +388,18 @@ impl<'a> Reader<'a> {
         self.p = end;
         Ok(out)
     }
+    /// `n` items of `size` bytes. A corrupt count can overflow the byte
+    /// length on a 32-bit target (wasm): that file ends early too.
+    fn take_items(&mut self, n: usize, size: usize) -> Result<&'a [u8], String> {
+        let len = n.checked_mul(size).ok_or("survey: file ends early")?;
+        self.take(len)
+    }
     fn u32(&mut self) -> Result<u32, String> {
         Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
     }
     fn i32s(&mut self, n: usize) -> Result<Vec<i32>, String> {
         Ok(self
-            .take(n * 4)?
+            .take_items(n, 4)?
             .as_chunks::<4>()
             .0
             .iter()
@@ -424,7 +430,7 @@ impl<'a> Sections<'a> {
             let n = r.u32()? as usize;
             let sec = match kind {
                 1 => Section::F64(
-                    r.take(n * 8)?
+                    r.take_items(n, 8)?
                         .as_chunks::<8>()
                         .0
                         .iter()
