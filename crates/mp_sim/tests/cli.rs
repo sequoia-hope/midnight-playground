@@ -6,9 +6,10 @@
 use std::process::{Command, Output};
 
 use mp_levels::levels;
-use mp_sim::autopilot::autopilot;
+use mp_sim::autopilot::{autopilot, autopilot_at};
 use mp_sim::fuzz::Fuzzer;
-use mp_sim::input::{Input, InputFrame, quantise};
+use mp_sim::input::{Input, InputFrame, RESET, quantise};
+use mp_sim::model::use_sim;
 use mp_sim::race::{LevelRuntime, RaceOpts, SimState, hash, step};
 use mp_sim::trace::{fnv1a64, race_record, read_trace};
 
@@ -51,6 +52,7 @@ fn bad_arguments_fail_with_a_message() {
         "no/such/survey.bin",
     );
     fails_with(&["bench", "--runs", "many"], "--runs:");
+    fails_with(&["race", "--telemetry", "x.csv"], "--telemetry needs --sim");
 }
 
 /// The final hash the binary prints for `race --level L --seed N --ticks T`.
@@ -135,6 +137,57 @@ fn a_short_fuzzed_race_matches_the_library() {
         step(&lr, &mut st, &[InputFrame::quantise(&inp)], &mut ev);
     }
     assert_eq!(h, hash(&st));
+}
+
+#[test]
+fn a_short_sim_race_matches_the_library_and_writes_telemetry() {
+    let ticks = 900;
+    let dir = env!("CARGO_TARGET_TMPDIR");
+    let csv = format!("{dir}/mp-sim-cli-sim.csv");
+    let out = mp_sim(&[
+        "race",
+        "--level",
+        "sierra",
+        "--sim",
+        "--ticks",
+        "900",
+        "--telemetry",
+        &csv,
+    ]);
+    let h = printed_hash(&out, "sierra", ticks);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("sim handling:"), "{stdout}");
+
+    let lr = runtime("sierra");
+    let mut st = SimState::new(
+        &lr,
+        RaceOpts {
+            car: "sports",
+            seed: 1,
+            pursuit: false,
+            heat: 1.0,
+        },
+    );
+    use_sim(&mut st.players[0], &lr.track);
+    let mut ev = Vec::new();
+    for _ in 0..ticks {
+        let mut inp = Input::default();
+        autopilot_at(&mut inp, &st.players[0].v, &lr.track, 0.93 * 0.72);
+        let mut frame = InputFrame::quantise(&inp);
+        if st.players[0].rules.stuck.is_some_and(|s| s > 3.0) {
+            frame.flags |= RESET;
+        }
+        step(&lr, &mut st, &[frame], &mut ev);
+    }
+    assert_eq!(h, hash(&st), "the printed hash");
+
+    let text = std::fs::read_to_string(&csv).unwrap();
+    let _ = std::fs::remove_file(&csv);
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), ticks as usize + 1, "a header and a row a tick");
+    let cols = lines[0].split(',').count();
+    assert_eq!(cols, 8 + 4 * 6);
+    assert!(lines.iter().all(|l| l.split(',').count() == cols));
 }
 
 /// The cruise prints its score line instead of a results table.

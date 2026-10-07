@@ -10,6 +10,7 @@
 //!   cargo run --release -p mp_sim --bin mp-sim -- race --level coast --pursuit 3 --trace out.trace
 //!   cargo run --release -p mp_sim --bin mp-sim -- race --level desert --fuzz 1 --ticks 21600
 //!   cargo run --release -p mp_sim --bin mp-sim -- race --level sierra --state-at 6000
+//!   cargo run --release -p mp_sim --bin mp-sim -- race --level coast --sim --telemetry out.csv
 //!   cargo run --release -p mp_sim --bin mp-sim -- bench
 //!   cargo run --release -p mp_sim --bin mp-sim -- replay recordings/run.jsonl --trace out.trace
 
@@ -18,11 +19,13 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use mp_levels::{SeasideData, levels, seaside};
-use mp_sim::autopilot::autopilot;
+use mp_sim::autopilot::{autopilot, autopilot_at};
 use mp_sim::fuzz::Fuzzer;
-use mp_sim::input::{Input, InputFrame, quantise};
+use mp_sim::input::{Input, InputFrame, RESET, quantise};
+use mp_sim::model::{VehicleModel, use_sim};
+use mp_sim::physics::PhysEvent;
 use mp_sim::race::{
-    LevelRuntime, RaceOpts, SimState, cruise_results, hash, pursuit_stats, results, step,
+    LevelRuntime, RaceOpts, SimEvent, SimState, cruise_results, hash, pursuit_stats, results, step,
 };
 use mp_sim::staged::{Sim, StageOpts, stage_level};
 use mp_sim::trace::{TraceFile, race_record};
@@ -31,6 +34,7 @@ use mp_track::{Level, Mode};
 const USAGE: &str = "usage:
   mp-sim race [--level ID] [--car KIND] [--seed N] [--pursuit HEAT] [--fuzz SEED]
               [--ticks N] [--trace FILE] [--state-at TICK] [--survey FILE]
+              [--sim] [--telemetry FILE]
   mp-sim bench [--runs N] [--ticks N]
   mp-sim replay FILE [--race N] [--trace FILE] [--state-at TICK] [--survey FILE]
 
@@ -39,12 +43,20 @@ race: runs until the results (or --ticks), driving with the autopilot
 and the final state hash. --trace writes the trace record of every tick
 (parity/trace-format.md); --state-at prints the whole state after that
 tick. Seaside needs its survey (default assets/seaside/survey.bin).
+--sim drives the player's car on the sim model (\"Sim handling\",
+docs/vehicle-dynamics/SPEC.md) with the Casual assists; --telemetry then
+writes its per-tick telemetry as CSV (per tick; per tyre: load, slip
+angle, slip ratio, sliding share, travel, spin).
 
 replay: steps every race of a client run recording (record=1,
 docs/rust-port/RECORDING.md), or race N, with its recorded inputs, checks
 the state hash at each recorded checkpoint, and prints the results; it
 fails at the first checkpoint that differs. --trace (the last race
 replayed) and --state-at as for race.";
+
+/// The autopilot's pace on a sim car: the speed profile is the arcade's,
+/// which corners on about twice the grip.
+const SIM_PACE: f64 = 0.93 * 0.72;
 
 fn arg(args: &[String], name: &str) -> Option<String> {
     args.iter()
@@ -96,6 +108,11 @@ fn race(args: &[String]) -> Result<(), String> {
         .map_err(|e| format!("--state-at: {e}"))?;
     let survey = arg(args, "--survey").unwrap_or_else(|| "assets/seaside/survey.bin".into());
     let trace_out = arg(args, "--trace");
+    let sim = args.iter().any(|a| a == "--sim");
+    let telemetry_out = arg(args, "--telemetry");
+    if telemetry_out.is_some() && !sim {
+        return Err("--telemetry needs --sim".into());
+    }
 
     let lr = LevelRuntime::new(level(&id, &survey)?)?;
     let t = Arc::clone(&lr.track);
@@ -108,6 +125,28 @@ fn race(args: &[String]) -> Result<(), String> {
             heat: heat.unwrap_or(1.0),
         },
     );
+    if sim {
+        use_sim(&mut st.players[0], &t);
+    }
+    let mut telemetry = telemetry_out.as_ref().map(|_| {
+        let mut h = String::from("tick,speed,yaw_rate,ax,ay,gear,rpm,steer_torque");
+        for w in ["fl", "fr", "rl", "rr"] {
+            for f in [
+                "load",
+                "slip_angle",
+                "slip_ratio",
+                "sliding",
+                "travel",
+                "omega",
+            ] {
+                h.push_str(&format!(",{w}_{f}"));
+            }
+        }
+        h.push('\n');
+        h
+    });
+    let mut walls = 0u32;
+    let mut resets = 0u32;
     let mut fz = fuzz.map(Fuzzer::new);
     let mut trace = trace_out.as_ref().map(|_| {
         TraceFile::new(format!(
@@ -123,13 +162,76 @@ fn race(args: &[String]) -> Result<(), String> {
             Some(f) => f.next(Input::default()),
             None => {
                 let mut inp = Input::default();
-                autopilot(&mut inp, &st.players[0].v, &t);
+                if sim {
+                    autopilot_at(&mut inp, &st.players[0].v, &t, SIM_PACE);
+                } else {
+                    autopilot(&mut inp, &st.players[0].v, &t);
+                }
                 inp
             }
         };
-        let frame = InputFrame::quantise(&inp);
+        let mut frame = InputFrame::quantise(&inp);
+        // A sim car cannot pivot on the spot as the arcade's does: stuck
+        // nose-in for three seconds, the driver presses reset.
+        if sim && st.players[0].rules.stuck.is_some_and(|s| s > 3.0) {
+            frame.flags |= RESET;
+        }
         step(&lr, &mut st, &[frame], &mut events);
+        for e in &events {
+            match e {
+                SimEvent::Reset { .. } => {
+                    resets += 1;
+                    if sim && std::env::var_os("MP_SIM_DEBUG").is_some() {
+                        eprintln!("reset at tick {} s {:.0}", st.tick, st.players[0].v.s);
+                    }
+                }
+                SimEvent::Phys {
+                    e: PhysEvent::Impact { strength, .. },
+                    ..
+                } if sim && std::env::var_os("MP_SIM_DEBUG").is_some() => {
+                    eprintln!(
+                        "impact {strength:.2} at tick {} s {:.0} speed {:.1}",
+                        st.tick, st.players[0].v.s, st.players[0].v.speed
+                    );
+                }
+                _ => {}
+            }
+        }
+        walls += events
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e,
+                    SimEvent::Phys {
+                        e: PhysEvent::Impact { .. },
+                        ..
+                    }
+                )
+            })
+            .count() as u32;
         events.clear();
+        if let (Some(csv), VehicleModel::Sim(sc)) = (&mut telemetry, &st.players[0].model) {
+            let tm = sc.car.telemetry(&sc.def);
+            let p = &st.players[0].phys;
+            csv.push_str(&format!(
+                "{},{:.4},{:.4},{:.4},{:.4},{},{:.0},{:.2}",
+                st.tick,
+                tm.speed,
+                tm.yaw_rate,
+                tm.accel.x,
+                tm.accel.z,
+                p.gear,
+                p.rpm,
+                tm.steer_torque
+            ));
+            for w in &tm.wheels {
+                csv.push_str(&format!(
+                    ",{:.1},{:.4},{:.4},{:.3},{:.4},{:.2}",
+                    w.load, w.slip_angle, w.slip_ratio, w.sliding, w.travel, w.omega
+                ));
+            }
+            csv.push('\n');
+        }
         if let Some(tr) = &mut trace {
             tr.add(st.tick, race_record(&st, &[quantise(&inp)]));
         }
@@ -146,6 +248,10 @@ fn race(args: &[String]) -> Result<(), String> {
         }
     }
     let secs = t0.elapsed().as_secs_f64();
+    if let (Some(csv), Some(path)) = (telemetry, telemetry_out) {
+        std::fs::write(&path, csv).map_err(|e| format!("{path}: {e}"))?;
+        eprintln!("wrote {path}");
+    }
     if let (Some(tr), Some(path)) = (trace, trace_out) {
         std::fs::write(&path, tr.finish()).map_err(|e| format!("{path}: {e}"))?;
         eprintln!("wrote {path}");
@@ -182,6 +288,9 @@ fn race(args: &[String]) -> Result<(), String> {
                 p.heat, p.takedowns, p.busts, p.wrecks, p.penalty
             );
         }
+    }
+    if sim {
+        println!("sim handling: {walls} wall impacts, {resets} resets");
     }
     eprintln!("{:.0} ticks/s", st.tick as f64 / secs);
     Ok(())

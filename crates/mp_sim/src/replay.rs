@@ -68,8 +68,10 @@ pub fn apply_pursuit_opts(st: &mut SimState, cops: f64, flash: bool) {
     }
 }
 
-/// Appends `frames` as text: `steer,throttle,brake,flags` per tick,
-/// separated by spaces, a run of equal frames as one with `*n`.
+/// Appends `frames` as text: `steer,throttle,brake,flags` per tick, and
+/// `,clutch` after them when the clutch is pressed (so recordings without
+/// one read as they always did), separated by spaces, a run of equal frames
+/// as one with `*n`.
 pub fn encode(frames: &[InputFrame], out: &mut String) {
     use std::fmt::Write;
     let mut i = 0;
@@ -83,6 +85,9 @@ pub fn encode(frames: &[InputFrame], out: &mut String) {
             out.push(' ');
         }
         let _ = write!(out, "{},{},{},{}", f.steer, f.throttle, f.brake, f.flags);
+        if f.clutch != 0 {
+            let _ = write!(out, ",{}", f.clutch);
+        }
         if n > 1 {
             let _ = write!(out, "*{n}");
         }
@@ -108,7 +113,14 @@ pub fn decode(s: &str, out: &mut Vec<InputFrame>) -> Result<(), String> {
             throttle: next()?.parse().map_err(bad)?,
             brake: next()?.parse().map_err(bad)?,
             flags: next()?.parse().map_err(bad)?,
+            clutch: match p.next() {
+                Some(c) => c.parse().map_err(bad)?,
+                None => 0,
+            },
         };
+        if p.next().is_some() {
+            return Err(format!("bad input {item}"));
+        }
         out.extend(std::iter::repeat_n(frame, n));
     }
     Ok(())
@@ -175,6 +187,7 @@ pub fn parse(text: &str) -> Result<Vec<Recorded>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::input::SHIFT_UP;
 
     #[test]
     fn inputs_round_trip_with_runs() {
@@ -183,6 +196,7 @@ mod tests {
             throttle: 255,
             brake: 0,
             flags: 4,
+            clutch: 0,
         };
         let frames = vec![InputFrame::default(), a, a, a, InputFrame::default()];
         // Two lines' worth: a run does not cross a line.
@@ -195,6 +209,24 @@ mod tests {
         decode(&a, &mut back).unwrap();
         decode(&b, &mut back).unwrap();
         assert_eq!(back, frames);
+    }
+
+    #[test]
+    fn a_pressed_clutch_is_a_fifth_value() {
+        let c = InputFrame {
+            steer: 5,
+            throttle: 1,
+            brake: 2,
+            flags: SHIFT_UP,
+            clutch: 200,
+        };
+        let mut text = String::new();
+        encode(&[c, InputFrame::default()], &mut text);
+        assert_eq!(text, "5,1,2,64,200 0,0,0,0");
+        let mut back = Vec::new();
+        decode(&text, &mut back).unwrap();
+        assert_eq!(back, vec![c, InputFrame::default()]);
+        assert!(decode("1,2,3,4,5,6", &mut back).is_err());
     }
 
     #[test]

@@ -51,6 +51,35 @@ pub struct Vehicle {
     pub vis_y: Option<f64>,
     /// Race progress (`v.prog`), set by the grid and the race rules.
     pub prog: Option<f64>,
+    /// A simulated chassis's pose for drawing (docs/vehicle-dynamics/SPEC.md
+    /// 8.3), beside this body view: present only for a car whose
+    /// orientation and wheels are real state. The client uses it when
+    /// present and its own pitch and roll springs otherwise. Derived each
+    /// tick; not part of the state hash.
+    pub pose: Option<Box<SimPose>>,
+}
+
+/// What the client draws for a simulated chassis (SPEC 8.3).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SimPose {
+    /// The chassis's orientation, body to world, as a quaternion
+    /// `[x, y, z, w]`. Body axes: x forward, y up, z right.
+    pub orient: [f64; 4],
+    /// Axle by axle, left wheel then right.
+    pub wheels: Vec<WheelPose>,
+}
+
+/// One wheel of a [`SimPose`].
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct WheelPose {
+    /// Hub centre, world frame.
+    pub hub: [f64; 3],
+    /// Road-wheel angle (rad, positive to the right).
+    pub steer: f64,
+    /// Spin angle about the axle (rad, −π..π, increasing rolling forward).
+    pub spin: f64,
+    /// Suspension travel (m, positive in bump).
+    pub travel: f64,
 }
 
 impl Vehicle {
@@ -91,6 +120,7 @@ impl Vehicle {
             alive: true,
             vis_y: None,
             prog: None,
+            pose: None,
         }
     }
 

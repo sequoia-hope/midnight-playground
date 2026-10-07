@@ -5,7 +5,8 @@
 //! the controls.
 
 use mp_sim::input::{
-    ANALOG, AUTOPILOT, AWAY, HANDBRAKE, Input, InputFrame, NITRO, RESET, quantise,
+    ANALOG, AUTOPILOT, AWAY, HANDBRAKE, Input, InputFrame, NITRO, RESET, SHIFT_DOWN, SHIFT_UP,
+    quantise,
 };
 
 fn inp(steer: f64, throttle: f64, brake: f64) -> Input {
@@ -103,7 +104,9 @@ fn quantising_twice_changes_nothing_and_stays_within_half_a_step() {
 
 #[test]
 fn the_flag_bits_are_distinct_single_bits() {
-    let flags = [HANDBRAKE, NITRO, ANALOG, RESET, AUTOPILOT, AWAY];
+    let flags = [
+        HANDBRAKE, NITRO, ANALOG, RESET, AUTOPILOT, AWAY, SHIFT_UP, SHIFT_DOWN,
+    ];
     let mut all = 0u8;
     for f in flags {
         assert_eq!(f.count_ones(), 1, "{f}");
@@ -121,14 +124,24 @@ fn reset_autopilot_and_away_are_not_controls() {
         throttle: 200,
         brake: 3,
         flags: NITRO,
+        clutch: 0,
     };
-    for extra in [RESET, AUTOPILOT, AWAY, RESET | AUTOPILOT | AWAY] {
+    // The sim car's controls (the clutch, the shifts) are not the arcade's
+    // either.
+    let sim = SHIFT_UP | SHIFT_DOWN;
+    for extra in [RESET, AUTOPILOT, AWAY, RESET | AUTOPILOT | AWAY, sim] {
         let f = InputFrame {
             flags: base.flags | extra,
             ..base
         };
         assert_eq!(f.input(), base.input(), "flags {extra}");
     }
+    let pressed = InputFrame {
+        clutch: 255,
+        ..base
+    };
+    assert_eq!(pressed.input(), base.input());
+    assert_eq!(pressed.clutch(), 1.0);
     let every = Input {
         steer: 1.0,
         throttle: 1.0,

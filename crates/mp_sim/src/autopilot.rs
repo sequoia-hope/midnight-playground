@@ -12,11 +12,17 @@ use crate::vehicle::Vehicle;
 /// Writes the autopilot's controls into `inp` (steer, throttle, brake,
 /// handbrake, nitro); the other fields are left as they are.
 pub fn autopilot(inp: &mut Input, v: &Vehicle, t: &Track) {
+    autopilot_at(inp, v, t, 0.93);
+}
+
+/// [`autopilot`] at `pace` times the speed profile. The profile is the
+/// arcade car's; a sim car (about half its lateral grip) needs less.
+pub fn autopilot_at(inp: &mut Input, v: &Vehicle, t: &Track, pace: f64) {
     let la = 10.0 + kernel::hypot(v.vx, v.vz) * 0.35;
     let p = t.point_at(v.s + la, t.racing_line[t.idx(v.s + la)] as f64 * 0.6);
     let want = kernel::atan2(p.z - v.z, p.x - v.x);
     let err = wrap_angle(want - v.yaw);
-    let target = t.speed_profile[t.idx(v.s + 15.0)] as f64 * 0.93;
+    let target = t.speed_profile[t.idx(v.s + 15.0)] as f64 * pace;
     let sp = kernel::hypot(v.vx, v.vz);
     inp.steer = clamp(err * 2.2, -1.0, 1.0);
     inp.throttle = if sp < target { 1.0 } else { 0.0 };
