@@ -4470,6 +4470,7 @@ dependencies = [
  "mp_levels",
  "mp_math",
  "mp_track",
+ "mp_vdyn",
  "serde_json",
  "wasm-bindgen-test",
 ]
@@ -4479,6 +4480,14 @@ name = "mp_track"
 version = "0.1.0"
 dependencies = [
  "mp_math",
+]
+
+[[package]]
+name = "mp_vdyn"
+version = "0.1.0"
+dependencies = [
+ "mp_math",
+ "wasm-bindgen-test",
 ]
 
 [[package]]

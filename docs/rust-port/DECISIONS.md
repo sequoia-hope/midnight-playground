@@ -9277,3 +9277,137 @@ disagrees rebuilds from the race's start and the confirmed inputs (the
 simulation is deterministic by construction; a mismatch is a bug, and is
 counted). **The host's relayed inputs are reliable;** clients' inputs are
 unreliable with eight ticks repeated.
+
+## Vehicle dynamics V0 and V1 (docs/vehicle-dynamics/SPEC.md 11)
+
+The owner asked for tyre physics on 2026-10-07 (vision ROADMAP M17).
+These record the choices V0 (seams) and V1 (the `mp_vdyn` core) made
+where the vehicle-dynamics spec left room or could not be followed as
+written.
+
+## D1140. `PlayerCar.phys` stays a `CarPhysics`; `PlayerCar.model` says which model moves the car
+
+SPEC 8.1 sketches `PlayerCar.phys` becoming `enum VehicleModel {
+Arcade(CarPhysics), Sim(Box<SimCar>) }`. The client reads `p.phys` in
+about forty places (HUD, audio, effects, flow), and SPEC 4.7 already says
+a sim car must write those same `CarPhysics` fields every tick. So
+`phys` stays: the arcade model runs on it exactly as before, and it is
+the body view's readout half whichever model moves the car. A new field
+`PlayerCar.model: VehicleModel` (`mp_sim::model`) names the model; V0 has
+only `Arcade`, V2 adds `Sim(Box<SimCar>)`. Nothing outside `mp_sim`
+changes, and every golden is bit-identical.
+
+The render-view fields of SPEC 8.3 are `Vehicle.pose:
+Option<Box<SimPose>>` (orientation quaternion, and per wheel the hub
+position, steer, spin and travel), plain `f64` arrays so the client needs
+no `mp_vdyn` types. It is `None` for every arcade car and is derived each
+tick, so it is not in the state hash.
+
+## D1141. Input frame: a clutch byte, shift bits 64 and 128, protocol version 2
+
+SPEC 7.1 names shift-up and shift-down as flag bits 16 and 32; the
+multiplayer work took those for `AUTOPILOT` and `AWAY` first. The shifts
+are `SHIFT_UP = 64` and `SHIFT_DOWN = 128`, the last two free bits (an
+H-pattern gear byte, later, will be a new field and another version).
+`InputFrame` gains `clutch: u8`. `Input`, which the client builds field
+by field, does not change: the arcade model never reads the new controls,
+and a sim car will read them from the frame. The wire frame is six bytes
+and `mp_net::proto::VERSION` is 2. The replay text adds the clutch as a
+fifth value only when it is pressed, so every recording made so far reads
+as before.
+
+## D1142. `mp_vdyn`'s conventions and V1's modelling choices
+
+- **Axes.** World y up. Body frame: x forward, y up, z right
+  (right-handed, and the game's heading: yaw θ is a rotation by −θ about
+  +y). A hub's axle is its local z (the spec's sketch says local y); a
+  wheel rolling forward spins about −z, and `omega > 0` is forward. The
+  game's yaw rate is −ω·up.
+- **Suspension.** Each hub slides along the body's up axis with its own
+  unsprung mass and travel state; the spring, damper (bump and rebound),
+  bump stops and anti-roll bar act between hub and body. The tyre's
+  force along the strut goes through the hub; its in-plane part reaches
+  the body at a per-axle roll-centre height above the patch. Across the
+  strut the hubs move with the body, so the chassis's translation there
+  uses the whole mass.
+- **Brush tyre.** As SPEC 4.4: transient slip from carcass deflections
+  relaxed implicitly (stable at any speed), theoretical slip κ/(1+κ),
+  tanα/(1+κ), the brush force with load-sensitive μ, the brush's own
+  pneumatic trail, low-speed bristle damping. Three details the spec left
+  open: the sliding friction falls from the peak as
+  `μ·(r + (1−r)/(1+(v/v_s)²))` in the speed of the slide *beyond* the
+  peak (continuous at the peak, no kernel call); the deflection is capped
+  at twice the full-slide slip and, when capped, points along the slide
+  (otherwise unequal relaxation lengths bend a combined slide and a
+  spinning wheel winds up without bound at a standstill); rolling
+  resistance is a friction torque on the wheel, applied with the brake,
+  so it can stop a wheel but never turn it.
+- **Drive.** V1 has no engine: a torque at the wheels capped by power,
+  split by axle shares and equally across each axle. V2 replaces it with
+  the drivetrain of SPEC 4.5.
+- **ABS** is the one assist in V1 (for the braking test): per wheel,
+  brake pressure follows the error from a slip ratio of −0.1, reading
+  only wheel speed against ground speed.
+- **Determinism.** `Vehicle::hash` is FNV-1a 64 of every state field's
+  bits. The vehicle test pins the hash after a scripted ten seconds, and
+  the same test passes in wasm under Node, so native and wasm agree.
+  CI's wasm job lists the simulation crates by name; `-p mp_vdyn` should
+  join them (`.github/` was out of this work's reach).
+
+## D1143. V2, simulation side: the Vento GT as a sim car, headless
+
+The first half of V2, with the client (`mp_game`) untouched:
+
+- **Drivetrain.** `mp_vdyn::drivetrain`: a torque curve with idle, a
+  limiter and engine braking; the flywheel's inertia reflected onto the
+  driven wheels while the clutch is closed; an automatic clutch that
+  slips the engine at up to `launch_rpm` (idle with no throttle) until
+  the wheels catch up, so the engine never stalls; six gears, reverse and
+  neutral, a shift time with the clutch open; an open differential. The
+  automatic gearbox shifts on rpm thresholds; paddles are `Controls.shift`
+  (down from first is neutral, then reverse). Nitro is a fraction of extra
+  engine torque (`Controls.boost`). Traction control, like ABS, reads only
+  wheel speed against ground speed and trims the throttle; its state is in
+  `EngineState`, so the direct-drive rig car's hash did not move.
+- **Walls.** The chassis is a box; its four corners at the centre of
+  mass's height meet `Ground::colliders` planes with a penalty spring
+  (5 MN/m), a damper and Coulomb friction. `TrackGround` gives the
+  corridor walls at the frame nearest the car, and the ends of a
+  point-to-point road where the arcade stops cars. The first touch is an
+  impact (`PhysEvent::Impact`, as the arcade's), sliding along is a scrape.
+- **The Vento GT** (`mp_vdyn::cars::vento_gt`): the game car's size,
+  1350 kg, about 280 kW, six gears; 0–100 km/h in about 5 s with traction
+  control. Until V4 every other garage car drives as a Vento with its own
+  mass (`mp_sim::model::sim_def`).
+- **On `PlayerCar`.** `VehicleModel::Sim(Box<SimCar>)`, switched on by
+  `mp_sim::model::use_sim` after the race is built (the client's "Sim
+  handling" setting will call it; `RaceOpts` is built field by field in
+  the client, so it gained no field). The *Casual* assists sit in
+  `SimCar`: a grip-scaled steering lock (full steer asks
+  `ANALOG_LOCK`·L·μg/v² plus the tyre's peak slip angle), ABS, traction
+  control, the automatic gearbox, and the arcade's brake-to-reverse (only
+  when truly stopped, not sliding). On the grid the car is held on its
+  brakes and the readout revs with the throttle, as the arcade's does.
+- **The body view.** Each tick the sim writes `Vehicle` (position, the
+  ground under it as `y`, heading, velocities, `s`/`lat`, accelerations,
+  `on_ground`, `brake_light`, the pose) and the `CarPhysics` readouts
+  (gear, rpm, shift and impact and landing events, nitro, the drift state
+  from the rear axle's slip angle with the arcade's 0.18 and 0.06 rad
+  thresholds, skid, scrape, air time). What the rest of the tick then does
+  to `Vehicle` (a collision's push and spin, the perfect start's kick, a
+  reset) the sim takes back at its next update: a jump of over a metre or
+  0.3 rad re-places the car, anything smaller becomes a change of the
+  rigid body's velocity, spin and position. A collision's spin is applied
+  as the collision pass computes it, so a hard hit spins the sim car as
+  it would a real one.
+- **The hash.** A sim car's state joins `race::hash` (after a `vdyn`
+  tag), only when there is one, so arcade races hash as before. A sim
+  race's hash is pinned in `tests/sim_model.rs` and matches in wasm.
+- **Headless.** `mp-sim race --sim` drives it with the autopilot at
+  0.72 of its arcade pace (`autopilot_at`; the speed profile assumes the
+  arcade's grip) and presses reset after three seconds stuck, as a player
+  would; `--telemetry FILE` writes per-tick, per-tyre CSV (SPEC 8.4). The
+  autopilot's sim car finishes Sierra, Coast, Streets and Desert, last of
+  six, a fifth to a half slower than the arcade rivals, with a few wall
+  hits and resets after rear-ending traffic. One sim car costs about
+  7 µs a tick on the track natively (5 µs on the flat rig).
