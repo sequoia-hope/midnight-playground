@@ -9353,3 +9353,61 @@ as before.
   the same test passes in wasm under Node, so native and wasm agree.
   CI's wasm job lists the simulation crates by name; `-p mp_vdyn` should
   join them (`.github/` was out of this work's reach).
+
+## D1143. V2, simulation side: the Vento GT as a sim car, headless
+
+The first half of V2, with the client (`mp_game`) untouched:
+
+- **Drivetrain.** `mp_vdyn::drivetrain`: a torque curve with idle, a
+  limiter and engine braking; the flywheel's inertia reflected onto the
+  driven wheels while the clutch is closed; an automatic clutch that
+  slips the engine at up to `launch_rpm` (idle with no throttle) until
+  the wheels catch up, so the engine never stalls; six gears, reverse and
+  neutral, a shift time with the clutch open; an open differential. The
+  automatic gearbox shifts on rpm thresholds; paddles are `Controls.shift`
+  (down from first is neutral, then reverse). Nitro is a fraction of extra
+  engine torque (`Controls.boost`). Traction control, like ABS, reads only
+  wheel speed against ground speed and trims the throttle; its state is in
+  `EngineState`, so the direct-drive rig car's hash did not move.
+- **Walls.** The chassis is a box; its four corners at the centre of
+  mass's height meet `Ground::colliders` planes with a penalty spring
+  (5 MN/m), a damper and Coulomb friction. `TrackGround` gives the
+  corridor walls at the frame nearest the car, and the ends of a
+  point-to-point road where the arcade stops cars. The first touch is an
+  impact (`PhysEvent::Impact`, as the arcade's), sliding along is a scrape.
+- **The Vento GT** (`mp_vdyn::cars::vento_gt`): the game car's size,
+  1350 kg, about 280 kW, six gears; 0–100 km/h in about 5 s with traction
+  control. Until V4 every other garage car drives as a Vento with its own
+  mass (`mp_sim::model::sim_def`).
+- **On `PlayerCar`.** `VehicleModel::Sim(Box<SimCar>)`, switched on by
+  `mp_sim::model::use_sim` after the race is built (the client's "Sim
+  handling" setting will call it; `RaceOpts` is built field by field in
+  the client, so it gained no field). The *Casual* assists sit in
+  `SimCar`: a grip-scaled steering lock (full steer asks
+  `ANALOG_LOCK`·L·μg/v² plus the tyre's peak slip angle), ABS, traction
+  control, the automatic gearbox, and the arcade's brake-to-reverse (only
+  when truly stopped, not sliding). On the grid the car is held on its
+  brakes and the readout revs with the throttle, as the arcade's does.
+- **The body view.** Each tick the sim writes `Vehicle` (position, the
+  ground under it as `y`, heading, velocities, `s`/`lat`, accelerations,
+  `on_ground`, `brake_light`, the pose) and the `CarPhysics` readouts
+  (gear, rpm, shift and impact and landing events, nitro, the drift state
+  from the rear axle's slip angle with the arcade's 0.18 and 0.06 rad
+  thresholds, skid, scrape, air time). What the rest of the tick then does
+  to `Vehicle` (a collision's push and spin, the perfect start's kick, a
+  reset) the sim takes back at its next update: a jump of over a metre or
+  0.3 rad re-places the car, anything smaller becomes a change of the
+  rigid body's velocity, spin and position. A collision's spin is applied
+  as the collision pass computes it, so a hard hit spins the sim car as
+  it would a real one.
+- **The hash.** A sim car's state joins `race::hash` (after a `vdyn`
+  tag), only when there is one, so arcade races hash as before. A sim
+  race's hash is pinned in `tests/sim_model.rs` and matches in wasm.
+- **Headless.** `mp-sim race --sim` drives it with the autopilot at
+  0.72 of its arcade pace (`autopilot_at`; the speed profile assumes the
+  arcade's grip) and presses reset after three seconds stuck, as a player
+  would; `--telemetry FILE` writes per-tick, per-tyre CSV (SPEC 8.4). The
+  autopilot's sim car finishes Sierra, Coast, Streets and Desert, last of
+  six, a fifth to a half slower than the arcade rivals, with a few wall
+  hits and resets after rear-ending traffic. One sim car costs about
+  7 µs a tick on the track natively (5 µs on the flat rig).
