@@ -1078,10 +1078,10 @@ impl mp_math::Rng for JsRandom {
     }
 }
 
-/// The radio clips beside the page: `audio/radio/` at the repository's
-/// root, two levels up from `dist/next/` (as Seaside's survey is fetched).
+/// The radio clips beside the page: `cargo xtask web` copies the
+/// repository's `audio/radio/` into the build (D1112).
 #[cfg(target_arch = "wasm32")]
-const RADIO_BASE: &str = "../../audio/radio/";
+const RADIO_BASE: &str = "audio/radio/";
 
 #[cfg(target_arch = "wasm32")]
 fn platform() -> Platform {

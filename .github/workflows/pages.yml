@@ -1,9 +1,13 @@
-# GitHub Pages: the JS game at the site root, as it always was, and the
-# Rust build (Midnight Playground) beside it at `dist/next/`, the same path
-# the registered server and the tailnet use (DECISIONS D1101). The site is
-# the commit's tracked files plus the fresh web build, so the root is what
-# the old "deploy from branch main" served. A failed Rust build still
-# publishes the JS game; `dist/next/` then says which commit failed.
+# GitHub Pages, since the cutover (ROADMAP WP 9.5, DECISIONS D1112): the
+# Rust build (Midnight Playground) at the site root, and the JS game
+# (Midnight Racer) under `legacy/`, as the commit's tracked files, exactly as
+# the old "deploy from branch main" served them at the root. `dist/next/`,
+# where the Rust build lived beside the JS game (D1101), now forwards to the
+# root so old links keep working. Both games share the origin, so their
+# `mr.*` settings and best times are the same ones.
+#
+# A failed Rust build fails the job and nothing is deployed: the previous
+# site stays up rather than a broken root going out.
 name: Pages
 
 on:
@@ -24,7 +28,7 @@ concurrency:
 
 jobs:
   build:
-    name: Site (the JS game and the Rust web build)
+    name: Site (the Rust game, and the JS game under legacy/)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,30 +46,25 @@ jobs:
           curl -sSL https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz | tar xz -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/binaryen-version_116/bin" >> "$GITHUB_PATH"
       - name: Rust web build
-        id: web
-        continue-on-error: true
         run: cargo xtask web --release
-      # Tracked files only (as the branch deploy served them), then the
-      # build. Pages compresses on the fly, so the .br and .gz copies stay
-      # out.
+      # The Rust build at the root; Pages compresses on the fly, so the .br
+      # and .gz copies stay out. Then the JS game's tracked files under
+      # legacy/, and a forward from the old dist/next/ address.
       - name: Assemble the site
-        env:
-          WEB_OK: ${{ steps.web.outcome == 'success' }}
         run: |
-          mkdir -p _site
-          git archive HEAD | tar -x -C _site
-          mkdir -p _site/dist/next
-          if [ "$WEB_OK" = true ]; then
-            cp -r dist/next/. _site/dist/next/
-            find _site/dist/next \( -name '*.br' -o -name '*.gz' \) -delete
-          else
-            cat > _site/dist/next/index.html <<EOF
+          mkdir -p _site/legacy _site/dist/next
+          cp -r dist/next/. _site/
+          find _site \( -name '*.br' -o -name '*.gz' \) -delete
+          git archive HEAD | tar -x -C _site/legacy
+          rm -rf _site/legacy/dist
+          cat > _site/dist/next/index.html <<'EOF'
           <!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
           <title>Midnight Playground</title>
-          <p style="font:16px system-ui;margin:2em">The Rust build failed for commit ${GITHUB_SHA::7}, so there is nothing to play here until the next push. <a href="../../">Midnight Racer</a> is unaffected.</p>
+          <script>location.replace('../../' + location.search + location.hash)</script>
+          <meta http-equiv="refresh" content="0; url=../../">
+          <p style="font:16px system-ui;margin:2em">Midnight Playground has moved to <a href="../../">the site's front page</a>.</p>
           EOF
-          fi
-          du -sh _site _site/dist/next
+          du -sh _site _site/legacy
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

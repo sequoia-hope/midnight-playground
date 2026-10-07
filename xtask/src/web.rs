@@ -103,6 +103,7 @@ pub fn run(args: &[String]) -> Result {
 
     build_exhaust(release, &out)?;
     copy_dir(&root.join("crates/mp_game/web"), &out)?;
+    copy_runtime_files(&root, &out)?;
     // Where the page finds the scene exports: the parity cache of this JS
     // tree, relative to dist/next/ (the registered server serves the repo
     // root, and every URL the client uses is relative; DECISIONS D102).
@@ -136,6 +137,48 @@ pub fn run(args: &[String]) -> Result {
          \x20    or on phones at the project's tailnet web_url + dist/next/",
         built.join(" and ")
     );
+    Ok(())
+}
+
+/// The repository files the page loads at run time, copied beside it, so
+/// the build is whole wherever it is served: at `dist/next/` on the
+/// registered server, or at the site root on GitHub Pages since the cutover
+/// (D1112). Each is (source in the repository, path under `dist/next/`).
+pub const RUNTIME_FILES: &[(&str, &str)] = &[
+    (
+        "assets/fonts/rajdhani/Rajdhani-Medium.ttf",
+        "assets/fonts/rajdhani/Rajdhani-Medium.ttf",
+    ),
+    (
+        "assets/fonts/rajdhani/Rajdhani-SemiBold.ttf",
+        "assets/fonts/rajdhani/Rajdhani-SemiBold.ttf",
+    ),
+    (
+        "assets/fonts/rajdhani/Rajdhani-Bold.ttf",
+        "assets/fonts/rajdhani/Rajdhani-Bold.ttf",
+    ),
+    (
+        "assets/fonts/rajdhani/OFL.txt",
+        "assets/fonts/rajdhani/OFL.txt",
+    ),
+    ("assets/seaside/survey.bin", "assets/seaside/survey.bin"),
+    ("src/levels/seaside/photo.jpg", "assets/seaside/photo.jpg"),
+    ("audio/radio", "audio/radio"),
+];
+
+fn copy_runtime_files(root: &Path, out: &Path) -> Result {
+    for (from, to) in RUNTIME_FILES {
+        let (src, dest) = (root.join(from), out.join(to));
+        if src.is_dir() {
+            copy_dir(&src, &dest)?;
+        } else {
+            if let Some(dir) = dest.parent() {
+                std::fs::create_dir_all(dir)
+                    .map_err(|e| format!("creating {}: {e}", dir.display()))?;
+            }
+            std::fs::copy(&src, &dest).map_err(|e| format!("copying {}: {e}", src.display()))?;
+        }
+    }
     Ok(())
 }
 

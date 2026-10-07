@@ -1,8 +1,19 @@
-# Midnight Racer
+# Midnight Playground
 
-A Need-for-Speed-style street racer that runs in the browser, and also as a
-desktop app. It's built with three.js and has no build step and no asset files:
-the terrain, cars, textures, music and engine sound are all generated in code.
+A Need-for-Speed-style street racer that runs in the browser and natively on
+the desktop. It's written in Rust on Bevy, drawn with WebGPU (with a WebGL2
+build for browsers without it), and has almost no asset files: the terrain,
+cars, textures, music and engine sound are all generated in code.
+
+**Play it at https://sequoia-hope.github.io/midnight-playground/**
+
+Midnight Playground began as **Midnight Racer**, the same game in JavaScript
+on three.js with no build step. The Rust version is a faithful port of it
+(`docs/rust-port/`) and is now the game; the JavaScript one stays playable
+as the legacy version at
+**https://sequoia-hope.github.io/midnight-playground/legacy/**, and its source
+is still in this repository (`index.html`, `src/`). The two share their
+settings and best times in the browser.
 
 ## Levels
 
@@ -196,26 +207,36 @@ where each corner's shape says they should.
 
 ## Run it
 
-Play it online at **https://sequoia-hope.github.io/midnight-racer/**. GitHub Pages
-serves `main`'s files as they are (the JS game has no build step), so every
-push to `main` goes live within a few minutes. Links to it unfurl with a picture in Slack, iMessage,
-Discord and the like (the `og:` tags in `index.html`).
+**Online:** https://sequoia-hope.github.io/midnight-playground/. Every push
+to `main` rebuilds the game (`cargo xtask web --release`) and publishes it a
+few minutes later (`.github/workflows/pages.yml`): the Rust game at the root,
+the JavaScript game under `legacy/`, and the old `dist/next/` address
+forwarding to the root. The labs and tools ride along with the legacy
+files, for example the Music Lab at
+`https://sequoia-hope.github.io/midnight-playground/legacy/tools/music-lab.html`.
 
-**Midnight Playground**, the Rust port in progress (plan in
-`docs/rust-port/`), is at
-**https://sequoia-hope.github.io/midnight-racer/dist/next/**. Every push to
-`main` rebuilds it and publishes it there, next to the JS game, a few
-minutes after the push (`.github/workflows/pages.yml`). It needs a browser
-with WebGPU. The owner's tailnet serves the working tree live at
-`https://loaf.cama-minor.ts.net/midnight-racer/dist/next/`, as built by
-the last local `cargo xtask web --release`.
-
-To run it locally:
+**Locally,** build the web client and serve the repository:
 
 ```sh
+cargo xtask web --release   # the Rust web build, into dist/next/
 proj up midnight-racer      # or ./serve.sh — both use the registered port
-proj url midnight-racer     # prints the URL to open
+proj url midnight-racer     # prints the URL to open; the game is at dist/next/
 ```
+
+The JavaScript game is at the root of the same server. The owner's tailnet
+serves the working tree at `https://loaf.cama-minor.ts.net/midnight-racer/`
+(the local names stay `midnight-racer`), with the Rust game at `dist/next/`.
+Phones need that https address: WebGPU, tilt and the audio worklets only
+work in a secure context.
+
+**Natively:** `cargo run --release -p mp_game` opens the game in a window.
+
+**Multiplayer** on a LAN: `MP_HOST=1 ./serve.sh` serves the same files with
+the multiplayer host (`mp-host`); open `dist/next/` on each device and press
+Multiplayer (`docs/rust-port/MULTIPLAYER.md`).
+
+The commands for building, testing and linting the Rust workspace are in
+`CLAUDE.md`.
 
 ## Controls
 
@@ -328,7 +349,11 @@ works on the GitHub Pages build but not on a plain `http://` address from
 another machine. An iPhone asks for motion access the first time. Whenever
 tilt can't steer, the menu says why and the thumb stick steers instead.
 
-## Layout
+## Layout of the JavaScript game
+
+The Rust crates (`crates/mp_*`) and their dependency rules are described in
+`CLAUDE.md` and `docs/rust-port/SPEC.md`. The JavaScript game, kept as the
+legacy version:
 
 ```
 src/
@@ -386,7 +411,7 @@ test/unit/, test/e2e/  the tests (see Tests below)
 music.html             the soundtrack player
 ```
 
-## Dev hooks (URL parameters)
+## Dev hooks (URL parameters, the JavaScript game)
 
 - `?s=2350&h=8&back=16&lat=0&yaw=0&pitch=-0.1&t=0.5`: a fly-along debug camera
   at a point on the track, with an optional fixed time of day `t` (0 to 1).
@@ -433,6 +458,9 @@ and tap a part to solo it. It also has a repeat mode and an output meter
 
 ## Tests
 
+The Rust workspace: `cargo test --workspace` (see `CLAUDE.md` for the rest).
+The JavaScript game and the labs:
+
 ```sh
 npm install        # once: puppeteer-core, which drives the Chrome you have installed
 npm test           # both suites
@@ -457,12 +485,13 @@ fake gamepad in place of `navigator.getGamepads` (menus, remapping, rumble). The
 tap and click the way a player does, with the browser's real rules for when
 audio and fullscreen may start. The working tree is served through request
 interception, so the tests need no server and no port. Set `MP_BASE_URL` to test a running copy
-instead (for example the GitHub Pages build), `CHROME_PATH` if Chrome isn't at
+instead (for example the legacy build on GitHub Pages), `CHROME_PATH` if Chrome isn't at
 `/usr/bin/google-chrome`, and `MP_HEADFUL=1` to watch.
 
-## Desktop app
+## Desktop app (the JavaScript game)
 
-The game can also run in its own window, with no browser and no web server.
+The Rust game runs natively with `cargo run --release -p mp_game`. The
+JavaScript game can also run in its own window, with no browser and no web server.
 It uses Electron, and the project folder is served through a private
 `app://` scheme, so no port is involved.
 
