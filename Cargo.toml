@@ -23,6 +23,7 @@ mp_worldgen = { path = "crates/mp_worldgen" }
 mp_audio = { path = "crates/mp_audio" }
 mp_exhaust = { path = "crates/mp_exhaust" }
 mp_net = { path = "crates/mp_net" }
+mp_vdyn = { path = "crates/mp_vdyn" }
 # The CLI that post-processes the wasm must be this exact version;
 # `cargo xtask web` checks it.
 wasm-bindgen = "=0.2.129"
