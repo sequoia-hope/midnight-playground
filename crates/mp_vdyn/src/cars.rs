@@ -1,11 +1,14 @@
-//! Vehicle definitions as Rust data (SPEC 8.2). V1 has the rig's car: a
-//! mid-weight rear-drive sports car with the Vento GT's mass and wheelbase,
-//! tuned by physical reasoning (ride frequencies, damping ratios, brake
-//! balance), not yet by driving.
+//! Vehicle definitions as Rust data (SPEC 8.2): the rig's car (V1), a
+//! mid-weight rear-drive sports car with a direct drive, and the Vento GT
+//! (V2), the same chassis with an engine and gearbox and the game car's
+//! dimensions. Both are tuned by physical reasoning (ride frequencies,
+//! damping ratios, brake balance, a plausible torque curve), not yet by
+//! driving.
 
+use crate::drivetrain::EngineDef;
 use crate::math::Vec3;
 use crate::tyre::BrushParams;
-use crate::vehicle::{AeroDef, AxleDef, DriveDef, SuspensionDef, VehicleDef};
+use crate::vehicle::{AeroDef, AxleDef, ChassisDef, DriveDef, SuspensionDef, VehicleDef};
 
 /// A street-legal performance tyre, 0.33 m radius.
 pub const SPORT_TYRE: BrushParams = BrushParams {
@@ -88,6 +91,8 @@ pub fn rig_car() -> VehicleDef {
             max_torque: 4000.0,
             max_power: 300_000.0,
         },
+        engine: None,
+        chassis: ChassisDef::default(),
         aero: AeroDef {
             rho: 1.225,
             cda: 0.65,
@@ -97,6 +102,53 @@ pub fn rig_car() -> VehicleDef {
         steer_rate: 3.2,
         substeps: 5,
     };
+    def.balance_springs();
+    def
+}
+
+/// The Vento GT ("sports"): 1350 kg, 4.47 m by 1.9 m, 2.6 m wheelbase,
+/// 1.62 m track, 0.34 m wheels, rear drive, about 280 kW at 6000 rpm
+/// through six gears, top speed about 300 km/h.
+pub fn vento_gt() -> VehicleDef {
+    let mut def = rig_car();
+    def.name = "Vento GT";
+    let tyre = BrushParams {
+        radius: 0.34,
+        ..SPORT_TYRE
+    };
+    let cg_h = 0.5;
+    for a in def.axles.iter_mut() {
+        a.tyre = tyre;
+        a.half_track = 0.81;
+        a.hub_y = tyre.radius - cg_h;
+    }
+    def.engine = Some(EngineDef {
+        torque: vec![
+            (1000.0, 300.0),
+            (2500.0, 420.0),
+            (4500.0, 470.0),
+            (6000.0, 450.0),
+            (7000.0, 400.0),
+            (7800.0, 360.0),
+        ],
+        idle: 900.0,
+        limiter: 7800.0,
+        inertia: 0.25,
+        braking: 60.0,
+        ratios: vec![3.2, 2.2, 1.65, 1.3, 1.05, 0.85],
+        reverse: 3.0,
+        final_drive: 3.6,
+        efficiency: 0.9,
+        shift_time: 0.15,
+        up_rpm: 7300.0,
+        down_rpm: 3000.0,
+        launch_rpm: 3500.0,
+    });
+    def.chassis = ChassisDef {
+        half: Vec3::new(4.47 / 2.0, 0.4, 1.9 / 2.0),
+        ..ChassisDef::default()
+    };
+    def.aero.cda = 0.8;
     def.balance_springs();
     def
 }

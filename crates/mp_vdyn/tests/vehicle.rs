@@ -380,6 +380,7 @@ fn scripted() -> Vehicle {
             brake: if (6.0..7.0).contains(&t) { 0.8 } else { 0.0 },
             handbrake: if (7.5..8.0).contains(&t) { 1.0 } else { 0.0 },
             abs: t < 6.5,
+            ..Controls::default()
         };
         r.step(&c);
     }
