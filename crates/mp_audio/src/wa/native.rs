@@ -12,11 +12,12 @@
 
 use super::backend::{Attr, Backend, BufferId, NodeId, OfflineRender, Op, WaveId};
 use super::compressor::ChromeCompressor;
+use super::exhaust::ExhaustProcessor;
 use super::oscillator::{BasicType, ChromeOscillator, OscMessage, WaveTables, basic_tables};
 use super::timeline::{Event, EventKind, Timeline};
 use super::{
     AudioError, BiquadFilterType, ContextState, Decoded, Dest, ErrorName, NodeKind, OscillatorType,
-    OverSampleType, ParamId, ParamName, Pending, param_spec, params_of,
+    OverSampleType, ParamId, ParamName, Pending, param_initial, params_of,
 };
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -49,6 +50,8 @@ enum NativeNode {
     Merger(wn::ChannelMergerNode),
     Pan(wn::StereoPannerNode),
     Analyser(wn::AnalyserNode),
+    /// The exhaust model (see [`super::exhaust`]).
+    Exhaust(AudioWorkletNode),
 }
 
 impl NativeNode {
@@ -66,6 +69,7 @@ impl NativeNode {
             NativeNode::Merger(n) => n,
             NativeNode::Pan(n) => n,
             NativeNode::Analyser(n) => n,
+            NativeNode::Exhaust(n) => n,
         }
     }
 
@@ -88,6 +92,7 @@ impl NativeNode {
             (NativeNode::Comp(n), P::Release) => &n.parameters()["release"],
             (NativeNode::Delay(n), P::DelayTime) => n.delay_time(),
             (NativeNode::Pan(n), P::Pan) => n.pan(),
+            (NativeNode::Exhaust(n), p) => n.parameters().get(p.as_str())?,
             _ => return None,
         })
     }
@@ -513,6 +518,24 @@ impl<C: NativeContext> NativeBackend<C> {
             }
             NodeKind::StereoPanner => NativeNode::Pan(c.create_stereo_panner()),
             NodeKind::Analyser => NativeNode::Analyser(c.create_analyser()),
+            NodeKind::Exhaust => {
+                let preset = arg.unwrap_or(0.0) as usize;
+                NativeNode::Exhaust(AudioWorkletNode::new::<ExhaustProcessor>(
+                    c,
+                    AudioWorkletNodeOptions {
+                        number_of_inputs: 0,
+                        number_of_outputs: 1,
+                        output_channel_count: vec![2],
+                        parameter_data: HashMap::from([("preset".into(), preset as f64)]),
+                        processor_options: preset,
+                        audio_node_options: AudioNodeOptions {
+                            channel_count: 2,
+                            channel_count_mode: ChannelCountMode::Explicit,
+                            channel_interpretation: ChannelInterpretation::Speakers,
+                        },
+                    },
+                ))
+            }
         }
     }
 
@@ -678,7 +701,7 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
                 }
                 let sr = self.base.sample_rate() as f64;
                 for &p in params_of(kind) {
-                    if let Some((v, _, _)) = param_spec(kind, p, sr, arg.unwrap_or(1.0)) {
+                    if let Some(v) = param_initial(kind, p, sr, arg) {
                         self.timelines
                             .insert(ParamId { node, name: p }, Timeline::new(v));
                     }
@@ -980,6 +1003,11 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
             Err(e) => Err(AudioError::new(ErrorName::EncodingError, e.to_string())),
         };
         self.tasks.push(Box::new(move || done.resolve(r)));
+    }
+
+    fn prepare_exhaust(&mut self, done: Pending<bool>) {
+        // The processor is compiled in: ready at the next settle.
+        self.tasks.push(Box::new(move || done.resolve(Ok(true))));
     }
 
     fn release_node(&mut self, node: NodeId) {

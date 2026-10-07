@@ -36,7 +36,23 @@ impl GameAudio {
         let radio_on = self.radio_cur.as_ref().is_some_and(|c| t < c.end);
         self.gate_set(vg.radio, radio_on, t);
         self.gate_set(vg.tunnel, self.env == "tunnel", t);
-        self.update_turbo(dt, s, thr, prof);
+        if self.electric {
+            self.ex_live = false;
+            self.ex_quiet(t);
+        }
+        // The physical model voices the combustion engine when it can
+        // (exhaust.rs); the wavetable engine and its layers then stay quiet.
+        let model = !self.electric
+            && self.steer_exhaust(
+                t,
+                rpm,
+                rpm_max,
+                thr,
+                speed,
+                clamp(or0(s.boost, 0.0), 0.0, 1.0),
+                engine_off,
+            );
+        self.update_turbo(dt, s, thr, prof, model);
         if self.electric {
             self.update_damage(dt, 5.0 + speed * 0.6, thr, s.motor.is_some());
             self.update_electric(dt, s);
@@ -53,13 +69,17 @@ impl GameAudio {
         if self.gate_set(vg.ev, false, t) {
             g.ev.out.gain.set_target_at_time(0.0, t, 0.05);
         }
-        if self.gate_set(vg.eng, !engine_off, t) {
+        if model {
+            if self.gate_set(vg.eng, false, t) {
+                g.eng.out.gain.set_target_at_time(0.0, t, 0.05);
+            }
+        } else if self.gate_set(vg.eng, !engine_off, t) {
             self.steer_engine(t, prof, rpm, rn, thr, engine_off, on_ground, rpm_max);
         }
 
         // Transmission whine with road speed (and a louder reverse whine).
         let rev = gear == -1.0;
-        let whine = if engine_off {
+        let whine = if engine_off || model {
             0.0
         } else if rev {
             0.05 * clamp(speed / 6.0, 0.0, 1.0)
@@ -91,7 +111,7 @@ impl GameAudio {
 
         // Decel pops/crackle on lift-off at high revs.
         self.pop_cooldown -= dt;
-        if !engine_off {
+        if !engine_off && !model {
             if self.prev_throttle > 0.5 && thr < 0.15 && rn > 0.5 {
                 let n = js::round((3.0 + self.random() * 4.0) * prof.pops);
                 self.pop_burst(n, rn);
@@ -227,6 +247,12 @@ impl GameAudio {
             mg.cancel_scheduled_values(t);
             mg.set_target_at_time(0.2, t, 0.008);
             mg.set_target_at_time(1.0, t + len, 0.03);
+            if let Some(v) = self.ex_built() {
+                let mg = &v.mis.gain;
+                mg.cancel_scheduled_values(t);
+                mg.set_target_at_time(0.2, t, 0.008);
+                mg.set_target_at_time(1.0, t + len, 0.03);
+            }
             if self.random() < 0.4 {
                 self.pop(t + len * 0.5, 0.3 + 0.4 * k);
             }
@@ -234,11 +260,12 @@ impl GameAudio {
         }
     }
 
-    fn update_turbo(&mut self, _dt: f64, s: &CarState, thr: f64, prof: &CarProfile) {
+    fn update_turbo(&mut self, _dt: f64, s: &CarState, thr: f64, prof: &CarProfile, model: bool) {
         let t = self.now();
         let g = self.graph();
         let tb = &g.turbo;
-        let on = prof.turbo != 0.0 && !self.electric;
+        // The physical model has its own whistle, hiss and blow-off.
+        let on = prof.turbo != 0.0 && !self.electric && !model;
         let boost = if on {
             clamp(or0(s.boost, 0.0), 0.0, 1.0)
         } else {

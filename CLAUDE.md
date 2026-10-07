@@ -63,6 +63,7 @@ Toolchain: stable Rust with the `wasm32-unknown-unknown` target
 ```
 mp_math ← mp_track ← mp_levels ← mp_sim ← mp_net ← mp_host
 mp_scene ← mp_worldgen   (also mp_canvas, mp_math, mp_track, mp_levels)
+mp_exhaust ← mp_audio   (mp_exhaust has no dependencies; it is also its own wasm)
 mp_game uses mp_sim, mp_net, mp_scene, mp_worldgen, mp_audio
 ```
 

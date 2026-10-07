@@ -60,8 +60,9 @@ pub enum Op<'a> {
         sample_rate: f64,
         latency_hint: Option<&'a str>,
     },
-    /// `create<Kind>(arg)`; `arg` is the Delay's maximum delay or the
-    /// ChannelMerger's input count. The destination is node 0.
+    /// `create<Kind>(arg)`; `arg` is the Delay's maximum delay, the
+    /// ChannelMerger's input count or the Exhaust's preset index. The
+    /// destination is node 0.
     New {
         node: NodeId,
         kind: NodeKind,
@@ -174,6 +175,12 @@ pub trait Backend {
 
     /// `decodeAudioData(bytes)` into buffer `buffer`.
     fn decode(&mut self, buffer: BufferId, bytes: &[u8], done: Pending<Decoded>);
+
+    /// Load what an exhaust node needs; `done` settles `true` once
+    /// `New { kind: Exhaust }` can be applied, `false` if it never can.
+    fn prepare_exhaust(&mut self, done: Pending<bool>) {
+        done.resolve(Ok(true));
+    }
 
     /// The facade dropped its last handle on a node, buffer or wave.
     fn release_node(&mut self, _node: NodeId) {}

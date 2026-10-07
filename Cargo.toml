@@ -48,6 +48,11 @@ panic = "abort"
 [profile.dev.package.mp_exhaust]
 opt-level = 3
 
+# The same on the web, where it is its own wasm in the AudioWorklet
+# (`cargo xtask web --release`): speed over size there.
+[profile.web-release.package.mp_exhaust]
+opt-level = 3
+
 # xtask's image metrics run over hundreds of screenshots.
 [profile.dev.package.xtask]
 opt-level = 3
