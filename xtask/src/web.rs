@@ -170,6 +170,8 @@ fn copy_runtime_files(root: &Path, out: &Path) -> Result {
     for (from, to) in RUNTIME_FILES {
         let (src, dest) = (root.join(from), out.join(to));
         if src.is_dir() {
+            std::fs::create_dir_all(&dest)
+                .map_err(|e| format!("creating {}: {e}", dest.display()))?;
             copy_dir(&src, &dest)?;
         } else {
             if let Some(dir) = dest.parent() {
