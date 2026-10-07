@@ -12,8 +12,9 @@ use core::f64::consts::PI;
 use mp_math::{clamp, kernel};
 
 use crate::body::RigidBody;
-use crate::ground::Ground;
-use crate::math::{Iso3, Quat, Vec3};
+use crate::drivetrain::{EngineDef, EngineState, engine_step, gearbox_tick};
+use crate::ground::{Collider, Ground};
+use crate::math::{Aabb, Iso3, Quat, Vec3};
 use crate::tyre::{BrushParams, BrushTyre, HubState, Tyre, TyreOutput};
 
 pub const G: f64 = 9.81;
@@ -23,6 +24,11 @@ pub const TICK: f64 = 1.0 / 120.0;
 /// pressure follows the error (per second per unit of slip ratio).
 const ABS_TARGET: f64 = -0.1;
 const ABS_GAIN: f64 = 60.0;
+/// Traction control: the driven wheels' slip ratio it allows, and how fast
+/// it cuts the throttle past it and gives it back below.
+const TC_TARGET: f64 = 0.1;
+const TC_CUT: f64 = 40.0;
+const TC_RESTORE: f64 = 4.0;
 
 /// One axle's suspension (independent: each hub slides along the body's up
 /// axis, strut-like, SPEC 4.2). Travel is measured up from the hub's design
@@ -97,6 +103,28 @@ pub struct AeroDef {
     pub cla_rear: f64,
 }
 
+/// The chassis as a box for contact with walls (SPEC 4.1): its half
+/// extents in the body frame (forward, up, right) about the centre of
+/// mass, and a penalty spring and damper per corner with Coulomb friction.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ChassisDef {
+    pub half: Vec3,
+    pub contact_k: f64,
+    pub contact_c: f64,
+    pub contact_mu: f64,
+}
+
+impl Default for ChassisDef {
+    fn default() -> ChassisDef {
+        ChassisDef {
+            half: Vec3::new(2.2, 0.4, 0.9),
+            contact_k: 5.0e6,
+            contact_c: 4.0e4,
+            contact_mu: 0.4,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct VehicleDef {
     pub name: &'static str,
@@ -106,7 +134,11 @@ pub struct VehicleDef {
     /// roll (x), yaw (y), pitch (z) (kg·m²).
     pub inertia: Vec3,
     pub axles: Vec<AxleDef>,
+    /// The direct drive, used when there is no `engine`.
     pub drive: DriveDef,
+    /// An engine and gearbox (SPEC 4.5), in place of the direct drive.
+    pub engine: Option<EngineDef>,
+    pub chassis: ChassisDef,
     pub aero: AeroDef,
     /// Road-wheel steering rate (rad/s).
     pub steer_rate: f64,
@@ -169,14 +201,24 @@ impl VehicleDef {
 pub struct Controls {
     /// −1..1 of full lock, positive to the right.
     pub steer: f64,
-    /// −1..1: drive torque (negative reverses; V2's gearbox replaces this).
+    /// With the direct drive, −1..1 of the drive torque (negative
+    /// reverses); with an engine, 0..1 (the gear decides the direction).
     pub throttle: f64,
     /// 0..1.
     pub brake: f64,
     /// 0..1.
     pub handbrake: f64,
-    /// Anti-lock brakes (the one assist V1 has, for the braking test).
+    /// Anti-lock brakes.
     pub abs: bool,
+    /// Traction control (with an engine).
+    pub tc: bool,
+    /// A shift request this tick: +1 up, −1 down (the paddles; down from
+    /// first is neutral, then reverse).
+    pub shift: i32,
+    /// No automatic gearbox: only `shift` changes gear.
+    pub manual: bool,
+    /// Extra engine torque, as a fraction (nitro): 0 normally.
+    pub boost: f64,
 }
 
 /// One wheel's state.
@@ -209,6 +251,23 @@ pub struct Vehicle {
     /// The chassis's acceleration in the last substep (world, m/s²;
     /// derived, not hashed).
     pub accel: Vec3,
+    /// The engine and gearbox, when the definition has one.
+    pub engine: Option<EngineState>,
+    /// Wall contact in the last tick (derived, not hashed).
+    pub contact: WallContact,
+}
+
+/// The chassis's contact with walls over the last tick, for the race's
+/// impact and scrape events.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct WallContact {
+    /// The fastest approach speed into a wall at first touch (m/s).
+    pub impact: f64,
+    /// Where (world), and the wall's normal there.
+    pub point: Vec3,
+    pub normal: Vec3,
+    /// Touching a wall at all this tick.
+    pub touching: bool,
 }
 
 /// Per wheel telemetry (SPEC 8.4).
@@ -289,6 +348,8 @@ impl Vehicle {
             wheels,
             steer: 0.0,
             accel: Vec3::ZERO,
+            engine: def.engine.as_ref().map(EngineState::new),
+            contact: WallContact::default(),
         }
     }
 
@@ -400,8 +461,31 @@ impl Vehicle {
             w.steer = d;
         }
 
+        // The gearbox, once a tick.
+        if let (Some(ed), Some(es)) = (&def.engine, &mut self.engine) {
+            gearbox_tick(ed, es, ctl.shift, !ctl.manual, TICK);
+        }
+
+        // Walls near the chassis, once a tick.
+        let reach = def.chassis.half.length() + 1.0;
+        let r = Vec3::new(reach, reach, reach);
+        let mut walls = Vec::new();
+        ground.colliders(
+            Aabb {
+                min: self.body.pos - r,
+                max: self.body.pos + r,
+            },
+            &mut walls,
+        );
+        let was_touching = self.contact.touching;
+        self.contact = WallContact::default();
+
         for _ in 0..n {
-            self.substep(def, ctl, ground, &steer_rot, h);
+            self.substep(def, ctl, ground, &walls, &steer_rot, h);
+        }
+        if was_touching {
+            // Only the first touch is an impact; sliding along is a scrape.
+            self.contact.impact = 0.0;
         }
     }
 
@@ -410,6 +494,7 @@ impl Vehicle {
         def: &VehicleDef,
         ctl: &Controls,
         ground: &dyn Ground,
+        walls: &[Collider],
         steer_rot: &[Quat],
         h: f64,
     ) {
@@ -507,6 +592,46 @@ impl Vehicle {
             }
         }
 
+        // Walls: each corner of the chassis box at the centre of mass's
+        // height, pushed out by a penalty spring and damper, with Coulomb
+        // friction along the wall (SPEC 4.1).
+        let ch = &def.chassis;
+        for (sx, sz) in [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0)] {
+            let r = rot.rotate(Vec3::new(sx * ch.half.x, 0.0, sz * ch.half.z));
+            let corner = self.body.pos + r;
+            for wall in walls {
+                let Collider::Plane { point, normal } = *wall;
+                let d = (corner - point).dot(normal);
+                if d >= 0.0 {
+                    continue;
+                }
+                let vc = self.body.point_vel(r);
+                let vn = vc.dot(normal);
+                let fn_ = -ch.contact_k * d - ch.contact_c * vn;
+                if fn_ <= 0.0 {
+                    continue;
+                }
+                let vt = vc - normal * vn;
+                let vt_mag = vt.length();
+                let mut f = normal * fn_;
+                if vt_mag > 0.0 {
+                    let ft = (ch.contact_mu * fn_).min(ch.contact_c * vt_mag);
+                    f -= vt * (ft / vt_mag);
+                }
+                let along_up = f.dot(up);
+                f_up += along_up;
+                f_perp += f - up * along_up;
+                torque += r.cross(f);
+                let c = &mut self.contact;
+                if !c.touching || -vn > c.impact {
+                    c.impact = c.impact.max(-vn);
+                    c.point = corner;
+                    c.normal = normal;
+                }
+                c.touching = true;
+            }
+        }
+
         // The chassis: its weight, and the hubs moving with it across the
         // strut axis (they slide only along it).
         let wg = gravity * m_s;
@@ -526,6 +651,40 @@ impl Vehicle {
         self.accel = accel;
 
         // Wheels: spin, with drive, the road's torque and brake friction.
+        let (t_engine, j_engine) = match (&def.engine, &mut self.engine) {
+            (Some(ed), Some(es)) => {
+                let omega: f64 = (0..nw)
+                    .map(|i| self.wheels[i].omega * def.axles[i / 2].drive * 0.5)
+                    .sum();
+                // Traction control: the worst driven wheel's slip ratio,
+                // from wheel speed against ground speed.
+                if ctl.tc {
+                    let mut slip: f64 = 0.0;
+                    for (i, w) in self.wheels.iter().enumerate() {
+                        let info = &w.out.info;
+                        if def.axles[i / 2].drive > 0.0 && info.in_contact {
+                            let v = info.ground_speed.abs().max(2.0);
+                            slip = slip.max((info.roll_speed.abs() - info.ground_speed.abs()) / v);
+                        }
+                    }
+                    es.tc = if slip > TC_TARGET {
+                        (es.tc - h * TC_CUT * (slip - TC_TARGET)).max(0.0)
+                    } else {
+                        (es.tc + h * TC_RESTORE).min(1.0)
+                    };
+                } else {
+                    es.tc = 1.0;
+                }
+                let out = engine_step(ed, es, ctl.throttle * es.tc, omega);
+                let t = if out.wheel_torque > 0.0 {
+                    out.wheel_torque * (1.0 + ctl.boost)
+                } else {
+                    out.wheel_torque
+                };
+                (Some(t), out.wheel_inertia)
+            }
+            _ => (None, 0.0),
+        };
         let driven: f64 = (0..nw)
             .filter(|&i| def.axles[i / 2].drive > 0.0)
             .map(|i| self.wheels[i].omega.abs())
@@ -538,7 +697,7 @@ impl Vehicle {
         };
         let w_cap = if w_avg > 1.0 { w_avg } else { 1.0 };
         let t_avail = clamp(def.drive.max_power / w_cap, 0.0, def.drive.max_torque);
-        let t_total = clamp(ctl.throttle, -1.0, 1.0) * t_avail;
+        let t_total = t_engine.unwrap_or(clamp(ctl.throttle, -1.0, 1.0) * t_avail);
         for i in 0..nw {
             let a = &def.axles[i / 2];
             let w = &mut self.wheels[i];
@@ -556,10 +715,12 @@ impl Vehicle {
             let t_brake = a.brake * clamp(ctl.brake, 0.0, 1.0) * w.abs
                 + a.handbrake * clamp(ctl.handbrake, 0.0, 1.0)
                 + w.out.rolling_torque;
-            let free = w.omega + (t_drive + w.out.spin_torque) / a.spin_inertia * h;
+            // A closed clutch adds the engine's inertia to the driven wheels.
+            let j = a.spin_inertia + j_engine * a.drive * 0.5;
+            let free = w.omega + (t_drive + w.out.spin_torque) / j * h;
             // Brakes are friction, not a negative torque: they can stop the
             // wheel, never turn it the other way (SPEC 4.3).
-            let stop = t_brake / a.spin_inertia * h;
+            let stop = t_brake / j * h;
             w.omega = if free.abs() <= stop {
                 0.0
             } else {
@@ -663,6 +824,9 @@ impl Vehicle {
     pub fn hash_into(&self, out: &mut Vec<u8>) {
         self.body.hash_into(out);
         out.extend_from_slice(&self.steer.to_bits().to_le_bytes());
+        if let Some(e) = &self.engine {
+            e.hash_into(out);
+        }
         for w in &self.wheels {
             for v in [w.travel, w.travel_vel, w.omega, w.spin, w.steer, w.abs] {
                 out.extend_from_slice(&v.to_bits().to_le_bytes());

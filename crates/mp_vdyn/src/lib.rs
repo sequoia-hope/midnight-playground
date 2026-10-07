@@ -15,6 +15,7 @@
 
 pub mod body;
 pub mod cars;
+pub mod drivetrain;
 pub mod ground;
 pub mod math;
 pub mod rig;
