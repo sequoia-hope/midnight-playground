@@ -238,6 +238,21 @@ link** shared in Slack, Signal, Discord or a stream's chat:
   leads and starts the race.
 - **Not yet:** a browser end-to-end suite with two tabs, and a real test
   across machines.
+- **Found in the owner's first try (2026-10-07), two desktop windows:**
+  - **No way to end a race from the game.** The host can abort
+    (`Msg::Go(false)`, `Host::abort`), but no control sends it. And the
+    host keeps a race running when every player has left
+    (`Host::drop_peer` only marks the player gone), so pressing
+    Multiplayer again rejoins that race instead of opening the lobby.
+    Wanted: the leader can end the race from the pause menu, and a race
+    with no one connected ends by itself, back to the lobby.
+  - **Frame stutter.** Not multiplayer's: the web build stuttered in
+    single player too, and the machine's GPU was at 98% from a leaked
+    headless Chrome. Two headless clients on localhost held 60 fps with no
+    desyncs, a rollback most frames that re-ran about two ticks, and a
+    steady drawn clock after the first second. `window.__mp.net` now shows
+    the connection's counters (rollbacks, re-run ticks, desyncs, rebuilds,
+    ticks ahead, stalls) and the drawn camera and cars, for the next look.
 
 Two choices differ from SPEC 9.1 and 9.2 (DECISIONS records them):
 
