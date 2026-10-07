@@ -1,17 +1,25 @@
 [package]
 name = "mp_host"
-description = "Native multiplayer host: static files, WebSocket, authority"
+description = "Native multiplayer host: static files, WebSocket, authority; and the signalling server"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
 [dependencies]
 mp_levels.workspace = true
-mp_net.workspace = true
+# With WebRTC: `mp-host --room` takes guests by link too (DECISIONS D1126).
+mp_net = { workspace = true, features = ["rtc"] }
 mp_sim.workspace = true
 tungstenite = "0.30"
-
+# The signalling relay speaks matchbox's protocol (DECISIONS D1123).
+matchbox_protocol = "0.14"
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
 
 [[bin]]
 name = "mp-host"
 path = "src/main.rs"
+
+[[bin]]
+name = "mp-signal"
+path = "src/bin/mp-signal.rs"

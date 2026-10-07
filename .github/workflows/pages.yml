@@ -41,9 +41,14 @@ jobs:
         run: |
           curl -sSL https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz | tar xz -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/binaryen-version_116/bin" >> "$GITHUB_PATH"
+      # MP_SIGNAL_URL (a repository variable, e.g. wss://signal.example.com/)
+      # is the signalling server built in for joining by link (DECISIONS
+      # D1124); unset, the page offers it only with `?signal=`.
       - name: Rust web build
         id: web
         continue-on-error: true
+        env:
+          MP_SIGNAL_URL: ${{ vars.MP_SIGNAL_URL }}
         run: cargo xtask web --release
       # Tracked files only (as the branch deploy served them), then the
       # build. Pages compresses on the fly, so the .br and .gz copies stay

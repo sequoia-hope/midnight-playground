@@ -9105,3 +9105,112 @@ the Rust build first, the player's car only (docs/vision/sound.md 2.1 and
   off, so every parity run, call-log golden and audio reference render is
   the JS game's; the menu's choice reaches the audio directly, not as a
   logged call.
+
+## Multiplayer M11: WebRTC, signalling, a tab as host (MULTIPLAYER.md 8)
+
+## D1120. WebRTC through `matchbox_socket` 0.14.0, behind `mp_net`'s `rtc` feature
+
+2026-10-07. SPEC 9.3 named `matchbox_socket`; 0.14.0 is the newest, and
+it resolves and builds with the workspace's pinned `wasm-bindgen`
+0.2.129 for both targets (natively it brings webrtc-rs; in the browser
+it uses the page's `RTCPeerConnection`, and pulls no `getrandom`). It is
+not tied to Bevy, so the transport lives in `mp_net` (`mp_net::rtc`)
+beside the others, behind a non-default `rtc` feature so the simulation
+tests and the soak don't build webrtc-rs. `mp_host` and `mp_game` turn
+it on.
+
+- Two data channels: 0 reliable and ordered (`Channel::Reliable`), 1
+  unordered with no retransmits (`Channel::Unreliable`).
+- Natively the socket's message loop runs on its own thread
+  (`futures::executor::block_on`; matchbox wraps webrtc-rs's tokio
+  futures itself); in the browser, `wasm_bindgen_futures::spawn_local`.
+- matchbox cannot close one peer's connection. `close(peer)` on the host
+  forgets the peer (its messages are dropped and the session sees it
+  leave); on a guest it closes the whole socket.
+- If the signalling connection drops, matchbox ends the message loop and
+  every peer with it, so the signalling server must stay up for the
+  session; its keep-alive (10 s) keeps proxies from closing it.
+
+## D1121. A star over a full-mesh signaller: roles inside the sealed signalling
+
+matchbox's server introduces every pair in a room (full mesh). The game
+is a star: guests talk only to the host. Rather than a custom server
+topology, the clients agree among themselves: when the server announces
+a peer, each side sends it a sealed `Role` (host or guest). Only the host
+starts WebRTC offers, to every guest it learns of (by the server's
+`NewPeer`, or by a guest's `Role` when the host arrived later); a guest
+never offers, and it accepts signalling only from the peer that proved
+it is the host. So a stock `matchbox_server` works, and guests never
+connect to each other. Whoever opens a room is its host; a host that
+reloads its tab has closed the room (a new one gets a new link).
+
+## D1122. The link and the sealed signalling
+
+The link is `<page>#join=<room>.<secret>`: `room` 12 random bytes and
+`secret` 16, both base64url. Browsers never send the `#` part, so Pages
+never sees either; the signalling server sees `room` (in the URL path),
+never `secret`. Every signalling payload (offers, answers, ICE
+candidates, roles) is sealed with XChaCha20-Poly1305 (RustCrypto's
+`chacha20poly1305`, without its `getrandom` feature): the key is
+SHA-256 of a domain string, the room and the secret; the nonce is 24
+random bytes (`getrandom` natively, `crypto.getRandomValues` in the
+browser); the associated data is the sender's and receiver's peer ids,
+so the server cannot re-address or re-attribute a message. A payload
+that fails to open is dropped before matchbox sees it, so a stranger
+without the link cannot start a handshake or learn anyone's addresses
+from the signalling. Replays inside one session are not detected (the
+WebRTC handshake itself rejects a stale offer); this is acceptable
+among friends, as the host's authority is (6.1).
+
+## D1123. The signalling server: `mp-signal`, matchbox's protocol, no logs
+
+A second binary of `mp_host` (same crate, same port rule: `--port`,
+`$PORT`, `proj port`, else it stops), threaded like `mp-host`, with no
+tokio or axum. It speaks matchbox 0.14's JSON protocol (`IdAssigned`,
+`NewPeer`, `PeerLeft`, `Signal`, `KeepAlive`) on `/<room>` (any path's
+last segment), so the owner can run either it or a stock
+`matchbox_server`. It prints one line when it starts and nothing about
+rooms, peers or addresses. Limits: 16 peers a room, 1024 rooms, 64 KiB
+a message, rooms forgotten when empty. `mp-host` serves the same relay
+at `…/signal/<room>` on its own port, so a LAN host and the tests need
+no internet.
+
+## D1124. Where a page finds the signalling server
+
+In order: the page's `?signal=` parameter; the build's `MP_SIGNAL_URL`
+(read by `option_env!` when the wasm is compiled; Pages' workflow passes
+the repository variable of that name); and natively `--signal`. A link
+made by a host that used `?signal=` carries it in the query, before the
+`#`. Without any, the menu offers only joining an `mp-host` (as M10) and
+"Host a game" says what is missing. When the page itself comes from
+`mp-host`, its own `signal/` beside the page is used (relative, as the
+WebSocket's `ws` is).
+
+## D1125. The host tab: `Host` and the tab's own player through a `Mux`
+
+`transport::Mux` puts several transports behind one, giving each inner
+peer its own number. The host tab runs `mp_net::host::Host` over a `Mux`
+of the in-process loopback (`SimNet`, whose one client is the tab's own
+`Client`) and the WebRTC transport. The tab's player joins first, so it
+holds slot 0 and leads. `Host::update` runs every frame in `First`,
+before the client, with the page's clock; the tab must stay in the
+foreground (SPEC 9.7). Levels: the host builds each race's
+`LevelRuntime` from `mp_levels`; Seaside Raceway needs the survey the
+client has already loaded, and is unavailable to a host until it has.
+
+## D1126. `mp-host --room`: the native host as a WebRTC peer
+
+`mp-host --room --signal <url>` opens a room on that signalling server
+and prints its link, and the session takes WebRTC guests (from Pages,
+no certificate needed) as well as WebSocket ones (`Mux` again). Without
+`--room` nothing changes, so M10's LAN mode is as it was.
+
+## D1127. Multiplayer's M10 choices, recorded
+
+MULTIPLAYER 6.2 says DECISIONS records its two departures from SPEC 9.1
+and 9.2; they were not written down until now. **No state snapshots on
+the wire:** the host sends a state hash every 30 ticks and a client that
+disagrees rebuilds from the race's start and the confirmed inputs (the
+simulation is deterministic by construction; a mismatch is a bug, and is
+counted). **The host's relayed inputs are reliable;** clients' inputs are
+unreliable with eight ticks repeated.
