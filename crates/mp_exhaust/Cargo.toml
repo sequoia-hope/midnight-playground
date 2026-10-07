@@ -1,0 +1,23 @@
+[package]
+name = "mp_exhaust"
+description = "The physical exhaust engine model (the engine lab's worklet), per sample"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# rlib: mp_audio's native backend runs the model in a worklet processor.
+# cdylib: on the web the model is its own small wasm (no wasm-bindgen), which
+# the AudioWorklet shim `web/exhaust-worklet.js` instantiates on the audio
+# thread; `cargo xtask web` builds it into dist/next/.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# The C-ABI exports of `src/wasm.rs`, for the standalone worklet wasm only
+# (`cargo xtask web` builds it with this feature). Off for mp_audio's use as
+# an rlib, so the exports never reach the game's own wasm.
+worklet = []
+
+[dev-dependencies]
+# The goldens (parity/golden/exhaust/) are JSON.
+serde_json = { version = "1", features = ["float_roundtrip"] }
