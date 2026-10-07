@@ -9105,3 +9105,24 @@ the Rust build first, the player's car only (docs/vision/sound.md 2.1 and
   off, so every parity run, call-log golden and audio reference render is
   the JS game's; the menu's choice reaches the audio directly, not as a
   logged call.
+
+## D1111. Parity with the JS game is no longer the goal
+
+The owner, 2026-10-07: the Rust game is good and ready to switch over;
+"we don't really need to match the JavaScript version anymore. We will
+just look at the Rust version and decide how we want to improve it."
+
+- **The Rust game is now the reference.** Changes are judged by the owner
+  playing, looking and listening, and by the Rust game's own tests, not
+  by JS traces, digests or screenshots. A behaviour change no longer needs
+  a DEVIATIONS.md entry; record the reason in the commit and, if it is a
+  real choice, here.
+- **The parity tooling stays** (goldens, `tools/parity/`, the kernel) as
+  regression checks where they still pass, and is retired piece by piece
+  as the game moves on. A parity test that fails because of a deliberate
+  improvement is updated or removed, not worked around.
+- **Determinism stays.** Multiplayer depends on it: the simulation keeps
+  the fixed tick, seeded streams and `mp_math`'s kernel (CLAUDE.md
+  principle 6), whatever the JS did.
+- **The cutover itself** (WP 9.5: Rust at the site root, the JS game under
+  `/legacy/`) is a separate, outward-facing step the owner confirms.

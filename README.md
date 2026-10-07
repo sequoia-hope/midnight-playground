@@ -379,7 +379,8 @@ tools/                 check-track.js, car-test.html, audio-test.html, serve.py,
                        og-image.mjs, radio-voice.html and radio-voice/ (the police
                        radio voice: design, record, audition), dj-voice.html and
                        dj-voice/ (sample DJ chatter, the same way), engine-lab.html
-                       and engine-lab/ (the exhaust model prototype), seaside/build.py
+                       and engine-lab/ (the exhaust model prototype), music-lab.html
+                       and music-lab/ (instruments and generated tracks), seaside/build.py
                        (Level 5's data from OpenStreetMap and USGS)
 test/unit/, test/e2e/  the tests (see Tests below)
 music.html             the soundtrack player
@@ -414,6 +415,13 @@ again, in headless Chrome with no server, like the tests.
 Engine Sound Lab: a listening prototype of the physical exhaust model in
 `docs/vision/sound.md`, with presets, rev and drive patterns, live tweaks, an
 A/B against the current game engine and offline measurements.
+
+`tools/music-lab.html` (the same way) is the Music Lab: the game's songs
+re-voiced on emulated classic instruments (TB-303, Juno-style pads, Moog-style
+monos, DX-style FM, TR-808 and TR-909) with a real mix, house and techno
+tracks made from a seed, a keyboard and drum pads to play every instrument
+with live knobs, an A/B against the game's music in step, and offline
+measurements. `npm run test:lab` runs both labs' tests.
 
 ## Music player
 
