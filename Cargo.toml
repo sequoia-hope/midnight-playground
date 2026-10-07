@@ -21,6 +21,7 @@ mp_scene = { path = "crates/mp_scene" }
 mp_canvas = { path = "crates/mp_canvas" }
 mp_worldgen = { path = "crates/mp_worldgen" }
 mp_audio = { path = "crates/mp_audio" }
+mp_exhaust = { path = "crates/mp_exhaust" }
 mp_net = { path = "crates/mp_net" }
 # The CLI that post-processes the wasm must be this exact version;
 # `cargo xtask web` checks it.
@@ -41,6 +42,11 @@ opt-level = "s"
 lto = "fat"
 codegen-units = 1
 panic = "abort"
+
+# The exhaust model runs per sample on the audio thread: a dev build of the
+# native game must keep up in real time.
+[profile.dev.package.mp_exhaust]
+opt-level = 3
 
 # xtask's image metrics run over hundreds of screenshots.
 [profile.dev.package.xtask]

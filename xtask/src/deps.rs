@@ -92,9 +92,18 @@ const RULES: &[Rule] = &[
         pure: false,
         exact_math: true,
     },
+    // The exhaust engine model: no dependencies at all, so it also builds as
+    // the small standalone wasm the web's AudioWorklet runs.
+    Rule {
+        krate: "mp_exhaust",
+        allowed: &[],
+        banned: SIM_BANNED,
+        pure: false,
+        exact_math: false,
+    },
     Rule {
         krate: "mp_audio",
-        allowed: &["mp_math"],
+        allowed: &["mp_math", "mp_exhaust"],
         banned: NO_BEVY,
         pure: false,
         exact_math: false,

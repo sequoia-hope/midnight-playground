@@ -3598,6 +3598,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mp_exhaust"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "mp_game"
 version = "0.1.0"
 dependencies = [
