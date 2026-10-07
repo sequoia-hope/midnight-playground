@@ -297,6 +297,7 @@ fn frame(steer: i16, throttle: u8, flags: u8) -> InputFrame {
         throttle,
         brake: 0,
         flags,
+        clutch: 0,
     }
 }
 

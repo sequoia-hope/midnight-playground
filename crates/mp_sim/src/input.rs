@@ -26,8 +26,13 @@ pub struct InputFrame {
     pub steer: i16,
     pub throttle: u8,
     pub brake: u8,
-    /// handbrake 1, nitro 2, analog 4, reset 8 (an edge).
+    /// handbrake 1, nitro 2, analog 4, reset 8 (an edge), autopilot 16,
+    /// away 32, shift up 64 and shift down 128 (edges).
     pub flags: u8,
+    /// The clutch pedal, 0 (out) to 255 (pressed): a sim car's
+    /// (docs/vehicle-dynamics/SPEC.md 7.1). The arcade model ignores it, and
+    /// [`InputFrame::quantise`] leaves it 0.
+    pub clutch: u8,
 }
 
 pub const HANDBRAKE: u8 = 1;
@@ -41,6 +46,11 @@ pub const AUTOPILOT: u8 = 16;
 /// The simulation ignores it; the client shows them as away.
 pub const AWAY: u8 = 32;
 pub const RESET: u8 = 8;
+/// A sim car's gearbox: shift up, shift down (edges; SPEC 7.1). The spec
+/// names bits 16 and 32, which multiplayer took for AUTOPILOT and AWAY
+/// first (DECISIONS D1141). The arcade model ignores both.
+pub const SHIFT_UP: u8 = 64;
+pub const SHIFT_DOWN: u8 = 128;
 
 fn c(x: f64, lo: f64, hi: f64) -> f64 {
     if x < lo {
@@ -61,7 +71,13 @@ impl InputFrame {
             flags: (if inp.handbrake { HANDBRAKE } else { 0 })
                 | (if inp.nitro { NITRO } else { 0 })
                 | (if inp.analog { ANALOG } else { 0 }),
+            clutch: 0,
         }
+    }
+
+    /// The clutch pedal, 0..1.
+    pub fn clutch(&self) -> f64 {
+        self.clutch as f64 / 255.0
     }
 
     /// The values physics integrates (`quantiseInput`'s output).

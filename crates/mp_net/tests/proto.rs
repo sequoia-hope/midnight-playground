@@ -27,6 +27,7 @@ fn frame(k: u32) -> InputFrame {
         throttle: (k * 31) as u8,
         brake: (k * 17) as u8,
         flags: (k * 5) as u8,
+        clutch: (k * 3) as u8,
     }
 }
 
@@ -206,7 +207,7 @@ fn strings_longer_than_255_bytes_are_cut_on_a_char_boundary() {
 /// [`VERSION`].
 #[test]
 fn the_wire_format_is_pinned() {
-    assert_eq!(VERSION, 1);
+    assert_eq!(VERSION, 2);
     let cases: Vec<(Msg, Vec<u8>)> = vec![
         (
             Msg::Hello {
@@ -234,9 +235,10 @@ fn the_wire_format_is_pinned() {
                     throttle: 3,
                     brake: 4,
                     flags: 5,
+                    clutch: 6,
                 }],
             },
-            vec![4, 2, 1, 0, 0, 1, 0, 0xfe, 0xff, 3, 4, 5],
+            vec![4, 2, 1, 0, 0, 1, 0, 0xfe, 0xff, 3, 4, 5, 6],
         ),
         (
             Msg::Ping { id: 1, t: 1.0 },
@@ -322,7 +324,7 @@ fn the_wire_format_is_pinned() {
                 humans: 1,
                 frames: vec![InputFrame::default()],
             },
-            vec![24, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
+            vec![24, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
         ),
         (
             Msg::Hash { tick: 30, hash: 1 },
@@ -366,7 +368,7 @@ fn malformed_fields_are_named_errors() {
     let inputs = |humans: u8, n: u16| {
         let mut b = vec![24, 1, 0, 0, 0, humans];
         b.extend_from_slice(&n.to_le_bytes());
-        b.extend(std::iter::repeat_n(0, n as usize * 5));
+        b.extend(std::iter::repeat_n(0, n as usize * 6));
         b
     };
     let whole = DecodeError("inputs not a whole number of ticks");

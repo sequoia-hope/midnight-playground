@@ -9277,3 +9277,79 @@ disagrees rebuilds from the race's start and the confirmed inputs (the
 simulation is deterministic by construction; a mismatch is a bug, and is
 counted). **The host's relayed inputs are reliable;** clients' inputs are
 unreliable with eight ticks repeated.
+
+## Vehicle dynamics V0 and V1 (docs/vehicle-dynamics/SPEC.md 11)
+
+The owner asked for tyre physics on 2026-10-07 (vision ROADMAP M17).
+These record the choices V0 (seams) and V1 (the `mp_vdyn` core) made
+where the vehicle-dynamics spec left room or could not be followed as
+written.
+
+## D1140. `PlayerCar.phys` stays a `CarPhysics`; `PlayerCar.model` says which model moves the car
+
+SPEC 8.1 sketches `PlayerCar.phys` becoming `enum VehicleModel {
+Arcade(CarPhysics), Sim(Box<SimCar>) }`. The client reads `p.phys` in
+about forty places (HUD, audio, effects, flow), and SPEC 4.7 already says
+a sim car must write those same `CarPhysics` fields every tick. So
+`phys` stays: the arcade model runs on it exactly as before, and it is
+the body view's readout half whichever model moves the car. A new field
+`PlayerCar.model: VehicleModel` (`mp_sim::model`) names the model; V0 has
+only `Arcade`, V2 adds `Sim(Box<SimCar>)`. Nothing outside `mp_sim`
+changes, and every golden is bit-identical.
+
+The render-view fields of SPEC 8.3 are `Vehicle.pose:
+Option<Box<SimPose>>` (orientation quaternion, and per wheel the hub
+position, steer, spin and travel), plain `f64` arrays so the client needs
+no `mp_vdyn` types. It is `None` for every arcade car and is derived each
+tick, so it is not in the state hash.
+
+## D1141. Input frame: a clutch byte, shift bits 64 and 128, protocol version 2
+
+SPEC 7.1 names shift-up and shift-down as flag bits 16 and 32; the
+multiplayer work took those for `AUTOPILOT` and `AWAY` first. The shifts
+are `SHIFT_UP = 64` and `SHIFT_DOWN = 128`, the last two free bits (an
+H-pattern gear byte, later, will be a new field and another version).
+`InputFrame` gains `clutch: u8`. `Input`, which the client builds field
+by field, does not change: the arcade model never reads the new controls,
+and a sim car will read them from the frame. The wire frame is six bytes
+and `mp_net::proto::VERSION` is 2. The replay text adds the clutch as a
+fifth value only when it is pressed, so every recording made so far reads
+as before.
+
+## D1142. `mp_vdyn`'s conventions and V1's modelling choices
+
+- **Axes.** World y up. Body frame: x forward, y up, z right
+  (right-handed, and the game's heading: yaw θ is a rotation by −θ about
+  +y). A hub's axle is its local z (the spec's sketch says local y); a
+  wheel rolling forward spins about −z, and `omega > 0` is forward. The
+  game's yaw rate is −ω·up.
+- **Suspension.** Each hub slides along the body's up axis with its own
+  unsprung mass and travel state; the spring, damper (bump and rebound),
+  bump stops and anti-roll bar act between hub and body. The tyre's
+  force along the strut goes through the hub; its in-plane part reaches
+  the body at a per-axle roll-centre height above the patch. Across the
+  strut the hubs move with the body, so the chassis's translation there
+  uses the whole mass.
+- **Brush tyre.** As SPEC 4.4: transient slip from carcass deflections
+  relaxed implicitly (stable at any speed), theoretical slip κ/(1+κ),
+  tanα/(1+κ), the brush force with load-sensitive μ, the brush's own
+  pneumatic trail, low-speed bristle damping. Three details the spec left
+  open: the sliding friction falls from the peak as
+  `μ·(r + (1−r)/(1+(v/v_s)²))` in the speed of the slide *beyond* the
+  peak (continuous at the peak, no kernel call); the deflection is capped
+  at twice the full-slide slip and, when capped, points along the slide
+  (otherwise unequal relaxation lengths bend a combined slide and a
+  spinning wheel winds up without bound at a standstill); rolling
+  resistance is a friction torque on the wheel, applied with the brake,
+  so it can stop a wheel but never turn it.
+- **Drive.** V1 has no engine: a torque at the wheels capped by power,
+  split by axle shares and equally across each axle. V2 replaces it with
+  the drivetrain of SPEC 4.5.
+- **ABS** is the one assist in V1 (for the braking test): per wheel,
+  brake pressure follows the error from a slip ratio of −0.1, reading
+  only wheel speed against ground speed.
+- **Determinism.** `Vehicle::hash` is FNV-1a 64 of every state field's
+  bits. The vehicle test pins the hash after a scripted ten seconds, and
+  the same test passes in wasm under Node, so native and wasm agree.
+  CI's wasm job lists the simulation crates by name; `-p mp_vdyn` should
+  join them (`.github/` was out of this work's reach).
