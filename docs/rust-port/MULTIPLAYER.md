@@ -261,3 +261,140 @@ The rules in section 2 are approved as proposed. Still open:
    release is to invite them to the tailnet; a public name with a
    certificate, or waiting for M11's WebRTC, are the alternatives.
 2. **The 45-second finish countdown** (2.8): length.
+
+## 8. M11 plan: WebRTC, the signalling server, a tab as host
+
+Written 2026-10-07 at the start of M11. The owner has said the Rust game
+no longer needs to match the JS one, so nothing here is held to parity.
+DECISIONS D1120 to D1127 record the choices below.
+
+### 8.1 The pieces
+
+1. **`mp_net::rtc`, the WebRTC transport** (feature `rtc`, D1120). A
+   `Transport` over `matchbox_socket` 0.14.0, the same code natively
+   (webrtc-rs) and in the browser (the page's `RTCPeerConnection`). Two
+   data channels: 0 reliable and ordered, 1 unreliable and unordered (no
+   retransmits), so `Channel::Unreliable` is finally a real one. As with
+   WebSocket, a guest sees the host as peer 0; the host numbers guests
+   from 1. The host's relayed inputs stay on the reliable channel for now
+   (section 6.2's note).
+2. **`mp_net::signal`, the sealed signalling** (D1121, D1122). No I/O,
+   so every rule is a unit test: the join link
+   (`#join=<room>.<secret>`), the room key, sealing and opening each
+   signalling payload, and the small state machine that turns the
+   signalling server's full mesh into a star (only the host makes WebRTC
+   offers; guests never connect to each other). `rtc` runs it inside a
+   matchbox `Signaller`.
+3. **The signalling server** (D1123): `mp-signal`, a second binary of
+   `mp_host`, speaking matchbox's protocol (so a stock `matchbox_server`
+   works too), relaying only sealed payloads, keeping no logs. `mp-host`
+   also answers it at `…/signal/<room>`, so a LAN or a test needs nothing
+   from the internet. The port rule is `mp-host`'s.
+4. **`transport::Mux`** (D1125): several transports as one, renumbering
+   peers. The host tab's `Host` listens on the in-process loopback (its
+   own player) and on WebRTC (everyone else); `mp-host --room` listens on
+   WebSocket and WebRTC at once.
+5. **The tab as host** (`mp_game::net`, D1125): the menu's Multiplayer
+   offers "Host a game" when the page has a signalling server. The tab
+   runs `mp_net::host::Host` (the same session `mp-host` runs) on its own
+   clock, its own player joins it through the loopback, and the lobby
+   shows the invitation link with a Copy button and the line "Players see
+   each other's network addresses".
+6. **Join by link** (D1124): a page opened with `#join=<room>.<secret>`
+   goes straight to the lobby and joins over WebRTC; natively,
+   `--join '<link>'` does the same. The `#` part never reaches a server.
+7. **The native host as a peer** (D1126): `mp-host --room` opens a room
+   on the signalling server, prints the link, and takes WebRTC guests as
+   well as its WebSocket ones.
+
+### 8.2 Order and tests
+
+| Step | Test |
+|---|---|
+| `signal`: link, key, seal/open, the star | Unit tests: round trips; a wrong secret, a tampered byte, a redirected or re-attributed message are all refused; every join order (host first, guests first, guest after guest) ends with exactly the host-guest pairs offering |
+| `Mux` | Unit tests over two `SimNet`s: renumbering, sends and closes reach the right inner peer, disconnects |
+| The signalling server | `mp_host` tests over real WebSockets on an ephemeral port: ids, new peers, relaying, rooms kept apart, peers leaving, limits |
+| `rtc` natively | An `mp_host` test: `mp-signal` on an ephemeral port, a `Host` and two `Client`s on `RtcNet` in-process, lobby to race start, inputs and hashes flowing with no desync; a guest with the wrong secret never connects |
+| The tab as host, join by link | `mp_game` unit tests: the link parsed from the page, the commands, the host-and-loopback session racing a remote client to the results on `SimNet` (the WebRTC part is covered above); `cargo xtask web` builds |
+| By hand (owner) | Two browsers on different networks, one hosting from Pages, the other joining by the link |
+
+Lossy-network behaviour is already covered by `SimNet` (the session code
+is the same over any transport); WebRTC adds only the real channels.
+
+### 8.3 What the owner sets up
+
+- **The signalling server.** `cargo build --release -p mp_host` gives
+  `target/release/mp-signal`; run it on the cloud machine with
+  `--port` or `$PORT`, behind Caddy for https (`reverse_proxy` to it).
+  Then give the address to the Pages build: the workflow's
+  `MP_SIGNAL_URL` (a repository variable, e.g.
+  `wss://signal.example.com/`), or for a test the page's
+  `?signal=wss://…/` parameter.
+- **TURN** (optional, later): matchbox's default ICE server is Google's
+  public STUN. Players behind strict NATs will need a TURN relay; it is
+  measured before it is decided (section 6.1).
+
+## 9. Hot Pursuit and cruise with several players (design, for the owner)
+
+Draft, 2026-10-07; nothing below is built. Today `SimState::new_multi`
+turns pursuit off and treats the cruise loop as a race level, and the
+pursuit holds only player 0 (`mp_sim::race`, "Hot Pursuit is
+single-player"). The machinery (every device simulating everything, the
+host's inputs final) carries over unchanged: police, heat and roadblocks
+come from the shared seed and the confirmed inputs, so every device sees
+the same chase. What needs deciding is the rules. Each **Proposed** is a
+default the owner can change.
+
+### 9.1 Hot Pursuit race (sprint levels)
+
+- **Who the police chase.** They already chase "whichever racer they're
+  closest to" (hot-pursuit.md 1.1), rivals included. **Proposed:** humans
+  and AI alike, by the same rule, with no preference for humans. A
+  human who is being chased pulls units off everyone else, which is the
+  fun of it.
+- **Heat.** **Proposed: one shared heat** for the race, raised by
+  anyone's events (hot-pursuit.md 3), capped per zone as now. Per-player
+  heat would need per-player unit pools and roadblocks, which the
+  pursuit system doesn't have. The HUD's stars show the shared heat.
+- **Busts and wrecks.** As single-player since the 2026-09-29 change:
+  the car is held for the penalty, then put back ahead of the police
+  with grace. **Proposed:** the same for every human; the held player
+  sees the hold card, everyone else sees the parked car with the cruiser
+  behind it.
+- **Damage** per car, as now.
+- **The radio line and the music's mood** are each player's own, from
+  the units chasing them (or the nearest pursuit when none is).
+- **Finishing** as section 2.8.
+
+### 9.2 Cruise (Night City Cruise)
+
+- **Scoring.** Each player has their own score, multiplier and chain, as
+  single-player. **Proposed:** a session runs for a set time (lobby: 3,
+  5 or 10 minutes) and ranks by score; the points table (4.5) awards by
+  that rank.
+- **Near misses** count traffic only (as 2.5): passing close to another
+  human scores nothing, so nobody is rewarded for bumping.
+- **Crashes** cost the multiplier as now, including into another human.
+  **Proposed:** ghost mode (2.4) defaults on in cruise, since the loop
+  has no grid and players meet head-on on the freeway.
+- **Start.** No grid: players start spread along the loop (by slot,
+  evenly), so they don't all pile into the same traffic.
+
+### 9.3 Most Wanted (pursuit on the cruise loop)
+
+Not built in single-player yet (hot-pursuit.md 1.2). **Proposed:** wait
+for the single-player mode, then a shared heat and a bounty per player:
+each player's own escape banks their own bounty; a bust costs only the
+busted player.
+
+### 9.4 Open questions for the owner
+
+1. Police: chase humans and AI alike (proposed), or prefer humans?
+2. One shared heat (proposed), or per-player heat with its own units?
+3. Cruise: a timed session ranked by score (proposed), or open-ended
+   with a live leaderboard and no end?
+4. Ghost mode on by default in cruise (proposed)?
+5. Should a human be able to play as the police (hot-pursuit.md 1.3's
+   v2) once several humans are in a pursuit? It changes the input frame
+   (a police car's controls) and the results.
+6. Most Wanted: wait for single-player first (proposed)?

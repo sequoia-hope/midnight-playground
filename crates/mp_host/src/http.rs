@@ -20,6 +20,7 @@ use tungstenite::handshake::derive_accept_key;
 use tungstenite::protocol::Role;
 
 use crate::net::Incoming;
+use mp_host::signal::{Rooms, room_of, ws_config};
 
 pub struct Files {
     root: PathBuf,
@@ -133,7 +134,7 @@ fn read_request(r: &mut BufReader<TcpStream>) -> Option<Request> {
 }
 
 /// Serves one connection: requests until it closes, or the upgrade.
-pub fn serve(stream: TcpStream, files: &Files, incoming: &Incoming) {
+pub fn serve(stream: TcpStream, files: &Files, incoming: &Incoming, rooms: &Rooms) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
     let Ok(read_half) = stream.try_clone() else {
         return;
@@ -144,7 +145,12 @@ pub fn serve(stream: TcpStream, files: &Files, incoming: &Incoming) {
         let upgrade = req
             .header("Upgrade")
             .is_some_and(|u| u.eq_ignore_ascii_case("websocket"));
-        if req.path.ends_with("/ws") && upgrade {
+        // WebRTC signalling: `…/signal/<room>` (DECISIONS D1123).
+        let signal = req
+            .path
+            .rsplit_once("/signal/")
+            .and_then(|(_, r)| room_of(r).map(str::to_string));
+        if (req.path.ends_with("/ws") || signal.is_some()) && upgrade {
             let Some(key) = req.header("Sec-WebSocket-Key") else {
                 let _ = respond(&mut out, 400, "Bad Request", &[], b"missing key", false);
                 return;
@@ -159,8 +165,26 @@ pub fn serve(stream: TcpStream, files: &Files, incoming: &Incoming) {
             // Bytes the reader buffered past the request belong to the socket.
             let buffered = reader.buffer().to_vec();
             let _ = out.set_read_timeout(None);
-            let ws = tungstenite::WebSocket::from_partially_read(out, buffered, Role::Server, None);
-            incoming.accept(ws);
+            match signal {
+                Some(room) => {
+                    let ws = tungstenite::WebSocket::from_partially_read(
+                        out,
+                        buffered,
+                        Role::Server,
+                        Some(ws_config()),
+                    );
+                    rooms.serve(&room, ws);
+                }
+                None => {
+                    let ws = tungstenite::WebSocket::from_partially_read(
+                        out,
+                        buffered,
+                        Role::Server,
+                        None,
+                    );
+                    incoming.accept(ws);
+                }
+            }
             return;
         }
         let keep = !req

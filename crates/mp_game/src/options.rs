@@ -118,6 +118,11 @@ pub fn is_level(id: &str) -> bool {
         .contains(&id)
 }
 
+/// Percent-encodes everything but RFC 3986's unreserved characters.
+fn escape(s: &str) -> String {
+    mp_net::signal::query_escape(s)
+}
+
 /// Splits `a=1&b=2` (a leading `?` is ignored) into decoded pairs, in order.
 pub fn parse_query(q: &str) -> Vec<(String, String)> {
     q.trim_start_matches('?')
@@ -287,6 +292,11 @@ impl Options {
                 "--materials" => materials = Some(val("--materials")?),
                 "--out" => out = Some(val("--out")?),
                 "--stations" => stations = Some(val("--stations")?),
+                // Multiplayer: a host's WebSocket or an invitation link, and
+                // the signalling server for hosting (MULTIPLAYER 8). Links
+                // hold `?`, `&` and `#`, so they go in escaped.
+                "--join" => query.push(format!("join={}", escape(&val("--join")?))),
+                "--signal" => query.push(format!("signal={}", escape(&val("--signal")?))),
                 s if s.contains('=') && !s.starts_with('-') => query.push(s.to_owned()),
                 other => return Err(format!("unknown argument `{other}`\n\n{}", usage())),
             }
@@ -325,6 +335,8 @@ pub fn usage() -> &'static str {
      \x20       autodrive=1 (or --autodrive), timescale=N, pursuit=1, heat=N, touch=0|1,\n\
      \x20       camera=chase|far|bumper (the camera mode it starts in),\n\
      \x20       shots=<dir> (save countdown, race and results PNGs, then exit)\n\
+     multi:  --join ws://host:port/ws (an mp-host) or --join '<invitation link>';\n\
+     \x20       --signal wss://…/ (a signalling server, to host a game from the menu)\n\
      debug:  debug=1 (or --debug): the frame-time overlay from the start; F3 shows and hides it\n\
      \x20       record=1 (or --record): record the run to recordings/<date>-<level>.jsonl\n\
      \x20       (record=<file.jsonl|dir> elsewhere); replay its races with `mp-sim replay <file>`"
@@ -371,6 +383,17 @@ mod tests {
         assert_eq!(o.scene.as_deref(), Some("a b c"));
         assert_eq!(o.fly.unwrap().speed, 30.0);
         assert_eq!(o.after, 3);
+        // An invitation keeps its `?`, `&` and `#` (MULTIPLAYER 8).
+        let link = "https://x/?signal=wss%3A%2F%2Fs%2F&a=1#join=AAAA.BBBB";
+        let o = Options::from_args(&[
+            "--join".into(),
+            link.into(),
+            "--signal".into(),
+            "wss://s/".into(),
+        ])
+        .unwrap();
+        assert_eq!(o.param("join"), Some(link));
+        assert_eq!(o.param("signal"), Some("wss://s/"));
         assert!(Options::from_args(&["--bogus".to_string()]).is_err());
     }
 }

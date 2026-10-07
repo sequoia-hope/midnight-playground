@@ -548,6 +548,10 @@ pub fn menu(
         // page came from; natively it is `--join ws://host:port/ws`.
         let mp = cfg!(target_arch = "wasm32") || opts.o.param("join").is_some();
         let fm = cx.f("btn-mp");
+        // Host online: a game hosted in this tab, joined by link, when
+        // there is a signalling server to introduce the players (D1124).
+        let host = crate::net::signal_for(None, opts.o.param("signal")).is_some();
+        let fh = cx.f("btn-host");
         p.spawn(holder).with_children(|p| {
             p.spawn(Node {
                 flex_wrap: FlexWrap::Wrap,
@@ -574,6 +578,16 @@ pub fn menu(
                         "Multiplayer",
                         false,
                         fm,
+                    );
+                }
+                if host {
+                    w::button(
+                        p,
+                        &bp,
+                        Control::act("btn-host", Act::Mp(super::lobby::MpAct::Host)),
+                        "Host online",
+                        false,
+                        fh,
                     );
                 }
             });

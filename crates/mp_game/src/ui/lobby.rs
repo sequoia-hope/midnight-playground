@@ -18,8 +18,13 @@ use crate::net::NetView;
 /// What the lobby's buttons do.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MpAct {
-    /// The menu's Multiplayer button: join the host.
+    /// The menu's Multiplayer button: join the host (or the invitation
+    /// the game was opened with).
     Open,
+    /// The menu's Host online: host a game in this tab over WebRTC.
+    Host,
+    /// Copy the invitation link (the host's lobby).
+    Copy,
     Leave,
     /// Ask for a name (the browser's prompt on the web).
     Name,
@@ -96,6 +101,46 @@ pub fn lobby(p: &mut ChildSpawnerCommands, cx: &mut Cx, _ui: &UiState, net: &Net
             p.spawn((
                 w::text(status.clone(), dim, bp.k),
                 Control::named("lobby-status", Value::Text(status)),
+            ));
+        }
+        // Hosting: the invitation to hand out (MULTIPLAYER 6.1, 8.1).
+        if let Some(invite) = &net.invite {
+            p.spawn((
+                Node {
+                    flex_wrap: FlexWrap::Wrap,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    column_gap: bp.px(10.0),
+                    row_gap: bp.px(6.0),
+                    max_width: bp.px(bp.vw(92.0)),
+                    ..default()
+                },
+                Control::named("lobby-invite", Value::Text(invite.clone())),
+            ))
+            .with_children(|p| {
+                p.spawn(w::text(
+                    "Invite players with this link:",
+                    T::new(16.0),
+                    bp.k,
+                ));
+                let f = cx.f("mp-copy");
+                w::button(
+                    p,
+                    &bp,
+                    Control::act("mp-copy", Act::Mp(MpAct::Copy)),
+                    if cfg!(target_arch = "wasm32") {
+                        "Copy link"
+                    } else {
+                        "Print link"
+                    },
+                    false,
+                    f,
+                );
+            });
+            p.spawn(w::text(
+                "Players see each other's network addresses.",
+                dim,
+                bp.k,
             ));
         }
         if net.lobby.racing && net.pending_level.is_none() {

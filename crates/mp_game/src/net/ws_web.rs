@@ -36,6 +36,18 @@ pub fn page_url() -> Option<String> {
     Some(url.href())
 }
 
+/// The page's whole address (with its query and `#` fragment).
+pub fn page_href() -> Option<String> {
+    web_sys::window()?.location().href().ok()
+}
+
+/// The signalling server an `mp-host` serves beside the page:
+/// `new URL('signal', location.href)` on ws(s) (DECISIONS D1123).
+pub fn signal_beside() -> Option<String> {
+    let ws = page_url()?;
+    Some(format!("{}signal", ws.strip_suffix("ws")?))
+}
+
 impl WebSocketTransport {
     pub fn open(url: &str) -> Result<WebSocketTransport, String> {
         let ws = WebSocket::new(url).map_err(|e| format!("{e:?}"))?;

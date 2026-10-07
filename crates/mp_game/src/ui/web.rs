@@ -80,6 +80,26 @@ pub fn prompt(message: &str, current: &str) -> Option<String> {
     (!a.is_empty()).then_some(a)
 }
 
+/// Copies `text` to the clipboard (`navigator.clipboard.writeText`); where
+/// there is none (an insecure page), shows it in the browser's prompt to
+/// copy by hand.
+pub fn copy_text(text: &str) {
+    use wasm_bindgen::JsCast;
+    let Some(w) = web_sys::window() else { return };
+    let nav = w.navigator();
+    let write = js_sys::Reflect::get(&nav, &"clipboard".into())
+        .ok()
+        .filter(|c| !c.is_undefined())
+        .and_then(|c| {
+            let f = js_sys::Reflect::get(&c, &"writeText".into()).ok()?;
+            let f = f.dyn_into::<js_sys::Function>().ok()?;
+            f.call1(&c, &text.into()).ok()
+        });
+    if write.is_none() {
+        let _ = w.prompt_with_message_and_default("Copy this link", text);
+    }
+}
+
 /// `applyQuality`'s pixel ratio: `hq ? min(devicePixelRatio, 1.5) : 1`.
 pub fn apply_pixel_ratio(w: &mut Window, hq: bool) {
     w.resolution

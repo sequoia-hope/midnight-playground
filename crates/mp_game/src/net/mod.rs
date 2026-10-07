@@ -18,8 +18,12 @@ use bevy::prelude::*;
 
 use mp_net::client::{Client, ClientEvent, LobbyView, NetStats};
 use mp_net::proto::{PlayerInfo, Settings, Slot};
+use mp_net::rtc::{RtcNet, RtcOptions, StatusHandle};
+use mp_net::signal::{JoinLink, Role};
 use mp_net::transport::Transport;
 
+pub mod link;
+pub mod tab;
 #[cfg(not(target_arch = "wasm32"))]
 mod ws_native;
 #[cfg(target_arch = "wasm32")]
@@ -32,6 +36,11 @@ pub type NetClient = Client<Box<dyn Transport>>;
 #[derive(Default)]
 pub struct Net {
     pub client: Option<NetClient>,
+    /// This tab hosts the session (MULTIPLAYER 8.1): the authority, which
+    /// `client` (this tab's own player) joins through the loopback.
+    pub tab: Option<tab::TabHost>,
+    /// A guest's WebRTC room, for the lobby's status line.
+    pub room: Option<StatusHandle>,
 }
 
 /// What the screens show of multiplayer. Only written when something
@@ -53,6 +62,8 @@ pub struct NetView {
     /// The names, cars and colours of the race's humans, in race order
     /// (player `i` of the simulation is `humans[i]`).
     pub humans: Vec<PlayerInfo>,
+    /// This tab hosts, and this is the invitation to hand out.
+    pub invite: Option<String>,
 }
 
 impl NetView {
@@ -65,9 +76,19 @@ impl NetView {
 /// What the screens ask of the connection.
 #[derive(Clone, Debug, PartialEq)]
 pub enum NetCmd {
-    /// Connect to the host that served this page (web), or `url`.
+    /// Connect to the host that served this page (web), or `url`: a
+    /// host's WebSocket, or an invitation link (WebRTC). `signal` is the
+    /// page's own `?signal=`.
     Join {
         url: Option<String>,
+        signal: Option<String>,
+        name: String,
+        car: String,
+        color: u32,
+    },
+    /// Host a game in this tab over WebRTC (MULTIPLAYER 8.1).
+    Host {
+        signal: Option<String>,
         name: String,
         car: String,
         color: u32,
@@ -103,6 +124,49 @@ pub fn default_url() -> Option<String> {
     {
         None
     }
+}
+
+/// The signalling server for a link or for hosting, in D1124's order: the
+/// link's `?signal=`, the page's, the build's, then the one an `mp-host`
+/// serves beside the page (web only).
+pub fn signal_for(link: Option<&str>, page_param: Option<&str>) -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    let beside = ws_web::signal_beside();
+    #[cfg(not(target_arch = "wasm32"))]
+    let beside: Option<String> = None;
+    link::signal_url(link, page_param, link::built_in_signal(), beside.as_deref())
+}
+
+/// The page the invitation points at: this one on the web (its query
+/// kept), the published game natively.
+fn invite_page() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        ws_web::page_href().unwrap_or_else(|| link::PAGES.to_string())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        link::PAGES.to_string()
+    }
+}
+
+/// An invitation in the page's own address, if it was opened with one.
+pub fn page_link() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        ws_web::page_href().filter(|h| h.contains("#") && link::is_link(h))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
+}
+
+/// A session seed from the OS or the browser's secure randomness.
+fn random_seed() -> u32 {
+    let mut b = [0u8; 4];
+    mp_net::rtc::random_bytes(&mut b);
+    u32::from_le_bytes(b)
 }
 
 fn connect(url: &str) -> Result<Box<dyn Transport>, String> {
@@ -145,16 +209,46 @@ pub fn frame(
         match c {
             NetCmd::Join {
                 url,
+                signal,
                 name,
                 car,
                 color,
             } => {
+                if let Some(code) = url.as_deref().filter(|u| link::is_link(u)) {
+                    // An invitation: WebRTC to the host, through the
+                    // signalling server (MULTIPLAYER 8.1, item 6).
+                    let Some(jl) = JoinLink::parse(code) else {
+                        continue;
+                    };
+                    let Some(sig) = signal_for(Some(code), signal.as_deref()) else {
+                        view.status =
+                            "This link names no signalling server, and this build has none".into();
+                        continue;
+                    };
+                    let rtc = RtcNet::open(RtcOptions {
+                        signal: sig,
+                        link: jl,
+                        role: Role::Guest,
+                        ice: None,
+                    });
+                    net.room = Some(rtc.status_handle());
+                    net.tab = None;
+                    net.client = Some(Client::new(Box::new(rtc), &name, &car, color));
+                    *view = NetView {
+                        active: true,
+                        status: "Reaching the signalling server…".into(),
+                        ..NetView::default()
+                    };
+                    continue;
+                }
                 let Some(url) = url.or_else(default_url) else {
                     view.status = "No host to join: open the game from the host's address".into();
                     continue;
                 };
                 match connect(&url) {
                     Ok(t) => {
+                        net.room = None;
+                        net.tab = None;
                         net.client = Some(Client::new(t, &name, &car, color));
                         *view = NetView {
                             active: true,
@@ -166,11 +260,51 @@ pub fn frame(
                     Err(e) => view.status = format!("Can't connect: {e}"),
                 }
             }
+            NetCmd::Host {
+                signal,
+                name,
+                car,
+                color,
+            } => {
+                let Some(sig) = signal_for(None, signal.as_deref()) else {
+                    view.status =
+                        "No signalling server: open the game with ?signal=wss://…/".into();
+                    continue;
+                };
+                let jl = mp_net::rtc::new_link();
+                let invite = link::invite_url(&invite_page(), &sig, link::built_in_signal(), &jl);
+                let rtc = RtcNet::open(RtcOptions {
+                    signal: sig,
+                    link: jl,
+                    role: Role::Host,
+                    ice: None,
+                });
+                let status = rtc.status_handle();
+                let (host, me) = tab::TabHost::new(
+                    Box::new(rtc),
+                    Some(status),
+                    tab::levels(),
+                    random_seed(),
+                    invite.clone(),
+                    (&name, &car, color),
+                );
+                net.room = None;
+                net.tab = Some(host);
+                net.client = Some(me);
+                *view = NetView {
+                    active: true,
+                    status: "Opening the room…".into(),
+                    invite: Some(invite),
+                    ..NetView::default()
+                };
+            }
             NetCmd::Leave => {
                 if let Some(c) = net.client.as_mut() {
                     c.leave();
                 }
                 net.client = None;
+                net.tab = None;
+                net.room = None;
                 *view = NetView::default();
             }
             NetCmd::SetMe { name, car, color } => {
@@ -195,6 +329,17 @@ pub fn frame(
             }
         }
     }
+    // The tab's host steps on the page's clock every frame, races included
+    // (its own player's client is driven like any other below).
+    if let Some(t) = net.tab.as_mut() {
+        t.update(now);
+    }
+    let room = net
+        .tab
+        .as_ref()
+        .and_then(tab::TabHost::status)
+        .map(|s| (true, s))
+        .or_else(|| net.room.as_ref().map(|h| (false, h.get())));
     let Some(c) = net.client.as_mut() else {
         view_res.set_if_neq(v);
         return;
@@ -215,6 +360,15 @@ pub fn frame(
             ClientEvent::RaceStarted => view.ended = false,
             ClientEvent::RaceEnded => view.ended = true,
             ClientEvent::Lobby => {}
+        }
+    }
+    // The room's progress, until the host has welcomed us (or failed).
+    if let Some((hosting, s)) = room
+        && (view.status.is_empty() || link::is_room_line(&view.status))
+    {
+        let failed = matches!(s, mp_net::rtc::RtcStatus::Failed(_));
+        if failed || !c.connected() || hosting {
+            view.status = link::status_line(hosting, &s);
         }
     }
     view.connected = c.connected();
@@ -465,7 +619,10 @@ pub(crate) mod tests {
 
     fn world(client: Option<NetClient>) -> World {
         let mut w = World::new();
-        w.insert_non_send(Net { client });
+        w.insert_non_send(Net {
+            client,
+            ..Net::default()
+        });
         w.init_resource::<NetView>();
         w.init_resource::<NetCmds>();
         w.init_resource::<NetStatsRes>();
@@ -501,6 +658,7 @@ pub(crate) mod tests {
             &mut w,
             vec![NetCmd::Join {
                 url: None,
+                signal: None,
                 name: "Ann".into(),
                 car: "sports".into(),
                 color: 0xd81e36,
@@ -527,6 +685,76 @@ pub(crate) mod tests {
             ],
         );
         assert!(!v.active && v.slot.is_none());
+    }
+
+    /// Host online: the tab hosts, its own player joins through the
+    /// loopback and leads at once (no WebRTC peer needed for that), and
+    /// the lobby has the invitation, naming the signalling server it was
+    /// given. A server that can't be reached shows on the status line;
+    /// Leave closes the host too.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn hosting_in_the_tab_leads_its_own_lobby_and_hands_out_a_link() {
+        let mut w = world(None);
+        let host = NetCmd::Host {
+            signal: Some("wss://signal.invalid/".into()),
+            name: "Ann".into(),
+            car: "sports".into(),
+            color: 0xd81e36,
+        };
+        let mut v = run(&mut w, vec![host]);
+        assert!(v.active);
+        let invite = v.invite.clone().expect("an invitation");
+        assert!(invite.starts_with(link::PAGES), "{invite}");
+        assert!(
+            invite.contains("?signal=wss%3A%2F%2Fsignal.invalid%2F#join="),
+            "{invite}"
+        );
+        assert!(link::is_link(&invite));
+        assert!(w.non_send::<Net>().tab.is_some());
+        for _ in 0..200 {
+            v = run(&mut w, vec![]);
+            if v.slot.is_some() && v.status.starts_with("Can't reach") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(v.slot, Some(0), "the tab's player holds slot 0");
+        assert!(v.leader && v.connected);
+        assert_eq!(v.lobby.players.len(), 1);
+        assert_eq!(v.me().map(|p| p.name.as_str()), Some("Ann"));
+        assert!(
+            v.status.starts_with("Can't reach the signalling server"),
+            "{}",
+            v.status
+        );
+        let v = run(&mut w, vec![NetCmd::Leave]);
+        assert!(!v.active && v.invite.is_none());
+        assert!(w.non_send::<Net>().tab.is_none());
+    }
+
+    /// An invitation, natively, with no signalling server in it, in
+    /// `--signal` or built in: it says so and opens nothing.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn a_link_with_no_signalling_server_says_so() {
+        if link::built_in_signal().is_some() {
+            return; // a build with MP_SIGNAL_URL always has one
+        }
+        let mut w = world(None);
+        let jl = JoinLink::parse("AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAA").unwrap();
+        let v = run(
+            &mut w,
+            vec![NetCmd::Join {
+                url: Some(format!("https://x/#{}", jl.fragment())),
+                signal: None,
+                name: "Ann".into(),
+                car: "sports".into(),
+                color: 0xd81e36,
+            }],
+        );
+        assert!(v.status.contains("no signalling server"), "{}", v.status);
+        assert!(w.non_send::<Net>().client.is_none());
     }
 
     /// The view follows the lobby (connected, slot, leader, players), the

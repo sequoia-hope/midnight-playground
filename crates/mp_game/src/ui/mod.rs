@@ -359,6 +359,11 @@ pub fn plugin(app: &mut App) {
     if o.param("uiscript").is_some() {
         app.add_systems(Update, ui_script.before(pointer));
     }
+    // Opened with an invitation (`#join=…`, or `--join <link>`): straight
+    // to the lobby once the menu is up (MULTIPLAYER 8.1, item 6).
+    if crate::net::page_link().is_some() || o.param("join").is_some_and(crate::net::link::is_link) {
+        app.add_systems(Update, auto_join.before(pointer));
+    }
     #[cfg(target_arch = "wasm32")]
     web::plugin(app);
 }
@@ -1256,7 +1261,7 @@ fn multiplayer(ui: &mut UiState, ctx: &mut ActCtx, m: lobby::MpAct, busy: bool) 
         ctx.netc.0.push(NetCmd::SetMe { name, car, color });
     };
     match m {
-        MpAct::Open => {
+        MpAct::Open | MpAct::Host => {
             if ui.screen != Screen::Menu || busy {
                 return;
             }
@@ -1265,13 +1270,44 @@ fn multiplayer(ui: &mut UiState, ctx: &mut ActCtx, m: lobby::MpAct, busy: bool) 
             let car = ui.settings.car.clone();
             let color = mp_sim::physics::car_spec(&car).map_or(0xd81e36, |s| s.color);
             let color = ctx.store.num("mpColor", f64::from(color)) as u32;
-            ctx.netc.0.push(NetCmd::Join {
-                url: ctx.opts.o.param("join").map(str::to_string),
-                name,
-                car,
-                color,
+            let signal = ctx.opts.o.param("signal").map(str::to_string);
+            ctx.netc.0.push(if m == MpAct::Host {
+                NetCmd::Host {
+                    signal,
+                    name,
+                    car,
+                    color,
+                }
+            } else {
+                NetCmd::Join {
+                    // `--join` (or `?join=`), else an invitation the page
+                    // was opened with (`#join=…`).
+                    url: ctx
+                        .opts
+                        .o
+                        .param("join")
+                        .map(str::to_string)
+                        .or_else(crate::net::page_link),
+                    signal,
+                    name,
+                    car,
+                    color,
+                }
             });
             ui.screen = Screen::Lobby;
+        }
+        MpAct::Copy => {
+            let Some(invite) = ctx.netv.invite.clone() else {
+                return;
+            };
+            ui.clicks.push("click");
+            #[cfg(target_arch = "wasm32")]
+            web::copy_text(&invite);
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                println!("Invitation: {invite}");
+                info!("invitation: {invite}");
+            }
         }
         MpAct::Leave => {
             ui.clicks.push("click");
@@ -1381,6 +1417,31 @@ pub fn sel_id(sel: Sel) -> &'static str {
         Sel::Guide => "opt-guide",
         Sel::Assist => "opt-assist",
     }
+}
+
+/// Joins by the invitation the game was opened with, once, when the menu
+/// is ready (a few frames in, so its layout is there).
+fn auto_join(
+    mut ui: ResMut<UiState>,
+    status: Res<Status>,
+    controls: ControlQuery,
+    mut ctx: ActCtx,
+    mut done: Local<bool>,
+    mut wait: Local<u32>,
+) {
+    if *done {
+        return;
+    }
+    if !status.ready || ui.screen != Screen::Menu || ui.starting.is_some() {
+        *wait = 0;
+        return;
+    }
+    *wait += 1;
+    if *wait < 10 {
+        return;
+    }
+    *done = true;
+    activate(&mut ui, &mut ctx, &controls, Act::Mp(lobby::MpAct::Open));
 }
 
 /// Natively, `--query uiscript=lvl-tab-seaside,lvl-tab-sierra,btn-start`:
@@ -1825,6 +1886,7 @@ pub(crate) mod tests {
             press(&mut w, MpAct::Open, false),
             [NetCmd::Join {
                 url: Some("ws://host/ws".into()),
+                signal: None,
                 name: "Driver".into(),
                 car: car.clone(),
                 color,
@@ -1844,6 +1906,7 @@ pub(crate) mod tests {
             press(&mut w, MpAct::Open, false),
             [NetCmd::Join {
                 url: None,
+                signal: None,
                 name: "Ann".into(),
                 car,
                 color: 0x2e8b57,

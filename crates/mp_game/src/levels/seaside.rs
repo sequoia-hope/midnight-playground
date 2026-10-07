@@ -41,6 +41,15 @@ static SURVEY: Mutex<Survey> = Mutex::new(None);
 /// it is decoded once.
 static PHOTO: Mutex<Option<Result<Arc<Texture>, String>>> = Mutex::new(None);
 
+/// The survey, once it has arrived and parsed (a tab hosting Seaside
+/// needs it to build the level, as the race does).
+pub fn survey() -> Option<Arc<SeasideData>> {
+    match &*SURVEY.lock().unwrap_or_else(|e| e.into_inner()) {
+        Some(Ok(d)) => Some(d.clone()),
+        _ => None,
+    }
+}
+
 /// `make_track` parsed the survey (or could not get it).
 pub fn survey_parsed(s: Result<Arc<SeasideData>, String>) {
     *SURVEY.lock().unwrap_or_else(|e| e.into_inner()) = Some(s);
