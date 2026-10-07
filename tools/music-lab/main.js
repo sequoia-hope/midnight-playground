@@ -9,7 +9,7 @@ import { Music } from '../../src/game/audio/Music.js';
 import { askForPlayback } from '../../src/game/Audio.js';
 import { TRACKS, PATCHES } from '../../src/game/audio/tracks.js';
 import { BPATCH, KITS, KNOBS, FM_OP_KNOBS, DRUM_KNOBS, voiceTrack, kitVoice } from './instruments.js';
-import { GENRES } from './gen.js';
+import { GENRES, GENRE_NAMES } from './gen.js';
 import { DRUM_LANES } from './seq.js';
 import { WORKLET_URL, measureAll } from './measure.js';
 
@@ -68,6 +68,7 @@ function setKit(name) {
 $('kit').onchange = () => setKit($('kit').value);
 $('kit2').onchange = () => setKit($('kit2').value);
 
+for (const [k, v] of Object.entries(GENRE_NAMES)) $('genre').append(new Option(v, k));
 $('dice').onclick = () => { $('seed').value = 1 + Math.floor(Math.random() * 99999); makeTrack(); };
 $('make').onclick = () => makeTrack();
 function makeTrack() {
