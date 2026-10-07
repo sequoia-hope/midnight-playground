@@ -128,3 +128,65 @@ impl Drop for WebSocketTransport {
         let _ = self.ws.close();
     }
 }
+
+/// The connection's counters on `window.__mp.net` for the tests and for
+/// finding stutter: round trip, rollbacks and the ticks they re-ran,
+/// desyncs and rebuilds, how far ahead of the host's confirmed tick this
+/// client runs, stalls, and this frame's ticks and drawn fraction.
+pub fn publish(
+    net: bevy::prelude::NonSend<super::Net>,
+    play: bevy::prelude::Res<crate::play::Play>,
+    cams: bevy::prelude::Query<
+        &bevy::prelude::Transform,
+        bevy::prelude::With<bevy::prelude::Camera3d>,
+    >,
+) {
+    let Some(race) = &play.race else { return };
+    let Some(w) = web_sys::window() else { return };
+    let Ok(mr) = js_sys::Reflect::get(&w, &JsValue::from_str("__mp")) else {
+        return;
+    };
+    if !mr.is_object() {
+        return;
+    }
+    let o = js_sys::Object::new();
+    let set = |k: &str, v: f64| {
+        let _ = js_sys::Reflect::set(&o, &JsValue::from_str(k), &JsValue::from_f64(v));
+    };
+    if let Some(c) = &net.client {
+        let s = c.stats;
+        set("rtt", s.rtt);
+        set("rollbacks", s.rollbacks as f64);
+        set("resimulated", s.resimulated as f64);
+        set("hashes", s.hashes_checked as f64);
+        set("desyncs", s.desyncs as f64);
+        set("unrepaired", s.unrepaired as f64);
+        set("ahead", s.ahead as f64);
+        set("stalls", s.stalls as f64);
+        if let Some(r) = &c.race {
+            set("local", r.local() as f64);
+            set("confirmed", r.confirmed() as f64);
+        }
+    }
+    let ss = &race.session;
+    let a = ss.alpha();
+    set("alpha", a);
+    set("ticks", ss.ticks as f64);
+    set("tick", ss.curr.tick as f64);
+    set("me", ss.me as f64);
+    // Each human's car where it is drawn (between the last two ticks).
+    let xs = js_sys::Array::new();
+    for (p, q) in ss.prev.players.iter().zip(&ss.curr.players) {
+        let x = p.v.x + (q.v.x - p.v.x) * a;
+        let z = p.v.z + (q.v.z - p.v.z) * a;
+        xs.push(&JsValue::from_f64(x));
+        xs.push(&JsValue::from_f64(z));
+    }
+    let _ = js_sys::Reflect::set(&o, &JsValue::from_str("cars"), &xs);
+    if let Some(t) = cams.iter().next() {
+        set("camX", t.translation.x as f64);
+        set("camY", t.translation.y as f64);
+        set("camZ", t.translation.z as f64);
+    }
+    let _ = js_sys::Reflect::set(&mr, &JsValue::from_str("net"), &o);
+}
