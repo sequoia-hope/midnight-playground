@@ -64,9 +64,18 @@ const RULES: &[Rule] = &[
         pure: true,
         exact_math: true,
     },
+    // Vehicle dynamics (docs/vehicle-dynamics/SPEC.md 2): mp_math only; it
+    // knows nothing of tracks, and mp_sim adapts the track to its Ground.
+    Rule {
+        krate: "mp_vdyn",
+        allowed: &["mp_math"],
+        banned: SIM_BANNED,
+        pure: true,
+        exact_math: true,
+    },
     Rule {
         krate: "mp_sim",
-        allowed: &["mp_math", "mp_track", "mp_levels"],
+        allowed: &["mp_math", "mp_track", "mp_levels", "mp_vdyn"],
         banned: SIM_BANNED,
         pure: true,
         exact_math: true,
@@ -362,7 +371,7 @@ mod tests {
 
     #[test]
     fn every_sim_crate_is_pure() {
-        for k in ["mp_math", "mp_track", "mp_levels", "mp_sim"] {
+        for k in ["mp_math", "mp_track", "mp_levels", "mp_vdyn", "mp_sim"] {
             let r = RULES.iter().find(|r| r.krate == k).unwrap();
             assert!(r.pure && r.exact_math, "{k}");
         }
