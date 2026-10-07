@@ -7,10 +7,16 @@
 //!   tests and the single-player loopback use.
 //! - [`host`]: the lobby, the authoritative race and the points table.
 //! - [`client`]: a player's session: prediction, rollback, the clock.
+//! - [`signal`]: joining by link: the room, its key, the sealed
+//!   signalling and the star around the host (M11).
+//! - [`rtc`] (feature `rtc`): the WebRTC transport.
 
 #![forbid(unsafe_code)]
 
 pub mod client;
 pub mod host;
 pub mod proto;
+#[cfg(feature = "rtc")]
+pub mod rtc;
+pub mod signal;
 pub mod transport;
