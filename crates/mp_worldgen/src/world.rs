@@ -675,6 +675,17 @@ pub fn level_jobs(
     stages: Stages,
     scenery: impl Fn(&SceneryInfo) -> Option<Box<dyn Scenery>> + Send + 'static,
 ) -> Vec<Job> {
+    level_jobs_with(stages, scenery, |_| Vec::new())
+}
+
+/// [`level_jobs`] with `extra` modules built after the level's own (the
+/// game's living world, [`crate::life`]): they plan and build like any
+/// module, and a level built without them is exactly the ported one.
+pub fn level_jobs_with(
+    stages: Stages,
+    scenery: impl Fn(&SceneryInfo) -> Option<Box<dyn Scenery>> + Send + 'static,
+    extra: impl Fn(&Level) -> Vec<Box<dyn Scenery>> + Send + 'static,
+) -> Vec<Job> {
     let Stages {
         terrain,
         fields,
@@ -701,10 +712,12 @@ pub fn level_jobs(
         // Scenery may carve creeks or flatten building pads before heights are
         // final. A broken scenery module logs and is skipped rather than
         // stopping the level from loading.
+        // The level's own modules, then the extra ones (`true`).
+        let n_own = modules.len();
         let mut kept = Vec::new();
-        for mut s in modules {
+        for (k, mut s) in modules.into_iter().chain(extra(&w.level)).enumerate() {
             match s.plan(w) {
-                Ok(()) => kept.push(s),
+                Ok(()) => kept.push((s, k >= n_own)),
                 Err(e) => w.graph.log.push(format!("{}.plan failed {e}", s.name())),
             }
         }
@@ -723,13 +736,18 @@ pub fn level_jobs(
                 run_stage(sea, w)
             }));
         }
-        let n = kept.len();
-        for (k, mut s) in kept.into_iter().enumerate() {
+        let n = kept.iter().filter(|(_, extra)| !extra).count();
+        for (k, (mut s, extra)) in kept.into_iter().enumerate() {
             let label = s.label().unwrap_or("Building scenery").to_string();
-            let frac = 0.72 + (k as f64 / n as f64) * 0.26;
+            let frac = if extra {
+                0.985
+            } else {
+                0.72 + (k as f64 / n as f64) * 0.26
+            };
             out.push(Job::serial(&label, frac, move |w| {
-                // A section builds only the modules near it (D741).
-                if !crate::section::builds_module(w, s.name()) {
+                // A section builds only the modules near it (D741); the
+                // extra modules decide for themselves.
+                if !extra && !crate::section::builds_module(w, s.name()) {
                     return Ok(Vec::new());
                 }
                 if let Err(e) = s.build(w) {

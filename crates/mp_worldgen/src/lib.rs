@@ -15,6 +15,7 @@ pub mod desert;
 pub mod flora;
 pub mod geom;
 pub mod harbor;
+pub mod life;
 pub mod material;
 pub mod mountain;
 pub mod object;
