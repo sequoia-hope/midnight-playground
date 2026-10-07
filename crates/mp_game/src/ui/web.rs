@@ -113,10 +113,22 @@ fn screen_pixel_ratio(
     }
 }
 
-/// The menu's "Music player" link (the JS page until M5's player).
+/// The menu's "Music player" link: the JS game's page. Beside the build at
+/// `dist/next/` (the registered server) it is two levels up; on GitHub
+/// Pages, where the build is the site root, the JS game is under `legacy/`
+/// (D1112).
 pub fn open_music_player() {
     if let Some(w) = web_sys::window() {
-        let _ = w.location().set_href("../../music.html");
+        let path = w.location().pathname().unwrap_or_default();
+        let _ = w.location().set_href(music_player_href(&path));
+    }
+}
+
+fn music_player_href(path: &str) -> &'static str {
+    if path.contains("/dist/next/") {
+        "../../music.html"
+    } else {
+        "legacy/music.html"
     }
 }
 

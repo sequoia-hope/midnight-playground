@@ -1,13 +1,16 @@
 # Midnight Playground (formerly Midnight Racer): working rules for agents
 
-The Rust port is called **Midnight Playground**; its crates are `mp_*`
-(DECISIONS D1100). The JS game keeps the name Midnight Racer, and so do the
-addresses (repo, Pages, `proj` name, tailnet path) until cutover.
+The game is **Midnight Playground**, in Rust; its crates are `mp_*`
+(DECISIONS D1100). The repository is `sequoia-hope/midnight-playground` and
+Pages serves the Rust game at https://sequoia-hope.github.io/midnight-playground/
+(the cutover, D1112). The JS game keeps the name Midnight Racer and is the
+legacy version, under `legacy/` on Pages. The local addresses keep the old
+name: the `proj` name and the tailnet path are still `midnight-racer`.
 
 Two games live in this repo:
 
 - **The JS game** (repo root: `index.html`, `src/`, `vendor/`, `test/`). It is
-  what GitHub Pages serves from `main`, and it is **frozen** except for bug
+  the legacy version (Pages serves it under `legacy/`), and it is **frozen** except for bug
   fixes the owner reports, and parity hooks during roadmap M0. After the
   `js-reference` tag, hooks are closed too.
 - **The Rust port** (`Cargo.toml`, `crates/`, `xtask/`, `tools/parity/`,
@@ -116,11 +119,13 @@ relative, because the game is always served under a sub-path.
    compare with the reference.
 4. Commit and push straight to `main` (no branches): imperative subject, a
    prose body. Build output (`dist/`, `target/`, `parity/report/`) stays out
-   of git. GitHub Pages serves the JS game at the root until cutover (M9),
-   and since D1101 the Rust build beside it at `dist/next/`, built and
-   published by `.github/workflows/pages.yml` on every push to `main`. Never
-   publish the Rust build at the root or move the JS game before the swap
-   (WP 9.5).
+   of git. `.github/workflows/pages.yml` builds and publishes on every push
+   to `main` (D1112): the Rust build at the site root, the JS game's tracked
+   files under `legacy/`, and `dist/next/` forwarding to the root. The web
+   build is self-contained (`cargo xtask web` copies the fonts, Seaside's
+   survey and photo and the radio clips into it), so it works at
+   `dist/next/` locally and at the root on Pages: never reach above it with
+   `../../` from the Rust page.
 
 **Parallel work.** Packages run in parallel only with disjoint files. A
 shared module has one owner; everyone else may add exports to it but not

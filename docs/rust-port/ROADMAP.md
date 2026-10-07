@@ -296,6 +296,11 @@ simulation (WP 1.6).
 
 **Owner:** final sign-off; a week of play before the swap.
 
+**Done (2026-10-07):** the swap, in its smallest form (DECISIONS D1112):
+Pages serves the Rust game at the root and the JS game under `legacy/`;
+the JS source stays where it is. Parity stopped being the goal the same
+day (D1111).
+
 **Exit:** tag `v1.0`. From here, new features are Rust only.
 
 ---

@@ -9126,3 +9126,34 @@ just look at the Rust version and decide how we want to improve it."
   principle 6), whatever the JS did.
 - **The cutover itself** (WP 9.5: Rust at the site root, the JS game under
   `/legacy/`) is a separate, outward-facing step the owner confirms.
+
+## D1112. The cutover: the Rust game at the root of Pages
+
+The owner, 2026-10-07, after renaming the repository to
+`sequoia-hope/midnight-playground` (which moved the Pages site to
+`https://sequoia-hope.github.io/midnight-playground/`; GitHub forwards the
+repository but not a project's Pages address): make the Rust version the
+main URL and document the JavaScript version as legacy. This is ROADMAP WP
+9.5, done in the smallest form:
+
+- **Pages** (`.github/workflows/pages.yml`) publishes the Rust web build at
+  the site root and the commit's tracked files (the JS game, its tools and
+  labs, as the old branch deploy served them) under `legacy/`.
+  `dist/next/index.html` forwards to the root, keeping the query and hash,
+  so old links work. A failed Rust build now fails the job instead of
+  publishing a placeholder, so the last good site stays up.
+- **The web build is self-contained.** The page used to reach two levels up
+  from `dist/next/` for the Rajdhani fonts, Seaside's survey and photo and
+  the radio clips, which at the site root would leave the project's path.
+  `cargo xtask web` copies them into the build (`RUNTIME_FILES`), about
+  4.5 MB, and the page and `RADIO_BASE` use paths inside it. The menu's
+  Music player link goes to the JS page: `../../music.html` beside
+  `dist/next/`, `legacy/music.html` at the root.
+- **The JS source stays where it is** (the roadmap's `legacy/` move of the
+  source is not done): the tests, the labs and the parity tooling all use
+  its paths, and nothing is gained by moving it.
+- **Records carry over by themselves:** both games keep their settings and
+  best times in `localStorage` under the same `mr.` keys, and they share the
+  `github.io` origin.
+- The local names (`proj` name, tailnet path `/midnight-racer/`) are the
+  owner's machine's and stay as they are.
