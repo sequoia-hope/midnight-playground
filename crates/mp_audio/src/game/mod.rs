@@ -33,6 +33,7 @@
 //! drawn here from the one stream, in the same order.
 
 mod build;
+mod exhaust;
 mod shots;
 mod steer;
 
@@ -48,6 +49,7 @@ use crate::wa::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
+pub use exhaust::preset_for as exhaust_preset_for;
 pub use shots::{NoiseBurst, PlayOpts};
 
 /// `clamp(v, lo, hi)`: `v < lo ? lo : v > hi ? hi : v` (NaN passes through).
@@ -360,6 +362,14 @@ pub struct GameAudio {
     timers: Timers,
     g: Option<Rc<build::Graph>>,
     pub music: Option<Music>,
+    /// The player's engine on the physical model ([`exhaust`]), if asked
+    /// for and the platform runs it.
+    ex_want: bool,
+    ex: exhaust::ExState,
+    /// The model voiced the engine at the last update.
+    ex_live: bool,
+    /// Exhaust nodes made (one per graph, whatever the car changes).
+    ex_made: u32,
 }
 
 struct CarWaveSet {
@@ -421,6 +431,10 @@ impl GameAudio {
             timers: Timers::default(),
             g: None,
             music: None,
+            ex_want: false,
+            ex: exhaust::ExState::Idle,
+            ex_live: false,
+            ex_made: 0,
         }
     }
 

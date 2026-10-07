@@ -33,6 +33,8 @@ enum WebNode {
     Merger(ws::ChannelMergerNode),
     Pan(ws::StereoPannerNode),
     Analyser(ws::AnalyserNode),
+    /// `web/exhaust-worklet.js` running `mp_exhaust.wasm`.
+    Exhaust(ws::AudioWorkletNode),
 }
 
 impl WebNode {
@@ -50,6 +52,7 @@ impl WebNode {
             WebNode::Merger(n) => n,
             WebNode::Pan(n) => n,
             WebNode::Analyser(n) => n,
+            WebNode::Exhaust(n) => n,
         }
     }
 
@@ -72,6 +75,7 @@ impl WebNode {
             (WebNode::Comp(n), P::Release) => n.release(),
             (WebNode::Delay(n), P::DelayTime) => n.delay_time(),
             (WebNode::Pan(n), P::Pan) => n.pan(),
+            (WebNode::Exhaust(n), p) => n.parameters().ok()?.get(p.as_str())?,
             _ => return None,
         })
     }
@@ -98,6 +102,44 @@ pub struct WebBackend {
     buffers: Rc<RefCell<HashMap<BufferId, ws::AudioBuffer>>>,
     waves: HashMap<WaveId, ws::PeriodicWave>,
     failures: Rc<RefCell<Vec<String>>>,
+    /// The exhaust model's compiled wasm, once [`Backend::prepare_exhaust`]
+    /// has loaded it (with the worklet module).
+    exhaust_module: Rc<RefCell<Option<JsValue>>>,
+    /// That load, while it runs or once it has settled.
+    exhaust_ready: Option<Pending<bool>>,
+}
+
+/// Where the exhaust worklet's files are, beside the game's page. Relative:
+/// the game is always served under a sub-path.
+const EXHAUST_WORKLET_URL: &str = "exhaust-worklet.js";
+const EXHAUST_WASM_URL: &str = "mp_exhaust.wasm";
+/// The engines' noise seed (the native processor's too).
+const EXHAUST_SEED: u32 = 12345;
+
+/// `ctx.audioWorklet.addModule(worklet)`, then the wasm fetched and
+/// compiled: the module, or why not.
+async fn load_exhaust(ctx: ws::BaseAudioContext) -> Result<JsValue, JsValue> {
+    // An insecure context or an old browser has no `audioWorklet`.
+    let worklet = js_sys::Reflect::get(&ctx, &JsValue::from_str("audioWorklet"))?;
+    if worklet.is_undefined() || worklet.is_null() {
+        return Err(JsValue::from_str("no AudioWorklet"));
+    }
+    let worklet: ws::AudioWorklet = worklet.unchecked_into();
+    let added = worklet.add_module(EXHAUST_WORKLET_URL)?;
+    let window = ws::window().ok_or_else(|| JsValue::from_str("no window"))?;
+    let fetched = window.fetch_with_str(EXHAUST_WASM_URL);
+    wasm_bindgen_futures::JsFuture::from(added).await?;
+    let resp: ws::Response = wasm_bindgen_futures::JsFuture::from(fetched)
+        .await?
+        .unchecked_into();
+    if !resp.ok() {
+        return Err(JsValue::from_str(&format!(
+            "{EXHAUST_WASM_URL}: HTTP {}",
+            resp.status()
+        )));
+    }
+    let bytes = wasm_bindgen_futures::JsFuture::from(resp.array_buffer()?).await?;
+    wasm_bindgen_futures::JsFuture::from(js_sys::WebAssembly::compile(&bytes)).await
 }
 
 fn js_err(e: &JsValue) -> String {
@@ -135,6 +177,8 @@ impl WebBackend {
             buffers: Rc::new(RefCell::new(HashMap::new())),
             waves: HashMap::new(),
             failures: Rc::new(RefCell::new(Vec::new())),
+            exhaust_module: Rc::new(RefCell::new(None)),
+            exhaust_ready: None,
         }
     }
 
@@ -187,6 +231,31 @@ impl WebBackend {
             ),
             NodeKind::StereoPanner => WebNode::Pan(c.create_stereo_panner()?),
             NodeKind::Analyser => WebNode::Analyser(c.create_analyser()?),
+            NodeKind::Exhaust => {
+                let module = self
+                    .exhaust_module
+                    .borrow()
+                    .clone()
+                    .ok_or_else(|| JsValue::from_str("createExhaust before prepareExhaust"))?;
+                let preset = arg.unwrap_or(0.0);
+                let po = js_sys::Object::new();
+                js_sys::Reflect::set(&po, &"module".into(), &module)?;
+                js_sys::Reflect::set(&po, &"preset".into(), &preset.into())?;
+                js_sys::Reflect::set(&po, &"seed".into(), &EXHAUST_SEED.into())?;
+                let pd = js_sys::Object::new();
+                js_sys::Reflect::set(&pd, &"preset".into(), &preset.into())?;
+                let opts = ws::AudioWorkletNodeOptions::new();
+                opts.set_number_of_inputs(0);
+                opts.set_number_of_outputs(1);
+                opts.set_output_channel_count(&js_sys::Array::of1(&2.into()));
+                opts.set_parameter_data(&pd);
+                opts.set_processor_options(Some(&po));
+                WebNode::Exhaust(ws::AudioWorkletNode::new_with_options(
+                    c,
+                    "mp-exhaust",
+                    &opts,
+                )?)
+            }
         })
     }
 
@@ -494,6 +563,32 @@ impl Backend for WebBackend {
                     done.resolve(Ok(d));
                 }
                 Err(e) => done.resolve(Err(AudioError::new(ErrorName::EncodingError, js_err(&e)))),
+            }
+        });
+    }
+
+    fn prepare_exhaust(&mut self, done: Pending<bool>) {
+        // One load per context; a second call follows the first.
+        if let Some(ready) = &self.exhaust_ready {
+            ready.then(move |r| done.resolve(r.clone()));
+            return;
+        }
+        self.exhaust_ready = Some(done.clone());
+        let ctx = self.ctx.base().clone();
+        let module = self.exhaust_module.clone();
+        let failures = self.failures.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            match load_exhaust(ctx).await {
+                Ok(m) => {
+                    *module.borrow_mut() = Some(m);
+                    done.resolve(Ok(true));
+                }
+                Err(e) => {
+                    let m = format!("prepareExhaust: {}", js_err(&e));
+                    ws_console(&m);
+                    failures.borrow_mut().push(m);
+                    done.resolve(Ok(false));
+                }
             }
         });
     }

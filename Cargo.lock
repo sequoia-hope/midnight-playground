@@ -3572,6 +3572,7 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "js-sys",
+ "mp_exhaust",
  "mp_levels",
  "mp_math",
  "mp_sim",

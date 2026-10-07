@@ -37,6 +37,7 @@ when a work package introduces one, with the package and the JS it concerns.
 | Bigger touch controls: sideways a larger `--b`, a taller slider (as wide as the JS's) and a longer stick throw; upright a wider and taller slider, taller pads, a longer stick throw and a bigger knob | The owner (2026-10-05): the controls are too small upright and still hard sideways | D1084 |
 | The main menu plays the selected level's music as soon as the sound is up (natively at once; on the web after the first tap or key); the JS menu is silent until a level tab or Race picks a track | The owner (2026-10-06): sound should come up right away | DECISIONS D1010 |
 | The menu lists Coast Highway first (LEVEL 1) and Sierra second (LEVEL 2), and a new player's selected level is Coast; an unknown level id falls back to Coast | The owner (2026-10-06): the first level should start in the dark | DECISIONS D1102 |
+| The player's combustion engine is the physical exhaust model of the engine lab (`mp_exhaust`): its own pulses, waveguides, muffler, intake, gear whine, turbo and overrun pops, in place of the wavetable engine and its whine, turbo and pop layers. Rivals keep the wavetable voice. "Classic engine sound" on the menu brings the old engine back; parity runs and every call-log test use it | The owner (2026-10-07), after the lab: "Can we get this integrated in to the game?" — the Rust build first, the player's car only (docs/vision/sound.md 2.1, 2.3) | DECISIONS D1110 |
 
 ## Known JS quirks reproduced, not fixed
 

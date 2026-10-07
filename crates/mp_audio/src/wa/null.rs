@@ -12,7 +12,7 @@ use super::backend::{Attr, Backend, BufferId, NodeId, Op, WaveId};
 use super::log::{Val, js_number, line};
 use super::timeline::{Event, EventKind, Timeline};
 use super::{
-    AudioError, ContextState, Decoded, Dest, ErrorName, ParamId, ParamName, Pending, param_spec,
+    AudioError, ContextState, Decoded, Dest, ErrorName, ParamId, ParamName, Pending, param_initial,
     params_of,
 };
 use std::cell::{Cell, RefCell};
@@ -376,11 +376,10 @@ impl Backend for NullBackend {
         let now = self.0.now.get();
         match *op {
             Op::New { node, kind, arg } => {
-                let max_delay = arg.unwrap_or(1.0);
                 let ps = params_of(kind)
                     .iter()
                     .map(|&p| {
-                        let (v, _, _) = param_spec(kind, p, self.0.sample_rate, max_delay)
+                        let v = param_initial(kind, p, self.0.sample_rate, arg)
                             .expect("a param of this kind");
                         (p, Timeline::new(v))
                     })
@@ -492,6 +491,11 @@ impl Backend for NullBackend {
                 }));
             }
         }
+    }
+
+    fn prepare_exhaust(&mut self, done: Pending<bool>) {
+        // Nothing to load: ready at the next settle, as a promise would be.
+        self.queue(Box::new(move || done.resolve(Ok(true))));
     }
 
     fn release_node(&mut self, node: NodeId) {

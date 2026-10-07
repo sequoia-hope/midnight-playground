@@ -387,6 +387,9 @@ pub struct Settings {
     /// `mr.steerAssist` (Rust only): `off`, `light` or `strong`; `light` by
     /// default on a touch screen (D1083).
     pub assist: String,
+    /// `mr.classicEngine` (Rust only): the player's engine on the old
+    /// wavetable voice instead of the physical exhaust model (D1110).
+    pub classic_engine: bool,
 }
 
 impl Settings {
@@ -415,6 +418,7 @@ impl Settings {
             rumble: store.bool("rumble", true),
             guide: store.string("guideLine", if touch_ui { "full" } else { "off" }),
             assist: store.string("steerAssist", if touch_ui { "light" } else { "off" }),
+            classic_engine: store.bool("classicEngine", false),
         };
         if !GUIDE.contains(&s.guide.as_str()) {
             s.guide = if touch_ui { "full" } else { "off" }.into();
@@ -535,6 +539,7 @@ mod tests {
                 rumble: true,
                 guide: "off".into(),
                 assist: "off".into(),
+                classic_engine: false,
             }
         );
         // Touch screens get lighter rendering by default, and the guide
@@ -560,6 +565,7 @@ mod tests {
             ("mr.rumble", "false"),
             ("mr.guideLine", "\"brake\""),
             ("mr.steerAssist", "\"off\""),
+            ("mr.classicEngine", "true"),
         ]);
         let s = Settings::load(&store, true);
         assert_eq!(
@@ -581,6 +587,7 @@ mod tests {
                 rumble: false,
                 guide: "brake".into(),
                 assist: "off".into(),
+                classic_engine: true,
             }
         );
         // A choice the menu does not offer falls back to the default.

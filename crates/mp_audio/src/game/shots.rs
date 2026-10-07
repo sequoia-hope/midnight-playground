@@ -179,6 +179,17 @@ impl GameAudio {
             p.linear_ramp_to_value_at_time(if up { 0.3 } else { 0.55 }, t + 0.025);
             p.set_target_at_time(1.0, t + if up { 0.11 } else { 0.06 }, 0.05);
         }
+        let model = if let Some(v) = self.ex_built() {
+            // The ignition cut, on the model's voice the same way.
+            let p = &v.shift.gain;
+            p.cancel_scheduled_values(t);
+            p.set_value_at_time(p.value(), t);
+            p.linear_ramp_to_value_at_time(if up { 0.3 } else { 0.55 }, t + 0.025);
+            p.set_target_at_time(1.0, t + if up { 0.11 } else { 0.06 }, 0.05);
+            true
+        } else {
+            false
+        };
         if self.electric {
             return;
         }
@@ -193,7 +204,9 @@ impl GameAudio {
                 ..Default::default()
             },
         );
-        if !up {
+        if model {
+            // The model makes its own pops; the old ones stay out.
+        } else if !up {
             self.pop(t + 0.02, 0.35); // rev-match blip
         } else {
             // Exhaust bark as the ignition cuts and comes back under load.

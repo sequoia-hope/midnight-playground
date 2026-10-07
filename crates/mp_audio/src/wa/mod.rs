@@ -41,6 +41,9 @@ pub mod compressor;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod oscillator;
 
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod exhaust;
+
 pub use backend::{Attr, Backend, BufferId, NodeId, OfflineRender, Op, WaveId};
 
 use std::cell::{Cell, RefCell};
@@ -66,6 +69,10 @@ pub enum NodeKind {
     ChannelMerger,
     StereoPanner,
     Analyser,
+    /// The physical exhaust model (`mp_exhaust`) in an AudioWorklet: no
+    /// inputs, one stereo output. Its argument is the preset's index in
+    /// [`mp_exhaust::ORDER`].
+    Exhaust,
 }
 
 impl NodeKind {
@@ -83,13 +90,14 @@ impl NodeKind {
             NodeKind::ChannelMerger => "ChannelMerger",
             NodeKind::StereoPanner => "StereoPanner",
             NodeKind::Analyser => "Analyser",
+            NodeKind::Exhaust => "Exhaust",
         }
     }
 
     /// `numberOfInputs` (the merger's is its argument).
     fn inputs(self, arg: Option<f64>) -> u32 {
         match self {
-            NodeKind::Oscillator | NodeKind::BufferSource => 0,
+            NodeKind::Oscillator | NodeKind::BufferSource | NodeKind::Exhaust => 0,
             NodeKind::ChannelMerger => arg.unwrap_or(6.0) as u32,
             _ => 1,
         }
@@ -125,6 +133,13 @@ pub enum ParamName {
     Ratio,
     Attack,
     Release,
+    // The exhaust node's (read once per 128-frame block).
+    Rpm,
+    Throttle,
+    Boost,
+    Speed,
+    Running,
+    Preset,
 }
 
 impl ParamName {
@@ -142,6 +157,12 @@ impl ParamName {
             ParamName::Ratio => "ratio",
             ParamName::Attack => "attack",
             ParamName::Release => "release",
+            ParamName::Rpm => "rpm",
+            ParamName::Throttle => "throttle",
+            ParamName::Boost => "boost",
+            ParamName::Speed => "speed",
+            ParamName::Running => "running",
+            ParamName::Preset => "preset",
         }
     }
 }
@@ -202,6 +223,12 @@ pub fn param_spec(
         (K::Oscillator, P::Detune) => (0.0, -DETUNE_MAX, DETUNE_MAX),
         (K::BufferSource, P::PlaybackRate) => (1.0, -F32_MAX, F32_MAX),
         (K::BufferSource, P::Detune) => (0.0, -F32_MAX, F32_MAX),
+        (K::Exhaust, P::Rpm) => (800.0, 0.0, 30000.0),
+        (K::Exhaust, P::Throttle) => (0.0, 0.0, 1.0),
+        (K::Exhaust, P::Boost) => (0.0, 0.0, 1.0),
+        (K::Exhaust, P::Speed) => (0.0, -F32_MAX, F32_MAX),
+        (K::Exhaust, P::Running) => (1.0, 0.0, 1.0),
+        (K::Exhaust, P::Preset) => (0.0, 0.0, (mp_exhaust::ORDER.len() - 1) as f64),
         _ => return None,
     })
 }
@@ -217,8 +244,38 @@ pub fn params_of(kind: NodeKind) -> &'static [ParamName] {
         NodeKind::BiquadFilter => &[P::Frequency, P::Detune, P::Q, P::Gain],
         NodeKind::Oscillator => &[P::Frequency, P::Detune],
         NodeKind::BufferSource => &[P::PlaybackRate, P::Detune],
+        NodeKind::Exhaust => &[
+            P::Rpm,
+            P::Throttle,
+            P::Boost,
+            P::Speed,
+            P::Running,
+            P::Preset,
+        ],
         _ => &[],
     }
+}
+
+/// The value a new node's param starts at: its default, except an exhaust
+/// node's `preset`, which starts at the preset the node was made with
+/// (`parameterData` in a browser), so its first block needs no rebuild.
+pub fn param_initial(
+    kind: NodeKind,
+    name: ParamName,
+    sample_rate: f64,
+    arg: Option<f64>,
+) -> Option<f64> {
+    if (kind, name) == (NodeKind::Exhaust, ParamName::Preset) {
+        return Some(arg.unwrap_or(0.0));
+    }
+    let max_delay = arg.unwrap_or(1.0);
+    param_spec(kind, name, sample_rate, max_delay).map(|(v, _, _)| v)
+}
+
+/// The index in [`mp_exhaust::ORDER`] of an exhaust preset (`None`: not a
+/// preset).
+pub fn exhaust_preset_index(key: &str) -> Option<usize> {
+    mp_exhaust::ORDER.iter().position(|k| *k == key)
 }
 
 /// `OscillatorType` (`'custom'` comes only from `setPeriodicWave`).
@@ -664,6 +721,13 @@ impl Graph {
                         let n = arg.unwrap_or(6.0);
                         if !((1.0..=32.0).contains(&n) && n.fract() == 0.0) {
                             return throw(E::IndexSizeError, format!("createChannelMerger({n})"));
+                        }
+                    }
+                    NodeKind::Exhaust => {
+                        let i = arg.unwrap_or(0.0);
+                        let n = mp_exhaust::ORDER.len() as f64;
+                        if !(i >= 0.0 && i < n && i.fract() == 0.0) {
+                            return throw(E::NotSupportedError, format!("createExhaust({i})"));
                         }
                     }
                     _ => {}
@@ -1207,6 +1271,47 @@ impl AudioContext {
         let node = self.new_node(NodeKind::StereoPanner, None);
         StereoPannerNode {
             pan: self.param(&node, ParamName::Pan),
+            node,
+        }
+    }
+
+    /// Starts loading what an exhaust node needs (the web backend's worklet
+    /// module and the model's wasm); settles `true` when
+    /// [`AudioContext::create_exhaust`] may be called, `false` if it never
+    /// can (no AudioWorklet: an old browser or an insecure context).
+    /// Settles at the next [`AudioContext::settle`] on a virtual clock, by
+    /// itself in a browser. Not a Web Audio call: not in the call log.
+    pub fn prepare_exhaust(&self) -> Pending<bool> {
+        self.flush_released();
+        let p = Pending::new();
+        self.0.backend.borrow_mut().prepare_exhaust(p.clone());
+        p
+    }
+
+    /// An exhaust node for `preset`, a key in [`mp_exhaust::ORDER`]. An
+    /// unknown key makes the first preset, with a warning (a problem in
+    /// strict mode). On the web, only once [`AudioContext::prepare_exhaust`]
+    /// has settled `true` (before that the browser throws and the node is
+    /// inert, as the backend's failures record).
+    pub fn create_exhaust(&self, preset: &str) -> ExhaustNode {
+        let index = exhaust_preset_index(preset).unwrap_or_else(|| {
+            self.problem(
+                ProblemKind::Warning,
+                format!(
+                    "createExhaust({preset:?}): not a preset, {:?} instead",
+                    mp_exhaust::ORDER[0]
+                ),
+            );
+            0
+        });
+        let node = self.new_node(NodeKind::Exhaust, Some(index as f64));
+        ExhaustNode {
+            rpm: self.param(&node, ParamName::Rpm),
+            throttle: self.param(&node, ParamName::Throttle),
+            boost: self.param(&node, ParamName::Boost),
+            speed: self.param(&node, ParamName::Speed),
+            running: self.param(&node, ParamName::Running),
+            preset: self.param(&node, ParamName::Preset),
             node,
         }
     }
@@ -1936,6 +2041,22 @@ impl AnalyserNode {
     }
 }
 
+/// The exhaust model's node ([`AudioContext::create_exhaust`]). Its params
+/// are read once per 128-frame block (k-rate): drive them with
+/// `set_value_at_time`. `running` below 0.5 fades the engine out (about
+/// 40 ms), at or above fades it in; `preset` (an index in
+/// [`mp_exhaust::ORDER`], rounded) rebuilds the engine for another car when
+/// it changes, so one node can serve a whole session.
+pub struct ExhaustNode {
+    node: Node,
+    pub rpm: AudioParam,
+    pub throttle: AudioParam,
+    pub boost: AudioParam,
+    pub speed: AudioParam,
+    pub running: AudioParam,
+    pub preset: AudioParam,
+}
+
 node_deref!(
     GainNode,
     BiquadFilterNode,
@@ -1946,7 +2067,8 @@ node_deref!(
     ConvolverNode,
     DelayNode,
     StereoPannerNode,
-    AnalyserNode
+    AnalyserNode,
+    ExhaustNode
 );
 
 // ── Buffers and waves ──────────────────────────────────────────────

@@ -716,6 +716,14 @@ fn options(
         s.flash,
         "Police lights flash",
     );
+    check(
+        p,
+        cx,
+        "opt-classic-engine",
+        Opt::ClassicEngine,
+        s.classic_engine,
+        "Classic engine sound",
+    );
     // The driving aids (Rust only, D1083), on every device.
     for (sel, label, value) in [
         (Sel::Guide, "Guide line", &s.guide),

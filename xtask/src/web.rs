@@ -101,6 +101,7 @@ pub fn run(args: &[String]) -> Result {
         built.push(b.name);
     }
 
+    build_exhaust(release, &out)?;
     copy_dir(&root.join("crates/mp_game/web"), &out)?;
     // Where the page finds the scene exports: the parity cache of this JS
     // tree, relative to dist/next/ (the registered server serves the repo
@@ -200,6 +201,55 @@ fn build_backend(b: &Backend, release: bool, profile: &str, out: &Path) -> Resul
         )
         .map_err(|e| format!("{e}\n(install with: cargo install wasm-opt --locked)"))?;
         precompress(out, &[&bg, &format!("{}.js", b.out_name)])?;
+    }
+    Ok(())
+}
+
+/// The exhaust node's files (`mp_audio`'s web backend loads them beside the
+/// page): the model as its own small wasm, with the C-ABI exports of its
+/// `worklet` feature (kept out of the game's wasm), and the AudioWorklet
+/// shim that runs it. Optimised even for a debug build (the `release`
+/// profile): it runs per sample on the audio thread.
+fn build_exhaust(release: bool, out: &Path) -> Result {
+    let root = root();
+    let profile = if release { "web-release" } else { "release" };
+    let mut build = cargo();
+    build.args([
+        "build",
+        "-p",
+        "mp_exhaust",
+        "--lib",
+        "--features",
+        "worklet",
+        "--target",
+        TARGET,
+        "--profile",
+        profile,
+    ]);
+    println!("web: building the exhaust worklet");
+    exec(&mut build)?;
+    let wasm = root
+        .join("target")
+        .join(TARGET)
+        .join(profile)
+        .join("mp_exhaust.wasm");
+    let name = "mp_exhaust.wasm";
+    let dest = out.join(name);
+    std::fs::copy(&wasm, &dest).map_err(|e| format!("copying {}: {e}", wasm.display()))?;
+    let js = "exhaust-worklet.js";
+    let src = root.join("crates/mp_audio/web").join(js);
+    std::fs::copy(&src, out.join(js)).map_err(|e| format!("copying {}: {e}", src.display()))?;
+    if release {
+        exec(
+            Command::new("wasm-opt")
+                .arg("-O3")
+                .args(WASM_FEATURES)
+                .arg(&dest)
+                .arg("-o")
+                .arg(&dest),
+        )
+        .map_err(|e| format!("{e}\n(install with: cargo install wasm-opt --locked)"))?;
+        precompress(out, &[name, js])?;
     }
     Ok(())
 }

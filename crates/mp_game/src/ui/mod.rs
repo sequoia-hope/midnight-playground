@@ -79,6 +79,7 @@ pub enum Opt {
     Autogas,
     Fullscreen,
     Rumble,
+    ClassicEngine,
 }
 
 /// The range sliders.
@@ -591,6 +592,8 @@ fn sync_audio(
         );
     }
     *last = Some((a.settings.music, a.settings.sfx, a.settings.track.clone()));
+    // The engine's voice (D1110): not a call the JS makes, so not logged.
+    a.audio.set_engine_model(!ui.settings.classic_engine);
     // `audio.onTrackChange`: `#np-pause` names the new track.
     if let Some(i) = a.audio.track_info() {
         let t = format!("♪ {} · {}", i.title, i.style);
@@ -1107,6 +1110,7 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
                 Opt::Autogas => (&mut s.autogas, "autogas"),
                 Opt::Fullscreen => (&mut s.fullscreen, "fullscreen"),
                 Opt::Rumble => (&mut s.rumble, "rumble"),
+                Opt::ClassicEngine => (&mut s.classic_engine, "classicEngine"),
             };
             *slot = !*slot;
             let v = *slot;

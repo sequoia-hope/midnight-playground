@@ -7,6 +7,9 @@ publish.workspace = true
 
 [dependencies]
 mp_math.workspace = true
+# The exhaust node's model (the native backend runs it in a worklet
+# processor; the web build loads it as its own wasm).
+mp_exhaust.workspace = true
 # Array hashes: the audio reference names arrays by SHA-256 (the null
 # backend's call log, the parity tests).
 sha2 = "0.10"
@@ -29,6 +32,10 @@ web-sys = { workspace = true, optional = true, features = [
     "AudioDestinationNode",
     "AudioNode",
     "AudioParam",
+    "AudioParamMap",
+    "AudioWorklet",
+    "AudioWorkletNode",
+    "AudioWorkletNodeOptions",
     "AudioScheduledSourceNode",
     "BaseAudioContext",
     "BiquadFilterNode",
@@ -48,6 +55,7 @@ web-sys = { workspace = true, optional = true, features = [
     "StereoPannerNode",
     "WaveShaperNode",
     "Window",
+    "Worklet",
 ] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

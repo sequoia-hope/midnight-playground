@@ -9060,3 +9060,48 @@ LEVEL 2), and a new player's stored level defaults to `coast`. Players who
 already have `level` stored keep their choice. `level_by_id` still falls
 back to the first entry, now Coast. Everything that walks the list finds
 the same levels; only the order changed. The JS game keeps Sierra first.
+
+## D1110. The player's engine on the physical exhaust model
+
+The owner (2026-10-07), after hearing the engine lab
+(`tools/engine-lab/`): "Can we get this integrated in to the game?" —
+the Rust build first, the player's car only (docs/vision/sound.md 2.1 and
+2.3, which planned this for after cutover; the owner moved it forward).
+
+- **The model.** `mp_exhaust` is the lab's `EngineLab` processor ported
+  line for line, with its presets; the lab stays the oracle
+  (`parity/golden/exhaust/`, written by `tools/engine-lab/test/golden.mjs`;
+  the crate's golden test matches it per 50 ms to 0.1 % and per sample to
+  1e-5). It has no dependencies, so it also builds as its own small wasm.
+- **One implementation everywhere.** The facade has an `Exhaust` node
+  (`ctx.prepare_exhaust()`, `ctx.create_exhaust(preset)`, params `rpm`,
+  `throttle`, `boost`, `speed`, `running`, `preset`, read once per block).
+  Natively it is an AudioWorklet processor of the `web-audio-api` crate
+  running the engine; on the web it is an AudioWorkletNode whose processor
+  (`crates/mp_audio/web/exhaust-worklet.js`) instantiates `mp_exhaust.wasm`
+  (the crate built with its `worklet` feature) on the audio thread. `cargo
+  xtask web` puts both files in `dist/next/`; the URLs are relative. Where
+  AudioWorklet is missing (an insecure context, an old browser),
+  `prepare_exhaust` settles false and the wavetable engine plays.
+- **In the game** (`mp_audio::game::exhaust`). The cars map to the lab's
+  presets by its `gameCar`: sports flatV8, muscle crossV8, super v10,
+  rally i4turbo (the S4 presets wait for the garage). The game's rpm
+  (800 to rpmMax) is mapped onto the preset's idle to redline, so the
+  limiter and the overrun fall where the game puts them. With the model
+  on, the wavetable engine, its gear whine, its turbo layer and its pops
+  (the overrun ones and the shift barks) are silent: the model has its
+  own. The shift dip and the damage misfires' dip are mirrored on the
+  model's voice; the gearbox clunk and the damage layer are unchanged.
+  Rivals keep the wavetable voice. One node lives as long as the graph; a
+  car change moves its `preset` param, so no worklet is left processing.
+- **Level.** The lab mixes for itself (its own compressor, makeup and
+  limiter), so a trim per preset puts each car where its wavetable engine
+  sat, measured through the whole `GameAudio` on the native backend
+  (`tests/exhaust_game.rs`): within ±3.5 dB at idle, part and full
+  throttle; a little louder at idle, up to 3.5 dB quieter at full throttle
+  where the SFX compressor holds it back. The owner judges by ear.
+- **The setting.** "Classic engine sound" (`mr.classicEngine`, off) on the
+  menu brings the wavetable engine back. `GameAudio::new` leaves the model
+  off, so every parity run, call-log golden and audio reference render is
+  the JS game's; the menu's choice reaches the audio directly, not as a
+  logged call.
