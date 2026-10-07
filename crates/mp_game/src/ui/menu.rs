@@ -552,13 +552,31 @@ pub fn menu(
         // there is a signalling server to introduce the players (D1124).
         let host = crate::net::signal_for(None, opts.o.param("signal")).is_some();
         let fh = cx.f("btn-host");
+        // A phone held upright has no room for the buttons side by side:
+        // stack them, all as wide as the widest. Elsewhere they sit in a
+        // row that wraps within the column, which needs the row bounded.
+        let stack = bp.portrait && bp.narrow;
         p.spawn(holder).with_children(|p| {
             p.spawn(Node {
-                flex_wrap: FlexWrap::Wrap,
-                align_items: AlignItems::Center,
+                flex_direction: if stack {
+                    FlexDirection::Column
+                } else {
+                    FlexDirection::Row
+                },
+                flex_wrap: if stack {
+                    FlexWrap::NoWrap
+                } else {
+                    FlexWrap::Wrap
+                },
+                align_items: if stack {
+                    AlignItems::Stretch
+                } else {
+                    AlignItems::Center
+                },
                 justify_content: JustifyContent::Center,
                 column_gap: bp.px(12.0),
-                row_gap: bp.px(8.0),
+                row_gap: bp.px(if stack { 10.0 } else { 8.0 }),
+                max_width: if two { Val::Percent(100.0) } else { bp.px(col) },
                 ..default()
             })
             .with_children(|p| {
