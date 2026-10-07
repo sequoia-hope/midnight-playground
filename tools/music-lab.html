@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Music Lab</title>
+<link rel="icon" href="data:,">
+<!--
+  Music Lab: a listening prototype of docs/vision/sound.md section 3 (music
+  with real instruments, arrangements that evolve, a real mix): S3 and S4.
+  Instruments in music-lab/instruments.js (TB-303, Juno-style poly, Moog-style
+  mono, 4-op FM, TR-808 and TR-909 synthesised per hit) on the DSP blocks in
+  music-lab/dsp.js; the sequencer (the game's song format) in seq.js; the
+  house and techno grammars in gen.js; the mix in engine.js, all run per
+  sample in the AudioWorklet (worklet.js). A plays the game's own music
+  (src/game/audio/Music.js, used read-only) in step with B, for comparison.
+-->
+<style>
+:root { --bg: #0d0f14; --card: #161a22; --line: #262c36; --fg: #e6e9ee; --muted: #8b94a3; --accent: #ff3d7f; --ok: #4dff8a; --low: #ffb84d; --high: #6fb7ff; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; padding: 16px; }
+h1 { font-size: 1.25rem; margin: 0 0 6px; }
+h2 { font-size: 1rem; margin: 0 0 8px; }
+h3 { font-size: 0.9rem; margin: 10px 0 4px; color: var(--muted); font-weight: 600; }
+p { color: var(--muted); margin: 0 0 10px; max-width: 760px; }
+code { color: var(--fg); font-size: 13px; }
+button, select, input[type=number] { background: #222834; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; font: inherit; font-size: 14px; white-space: nowrap; }
+input[type=number] { width: 90px; cursor: text; }
+select { max-width: 100%; }
+button:hover, select:hover { border-color: var(--accent); }
+button:disabled { opacity: 0.4; cursor: default; }
+button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.big { padding: 10px 18px; font-size: 16px; }
+button.sm { padding: 3px 8px; font-size: 12px; border-radius: 6px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#status { position: sticky; top: 0; z-index: 2; margin: 10px -16px 12px; padding: 8px 16px; background: var(--bg); border-bottom: 1px solid var(--line); color: var(--muted); }
+#status.err { color: #ff8a8a; }
+#status b { color: var(--fg); font-weight: 600; }
+.grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); max-width: 1300px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+.card.wide { grid-column: 1 / -1; }
+.card p { font-size: 13px; margin: 4px 0 8px; }
+label.sl { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(90px, 2fr) 60px; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); padding: 1px 0; }
+label.sl output { color: var(--fg); text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.knobs { display: grid; gap: 0 18px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.read { display: flex; flex-wrap: wrap; gap: 14px; font-variant-numeric: tabular-nums; font-size: 14px; margin: 6px 0; }
+.read span { color: var(--muted); }
+.read b { color: var(--fg); font-weight: 600; }
+canvas { width: 100%; height: 140px; background: #0a0c10; border: 1px solid var(--line); border-radius: 8px; display: block; }
+textarea { width: 100%; height: 140px; background: #11141b; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: 12px/1.4 ui-monospace, monospace; }
+table { border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+th, td { padding: 3px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+.scroll { overflow-x: auto; max-width: 100%; }
+.sections { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.sections button { padding: 4px 8px; font-size: 12px; }
+.sections button.cur { border-color: var(--ok); color: var(--ok); }
+.parts td button { margin-left: 2px; }
+.keys { position: relative; height: 120px; user-select: none; touch-action: none; margin: 8px 0; }
+.keys div { position: absolute; top: 0; border: 1px solid #000; border-radius: 0 0 5px 5px; }
+.keys .w { background: #e6e9ee; height: 120px; z-index: 0; }
+.keys .b { background: #222; height: 74px; z-index: 1; }
+.keys .down { background: var(--accent) !important; }
+.keys span { position: absolute; bottom: 4px; left: 0; right: 0; text-align: center; font-size: 10px; color: #667; }
+.pads { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; margin: 8px 0; }
+.pads button { padding: 14px 4px; font-size: 13px; }
+.pads button.sel { border-color: var(--ok); }
+.meter { display: inline-block; width: 90px; height: 8px; background: #0a0c10; border: 1px solid var(--line); border-radius: 4px; vertical-align: middle; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--ok); width: 0; }
+.meter.warn i { background: var(--low); }
+@media (max-width: 600px) { label.sl { grid-template-columns: 1fr 64px; } label.sl input { grid-column: 1 / -1; grid-row: 2; } }
+</style>
+</head>
+<body>
+<h1>Music Lab</h1>
+<p>A prototype of the music in <code>docs/vision/sound.md</code>: the game's songs re-voiced on emulated classic instruments
+(TB-303, Juno-style pads, Moog-style monos, DX-style FM, TR-808 and TR-909 drums) with a proper mix, and new house and techno
+tracks made from genre grammars. <b>B</b> is the new sound; <b>A</b> is the game's music today, playing in step, for comparison.</p>
+<div id="status">Tap <b>▶ Play</b> to start.</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Song</h2>
+    <div class="row" style="margin-bottom:8px">
+      <select id="song" aria-label="Song"></select>
+    </div>
+    <p id="songNote"></p>
+    <div class="row">
+      <button id="play" class="big">▶ Play</button>
+      <button id="srcB" class="on" title="Key: B">B · new sound</button>
+      <button id="srcA" title="Key: A">A · game today</button>
+    </div>
+    <div class="sections" id="sections"></div>
+    <div class="read">
+      <div><span>section </span><b id="rSec">–</b></div>
+      <div><span>bar </span><b id="rBar">–</b></div>
+      <div><span>glue </span><b id="rGr">–</b></div>
+      <div><span>audio thread </span><span class="meter" id="loadM"><i></i></span> <b id="rLoad">–</b></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Make a track</h2>
+    <p>A seed and a genre make a whole track. <b>Déjà vu</b> (after Mutable Instruments' Marbles) is how much the patterns
+    repeat from one 8-bar block to the next: low wanders, high locks into a loop.</p>
+    <div class="row" style="margin-bottom:6px">
+      <select id="genre"><option value="house">House</option><option value="techno">Techno</option></select>
+      <input type="number" id="seed" value="1" min="1" aria-label="Seed">
+      <button id="dice" title="New seed">🎲</button>
+      <button id="make">Make</button>
+    </div>
+    <label class="sl">Déjà vu <input type="range" id="dejavu" min="0" max="1" step="0.01" value="0.7"><output></output></label>
+    <h3>Live</h3>
+    <label class="sl">Energy <input type="range" id="energy" min="0" max="1" step="0.01" value="1"><output></output></label>
+    <p>Energy is what the game will drive (a pursuit, a final lap, standing still): below full, layers drop out and the mix
+    closes down. B only.</p>
+  </div>
+
+  <div class="card">
+    <h2>Mix and listen</h2>
+    <label class="sl">Tape <input type="range" id="tape" min="0" max="1" step="0.01" value="0.35"><output></output></label>
+    <label class="sl">Glue <input type="range" id="glue" min="0" max="1" step="0.01" value="0.5"><output></output></label>
+    <label class="sl">Reverb <input type="range" id="reverb" min="0" max="2" step="0.01" value="1"><output></output></label>
+    <label class="sl">Reverb time (s) <input type="range" id="revSize" min="0.5" max="6" step="0.1" value="2.4"><output></output></label>
+    <label class="sl">Reverb tone <input type="range" id="revTone" min="0" max="1" step="0.01" value="0.5"><output></output></label>
+    <label class="sl">Drum kit <select id="kit"><option value="tr909">TR-909</option><option value="tr808">TR-808</option></select><output></output></label>
+    <label class="sl">Speaker <select id="speaker">
+      <option value="headphones">Headphones (as is)</option>
+      <option value="big">Big speakers</option>
+      <option value="laptop">Laptop (cut below ~170 Hz)</option>
+      <option value="phone">Phone (cut below ~330 Hz, mono)</option>
+    </select><output></output></label>
+    <label class="sl">Volume <input type="range" id="vol" min="0" max="1" step="0.01" value="0.7"><output></output></label>
+  </div>
+
+  <div class="card wide">
+    <h2>Parts</h2>
+    <p>Each part of the song, the instrument it plays on in B, and live edits to it. <b>Copy JSON</b> captures a patch for
+    Claude to put back into <code>tools/music-lab/instruments.js</code>.</p>
+    <div class="scroll"><table class="parts" id="parts"></table></div>
+    <div id="partEdit" hidden>
+      <h3 id="partEditTitle"></h3>
+      <div class="knobs" id="partKnobs"></div>
+      <div class="row" style="margin-top:8px"><button id="partCopy">Copy JSON</button><button id="partReset">Reset</button><span class="note" id="partNote" style="color:var(--muted);font-size:13px"></span></div>
+    </div>
+  </div>
+
+  <div class="card wide">
+    <h2>Instruments</h2>
+    <p>Play any instrument on its own: the keys below, or the computer keyboard when <b>Keys play</b> is on
+    (<code>A W S E D F T G Y H U J K</code>, <code>Z</code> / <code>X</code> octave). <b>Demo</b> plays a short phrase made for it.</p>
+    <div class="row">
+      <select id="inst" aria-label="Instrument"></select>
+      <button id="demo">Demo</button>
+      <button id="oct-">Oct −</button><button id="oct+">Oct +</button>
+      <label class="row" style="gap:4px;color:var(--muted);font-size:13px"><input type="checkbox" id="keysOn"> Keys play</label>
+    </div>
+    <div class="keys" id="keys"></div>
+    <div class="knobs" id="instKnobs"></div>
+    <div class="row" style="margin-top:8px"><button id="instCopy">Copy JSON</button><button id="instReset">Reset</button><span id="instNote" style="color:var(--muted);font-size:13px"></span></div>
+    <textarea id="json" readonly hidden style="margin-top:8px"></textarea>
+  </div>
+
+  <div class="card wide">
+    <h2>Drum machine</h2>
+    <p>Tap a pad to hear it and edit it. The tweaks apply to the song too.</p>
+    <div class="row"><select id="kit2"><option value="tr909">TR-909</option><option value="tr808">TR-808</option></select><button id="drumCopy">Copy JSON</button><button id="drumReset">Reset</button><span id="drumNote" style="color:var(--muted);font-size:13px"></span></div>
+    <div class="pads" id="pads"></div>
+    <div class="knobs" id="drumKnobs"></div>
+  </div>
+
+  <div class="card wide">
+    <h2>Spectrum <small style="color:var(--muted);font-weight:400">(what you hear, after the speaker setting)</small></h2>
+    <canvas id="spec" width="1200" height="280"></canvas>
+  </div>
+
+  <div class="card wide">
+    <h2>Measure (offline, no ears)</h2>
+    <p>Renders 12 s from the middle of every song, A and B, and compares loudness (RMS), peak, crest factor (peak over RMS:
+    low is squashed, high is spiky), stereo width (side over mid) and the balance of the bands against the low band
+    (40–150 Hz).</p>
+    <div class="row"><button id="measure">Measure all songs</button><span id="mNote" style="color:var(--muted);font-size:13px"></span></div>
+    <div class="scroll"><table id="mTable" style="margin-top:8px"></table></div>
+  </div>
+</div>
+
+<script type="module" src="music-lab/main.js"></script>
+</body>
+</html>
