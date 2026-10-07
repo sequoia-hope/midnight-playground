@@ -1054,6 +1054,68 @@ fn an_abort_ends_the_race_with_no_points_and_no_count() {
 }
 
 #[test]
+fn when_everyone_has_gone_the_race_ends_and_the_session_starts_over() {
+    let mut b = Bench::new(31);
+    let a = b.join("Ann");
+    let k = b.join("Kit");
+    b.settings(settings("coast", AiFill::To6, GridRule::Reverse));
+    b.start_loaded();
+    b.run_to_tick(200);
+    b.cut(k);
+    assert!(b.host.racing(), "Ann is still racing");
+    b.send(a, &Msg::Leave);
+    b.pump(1.0);
+    assert!(!b.host.racing(), "no one left to race");
+    assert!(b.host.points().is_empty(), "an ended race scores nothing");
+    // Both keep their places in the lobby.
+    assert_eq!(b.host.players().len(), 2);
+    // Kit comes back to the lobby, not to a race.
+    let n = b.join("Kit");
+    assert_eq!(b.slot(n), Some(1));
+    let Msg::Lobby {
+        racing,
+        raced,
+        players,
+        ..
+    } = b.last_lobby(n)
+    else {
+        unreachable!()
+    };
+    assert_eq!((racing, raced, players.len()), (false, 0, 2));
+}
+
+#[test]
+fn a_player_who_leaves_on_purpose_comes_back_as_a_newcomer() {
+    let mut b = Bench::new(32);
+    let a = b.join("Ann");
+    let k = b.join("Kit");
+    b.settings(settings("coast", AiFill::None, GridRule::Random));
+    b.start_loaded();
+    b.run_to_tick(100);
+    b.send(k, &Msg::Leave);
+    b.pump(1.0);
+    assert!(b.closed[k]);
+    assert!(b.host.racing(), "Ann races on");
+    // Pressing Multiplayer again: the lobby, waiting for the next race,
+    // not Kit's old car mid-race (a dropped connection would take it back).
+    let k2 = b.join("Kit");
+    assert_eq!(b.slot(k2), Some(2));
+    assert!(b.starts(k2).is_empty(), "no race for the newcomer");
+    let Msg::Lobby { racing, .. } = b.last_lobby(k2) else {
+        unreachable!()
+    };
+    assert!(racing);
+    // The leader ends the race for everyone; the next one has them both.
+    b.send(a, &Msg::Go(false));
+    b.pump(1.0);
+    assert!(!b.host.racing());
+    assert!(b.got[k2].contains(&Msg::End));
+    assert!(b.host.start(b.now));
+    b.pump(1.0);
+    assert_eq!(b.starts(k2).len(), 1);
+}
+
+#[test]
 fn the_race_defining_messages_go_to_each_player_once() {
     let mut b = Bench::new(28);
     let a = b.join("Ann");

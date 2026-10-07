@@ -429,8 +429,30 @@ fn flow(
     mut cs: ResMut<CameraState>,
     mut previews: ResMut<crate::preview::Previews>,
     netv: Res<crate::net::NetView>,
+    mut cut_short: Local<f32>,
 ) {
     let ui = &mut *ui;
+    // Multiplayer: the host ended the race before this player's results
+    // (the leader's End race, or everyone else gone). A finish ends the
+    // race too, so give the results a moment to come up before going back
+    // to the lobby.
+    let unfinished = play
+        .race
+        .as_ref()
+        .is_some_and(|r| r.online_now() && r.results.is_none());
+    if netv.ended && netv.pending_level.is_none() && unfinished {
+        *cut_short += time.delta_secs();
+        if *cut_short > 1.5 {
+            *cut_short = 0.0;
+            play.stop = true;
+            play.armed = false;
+            to_attract(&mut cs, &tr);
+            ui.screen = Screen::Lobby;
+            ui.dirty = true;
+        }
+    } else {
+        *cut_short = 0.0;
+    }
     // Multiplayer: the host started a race. Load its level as Race would,
     // then the race is built online (`play::start`); a finished race still
     // on screen goes first.
@@ -1360,6 +1382,12 @@ fn multiplayer(ui: &mut UiState, ctx: &mut ActCtx, m: lobby::MpAct, busy: bool) 
             ctx.netc.0.push(NetCmd::Ready(!r));
         }
         MpAct::Go => ctx.netc.0.push(NetCmd::Go(true)),
+        MpAct::EndRace => {
+            if ctx.netv.leader {
+                ui.clicks.push("click");
+                ctx.netc.0.push(NetCmd::Go(false));
+            }
+        }
         MpAct::Level(_)
         | MpAct::Ai
         | MpAct::Ghost
@@ -1663,7 +1691,7 @@ fn build(
         screen_node = Some(match screen {
             Screen::Loading => screens::loading(p, &mut cx, &status),
             Screen::Menu => menu::menu(p, &mut cx, &ui, &store, &play, &opts),
-            Screen::Pause => screens::pause(p, &mut cx, &ui, &play),
+            Screen::Pause => screens::pause(p, &mut cx, &ui, &play, &netv),
             Screen::Results => screens::results(p, &mut cx, &ui),
             Screen::PadSetup => screens::padsetup(p, &mut cx, &ui, &pad_setup.view),
             Screen::Lobby => lobby::lobby(p, &mut cx, &ui, &netv),
