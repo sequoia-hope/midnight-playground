@@ -43,6 +43,8 @@ pub enum MpAct {
     Go,
     /// From a finished race's results back to the lobby.
     Back,
+    /// The leader ends the race for everyone (the pause menu, online).
+    EndRace,
 }
 
 /// Colours to pick from: the cars' own, then a few more.

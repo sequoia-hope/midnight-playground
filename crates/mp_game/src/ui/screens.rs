@@ -236,7 +236,13 @@ fn volumes(p: &mut ChildSpawnerCommands, cx: &mut Cx, ui: &UiState) {
 }
 
 /// `#pause`.
-pub fn pause(p: &mut ChildSpawnerCommands, cx: &mut Cx, ui: &UiState, play: &Play) -> Entity {
+pub fn pause(
+    p: &mut ChildSpawnerCommands,
+    cx: &mut Cx,
+    ui: &UiState,
+    play: &Play,
+    net: &crate::net::NetView,
+) -> Entity {
     let bp = cx.bp;
     let cruise = play
         .race
@@ -265,7 +271,18 @@ pub fn pause(p: &mut ChildSpawnerCommands, cx: &mut Cx, ui: &UiState, play: &Pla
         };
         b(p, cx, "btn-resume", Act::Resume, "Resume", true);
         if online {
-            // No restarts with others racing (MULTIPLAYER 2.9).
+            // No restarts with others racing (MULTIPLAYER 2.9); the leader
+            // can end the race for everyone, back to the lobby.
+            if net.leader {
+                b(
+                    p,
+                    cx,
+                    "mp-end",
+                    Act::Mp(super::lobby::MpAct::EndRace),
+                    "End the race for everyone",
+                    false,
+                );
+            }
             b(
                 p,
                 cx,

@@ -59,6 +59,10 @@ fn car_id(s: &str) -> &'static str {
 struct Player {
     info: PlayerInfo,
     peer: Option<PeerId>,
+    /// Left on purpose (Leave, not a dropped connection): coming back
+    /// while the race they left still runs is a new arrival, who waits for
+    /// the next race, rather than taking that car back mid-race.
+    left: bool,
 }
 
 struct Race {
@@ -251,7 +255,8 @@ impl<T: Transport> Host<T> {
                 self.start(now);
             }
             (Msg::Go(false), Some(i)) if self.is_leader(i) => self.abort(),
-            (Msg::Leave, Some(_)) => {
+            (Msg::Leave, Some(i)) => {
+                self.players[i].left = true;
                 self.net.close(peer);
                 self.drop_peer(peer);
             }
@@ -282,10 +287,13 @@ impl<T: Transport> Host<T> {
         }
         let name = clean_name(&name);
         // Someone back after a drop takes their old slot (and car) back.
-        let back = self
-            .players
-            .iter()
-            .position(|p| p.peer.is_none() && p.info.name == name);
+        let back = self.players.iter().position(|p| {
+            let in_race = self
+                .race
+                .as_ref()
+                .is_some_and(|r| r.slots.contains(&p.info.slot));
+            p.peer.is_none() && p.info.name == name && !(p.left && in_race)
+        });
         let i = match back {
             Some(i) => i,
             None => {
@@ -322,11 +330,19 @@ impl<T: Transport> Host<T> {
                 };
                 match reuse {
                     Some(k) => {
-                        self.players[k] = Player { info, peer: None };
+                        self.players[k] = Player {
+                            info,
+                            peer: None,
+                            left: false,
+                        };
                         k
                     }
                     None => {
-                        self.players.push(Player { info, peer: None });
+                        self.players.push(Player {
+                            info,
+                            peer: None,
+                            left: false,
+                        });
                         self.players.len() - 1
                     }
                 }
@@ -334,6 +350,7 @@ impl<T: Transport> Host<T> {
         };
         self.players[i].peer = Some(peer);
         self.players[i].info.connected = true;
+        self.players[i].left = false;
         let slot = self.players[i].info.slot;
         self.send(peer, Channel::Reliable, &Msg::Welcome { slot });
         self.events.push(HostEvent::Joined(slot));
@@ -372,6 +389,13 @@ impl<T: Transport> Host<T> {
             self.players[i].info.connected = false;
             self.players[i].info.ready = false;
             self.events.push(HostEvent::Left(self.players[i].info.slot));
+            if self.race.is_some() && self.players.iter().all(|p| p.peer.is_none()) {
+                // Everyone has gone: the race ends (no points), so whoever
+                // comes back finds the lobby, not a race running with no
+                // one in it (the owner's M10 try). Those who only dropped
+                // keep their places, as in the lobby.
+                self.race = None;
+            }
             self.send_lobby();
         }
     }
@@ -655,7 +679,8 @@ impl<T: Transport> Host<T> {
         self.send_lobby();
     }
 
-    /// Ends the race now (the host's Abort), with no points.
+    /// Ends the race now (the leader's End race, or the host's Abort), with
+    /// no points.
     pub fn abort(&mut self) {
         if self.race.take().is_some() {
             self.broadcast(Channel::Reliable, &Msg::End);
