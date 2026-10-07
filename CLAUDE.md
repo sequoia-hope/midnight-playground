@@ -70,13 +70,14 @@ Toolchain: stable Rust with the `wasm32-unknown-unknown` target
 
 ```
 mp_math ← mp_track ← mp_levels ← mp_sim ← mp_net ← mp_host
+mp_math ← mp_vdyn ← mp_sim   (vehicle dynamics: the sim car's body, tyres, drivetrain)
 mp_scene ← mp_worldgen   (also mp_canvas, mp_math, mp_track, mp_levels)
 mp_exhaust ← mp_audio   (mp_exhaust has no dependencies; it is also its own wasm)
 mp_game uses mp_sim, mp_net, mp_scene, mp_worldgen, mp_audio
 ```
 
 Only `mp_game` depends on Bevy. The simulation crates (`mp_math`,
-`mp_track`, `mp_levels`, `mp_sim`) have `#![forbid(unsafe_code)]` and no
+`mp_track`, `mp_levels`, `mp_vdyn`, `mp_sim`) have `#![forbid(unsafe_code)]` and no
 clock, threads, `rand`, or hash maps. `xtask/src/deps.rs` holds the rule for
 every crate; a new crate needs one there.
 
