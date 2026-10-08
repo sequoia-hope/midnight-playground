@@ -9649,3 +9649,25 @@ choices, for radio.md 8's lists:
 - Also: Pacífico is wired to Teo (`dj: Some("teo")`, chicha 0.7, house
   0.2, garage 0.1), as D1154 described, so his clips play on the page and
   in the game once `audio/dj/` has them.
+
+## D1156. An instanced mesh that starts or runs empty is drawn once it has instances
+
+2026-10-08. The owner saw no birds at Seaside Raceway, on any level in
+fact. Two gaps in the client, both for an InstancedMesh whose animator
+fills it (the birds' pool is built with a count of 0, and empties
+whenever no flock is within 950 m of the camera, or at night):
+
+- **The loader spawned nothing for a mesh with no instances** (no stream,
+  `continue`), so the birds' meshes had no entities for the animator's
+  instances to reach. Such a mesh now gets its entities, hidden, on a
+  placeholder stream of one instance scaled to nothing.
+- **The animator's streams hid a mesh whose instances ran out** and, when
+  they came back, gave it a stream but left it hidden (and the same
+  count's in-place update skipped visibility entirely). The streams now
+  remember that a mesh was emptied, or built empty, and restore its
+  visibility, as its node and ancestors say, once it has instances.
+
+Found by rendering the release build headless at a flock that world
+generation's animator places 30 m over the track; the worldgen tests had
+passed throughout, since the bug was in the client.
+

@@ -438,6 +438,9 @@ struct InstInfo {
     /// The instance-rate attributes, if the geometry has any (`loader`).
     extras: Option<Vec<[f32; 4]>>,
     dirty: bool,
+    /// Hidden because it had no instances to draw: shown again (as its
+    /// node's visibility says) once it has some.
+    emptied: bool,
 }
 
 struct NodeInfo {
@@ -590,6 +593,8 @@ impl SceneIndex {
                         receive: n.receive_shadow,
                         extras: crate::loader::instance_extras(scene, d),
                         dirty: false,
+                        // Built with nothing to draw: the loader hid it.
+                        emptied: d.count == 0,
                     })
                 }),
             })
@@ -1130,6 +1135,7 @@ pub fn run_animators(
     }
     // Instance streams: a new one for each InstancedMesh whose instances
     // changed (its entities, one per material group, share it).
+    let mut refilled: Vec<usize> = Vec::new();
     for (k, info) in index.nodes.iter_mut().enumerate() {
         let world = DMat4::from_translation(info.offset.as_dvec3()) * info.world;
         let Some(inst) = info.instances.as_mut() else {
@@ -1156,6 +1162,14 @@ pub fn run_animators(
                 instancing::set_instance_extra(&mut data, x.get(j).copied().unwrap_or([0.0; 4]));
             }
         }
+        // Emptied before (the birds when no flock was near, or at night)
+        // and filled again: shown again below, whichever way the data goes.
+        if data.is_empty() {
+            inst.emptied = true;
+        } else if inst.emptied {
+            inst.emptied = false;
+            refilled.push(k);
+        }
         // The same count: written into the stream's buffer in place (no GPU
         // allocation per frame, D497); else a new stream.
         let first = entities.get(k).and_then(|v| v.first()).copied();
@@ -1175,6 +1189,22 @@ pub fn run_animators(
                     if let Ok((_, mut cur)) = placed.get_mut(e) {
                         *cur = Visibility::Hidden;
                     }
+                }
+            }
+        }
+    }
+    for k in refilled {
+        let mut v = true;
+        let mut at = Some(k as u32);
+        while let Some(a) = at {
+            let info = &index.nodes[a as usize];
+            v &= info.visible;
+            at = info.parent;
+        }
+        if v {
+            for &e in entities.get(k).map_or(&[][..], |v| v.as_slice()) {
+                if let Ok((_, mut cur)) = placed.get_mut(e) {
+                    *cur = Visibility::Inherited;
                 }
             }
         }

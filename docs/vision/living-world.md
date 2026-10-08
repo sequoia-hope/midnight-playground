@@ -78,6 +78,24 @@ next. The vision is WORLD.md section 5.
 
 ## 2. Next
 
+0. **What the owner saw (2026-10-08): nothing, at Seaside Raceway.**
+   Looked at headless in the release build:
+   - **The birds were never drawn, on any level.** The bird pool is
+     built empty for its animator to fill, and the client's loader
+     spawned nothing for an instanced mesh with no instances; the
+     client also hid such a mesh for good once it ran empty. Fixed
+     (port DECISIONS D1156). Checked headless in the release build: the
+     gulls circle over the track about 450 m into the lap again.
+   - **The fans are there but hidden.** They stand 1.7 m or more behind
+     the catch fence, in the stretches with the sponsor boards, and the
+     concrete wall and the boards hide everything but their heads and
+     raised arms. From a car only a blur of colour shows above the
+     boards. Options for the owner: stand them where the fence has no
+     boards, on the banks and mounds where real fans watch from (the
+     "not up a bank" rule dropped), on terraces stepped up behind the
+     fence, or as figures in the grandstands near the camera.
+   - Gulls are white and small against a pale golden-hour sky; once the
+     owner has seen them, they may want to be larger or darker.
 1. **Look at it with the owner** (on the phone too): the sizes, the colours,
    how many, how lively. Everything is a constant at the top of `birds.rs`
    and `people.rs`.
