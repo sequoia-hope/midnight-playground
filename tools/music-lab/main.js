@@ -230,7 +230,7 @@ async function copyJson(obj, noteId) {
 let inst = 'acid', instP = structuredClone(BPATCH.acid), octave = 3;
 const byKind = {};
 for (const [k, v] of Object.entries(BPATCH)) (byKind[v.kind] ||= []).push(k);
-const KIND_NAME = { tb303: 'TB-303', juno: 'Juno-style poly', mono: 'Moog-style mono', fm: 'DX-style FM' };
+const KIND_NAME = { tb303: 'TB-303', juno: 'Juno-style poly', mono: 'Moog-style mono', fm: 'DX-style FM', string: 'Plucked string' };
 for (const [kind, names] of Object.entries(byKind)) {
   const g = document.createElement('optgroup'); g.label = KIND_NAME[kind];
   for (const n of names) g.append(new Option(n, n));

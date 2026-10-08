@@ -21,7 +21,7 @@ import { Seq } from './seq.js';
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
 // Reverb sends of the game's default kit (Music.js KIT), per lane.
-const LANE_REV = { kick: 0, snare: 0.25, clap: 0.3, hat: 0, ohat: 0.05, ride: 0.05, crash: 0.2, revCrash: 0.2, shaker: 0.05, rim: 0.2, snap: 0.35, tomL: 0.25, tomM: 0.25, tomH: 0.25, boom: 0.1, cowbell: 0.15 };
+const LANE_REV = { kick: 0, snare: 0.25, clap: 0.3, hat: 0, ohat: 0.05, ride: 0.05, crash: 0.2, revCrash: 0.2, shaker: 0.05, rim: 0.2, snap: 0.35, tomL: 0.25, tomM: 0.25, tomH: 0.25, boom: 0.1, cowbell: 0.15, congaO: 0.2, congaS: 0.2, tumba: 0.15, bongoH: 0.2, bongoL: 0.2, timbaleH: 0.25, timbaleL: 0.25, cascara: 0.15, guiroL: 0.1, guiroS: 0.1, clave: 0.25 };
 // Lab mix: drums against the synths. This, the patch gains and the master
 // level were set by soloing every part in A and B and matching their RMS
 // (measure.js); B then plays at the loudness of A, so A/B is fair.

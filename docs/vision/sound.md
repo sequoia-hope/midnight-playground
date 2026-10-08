@@ -229,6 +229,294 @@ the end. The instruments added for these: a seven-oscillator supersaw with
 the JP-8000 spread, a formant choir (vowel band-passes after the voices),
 trance and psy basses, an FM piano, a zap.
 
+## 3.5 Three genres off the dance floor (2026-10-08)
+
+The owner asked for country, classical and Peruvian chicha, specified to
+the depth of 3.4, with chicha built first. Chicha is in the lab (the
+`chicha` grammar, the plucked string, the latin kit; 3.5.3 describes what
+was built); country and classical are specified here and wait for their
+turn. Each is written the same way: the sound and its sub-styles, the
+instruments (what the lab has, what it needs), rhythm, harmony, melody,
+form, how the game's energy maps onto it, what the composer lacks for it,
+and what makes it grab.
+
+### 3.5.1 Country
+
+**The sound.** Four sub-styles, picked per seed as house picks deep or
+anthem:
+
+- **Honky-tonk and Bakersfield** (Buck Owens, Merle Haggard): the
+  telecaster's twang, the pedal steel, the *train beat*, a two-beat bass,
+  120–136 bpm. The road-trip default.
+- **The shuffle** (the two-step ballad): a triplet feel at 72–92 bpm,
+  brushes on the snare, the steel's swells, the fiddle's long lines.
+- **Bluegrass**: no drums. Banjo rolls, the mandolin's chop on 2 and 4,
+  the fiddle, an upright bass, 140–170 bpm; everybody takes a break
+  (solo) in turn.
+- **Outlaw and road** (Waylon, early Steve Earle): straight 8ths at
+  116–130, a baritone guitar, a Hammond, the bVII of mixolydian.
+
+**Instruments.** Nearly all of them are the plucked string of 3.5.4 with
+different numbers; the exceptions are bowed or blown:
+
+- *Telecaster*: the string with a hard `pick`, the bridge pickup's peak
+  (body 3.2 kHz, Q 2), light compression, and the chicken-pickin' pop: a
+  muted ghost pluck (`decay` 0.05) between the notes, which the grammar
+  writes as extra 'o' onsets. Slapback echo: the ping-pong needs a
+  `slapback` mode (one mono tap at 90–120 ms, no feedback).
+- *Acoustic guitar*: six strings, `strum` 12–20 ms, the body's air mode
+  near 100 Hz and the top near 220 (two resonances, so the model gains a
+  second `body2`); the *boom-chick*: the bass note on the beat (a bass
+  part on the same instrument), the strum on the off-beat.
+- *Pedal steel*: a long-ringing bright string (decay 8 s) with the volume
+  pedal (a `swell` attack of 0.2–0.5 s on each note) and continuous pitch:
+  a chord in which one note glides a whole step while the others hold
+  (per-voice `glide` exists; the grammar writes the moving note as a slide
+  '~' in a `chord` part, which needs the chord type to accept per-note
+  slides). The bar's vibrato: 4.5 Hz, 20 cents.
+- *Fiddle*: bowed, not plucked. A `bowed` kind: the Moog-style mono voice's
+  saw as the bow, through the string's body resonances (280 and 450 Hz and
+  2.8 kHz for a violin), a slow attack, bow noise, vibrato after a delay,
+  double stops (two voices in thirds and fifths). The fiddle shuffle is
+  the bowing's long-short-short.
+- *Banjo*: the string very short (decay 0.4 s) and bright, the head's
+  resonance at 1.5 kHz, little damping. Rolls (forward, backward,
+  alternating thumb) are `arp` patterns over chord tones.
+- *Upright bass*: the string with `damp` 0.8, decay 0.8 s, body 110 Hz.
+- *Mandolin*: two strings per course 6 cents apart (two voices per note),
+  short; the chop is a `chord` part on 2 and 4 with `gate` 0.25.
+- *Honky-tonk piano*: the FM piano through chorus mode 3 (the detune).
+- *Drums*: a `country` kit: a soft acoustic kick (longer, lower, less
+  click), a snare with wires, a `brush` hit (a 60–120 ms noise swell,
+  band-passed 2–6 kHz: the swish), a `sidestick` (the rim click of the
+  ballads), hat, ride, floor tom.
+
+**Rhythm.**
+
+- The *train beat*: snare 16ths with the accents on 2 and 4
+  (`x.x.X.x.x.x.X.x.`), the kick on 1 and 3 with a push, the bass in two
+  (root on 1, fifth on 3) with a walk into the next chord on bar 4.
+- The *shuffle* is a triplet feel: the sequencer swings 16ths, not 8ths,
+  so it needs `swing8` (the second 8th of every beat delayed by a third of
+  a beat). The *waltz* and 6/8 need `steps` per bar (12 instead of 16);
+  the sequencer's `% 16` becomes `% steps`.
+- Bluegrass: the mandolin's chop and the banjo's rolls carry the beat; the
+  bass walks.
+
+**Harmony.** Major keys. I–IV–V with the dominant as 'dom', the 12-bar for
+honky-tonk, I–V–vi–IV for the modern side, ii–V turnarounds, the bVII in
+the outlaw side (mixolydian), two-chord verses (I–V). A `PROGS.country`
+family. The last chorus a half or whole step up (eurobeat's trick is
+country's too).
+
+**Melody.** Major pentatonic (`avoid: [3, 6]` in major) with the blue
+third as colour on the tele. There is no singer, so the lead instruments
+trade: fiddle on the verse, steel on the chorus, tele on the break. The
+hook is 3.4's motif; the ache is the 6th or the 2nd held over the IV
+chord, which the realiser can be asked for (`home` on the IV bar).
+
+**Form.** Intro (the hook on the steel or tele over the band), verse,
+chorus, verse, chorus, break (the tele's or fiddle's solo over the verse
+chords, with the turnaround), chorus, tag (the last line twice). The
+ballads take the 32-bar AABA.
+
+**Energy.** The band thins instead of a filter closing: at low energy the
+steel and the fiddle drop out and the train beat becomes brushes; at the
+top the whole band plays the train beat with the tele's fills.
+
+**What the composer lacks.** `swing8`, `steps` per bar, per-note slides
+in chord parts, the walking bass (an approach degree 'p', a half step
+below the next root), the ghost pluck, and `PROGS.country`.
+
+**What makes it grab.** The swing and the two-beat bass's drive; the
+articulations (the pop, the bend into a note, the steel's swell into the
+chorus); a melody that sits on the 3rd and 6th; the turnaround before
+every chorus.
+
+### 3.5.2 Classical
+
+**The sound.** An instrumental tradition with no drums, no bass lane and no
+drop; harmony, counterpoint and orchestration carry the arc. Three styles
+that generate well:
+
+- **Baroque**: a string ensemble with harpsichord continuo over a *ground
+  bass* (the passacaglia and chaconne: Pachelbel, Purcell), or the
+  ritornello of a fast Vivaldi movement at 100–140 with motoric 8ths.
+- **Classical and early romantic chamber music**: a string quartet or a
+  piano, periodic phrases of 4 + 4 bars, melody and accompaniment (the
+  Alberti bass), cadences, the minuet and trio, the rondo.
+- **Minimalist and neo-classical** (Satie, Glass, Richter, Arnalds): piano
+  ostinatos, a slow harmonic rhythm, long crescendos. The night-drive
+  station.
+
+**Instruments.**
+
+- *Bowed strings*, solo and in sections: the `bowed` kind of 3.5.1 with
+  body resonances per size (violin, viola, cello, bass), slow attacks,
+  vibrato after a delay, bow noise, and an `ensemble` mode (several voices
+  per note, a few cents and a few milliseconds apart: the section sound).
+  Articulations per note: legato (no retrigger), détaché, staccato (`gate`
+  0.5), tremolo (repeated 16ths), pizzicato (the plucked string), con
+  sordino (a darker body).
+- *Harpsichord*: the plucked string with the hardest pluck, two 8'
+  registers two cents apart (two voices per note), and the jack's click at
+  note-off (a tiny noise burst on release).
+- *Piano*: two or three strings per note a cent or two apart on the string
+  model with a hammer excitation (a pulse plus filtered noise, shorter and
+  brighter with velocity), a soundboard (two low-Q resonances near 200 Hz
+  and 1.2 kHz), decay falling with pitch (`decayKey`: 8 s at the bottom,
+  under a second at the top), the sustain pedal as a long `r`.
+- *Woodwinds and horns* for the orchestral side: the flute exists; the
+  oboe is a pulse through two formants (1 and 3 kHz), the clarinet a square
+  through a dark body, the horn a saw with a slow attack through a
+  low-pass (the brass lead is close). *Timpani*: the tom type at 60–100 Hz
+  with a long decay, the roll a fill.
+
+**Harmony.** Functional tonality: tonic, subdominant, dominant, tonic.
+Cadence formulas (ii–V–I, IV–V–I, the half cadence on V that ends an
+antecedent, the deceptive V–vi), the circle of fifths (vi–ii–V–I, the
+descending fifths with 7ths), secondary dominants (V/V), the Neapolitan in
+minor, modulation to the dominant or the relative major and back, and the
+ground bass (a fixed 4- or 8-bar bass the harmony is built on:
+Pachelbel's D A B F# G D G A). The composer needs a **cadence-aware
+progression generator**: a 4-bar phrase ends open (on V) or closed (on I)
+as 3.4's melodies already do, and a sequence is a progression transposed
+down a step each bar. Voice leading: `voice()` already moves the least;
+the bass becomes an independent voice (the slash chord syntax exists), and
+contrary motion between bass and melody is preferred.
+
+**Counterpoint.** A second voice against the melody by first-species
+rules: consonances on strong beats, contrary motion preferred, no parallel
+fifths or octaves (`counter(melody, chords)`). Imitation: the melody again
+a bar later a fifth down (the fugato); over a ground bass a canon falls out
+of pattern offsets (Pachelbel's three violins are one line three bars
+apart).
+
+**Rhythm.** Meters 4/4, 3/4 (the minuet), 6/8 and 2/4 (`steps` per bar);
+no 16th-grid drums; *rubato* (a tempo curve per phrase, ±3 %, slowing into
+cadences: a `rubato` field the engine's step clock follows) and fermatas.
+
+**Melody.** The period (antecedent, consequent) is 3.4's open and closed
+phrases. Motivic development: the motif transposed (the composer's
+`answer`), thinned (`thin`), and new: inverted (the contour negated),
+in sequence (a step lower each bar), augmented (the rhythm at half speed).
+
+**Form.** Ternary (minuet, trio, minuet), rondo (A B A C A), theme and
+variations (the composer's `variants` plus a change of orchestration per
+variation: déjà vu's perfect fit), the passacaglia (continuous variations
+over the ground), and sonata-allegro for the ambitious (two themes, a
+development, the recapitulation).
+
+**Energy.** Dynamics and orchestration: a solo cello at the bottom, the
+tutti at the top. A pursuit is the storm (Vivaldi's Summer, the Fifth):
+tremolo strings and timpani; the cruise is the minimalist piano.
+
+**What the composer lacks.** The harmony generator with cadences and
+sequences, counterpoint, inversion and sequence of motifs, `steps` per
+bar and rubato, the `bowed` kind with `ensemble`, the harpsichord and
+piano excitations, `decayKey`. The largest of the three.
+
+**What makes it grab.** A theme one can hum (the period), harmonic rhythm
+(tension held on V, released on I), and a climax prepared over eight bars
+by voices joining (the "build" of 3.4 with other means).
+
+### 3.5.3 Chicha (built)
+
+**The sound.** Peruvian cumbia of the late sixties onward: Colombian
+cumbia's rhythm played on surf rock's instruments, the melodies of the
+Andes in them. Two sub-styles, picked per seed:
+
+- **Costeña** (Los Destellos, Los Mirlos, Los Shapis): the electric guitar
+  with tremolo carries the melody, a second guitar a third above it in
+  the chorus, a combo organ underneath, 96–104 bpm.
+- **Amazónica** (Juaneco y su Combo): the lead through a wah pedal rocked
+  once a beat, the organ up front, 90–98 bpm.
+
+**Instruments** (`instruments.js`): the plucked string of 3.5.4 as
+`surfGuitar` (a clean single coil, the pickup's peak near 3 kHz, light
+drive, Fender-style tremolo at 5–6.5 Hz, a quarter-tone slide up into each
+note), `wahGuitar` (the same through a wah of two octaves from 380 Hz,
+rocked at the beat's rate), `rhythmGuitar` (muted strums, damped in
+60 ms), `fingerBass` (a round string with a soft top), and `comboOrgan`
+(a Farfisa-like: four drawbars on the FM organ algorithm through the
+chorus's vibrato mode). The **latin kit** (`KITS.latin`): congas (open
+tone, slap, the low tumba) and bongos on a new `conga` hit (a head tone
+with a short pitch drop and a second partial; the slap a bright burst that
+chokes it), timbales on the tom hit with metallic noise, the shell's
+cáscara and a clave on the rim hit, the campana (cowbell), maracas (the
+shaker), and the **güiro** on a new `guiro` hit: band-passed noise rasped
+once per ridge, the stroke speeding up over its length and stopping dead,
+in a long (170 ms) and a short (40 ms) stroke. No snare and no boom: a
+section's `drop` is silent on this kit and only marks the chorus.
+
+**Rhythm.** The güiro's long-short-short on every beat (`guiroL`
+`x...x...x...x...`, `guiroS` on the 16ths between); the congas' open tones
+on the "and" of 2 and the end of the bar, the slap on 2 and 4, the tumba
+on 4; the bongos' martillo in the verse; the cáscara (`x.x.xx.x.x.xx.x.`)
+and the bell on the beat in the chorus; the kick lightly on 1 and 3. The
+fill into every chorus is the timbalero's *abanico* (`FILLS.abanico`: a
+roll on the high drum opening onto the low one and the bell), under which
+the congas and güiro keep playing.
+
+**The bass** is the tumbao: the root on beats 1 and 3, the fifth on the
+off-beat 8th before the next beat (`r.....f.r.....f.`), the pickup 'n'
+into every chord change, and now and then the bordoneo (a repeated root)
+or the octave.
+
+**Harmony.** Minor keys; i, iv and the dominant V7 (`chordOn`'s new 'dom'
+extension writes the V7 whatever the scale says), VII and VI on the Andean
+side; `PROGS.cumbia` for the verse, a tighter i–V7 or i–iv–V7 vamp for the
+chorus.
+
+**Melody.** Minor pentatonic (the huayno in it): `realise` gained `avoid`,
+the scale degrees a line steps over when it is not on a chord tone
+([1, 5] in minor), so the 2nd and 6th appear only as chord tones (the
+V7's 7th). The chorus hook (3.4's motif) is stated by the lead guitar in
+full at both choruses and *at the same time* by the second guitar a third
+up (the `answer`, which is what twin guitars in thirds are), thinned in
+the pre-chorus, and alone over the güiro to open the song. The verse has
+its own calmer, lower melody; the organ solo its own dense figure.
+
+**Form** (about four minutes at 98 bpm, 120 bars): the hook alone over
+güiro and clave (8), verse (16), chorus (16), verse (16), the organ solo
+over bass and percussion (16), the pre-chorus with the hook thinned and
+the abanico (8), chorus (16), chorus with the organ in unison and the
+guitars answering (16), coda (8). Déjà vu plays over the verse's bass and
+the rhythm guitar's strums as in every genre.
+
+**Energy.** The shorts of the güiro, the cáscara, the maracas, the bongos
+and the bell drop out first, then the second guitar and the strums; what
+remains at the bottom is bass, kick, the long güiro stroke, the congas
+and the lead.
+
+**Levelling.** Each part soloed over the chorus and matched to 3.4's
+rule against the drums (bass under by 3 dB, the lead by 3–4, the organ pad
+by 6, the strums by 12). The owner's ear decides the rest, as always.
+
+### 3.5.4 The plucked string
+
+One model behind every guitar, bass, banjo and harpsichord above
+(`instruments.js` `StringVoice`, after Karplus and Strong as Jaffe and
+Smith extended it): a noise burst one period long (`pick` sets how bright,
+and harder notes are brighter) enters a delay loop whose length is the
+period, read fractionally for tuning; a one-zero average in the loop damps
+the upper partials faster than the lower (`damp`); a loss per period sets
+the ring time (`decay`, RT60) and a second loss the muting when the note
+ends (`r`); the string is heard through a resonance (`body`, `bodyQ`,
+`bodyMix`: the pickup's peak or the top) and a tone control. Per note:
+`bend` / `bendT` slide up into the note, `glide` slides from the last when
+legato, `strum` spaces a chord's strings. The amp is the instrument's:
+`drive` (a soft clip), the wah (`wah` octaves from `wahHz`, rocked at
+`wahRate`), the tremolo (`trem`, `tremRate`), and the chorus. Voices are
+polyphonic through `Poly` like the Juno's.
+
+What the specs above add to it, when they are built: `swell` (the volume
+pedal), `body2` (a second resonance for acoustic bodies), `decayKey`
+(decay falling with pitch, for the piano), the hammer and the jack click
+as alternative excitations, two or three strings per note (`strings`,
+cents apart), and the `bowed` excitation as its own kind sharing the body
+chain.
+
 ## 4. Architecture
 
 Port SPEC 7.1 kept the browser's own Web Audio nodes and rejected one Rust
@@ -282,7 +570,8 @@ decision is revisited, narrowly:
     so A/B compares sound, not loudness.
   - genre grammars (`music-lab/gen.js`) over the composer
     (`music-lab/compose.js`, section 3.4): house, techno, trance, eurobeat,
-    psytrance, drum & bass and UK garage from a seed, each with one hook
+    psytrance, drum & bass, UK garage and chicha (3.5.3, with the plucked
+    string and the latin kit) from a seed, each with one hook
     stated sparse in the break and in full at the drop, bass pickups into
     the next chord, 8-bar blocks with a turnaround, a Marbles-style déjà
     vu control over how often a block plays the core pattern, section
@@ -295,6 +584,12 @@ decision is revisited, narrowly:
   worklet's JavaScript (the page shows the audio thread's load). The Rust
   port, once the owner has picked the sound, is the step that makes it
   cheap enough for phones in the game, as `mp_exhaust` did for engines.
+- **The port and the radio (2026-10-08):** `crates/mp_music` is the lab
+  ported line for line and checked against `parity/golden/music/` (written
+  by `tools/music-lab/test/golden.mjs`: every grammar's tracks, the
+  sequencer's events, and renders); it is the music of the radio stations
+  (radio.md 5 and 7), which play it as persistent streams on the wall
+  clock.
 
 ## 6. Questions for the owner
 

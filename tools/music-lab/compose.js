@@ -68,6 +68,9 @@ export const degSemi = (scale, k) => scale[((k % 7) + 7) % 7] + 12 * Math.floor(
 // business (a genre may write chord names directly).
 export function chordOn(scale, tonic, d, ext = '') {
   const root = (tonic + degSemi(scale, d)) % 12;
+  // 'dom': the dominant seventh on the degree's root whatever the scale says
+  // (the V7 of a minor key: cumbia, country, the classical cadence).
+  if (ext === 'dom') return NOTE[root] + '7';
   const third = degSemi(scale, d + 2) - degSemi(scale, d), fifth = degSemi(scale, d + 4) - degSemi(scale, d);
   const seventh = degSemi(scale, d + 6) - degSemi(scale, d), sixth = degSemi(scale, d + 5) - degSemi(scale, d);
   let q;
@@ -99,6 +102,9 @@ export const PROGS = {
   drone: [[0, 0, 0, 0], [0, 0, 0, 6], [0, 0, 1, 0], [0, 0, 0, 5], [0, 1, 0, 1]],
   // Major keys for the brightest choruses.
   bright: [[0, 4, 5, 3], [5, 3, 0, 4], [0, 5, 3, 4], [3, 4, 5, 5], [0, 3, 5, 4]],
+  // Cumbia and chicha, in minor: i, iv and the dominant V7 ([4, 'dom']),
+  // the VII and VI of the Andean side; two-chord vamps mostly.
+  cumbia: [[0, 0, 3, 3], [0, 3, [4, 'dom'], 0], [0, 6, 0, 6], [0, 0, [4, 'dom'], [4, 'dom']], [0, 3, 0, [4, 'dom']], [3, [4, 'dom'], 0, 0], [0, [4, 'dom'], 0, [4, 'dom']], [5, 6, 0, 0]],
 };
 
 // Pitch class set of a chord name, and the chord's root pitch class.
@@ -260,12 +266,25 @@ function snap(scale, tonicPc, k, pcs, dir = 1) {
 //            (3rd or 5th) on odd phrases and 'closed' (root) on even ones;
 //   gate     longest note in 16ths (null: until the next onset);
 //   home     the degree the motif starts on (null: the nearest chord tone to
-//            the middle of the register).
-export function realise(m, { scale, tonic, chords, lo = -3, hi = 9, phrase = 4, gate = null, home = null, start = 0, accents = true }) {
+//            the middle of the register);
+//   avoid    scale degrees (0..6) the line steps over when it is not on a
+//            chord tone: [1, 5] in minor leaves the minor pentatonic, the
+//            Andean side of chicha; [3, 6] in major the major pentatonic.
+export function realise(m, { scale, tonic, chords, lo = -3, hi = 9, phrase = 4, gate = null, home = null, start = 0, accents = true, avoid = [] }) {
   const nb = chords.length;
   const tonicPc = ((tonic % 12) + 12) % 12;
   const toks = new Array(nb * 16).fill('.');
   const midiOf = (k) => tonic + degSemi(scale, k);
+  const deg = (kk) => ((kk % 7) + 7) % 7;
+  // Steps past the avoided degrees the way the line is moving, turning back
+  // at the register's edge.
+  const skip = (kk, d) => {
+    for (let n = 0; n < 7 && avoid.includes(deg(kk)); n++) {
+      kk += d;
+      if (kk > hi || kk < lo) { d = -d; kk += 2 * d; }
+    }
+    return kk;
+  };
   let k = home ?? Math.round((lo + hi) / 2);
   for (let b0 = 0; b0 < nb; b0 += m.bars) {
     const onsets = m.onsets.map((o) => o + b0 * 16).filter((o) => o < nb * 16);
@@ -291,6 +310,8 @@ export function realise(m, { scale, tonic, chords, lo = -3, hi = 9, phrase = 4, 
         k = snap(scale, tonicPc, k, want.length ? want : ch.pcs, dir);
       } else if (o % 4 === 0 || last) {
         k = snap(scale, tonicPc, k, ch.pcs, dir);
+      } else if (avoid.length) {
+        k = skip(k, dir);
       }
       const next = i + 1 < onsets.length ? onsets[i + 1] : (b0 + m.bars) * 16;
       let len = Math.max(1, next - o);
