@@ -744,10 +744,366 @@
    "takes": 1,
    "text": "Fog's lifting off the beach right now in long, slow sheets. If I weren't on the air I'd be out there with a camera. Somebody go take the picture for me.",
    "voice": "marisol-warm"
+  },
+  "teo-ads-1": {
+   "takes": 1,
+   "text": "This hour's brought to you by Quispe Family Farms, on the coast road. Sprouts, artichokes, pumpkins in October. I'm not allowed to say the sprouts are the best. They're the best.",
+   "voice": "teo-warm"
+  },
+  "teo-ads-2": {
+   "takes": 1,
+   "text": "The wetsuit place by the harbour will fix a tear for the price of a coffee, if you bring them the coffee. That's the whole deal.",
+   "voice": "teo-warm"
+  },
+  "teo-ads-3": {
+   "takes": 1,
+   "text": "La Panader\u00eda on Main: Peruvian bread on Sundays if you're there by seven. By eight, lo siento, nothing.",
+   "voice": "teo-warm"
+  },
+  "teo-ads-4": {
+   "takes": 1,
+   "text": "Coastside Bike Shop. They've fixed my chain four times. They've said something about it four times. Go anyway.",
+   "voice": "teo-warm"
+  },
+  "teo-banter-1": {
+   "takes": 1,
+   "text": "Marisol on eighty-eight one gets in at eleven. I'm done at nine. We've never been in the same room. I'm told she's lovely.",
+   "voice": "teo-warm"
+  },
+  "teo-banter-2": {
+   "takes": 1,
+   "text": "Kit's up on the ridge doing a hundred and seventy beats a minute at, let me check, six in the morning. Kit. Querida. Did you sleep? No. Okay.",
+   "voice": "teo-warm"
+  },
+  "teo-banter-3": {
+   "takes": 1,
+   "text": "The Tide plays the long version. Ridgeline plays the fast version. We play the version your t\u00eda dances to. Everybody wins.",
+   "voice": "teo-warm"
+  },
+  "teo-banter-4": {
+   "takes": 1,
+   "text": "Kit says my station is for people who go to bed early. Correct. \u00bfY qu\u00e9? Also, Kit: water.",
+   "voice": "teo-warm"
+  },
+  "teo-callers-1": {
+   "takes": 1,
+   "text": "This one's for the crew on the sprout harvester by the highway. I know it's cold. Ya casi. Almost there.",
+   "voice": "teo-warm"
+  },
+  "teo-callers-2": {
+   "takes": 1,
+   "text": "Shout-out to Do\u00f1a Carmen at the strawberry stand, who's been feeding me since I was six and says I still look skinny.",
+   "voice": "teo-warm"
+  },
+  "teo-callers-3": {
+   "takes": 1,
+   "text": "A caller says, Teo, play something for my dad, he's on the tractor and can't hear this. Okay. Then this one's for you, listening for him.",
+   "voice": "teo-warm"
+  },
+  "teo-callers-4": {
+   "takes": 1,
+   "text": "Somebody texted: how are you this happy at six a.m.? Cold water, mi amigo. And a sandwich. That's the whole secret.",
+   "voice": "teo-warm"
+  },
+  "teo-callers-5": {
+   "takes": 1,
+   "text": "For the surfers at the cliffs who let me have that wave: gracias. For the one who didn't: I remember your wetsuit.",
+   "voice": "teo-warm"
+  },
+  "teo-camping-1": {
+   "takes": 1,
+   "text": "Camping spot of the week: the state beach south of town, early, before the day people. Fog, sea lions, nobody. Bring a thermos.",
+   "voice": "teo-warm"
+  },
+  "teo-camping-2": {
+   "takes": 1,
+   "text": "If you camp on the ridge you'll hear the farm trucks start at four-thirty. That's not noise. That's probably my family. Wave.",
+   "voice": "teo-warm"
+  },
+  "teo-camping-3": {
+   "takes": 1,
+   "text": "Camping advice: get up for the sunrise. You can sleep in the city. Out here, you get up.",
+   "voice": "teo-warm"
+  },
+  "teo-ident-1": {
+   "takes": 1,
+   "text": "Radio Pac\u00edfico, ciento cuatro punto tres. Buenos d\u00edas, coastside. The fog's here, the coffee's here, I'm here. Vamos.",
+   "voice": "teo-warm"
+  },
+  "teo-ident-2": {
+   "takes": 1,
+   "text": "One-oh-four three, Radio Pac\u00edfico. Chicha for the coast road. If there's a tractor in front of you, you're on the right station.",
+   "voice": "teo-warm"
+  },
+  "teo-ident-3": {
+   "takes": 1,
+   "text": "This is Teo, Radio Pac\u00edfico, broadcasting from a packing shed that still smells like artichokes. Mi casa es su casa. Well. My parents' casa.",
+   "voice": "teo-warm"
+  },
+  "teo-ident-4": {
+   "takes": 1,
+   "text": "Radio Pac\u00edfico. We're on the dial between the pirate and the fancy one. Perfectly placed. Like a good taco.",
+   "voice": "teo-warm"
+  },
+  "teo-ident-5": {
+   "takes": 1,
+   "text": "Ciento cuatro punto tres. Si me escuchas, you're awake, and that's already a win.",
+   "voice": "teo-warm"
+  },
+  "teo-morning-1": {
+   "takes": 1,
+   "text": "Buenos d\u00edas, coastside.\n\nIt's five fifty-eight, the fog is in, and the tractors are already on the field road, so if you're stuck behind one, that's not traffic, that's breakfast being made.\n\nSurf was head-high and clean at first light. I know because I was in it. Lo siento to everyone who wasn't.\n\nIf you just woke up, welcome, this is the good part. If you never went to bed, hola, there's coffee at the shed, come by.\n\nRadio Pac\u00edfico, one-oh-four point three. Vamos.",
+   "voice": "teo-warm"
+  },
+  "teo-morning-2": {
+   "takes": 1,
+   "text": "Good morning. The sun's coming up over the ridge, the sprouts are frosty, and I am unreasonably happy about both of those things.",
+   "voice": "teo-warm"
+  },
+  "teo-morning-3": {
+   "takes": 1,
+   "text": "Morning! I've already surfed, so whatever you do today, you're not the first thing I did. No offence. Mucho cari\u00f1o.",
+   "voice": "teo-warm"
+  },
+  "teo-morning-4": {
+   "takes": 1,
+   "text": "Six a.m., and my mother just texted to say the fog looks heavy. Mam\u00e1. I'm on the radio. I know about the fog. Te quiero.",
+   "voice": "teo-warm"
+  },
+  "teo-music-1": {
+   "takes": 1,
+   "text": "That was Los Mirlos, from the jungle, nineteen seventy-something. My dad has it on cassette. The cassette is older than me.",
+   "voice": "teo-warm"
+  },
+  "teo-music-2": {
+   "takes": 1,
+   "text": "Chicha is cumbia that moved to Lima, plugged in a guitar and never looked back. Ese guitarrista. Listen to him. Okay. Listen.",
+   "voice": "teo-warm"
+  },
+  "teo-music-3": {
+   "takes": 1,
+   "text": "A little house now, because a friend keeps sending me tracks and he's right about half of them. This is the half.",
+   "voice": "teo-warm"
+  },
+  "teo-music-4": {
+   "takes": 1,
+   "text": "That one's Chacal\u00f3n. If you don't know Chacal\u00f3n, ask anyone over fifty at the farmers' market. Bring a chair.",
+   "voice": "teo-warm"
+  },
+  "teo-music-5": {
+   "takes": 1,
+   "text": "Back to back: a cumbia from Peru and a house track from Oakland, same bassline. I checked. Nobody believes me. Listen.",
+   "voice": "teo-warm"
+  },
+  "teo-night-1": {
+   "takes": 1,
+   "text": "Driving at dawn is the opposite of driving at night. Nobody's hiding anything. Not even the road.",
+   "voice": "teo-warm"
+  },
+  "teo-night-2": {
+   "takes": 1,
+   "text": "There's a moment just before the sun hits the water when the whole coast holds its breath. If you're on the road right now, you're in it.",
+   "voice": "teo-warm"
+  },
+  "teo-night-3": {
+   "takes": 1,
+   "text": "My dad gets up at four and has never once said it was hard. I get up at five and tell everyone. We're different. We both get up.",
+   "voice": "teo-warm"
+  },
+  "teo-night-4": {
+   "takes": 1,
+   "text": "You don't have to be going anywhere this early. Some of us just like the first hour, before it's anyone's.",
+   "voice": "teo-warm"
+  },
+  "teo-night-5": {
+   "takes": 1,
+   "text": "Todo con calma. The day's long. The road's longer. Enjoy it.",
+   "voice": "teo-warm"
+  },
+  "teo-night-6": {
+   "takes": 1,
+   "text": "It's two in the morning and this is a recording. I'm asleep. Buenas noches. Be nice to each other out there.",
+   "voice": "teo-warm"
+  },
+  "teo-offair-1": {
+   "takes": 1,
+   "text": "Dawn patrol this morning: four of us, glassy, head-high, and a seal that kept looking at me like I owed it money. Perfect.",
+   "voice": "teo-warm"
+  },
+  "teo-offair-2": {
+   "takes": 1,
+   "text": "Rode the fire road down from the ridge last night with one light. Don't do that. I'm going to do that again.",
+   "voice": "teo-warm"
+  },
+  "teo-offair-3": {
+   "takes": 1,
+   "text": "I grew up on a farm and I'm not a farmer. My dad says that's fine. He says it every day, so it's not totally fine. But it's fine.",
+   "voice": "teo-warm"
+  },
+  "teo-offair-4": {
+   "takes": 1,
+   "text": "If you see a kid on a mountain bike covered in mud eating a burrito by the harbour, say hi. It's me. Or my cousin. Say hi anyway.",
+   "voice": "teo-warm"
+  },
+  "teo-offair-5": {
+   "takes": 1,
+   "text": "The water out here is cold enough to reset your whole personality. Try it. You'll be nicer.",
+   "voice": "teo-warm"
+  },
+  "teo-offair-6": {
+   "takes": 1,
+   "text": "I can drive a tractor, prune an artichoke, pack sprouts and fix a sprinkler head in the dark. None of that is on my radio r\u00e9sum\u00e9. All of it is why I'm here at five a.m.",
+   "voice": "teo-warm"
+  },
+  "teo-offair-7": {
+   "takes": 1,
+   "text": "Planted tomatoes behind the shed. My mother looked at them and said nothing, which in my family is a review.",
+   "voice": "teo-warm"
+  },
+  "teo-places-1": {
+   "takes": 1,
+   "text": "Coast road south of town: the big fields on your left are Brussels sprouts. On your right, artichokes. De nada. Tour's over.",
+   "voice": "teo-warm"
+  },
+  "teo-places-2": {
+   "takes": 1,
+   "text": "The strawberry stand by the bridge opens at seven, honour box before that. Don't be the person who tests the honour box.",
+   "voice": "teo-warm"
+  },
+  "teo-places-3": {
+   "takes": 1,
+   "text": "Pumpkins are coming in along the highway. Every car in the state will be here in two weeks. Enjoy the quiet while you've got it.",
+   "voice": "teo-warm"
+  },
+  "teo-places-4": {
+   "takes": 1,
+   "text": "The ridge trail above the reservoir is open again. The first mile is all climb. Es una paliza. Then it's the best view in the county.",
+   "voice": "teo-warm"
+  },
+  "teo-places-5": {
+   "takes": 1,
+   "text": "Alice's, top of 84: the motorcycle guys, the Porsche guys, and me on a mountain bike, covered in mud, eating their pancakes.",
+   "voice": "teo-warm"
+  },
+  "teo-player-1": {
+   "takes": 1,
+   "text": "Somebody in a black three thousand G T just took the coast road record before six a.m., past my parents' farm. Oe. That's the rooster's job. Respect, though.",
+   "voice": "teo-warm"
+  },
+  "teo-player-2": {
+   "takes": 1,
+   "text": "A red Firebird just came through the fields like dawn patrol with an engine. Buena. That one's for you.",
+   "voice": "teo-warm"
+  },
+  "teo-player-3": {
+   "takes": 1,
+   "text": "Lost the cops on the Skyline road, huh? My cousin saw the whole thing from the tractor. He was impressed. He is never impressed.",
+   "voice": "teo-warm"
+  },
+  "teo-player-4": {
+   "takes": 1,
+   "text": "Been out all night and you're still driving at sunrise? Okay. You and me, opposite shifts, same road. Toma, this one's yours.",
+   "voice": "teo-warm"
+  },
+  "teo-player-5": {
+   "takes": 1,
+   "text": "Last week the orange rally car was beating you. This week, no. My mother would say: see, you grew. I'd just say: nice.",
+   "voice": "teo-warm"
+  },
+  "teo-raves-1": {
+   "takes": 1,
+   "text": "Forest party Saturday. I'll be there till midnight, then I'll be gone, and nobody will notice, and that's the plan.",
+   "voice": "teo-warm"
+  },
+  "teo-raves-2": {
+   "takes": 1,
+   "text": "Danced three hours, and at twelve-thirty I was in my sleeping bag in the car feeling great about myself. The bass was a lullaby. Eso es madurez.",
+   "voice": "teo-warm"
+  },
+  "teo-raves-3": {
+   "takes": 1,
+   "text": "Best rave trick: show up at six a.m. with bread and a thermos. Everyone still standing thinks you're an angel. You just slept.",
+   "voice": "teo-warm"
+  },
+  "teo-raves-4": {
+   "takes": 1,
+   "text": "Marisol stays till the load-out. Kit stays till Tuesday. I stay till I yawn. We all contribute.",
+   "voice": "teo-warm"
+  },
+  "teo-scene-1": {
+   "takes": 1,
+   "text": "The street racers buy strawberries from my mother. That's all I'm saying. Pero all of them. Every Saturday.",
+   "voice": "teo-warm"
+  },
+  "teo-scene-2": {
+   "takes": 1,
+   "text": "Somebody ran the coast road very fast at five this morning, past the field crews. The crews asked me to say: we saw you, and the lettuce doesn't care.",
+   "voice": "teo-warm"
+  },
+  "teo-scene-3": {
+   "takes": 1,
+   "text": "There's a meet at the summit lot tonight, apparently. I'll be asleep. Say hi to Kit.",
+   "voice": "teo-warm"
+  },
+  "teo-scene-4": {
+   "takes": 1,
+   "text": "Word is the coast record changed hands. Un carro rojo, a red something. I don't know cars. I know tractors. A John Deere could not have done that time.",
+   "voice": "teo-warm"
+  },
+  "teo-scene-5": {
+   "takes": 1,
+   "text": "A couple of the racing crowd helped my dad move irrigation pipe last weekend. Nobody asked them. Son buena gente. Loud, but good.",
+   "voice": "teo-warm"
+  },
+  "teo-tired-1": {
+   "takes": 1,
+   "text": "I'm tired, pero good tired. Surfed, biked, radio. Not screen tired. The earned one.",
+   "voice": "teo-warm"
+  },
+  "teo-tired-2": {
+   "takes": 1,
+   "text": "If I sound slow, it's because I was in cold water at six and my face hasn't come back yet.",
+   "voice": "teo-warm"
+  },
+  "teo-tired-3": {
+   "takes": 1,
+   "text": "Harvest week. Everyone in my family is tired and everyone in my family is still up, so I'm not allowed to complain. Here's a cumbia.",
+   "voice": "teo-warm"
+  },
+  "teo-tired-4": {
+   "takes": 1,
+   "text": "Tried to stay up for the sunrise set in the forest. Fell asleep in a camp chair. Woke up with a glow stick on my head. Gracias a quien fue.",
+   "voice": "teo-warm"
+  },
+  "teo-weather-1": {
+   "takes": 1,
+   "text": "Hay neblina, fog, from the harbour down to the pumpkin farms. Headlights on. Not the brights. Nobody likes the brights.",
+   "voice": "teo-warm"
+  },
+  "teo-weather-2": {
+   "takes": 1,
+   "text": "Offshore wind this morning, which means the surf is good and the kale is happy. Those are my two metrics.",
+   "voice": "teo-warm"
+  },
+  "teo-weather-3": {
+   "takes": 1,
+   "text": "Rained overnight, so the fire roads are mud for two days. Mountain bikers: patience. Farmers: finally.",
+   "voice": "teo-warm"
+  },
+  "teo-weather-4": {
+   "takes": 1,
+   "text": "First frost on the fields this morning. Beautiful. Terrible. Depends who you ask. Ask a farmer.",
+   "voice": "teo-warm"
+  },
+  "teo-weather-5": {
+   "takes": 1,
+   "text": "Sunrise in ten minutes, and from the field road you can watch it come over the ridge and hit the water. Pull over. I'm serious. Pull over.",
+   "voice": "teo-warm"
   }
  },
  "voices": {
   "kit": "kit-bright",
-  "marisol": "marisol-warm"
+  "marisol": "marisol-warm",
+  "teo": "teo-warm"
  }
 }
