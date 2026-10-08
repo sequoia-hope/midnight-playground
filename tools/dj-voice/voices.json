@@ -18,6 +18,15 @@
         "kit-rasp": "A young woman, about twenty-eight, with a husky, slightly hoarse voice after a long night out, hosting an underground radio show. Quick, excitable and funny, running sentences together, tired but buzzing.",
         "kit-punk": "An upbeat American woman in her late twenties with a sharp, clear voice and attitude, a scrappy pirate radio host: rapid-fire, cheeky, enthusiastic, breaking into a grin mid-sentence."
       }
+    },
+    "teo": {
+      "chosen": "teo-warm",
+      "ref_text": "Buenos días, coastside. Radio Pacífico, ciento cuatro punto tres. It's six in the morning, the fog's on the fields, and the surf was good, I checked. I'm Teo. Aquí vamos. Here's a cumbia.",
+      "candidates": {
+        "teo-warm": "A young man in his early twenties with a warm, bright, friendly tenor voice, a morning radio DJ on a small community station. Relaxed and cheerful, laughs easily, speaks Californian English with a light Peruvian Spanish accent and switches naturally into Spanish mid-sentence.",
+        "teo-easy": "A bilingual Peruvian-American man, about twenty-two, a mellow mid-range voice, sunny and unhurried, like someone who has already been surfing this morning. Clear and kind, Spanish words pronounced natively, English with a soft West Coast lilt.",
+        "teo-bright": "An upbeat young Latino man in his early twenties with a clear, bright voice and an easy grin in it, hosting a morning show from a farm town on the coast. Quick but gentle, earnest, breaking into Spanish and back without effort."
+      }
     }
   }
 }

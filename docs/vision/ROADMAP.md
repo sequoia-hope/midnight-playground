@@ -103,6 +103,9 @@ classes at the owner's request; Seaside Raceway first.
   it is; DJ breaks at song changes; the tuner's static. The owner made the
   generated music the foundation (2026-10-08), so this waits on nothing
   but the music's port (`mp_music`).
+- **Favourites** (radio.md R1.5, 8): each station's rotation, curated
+  `(genre, seed)` songs the DJs talk about by name, woven into the
+  schedule; the same lists are how the generated music gets audited.
 - **Gate:** the owner leaves it on for a whole session.
 - Design doc: `docs/vision/radio.md` (draft written).
 

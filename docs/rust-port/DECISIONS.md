@@ -9582,3 +9582,33 @@ against the chord under it), and fixed in the lab first, then ported:
   a bar apart do not pile up.
 
 The goldens are regenerated; the render tests pass at their tolerance.
+## D1154. Radio favourites: curated songs in the rotation, the DJs' lines about them
+
+2026-10-08. The owner: the DJs should know the music they play, each with
+favourite songs that are real, defined songs, so "this is one of my
+favourites" plays from an actual list; and the lists are how the random
+songs get audited, since fully generated music has no one paying
+attention and is of lower average quality than music a human picked.
+radio.md 8 is the design; the choices:
+
+- **A favourite is a `(genre, seed)` pair,** nothing more: the grammars
+  are deterministic, so the pair is the song. The lists are compiled into
+  `mp_music::radio` beside `STATIONS`, so a block stays a pure function
+  of (station, time) and every player still hears the same song at the
+  same moment (D1151).
+- **Rotation and discovery.** A block draws from the station's list with
+  a weight that grows with the list's length, and from a fresh seed
+  otherwise; rejected seeds are blocked. Random songs become the
+  pipeline that feeds the lists, not the product.
+- **The DJ's lines about a song are pre-rendered per favourite,** the
+  choice already made for the player templates (radio.md 3), and chosen
+  by the director when the next slot is a favourite.
+- **The lists are built by listening,** on the Radio page, by the owner
+  and their producer friends; crowd rating is not on the roadmap, so the
+  page writes a `favourites.json` whose shape a backend could take later.
+
+Also today: Teo, the third DJ, for Radio Pacífico (`tools/dj-voice/`):
+early twenties, the son of Peruvian farmers on the coast, bilingual and
+code-switching, a morning person who surfs and mountain bikes. Pacífico
+widens from chicha alone to chicha with some house and garage when he is
+wired in (`dj: Some("teo")`, the station's `genres`).
