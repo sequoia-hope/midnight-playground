@@ -133,6 +133,7 @@ in a row, a long night drive in the cruise mode.
 |---|---|---|
 | **R0. Side quest** | Lines recorded, auditioned, rewritten from the owner's 👍/👎 | Enough lines the owner likes to fill two stations |
 | **R1. Radio v0** | Stations as persistent streams of the generated music (section 7), live on the wall clock; station IDs and general lines at song changes; ducking; the tune control with the generated tuner sweep; the DJ-talk setting | The owner drives a whole cruise session with the radio on and doesn't turn the DJ off |
+| **R1.5. Favourites** | Each station's rotation (section 8): curated `(genre, seed)` songs woven into the schedule; the DJ's lines about them, pre-rendered per song; "keep" and "skip" on the Radio page to build the lists | Most of what a station plays has been heard by someone; a DJ names a song and means it |
 | **R2. Context** | Tags; lines chosen by level, mode and event; cooldowns and history; reception (Ridgeline's static on the far side of the ridge, tunnels) | Lines feel like they belong where they're heard |
 | **R3. Memory** | Player templates pre-rendered for every combination; records and rivals feed them | The owner hears a line about their own run and it lands |
 | **R4. More stations** | Country and classical stations when their grammars exist (sound.md 3.5), each with its own DJ | vision ROADMAP M16's gate |
@@ -193,7 +194,7 @@ so that tuning to a station catches its song wherever it happens to be.
   |---|---|---|
   | The Tide, 88.1 | Marisol | house, UK garage, liquid drum & bass |
   | Ridgeline Radio | Kit | techno, psytrance, trance, eurobeat, roller drum & bass |
-  | Radio Pacífico, 104.3 | (none yet) | chicha |
+  | Radio Pacífico, 104.3 | Teo | chicha, with some house and garage |
 
   Country and classical get stations when their grammars exist (sound.md
   3.5.1, 3.5.2); a KPIG-like coast country station and a classical one.
@@ -227,3 +228,61 @@ so that tuning to a station catches its song wherever it happens to be.
   timer, which runs with the screen off where frames do not.
   `tools/parity/e2e/radio-page.test.mjs` checks it headless. The game's
   own radio does not do this: a game in the background is not a radio.
+
+## 8. Favourites: the DJs know the records (2026-10-08)
+
+The owner's direction. The chatter so far is about the world, which is
+right, but a DJ should also know the music: each DJ has favourite songs,
+real ones, and when they say "this is one of mine" the station plays
+that song. And since a song here is only a `(genre, seed)` pair, a list
+of favourites is also the way to audit the generated music: fully random
+songs are made with no one paying attention, so their average is lower
+than music a human picked, and the cheapest way to put the attention back
+is at the end, by choosing, rather than at the start, by making the
+generator intentional.
+
+- **A song is `(genre, seed)`.** The grammar is deterministic, so the
+  pair names the same song on every device forever (the goldens in
+  `parity/golden/music/` already rest on this). A favourite is a pair
+  someone listened to and kept, with the title the grammar gave it, the
+  DJ it belongs to, and a note. If a grammar ever changes, its seeds mean
+  different songs: version the grammar, and the goldens say when.
+- **Two pools per station.** A block's songs are drawn from the station's
+  **rotation** (its favourites, and its DJ's) most of the time, and from
+  **discovery** (a fresh seed, as now) the rest. The rotation's share
+  scales with the list: a station with four favourites plays them rarely,
+  with forty most of the time, so a short list never repeats too much.
+  The block stays a pure function of (station, time): the lists are
+  compiled in, and the generator draws an index instead of a seed. The
+  average goes up at once, and the random draws stop being the product
+  and become the pipeline: every song that plays has an address someone
+  can write down.
+- **Rejects.** A seed heard and refused goes on the station's blocklist,
+  so discovery never draws it again. That is the cheapest audit, a 👎.
+  A reject with a reason ("the bass fights the kick", "the chorus never
+  arrives") is a grammar bug, and fixing one improves every seed after
+  it: the notes are the backlog for the grammars.
+- **The DJ's lines about a song** are pre-rendered per favourite, as the
+  `player` templates are pre-rendered per combination (section 3): a few
+  templates filled with the title ("This one's mine. [title]. I've
+  played it a hundred times and I'm not sorry."), and hand-written lines
+  for the ones with a story. The director knows, at a song change,
+  whether the next slot is a favourite and whose, and picks one of its
+  lines instead of a generic intro. Favourites cross stations: Kit plays
+  a house song and says it's Marisol's, which gives `banter` something
+  true to chew on. The generic `music` lines stay for discovery.
+- **Building the lists.** The Radio page (`tools/radio.html`) already
+  plays the live schedule and shows what is on; it gains "keep" and
+  "skip" by the now-playing line, writing (station, genre, seed, title,
+  verdict, note) to a `favourites.json` beside the stations, which the
+  owner and the producer friends fill by listening, as a station gets a
+  rotation anyway. A song reached by its pair, from the Music Lab or a
+  URL, so a note can be checked. Crowd rating (a public stream where
+  listeners rate songs) is the same page with a backend, later and not on
+  the roadmap; the data shape is the same from day one, so nothing is
+  thrown away. Either way the lists are filtered by hand at the least.
+- **Data.** `crates/mp_music/src/radio.rs` gets the lists next to
+  `STATIONS` (generated from `favourites.json` by the build, as the lab's
+  tables are), a `rotation` weight per station, and the blocklist; the
+  DJ's per-song lines go in `tools/dj-voice/lines.json` under a `songs`
+  topic keyed by the pair.

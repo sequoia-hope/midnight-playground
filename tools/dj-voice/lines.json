@@ -1,5 +1,5 @@
 {
-  "about": "Sample DJ chatter for two stations, to hear whether radio talk lands before any of it goes in the game. Each DJ's lines are grouped by topic; a clip's id is <dj>-<topic>-<n> (n from 1, in the order below). A blank line inside a text (\\n\\n) splits it into parts that are recorded separately and joined with a short pause, for the long ones. Lines under 'player' are templates: the bracketed slots in 'template' are what the game would fill from what this player actually did; the text is one filled-in example.",
+  "about": "Sample DJ chatter for three stations, to hear whether radio talk lands before any of it goes in the game. Each DJ's lines are grouped by topic; a clip's id is <dj>-<topic>-<n> (n from 1, in the order below). A blank line inside a text (\\n\\n) splits it into parts that are recorded separately and joined with a short pause, for the long ones. Lines under 'player' are templates: the bracketed slots in 'template' are what the game would fill from what this player actually did; the text is one filled-in example.",
   "topics": {
     "ident": "Station IDs",
     "music": "Song intros and back-announces",
@@ -268,6 +268,129 @@
           "Nobody up here has it figured out. That's why we're up here.",
           "Drive like you're figuring something out. Because you probably are.",
           "The fog makes everything feel like a secret. Even you. Especially you."
+        ]
+      }
+    },
+    "teo": {
+      "name": "Teo",
+      "station": "Radio Pacífico, 104.3 FM",
+      "about": "A licensed low-power community station in a converted packing shed by the farms south of town: chicha, cumbia, and whatever Teo brought in that morning, some house, some of his father's old salsa. Early twenties, the son of Peruvian farmers who grow Brussels sprouts and artichokes on the coast. He has done every job on the farm, respects all of them, and isn't going to do them; his dad says that's fine, every day. Bilingual, slides between English and Spanish mid-sentence without noticing, Peruvian slang (oe, ya pues, chévere). A morning person: the show is five to nine, he surfs before it at first light and mountain bikes the fire roads after. Makes the rave about one time in three, leaves at midnight apologising, or turns up at sunrise with bread and a thermos for the ones still standing. Kind in an open, easy, slightly earnest way: remembers names, feeds people, waves at every tractor. Has never been in a street race and doesn't need to be; he knows the drivers because they buy strawberries from his mother.",
+      "lines": {
+        "ident": [
+          "Radio Pacífico, ciento cuatro punto tres. Buenos días, coastside. The fog's here, the coffee's here, I'm here. Vamos.",
+          "One-oh-four three, Radio Pacífico. Chicha for the coast road. If there's a tractor in front of you, you're on the right station.",
+          "This is Teo, Radio Pacífico, broadcasting from a packing shed that still smells like artichokes. Mi casa es su casa. Well. My parents' casa.",
+          "Radio Pacífico. We're on the dial between the pirate and the fancy one. Perfectly placed. Like a good taco.",
+          "Ciento cuatro punto tres. Si me escuchas, you're awake, and that's already a win."
+        ],
+        "music": [
+          "That was Los Mirlos, from the jungle, nineteen seventy-something. My dad has it on cassette. The cassette is older than me.",
+          "Chicha is cumbia that moved to Lima, plugged in a guitar and never looked back. Ese guitarrista. Listen to him. Okay. Listen.",
+          "A little house now, because a friend keeps sending me tracks and he's right about half of them. This is the half.",
+          "That one's Chacalón. If you don't know Chacalón, ask anyone over fifty at the farmers' market. Bring a chair.",
+          "Back to back: a cumbia from Peru and a house track from Oakland, same bassline. I checked. Nobody believes me. Listen."
+        ],
+        "morning": [
+          "Buenos días, coastside.\n\nIt's five fifty-eight, the fog is in, and the tractors are already on the field road, so if you're stuck behind one, that's not traffic, that's breakfast being made.\n\nSurf was head-high and clean at first light. I know because I was in it. Lo siento to everyone who wasn't.\n\nIf you just woke up, welcome, this is the good part. If you never went to bed, hola, there's coffee at the shed, come by.\n\nRadio Pacífico, one-oh-four point three. Vamos.",
+          "Good morning. The sun's coming up over the ridge, the sprouts are frosty, and I am unreasonably happy about both of those things.",
+          "Morning! I've already surfed, so whatever you do today, you're not the first thing I did. No offence. Mucho cariño.",
+          "Six a.m., and my mother just texted to say the fog looks heavy. Mamá. I'm on the radio. I know about the fog. Te quiero."
+        ],
+        "weather": [
+          "Hay neblina, fog, from the harbour down to the pumpkin farms. Headlights on. Not the brights. Nobody likes the brights.",
+          "Offshore wind this morning, which means the surf is good and the kale is happy. Those are my two metrics.",
+          "Rained overnight, so the fire roads are mud for two days. Mountain bikers: patience. Farmers: finally.",
+          "First frost on the fields this morning. Beautiful. Terrible. Depends who you ask. Ask a farmer.",
+          "Sunrise in ten minutes, and from the field road you can watch it come over the ridge and hit the water. Pull over. I'm serious. Pull over."
+        ],
+        "places": [
+          "Coast road south of town: the big fields on your left are Brussels sprouts. On your right, artichokes. De nada. Tour's over.",
+          "The strawberry stand by the bridge opens at seven, honour box before that. Don't be the person who tests the honour box.",
+          "Pumpkins are coming in along the highway. Every car in the state will be here in two weeks. Enjoy the quiet while you've got it.",
+          "The ridge trail above the reservoir is open again. The first mile is all climb. Es una paliza. Then it's the best view in the county.",
+          "Alice's, top of 84: the motorcycle guys, the Porsche guys, and me on a mountain bike, covered in mud, eating their pancakes."
+        ],
+        "scene": [
+          "The street racers buy strawberries from my mother. That's all I'm saying. Pero all of them. Every Saturday.",
+          "Somebody ran the coast road very fast at five this morning, past the field crews. The crews asked me to say: we saw you, and the lettuce doesn't care.",
+          "There's a meet at the summit lot tonight, apparently. I'll be asleep. Say hi to Kit.",
+          "Word is the coast record changed hands. Un carro rojo, a red something. I don't know cars. I know tractors. A John Deere could not have done that time.",
+          "A couple of the racing crowd helped my dad move irrigation pipe last weekend. Nobody asked them. Son buena gente. Loud, but good."
+        ],
+        "player": [
+          {
+            "template": "Somebody in a [colour] [car] just took the [road] record before six a.m., past my parents' farm. Oe. That's the rooster's job. Respect, though.",
+            "text": "Somebody in a black three thousand G T just took the coast road record before six a.m., past my parents' farm. Oe. That's the rooster's job. Respect, though."
+          },
+          {
+            "template": "A [colour] [car] just came through the fields like dawn patrol with an engine. Buena. That one's for you.",
+            "text": "A red Firebird just came through the fields like dawn patrol with an engine. Buena. That one's for you."
+          },
+          {
+            "template": "Lost the cops on the [road], huh? My cousin saw the whole thing from the tractor. He was impressed. He is never impressed.",
+            "text": "Lost the cops on the Skyline road, huh? My cousin saw the whole thing from the tractor. He was impressed. He is never impressed."
+          },
+          {
+            "template": "Been out all night and you're still driving at sunrise? Okay. You and me, opposite shifts, same road. Toma, this one's yours.",
+            "text": "Been out all night and you're still driving at sunrise? Okay. You and me, opposite shifts, same road. Toma, this one's yours."
+          },
+          {
+            "template": "Last week [rival] was beating you. This week, no. My mother would say: see, you grew. I'd just say: nice.",
+            "text": "Last week the orange rally car was beating you. This week, no. My mother would say: see, you grew. I'd just say: nice."
+          }
+        ],
+        "raves": [
+          "Forest party Saturday. I'll be there till midnight, then I'll be gone, and nobody will notice, and that's the plan.",
+          "Danced three hours, and at twelve-thirty I was in my sleeping bag in the car feeling great about myself. The bass was a lullaby. Eso es madurez.",
+          "Best rave trick: show up at six a.m. with bread and a thermos. Everyone still standing thinks you're an angel. You just slept.",
+          "Marisol stays till the load-out. Kit stays till Tuesday. I stay till I yawn. We all contribute."
+        ],
+        "tired": [
+          "I'm tired, pero good tired. Surfed, biked, radio. Not screen tired. The earned one.",
+          "If I sound slow, it's because I was in cold water at six and my face hasn't come back yet.",
+          "Harvest week. Everyone in my family is tired and everyone in my family is still up, so I'm not allowed to complain. Here's a cumbia.",
+          "Tried to stay up for the sunrise set in the forest. Fell asleep in a camp chair. Woke up with a glow stick on my head. Gracias a quien fue."
+        ],
+        "camping": [
+          "Camping spot of the week: the state beach south of town, early, before the day people. Fog, sea lions, nobody. Bring a thermos.",
+          "If you camp on the ridge you'll hear the farm trucks start at four-thirty. That's not noise. That's probably my family. Wave.",
+          "Camping advice: get up for the sunrise. You can sleep in the city. Out here, you get up."
+        ],
+        "offair": [
+          "Dawn patrol this morning: four of us, glassy, head-high, and a seal that kept looking at me like I owed it money. Perfect.",
+          "Rode the fire road down from the ridge last night with one light. Don't do that. I'm going to do that again.",
+          "I grew up on a farm and I'm not a farmer. My dad says that's fine. He says it every day, so it's not totally fine. But it's fine.",
+          "If you see a kid on a mountain bike covered in mud eating a burrito by the harbour, say hi. It's me. Or my cousin. Say hi anyway.",
+          "The water out here is cold enough to reset your whole personality. Try it. You'll be nicer.",
+          "I can drive a tractor, prune an artichoke, pack sprouts and fix a sprinkler head in the dark. None of that is on my radio résumé. All of it is why I'm here at five a.m.",
+          "Planted tomatoes behind the shed. My mother looked at them and said nothing, which in my family is a review."
+        ],
+        "callers": [
+          "This one's for the crew on the sprout harvester by the highway. I know it's cold. Ya casi. Almost there.",
+          "Shout-out to Doña Carmen at the strawberry stand, who's been feeding me since I was six and says I still look skinny.",
+          "A caller says, Teo, play something for my dad, he's on the tractor and can't hear this. Okay. Then this one's for you, listening for him.",
+          "Somebody texted: how are you this happy at six a.m.? Cold water, mi amigo. And a sandwich. That's the whole secret.",
+          "For the surfers at the cliffs who let me have that wave: gracias. For the one who didn't: I remember your wetsuit."
+        ],
+        "ads": [
+          "This hour's brought to you by Quispe Family Farms, on the coast road. Sprouts, artichokes, pumpkins in October. I'm not allowed to say the sprouts are the best. They're the best.",
+          "The wetsuit place by the harbour will fix a tear for the price of a coffee, if you bring them the coffee. That's the whole deal.",
+          "La Panadería on Main: Peruvian bread on Sundays if you're there by seven. By eight, lo siento, nothing.",
+          "Coastside Bike Shop. They've fixed my chain four times. They've said something about it four times. Go anyway."
+        ],
+        "banter": [
+          "Marisol on eighty-eight one gets in at eleven. I'm done at nine. We've never been in the same room. I'm told she's lovely.",
+          "Kit's up on the ridge doing a hundred and seventy beats a minute at, let me check, six in the morning. Kit. Querida. Did you sleep? No. Okay.",
+          "The Tide plays the long version. Ridgeline plays the fast version. We play the version your tía dances to. Everybody wins.",
+          "Kit says my station is for people who go to bed early. Correct. ¿Y qué? Also, Kit: water."
+        ],
+        "night": [
+          "Driving at dawn is the opposite of driving at night. Nobody's hiding anything. Not even the road.",
+          "There's a moment just before the sun hits the water when the whole coast holds its breath. If you're on the road right now, you're in it.",
+          "My dad gets up at four and has never once said it was hard. I get up at five and tell everyone. We're different. We both get up.",
+          "You don't have to be going anywhere this early. Some of us just like the first hour, before it's anyone's.",
+          "Todo con calma. The day's long. The road's longer. Enjoy it.",
+          "It's two in the morning and this is a recording. I'm asleep. Buenas noches. Be nice to each other out there."
         ]
       }
     }
