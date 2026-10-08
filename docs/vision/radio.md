@@ -210,3 +210,20 @@ so that tuning to a station catches its song wherever it happens to be.
 - **Energy.** The race drives the station's `energy` (sound.md 3.4): a
   pursuit, the final lap and a close battle raise it, a standstill lowers
   it; the mix closes down and layers drop out below full.
+- **The Radio page is a music app** (`tools/radio.html`, 2026-10-08, the
+  owner: "make radio work like a music app", "keep playing when I close
+  the phone"). Its graph ends in an `<audio>` element playing a
+  `MediaStream` from the context, not the context's destination, so the
+  browser treats the page as media: it keeps playing with the screen
+  locked and the app in the background, the Silent switch does not mute
+  it, and the lock screen and the notification shade carry the station
+  and the song (Media Session: title, station and frequency, style, a
+  drawn tile per station, the position in the song) with play, pause,
+  next and previous (the dial). `navigator.audioSession.type =
+  'playback'` is asked for before the context, as the game does. Pause is
+  off; play comes back to the last station, live. The last station is
+  remembered (`radio.station`), a manifest and icons make it installable
+  from "Add to Home Screen" as "Radio", and what is on refreshes on a
+  timer, which runs with the screen off where frames do not.
+  `tools/parity/e2e/radio-page.test.mjs` checks it headless. The game's
+  own radio does not do this: a game in the background is not a radio.

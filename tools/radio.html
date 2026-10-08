@@ -2,9 +2,18 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d0f14">
 <title>Radio</title>
-<link rel="icon" href="data:,">
+<!-- A music app: installable from the browser's share sheet or menu ("Add to
+     Home Screen"), and it keeps playing with the screen locked (radio/main.js). -->
+<link rel="manifest" href="radio/manifest.webmanifest">
+<link rel="icon" href="radio/icon-180.png">
+<link rel="apple-touch-icon" href="radio/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Radio">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <!--
   Radio: the game's stations on a dial (docs/vision/radio.md 7). The same
   station player the game runs (mp_music.wasm in music-worklet.js, built by
@@ -12,7 +21,9 @@
   the wasm on the main thread answers what is on (mpm_schedule), so the
   page shows the song playing, how far it is, and the block's programme.
   Stations run on the wall clock: tune away and back and the song has
-  moved on, and another device tuned here hears the same thing.
+  moved on, and another device tuned here hears the same thing. It plays
+  like a music app: through a media element, so the phone keeps playing
+  with the screen off and shows it on the lock screen (radio/main.js).
 -->
 <style>
 :root { --bg: #0d0f14; --card: #161a22; --line: #262c36; --fg: #e6e9ee; --muted: #8b94a3; --accent: #ff3d7f; --ok: #4dff8a; --low: #ffb84d; }
@@ -27,6 +38,10 @@ button:hover { border-color: var(--accent); }
 button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 button:disabled { opacity: 0.4; cursor: default; }
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.player { display: flex; align-items: center; gap: 10px; margin: 6px 0 10px; }
+.player button { font-size: 20px; min-width: 56px; min-height: 48px; padding: 6px 12px; }
+.player #play { font-size: 24px; min-width: 72px; background: var(--accent); border-color: var(--accent); color: #fff; }
+.player .hint { color: var(--muted); font-size: 13px; }
 #status { position: sticky; top: 0; z-index: 2; margin: 10px -16px 12px; padding: 8px 16px; background: var(--bg); border-bottom: 1px solid var(--line); color: var(--muted); }
 #status.err { color: #ff8a8a; }
 #status b { color: var(--fg); font-weight: 600; }
@@ -66,6 +81,12 @@ blocks, the same on every device. Tune away and back and the song has moved on. 
 
 <div class="grid">
   <div class="card wide">
+    <div class="player">
+      <button id="prev" aria-label="Previous station" title="Previous station (←)">⏮</button>
+      <button id="play" aria-label="Play" title="Play (space)">▶</button>
+      <button id="next" aria-label="Next station" title="Next station (→, T)">⏭</button>
+      <span class="hint">Keeps playing with the screen off; play, pause and next on the lock screen. Add it to the Home Screen to have it as an app.</span>
+    </div>
     <h2>The dial</h2>
     <div class="dial" id="dial"></div>
     <div class="row">
@@ -95,6 +116,9 @@ blocks, the same on every device. Tune away and back and the song has moved on. 
   </div>
 </div>
 
+<!-- The output: a media element playing the graph's stream, so the page is
+     music to the phone (plays locked, Silent switch, lock-screen controls). -->
+<audio id="out" playsinline hidden></audio>
 <script type="module" src="radio/main.js"></script>
 </body>
 </html>
