@@ -9509,6 +9509,12 @@ design; the choices:
   the sweep's static with a gliding centre, two heterodyne whistles, the
   lock's opening low-pass, the click and hiss of off. Its tests are its
   own.
+- **A radio page** (`tools/radio.html`, 2026-10-08, the owner's ask): the
+  stations on a dial, played by the game's worklet wasm, with what is on,
+  the block's programme and the DJ between songs. The wasm gains two
+  exports for pages (`mpm_stations`, `mpm_schedule`: JSON through
+  `json::canon`), so the page runs a second copy of it on the main thread
+  for the schedule, as the client runs the crate natively.
 - **Checked in a browser.** `tools/parity/e2e/radio.test.mjs` on the
   release build: the station node comes up after the first click, Coast
   tunes The Tide, T steps Ridgeline, Radio Pacífico, the Playlist (the
