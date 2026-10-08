@@ -112,6 +112,7 @@ async function tune(i) {
     await ensureAudio();
     await ctx.resume();
   } catch (e) { status('Audio failed: ' + e.message, true); console.error(e); return; }
+  stopDj(); // a DJ does not follow the listener off their station
   station = i;
   if (i >= 0) { last = i; try { localStorage.setItem(STORE, info.stations[i].key); } catch { /* private mode */ } }
   serial++;
@@ -287,7 +288,20 @@ function bindRange(el, fmt, on) {
 }
 const pct = (v) => Math.round(v * 100) + '%';
 bindRange($('vol'), pct, (v) => gain?.gain.setTargetAtTime(v, ctx.currentTime, 0.03));
-bindRange($('energy'), pct, (v) => node?.parameters.get('energy').setTargetAtTime(v, ctx.currentTime, 0.5));
+// Energy: by hand from the slider, which takes it over from the song.
+const setEnergy = (v) => node?.parameters.get('energy').setTargetAtTime(v, ctx.currentTime, 0.5);
+bindRange($('energy'), pct, (v) => { $('energyAuto').checked = false; setEnergy(v); });
+// The page's energy grows with the song (the game drives it from the race
+// instead, play/station.rs): half at a song's start, full by two thirds
+// in, so each song opens up as it goes. Once a second, from refresh.
+const songEnergy = (frac) => 0.5 + 0.5 * Math.min(1, frac / 0.67);
+function autoEnergy(frac) {
+  if (!$('energyAuto').checked) return;
+  const e = songEnergy(frac);
+  $('energy').value = e;
+  $('energy').parentElement.querySelector('output').textContent = pct(e);
+  setEnergy(e);
+}
 
 // ── What is on ───────────────────────────────────────────────────
 let lastSlot = null, lastSec = -1, sched = null;
@@ -309,6 +323,7 @@ function refresh(force = false) {
   $('now').innerHTML = `<b>${s.title}</b> · ${s.style}`;
   $('nowSub').textContent = `${st.name} ${st.freq} · ${Math.round(s.bpm)} bpm · ${s.bars} bars · ${mmss(into)} / ${mmss(s.secs)} · 16th ${sched.step}`;
   $('prog').firstChild.style.width = Math.min(100, (into / s.secs) * 100) + '%';
+  autoEnergy(into / s.secs);
   const since = wall - 1767225600;
   $('clock').textContent = `station time ${new Date(wall * 1000).toISOString().replace('T', ' ').slice(0, 19)} UTC · block ${sched.block} (${mmss(sched.into)} of 20:00) · on air ${Math.floor(since / 86400)} days`;
   $('blockNote').textContent = `Block ${sched.block}: ${sched.slots.length} songs, the last fitted to the boundary (its tempo nudged).`;
@@ -337,6 +352,21 @@ function refresh(force = false) {
 
 // ── The DJ ───────────────────────────────────────────────────────
 let djIndex = null, djDue = null, djLast = -Infinity, djHistory = [];
+let djSrc = null, djTimer = null; // the clip playing, and its caption's timer
+// Cuts the clip playing (a station change, off): the voice stops at once
+// and the station comes back up over 50 ms.
+function stopDj() {
+  if (djTimer) { clearTimeout(djTimer); djTimer = null; }
+  if (!djSrc) return;
+  try { djSrc.stop(); } catch { /* ended already */ }
+  djSrc = null;
+  $('dj').textContent = '';
+  if (stationGain) {
+    const sg = stationGain.gain;
+    sg.cancelScheduledValues(ctx.currentTime);
+    sg.setTargetAtTime(1, ctx.currentTime, 0.05);
+  }
+}
 async function loadDj() {
   for (const b of ['../../audio/dj/', '../../dist/next/audio/dj/']) {
     try {
@@ -350,8 +380,14 @@ async function maybeDj(wall) {
   if (!$('djOn').checked || !djIndex || djDue === null || wall < djDue) return;
   djDue = null;
   if (wall - djLast < 150) return;
+  await sayDj(wall);
+}
+// A line from the station's DJ now (also the page's hook for tests).
+async function sayDj(wall = wallNow()) {
+  if (!djIndex || station < 0) return;
   const dj = info.stations[station].dj;
   if (!dj) return;
+  const tuned = serial;
   const topic = Math.random() < 0.7 ? 'music' : 'ident';
   const ids = Object.keys(djIndex.clips).filter((id) => id.startsWith(`${dj}-${topic}-`) && !djHistory.includes(id));
   if (!ids.length) return;
@@ -363,6 +399,8 @@ async function maybeDj(wall) {
   const file = take === 1 ? `${id}.mp3` : `${id}.${take}.mp3`;
   try {
     const buf = await ctx.decodeAudioData(await (await fetch(new URL(djIndex.base + file, import.meta.url))).arrayBuffer());
+    if (serial !== tuned) return; // retuned while the clip loaded
+    stopDj();
     const src = ctx.createBufferSource(); src.buffer = buf;
     src.connect(gain);
     const t0 = ctx.currentTime + 0.01;
@@ -372,9 +410,11 @@ async function maybeDj(wall) {
     sg.cancelScheduledValues(t0);
     sg.setTargetAtTime(0.4, t0, 0.05);
     sg.setTargetAtTime(1, t0 + buf.duration, 0.15);
+    src.onended = () => { if (djSrc === src) djSrc = null; };
     src.start(t0);
+    djSrc = src;
     $('dj').textContent = `${dj}: “${djIndex.clips[id].text}”`;
-    setTimeout(() => { if ($('dj').textContent.startsWith(dj)) $('dj').textContent = ''; }, buf.duration * 1000 + 2000);
+    djTimer = setTimeout(() => { djTimer = null; if ($('dj').textContent.startsWith(dj)) $('dj').textContent = ''; }, buf.duration * 1000 + 2000);
   } catch (e) { console.warn('dj clip', id, e); }
 }
 
@@ -412,7 +452,9 @@ try {
   setInterval(refresh, 1000);
 } catch (e) { status(e.message, true); console.error(e); }
 window.radio = {
-  tune, step, toggle, skip, live, rate,
+  tune, step, toggle, skip, live, rate, sayDj,
   get station() { return station; }, get schedule() { return sched; }, get ctx() { return ctx; }, get out() { return out; }, get level() { return level; },
   get skew() { return skew; }, get favourites() { return fav; }, get current() { return current; },
+  get djPlaying() { return !!djSrc; }, get stationGain() { return stationGain?.gain.value ?? null; },
+  get energy() { return node?.parameters.get('energy').value ?? null; },
 };

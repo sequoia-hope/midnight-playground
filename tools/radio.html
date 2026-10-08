@@ -103,11 +103,12 @@ blocks, the same on every device. Tune away and back and the song has moved on. 
     <div class="row">
       <button id="off">Off</button>
       <label class="sl" style="flex:1;min-width:220px">Volume <input type="range" id="vol" min="0" max="1" step="0.01" value="0.7"><output></output></label>
-      <label class="sl" style="flex:1;min-width:220px">Energy <input type="range" id="energy" min="0" max="1" step="0.01" value="1"><output></output></label>
+      <label class="sl" style="flex:1;min-width:220px">Energy <input type="range" id="energy" min="0" max="1" step="0.01" value="0.5"><output></output></label>
+      <label class="row" style="gap:6px;color:var(--muted);font-size:13px"><input type="checkbox" id="energyAuto" checked> grows with the song</label>
       <span class="sub">level <span class="meter" id="meter"><i></i></span></span>
     </div>
     <p style="margin-top:6px">Energy is what the game drives from the race (a pursuit, speed, a standstill): below full, layers drop out and the mix
-    closes down.</p>
+    closes down. Here it grows over each song instead, from half at the start to full by two thirds in; drag the slider to take it over.</p>
   </div>
 
   <div class="card">
