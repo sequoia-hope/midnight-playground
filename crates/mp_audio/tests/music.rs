@@ -295,6 +295,20 @@ fn every_drum_voice_has_a_sample() {
 }
 
 #[test]
+fn a_track_picked_with_the_music_off_is_the_one_reported() {
+    let (_ctx, _h, mut music) = make_music(false);
+    let mut timers = Timers::default();
+    music.start(&mut timers);
+    music.play(PLAYLIST[0], 0, true, &mut timers);
+    music.stop(&mut timers);
+    music.play(PLAYLIST[1], 0, true, &mut timers);
+    assert_eq!(music.current().map(|i| i.id), Some(PLAYLIST[0]), "stopped");
+    assert_eq!(music.info().map(|i| i.id), Some(PLAYLIST[1]), "queued");
+    music.start(&mut timers);
+    assert_eq!(music.current().map(|i| i.id), Some(PLAYLIST[1]));
+}
+
+#[test]
 fn next_walks_the_playlist_and_play_keeps_a_song_that_is_on() {
     let (_ctx, _h, mut music) = make_music(false);
     let mut timers = Timers::default();

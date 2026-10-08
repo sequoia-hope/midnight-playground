@@ -181,8 +181,14 @@ impl MenuNav {
     }
 }
 
+/// Puts every control off to the side behind every one in line.
+const OFF_LINE: f32 = 1e6;
+
 /// The control `dir` of `cur`: the nearest whose middle lies that way,
-/// preferring ones in line.
+/// one in line first. Only when none is in line does one off to the side
+/// count: a near control a row down whose middle is just right of this
+/// one's (Race under the last row of cars) would otherwise beat the next
+/// control along the same row.
 fn nearest<'a>(list: &'a List, cur: &str, dir: Nav) -> Option<&'a String> {
     let (_, _, from) = list.iter().find(|(i, ..)| i == cur)?;
     let (fl, ft, fw, fh) = *from;
@@ -213,7 +219,7 @@ fn nearest<'a>(list: &'a List, cur: &str, dir: Nav) -> Option<&'a String> {
         } else {
             0f32.max(r.1 - fb).max(ft - (r.1 + r.3))
         };
-        let score = along + off * 3.0;
+        let score = along + off * 3.0 + if off > 0.0 { OFF_LINE } else { 0.0 };
         if score < best_score {
             best = Some(id);
             best_score = score;
@@ -502,6 +508,33 @@ mod tests {
             nearest(&list, "btn-exit", Nav::Up).map(String::as_str),
             Some("opt-mph"),
             "back up to the row above, the control in line first"
+        );
+    }
+
+    /// Right from the last row of cars is the next car, not Race a row
+    /// down whose middle is a little right of this car's (the menu at
+    /// 1280 × 800, its buttons held to the column).
+    #[test]
+    fn right_along_a_row_beats_a_nearer_control_below() {
+        let c = |id: &str, r: (f32, f32, f32, f32)| (id.to_string(), Act::Start, r);
+        let list: List = vec![
+            c("pick-rally", (360.0, 664.0, 275.0, 61.0)),
+            c("pick-electric", (645.0, 664.0, 275.0, 61.0)),
+            c("btn-start", (404.0, 742.0, 220.0, 50.0)),
+            c("btn-mp", (636.0, 742.0, 241.0, 52.0)),
+        ];
+        assert_eq!(
+            nearest(&list, "pick-rally", Nav::Right).map(String::as_str),
+            Some("pick-electric")
+        );
+        assert_eq!(
+            nearest(&list, "pick-electric", Nav::Right),
+            None,
+            "nothing right of the row's end"
+        );
+        assert_eq!(
+            nearest(&list, "pick-rally", Nav::Down).map(String::as_str),
+            Some("btn-start")
         );
     }
 

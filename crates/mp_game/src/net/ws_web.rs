@@ -135,13 +135,16 @@ impl Drop for WebSocketTransport {
 /// client runs, stalls, and this frame's ticks and drawn fraction.
 pub fn publish(
     net: bevy::prelude::NonSend<super::Net>,
-    play: bevy::prelude::Res<crate::play::Play>,
+    play: Option<bevy::prelude::Res<crate::play::Play>>,
     cams: bevy::prelude::Query<
         &bevy::prelude::Transform,
         bevy::prelude::With<bevy::prelude::Camera3d>,
     >,
 ) {
-    let Some(race) = &play.race else { return };
+    // No `Play` outside the game (the level viewer, the stations).
+    let Some(race) = play.as_ref().and_then(|p| p.race.as_ref()) else {
+        return;
+    };
     let Some(w) = web_sys::window() else { return };
     let Ok(mr) = js_sys::Reflect::get(&w, &JsValue::from_str("__mp")) else {
         return;
