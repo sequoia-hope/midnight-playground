@@ -788,14 +788,17 @@ impl Music {
         self.song.as_ref().map(|s| TrackInfo::of(s.t))
     }
 
-    /// `info`: the playing track, else the one queued to play when music
-    /// starts.
+    /// `info`: the track queued to play when music starts, else the playing
+    /// one. A track is queued only while the music is off, and it replaces
+    /// the stopped song when the music comes back, so it comes first: the
+    /// menu plays the level's track at once (D1010), so with the music
+    /// turned down a picked track found the old song reported instead.
     pub fn info(&self) -> Option<TrackInfo> {
-        if let Some(s) = &self.song {
-            return Some(TrackInfo::of(s.t));
-        }
         if let Some((t, _)) = self.pending {
             return Some(TrackInfo::of(t));
+        }
+        if let Some(s) = &self.song {
+            return Some(TrackInfo::of(s.t));
         }
         self.wanted.and_then(tracks::track).map(TrackInfo::of)
     }

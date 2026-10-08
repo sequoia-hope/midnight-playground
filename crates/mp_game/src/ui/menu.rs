@@ -542,7 +542,11 @@ pub fn menu(
         };
         place(&bp, &mut holder, (2, 3), (4, 1));
         if two {
-            holder.justify_self = JustifySelf::Center;
+            // Across the whole column, the buttons centred in it: a holder
+            // as wide as its content would leave the row's 100% bound
+            // circular, and the row would run off a phone held sideways.
+            holder.justify_self = JustifySelf::Stretch;
+            holder.justify_content = JustifyContent::Center;
         }
         // Multiplayer beside Race: on the web the host is the server the
         // page came from; natively it is `--join ws://host:port/ws`.
