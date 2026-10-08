@@ -80,6 +80,16 @@ const RULES: &[Rule] = &[
         pure: true,
         exact_math: true,
     },
+    // The atlas (docs/vision/atlas.md): real geography and the open
+    // world's plan. No workspace dependencies; world generation will read
+    // real ground from it.
+    Rule {
+        krate: "mp_atlas",
+        allowed: &[],
+        banned: SIM_BANNED,
+        pure: true,
+        exact_math: true,
+    },
     Rule {
         krate: "mp_scene",
         allowed: &[],

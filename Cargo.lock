@@ -4334,6 +4334,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mp_atlas"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "mp_audio"
 version = "0.1.0"
 dependencies = [

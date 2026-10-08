@@ -56,6 +56,8 @@ and carry on with the option that best preserves parity.
 | Wasm size report | `cargo xtask size` (after a release web build) |
 | A headless race (results, `--trace`, `--state-at`, `bench`) | `cargo run --release -p mp_sim --bin mp-sim -- race --level sierra` |
 | Native client | `cargo run -p mp_game` |
+| The open world's plan, measured (`resolve` rewrites what the planner draws) | `cargo run --release -p mp_atlas -- report` |
+| Rebuild the atlas from real data (python3 with numpy, Pillow, shapely, pyarrow) | `python3 tools/atlas/build.py` |
 | JS unit tests | `npm run test:unit` (and `npm run test:unit:kernel`, with the parity kernel) |
 | Rebuild and check the parity kernel | `cargo xtask kernel` (CI: `cargo xtask kernel --check`) |
 | JS browser tests | `npm run test:e2e` (headless Chrome on the GPU, ~3 min) |
@@ -73,6 +75,7 @@ mp_math ← mp_track ← mp_levels ← mp_sim ← mp_net ← mp_host
 mp_math ← mp_vdyn ← mp_sim   (vehicle dynamics: the sim car's body, tyres, drivetrain)
 mp_scene ← mp_worldgen   (also mp_canvas, mp_math, mp_track, mp_levels)
 mp_exhaust ← mp_audio   (mp_exhaust has no dependencies; it is also its own wasm)
+mp_atlas   (real geography and the open world's plan; no dependencies yet)
 mp_game uses mp_sim, mp_net, mp_scene, mp_worldgen, mp_audio
 ```
 

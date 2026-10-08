@@ -5,3 +5,4 @@ target/
 parity/report/
 parity/cache/
 recordings/
+tools/atlas/cache/

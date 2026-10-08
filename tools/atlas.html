@@ -1,0 +1,522 @@
+<title>Peninsula Atlas</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a survey map filling the screen, the plan's ledger beside it (below it on phones). */
+:root {
+  --paper: #f3f1ea;       /* map paper */
+  --ink: #1d2a33;         /* survey ink */
+  --ink-2: #55636c;
+  --rule: #d6d2c4;
+  --panel: #fbfaf6;
+  --mustard: #c9961a;     /* the cover crops: the plan's own marks */
+  --mustard-ink: #7a5a06;
+  --route: #b2402a;       /* highway red */
+  --planned: #2f5d7c;
+  --later: #7a7f86;
+  --road: #ffffff;
+  --road-edge: #6d655a;
+  --label-halo: rgba(243, 241, 234, .9);
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f151b; --ink: #e4e0d4; --ink-2: #9aa3a8; --rule: #26313a; --panel: #131b22;
+    --mustard: #e3b23c; --mustard-ink: #f0c95e; --route: #ef6f52; --planned: #79aed2; --later: #8b9196;
+    --road: #c9c3b4; --road-edge: #0b0f13; --label-halo: rgba(15, 21, 27, .85); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f151b; --ink: #e4e0d4; --ink-2: #9aa3a8; --rule: #26313a; --panel: #131b22;
+  --mustard: #e3b23c; --mustard-ink: #f0c95e; --route: #ef6f52; --planned: #79aed2; --later: #8b9196;
+  --road: #c9c3b4; --road-edge: #0b0f13; --label-halo: rgba(15, 21, 27, .85); color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.5 var(--body); overflow: hidden; }
+.app { display: grid; grid-template-columns: minmax(0, 1fr) 390px; height: 100%; }
+.map { position: relative; min-width: 0; overflow: hidden; touch-action: none; background: var(--paper); }
+canvas#map { display: block; width: 100%; height: 100%; cursor: grab; }
+canvas#map.drag { cursor: grabbing; }
+.panel { border-left: 1px solid var(--rule); background: var(--panel); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+header.bar { padding: 14px 18px 10px; border-bottom: 1px solid var(--rule); display: grid; gap: 6px; }
+h1 { font: 700 26px/1 var(--display); letter-spacing: .01em; margin: 0; text-wrap: balance; }
+h1 small { font: 500 13px var(--mono); color: var(--ink-2); letter-spacing: 0; margin-left: 6px; }
+.sub { color: var(--ink-2); font-size: 12.5px; margin: 0; }
+.tabs { display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--rule); overflow-x: auto; }
+.tabs button { font: 600 15px var(--display); letter-spacing: .04em; text-transform: uppercase; background: none; border: 0; color: var(--ink-2); padding: 10px 8px 8px; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--mustard); }
+.tabs button:focus-visible, .btn:focus-visible, .item:focus-visible { outline: 2px solid var(--mustard); outline-offset: 1px; }
+.scroll { overflow-y: auto; min-height: 0; flex: 1; }
+.list { display: grid; }
+.item { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 9px 18px; border: 0; border-bottom: 1px solid var(--rule); background: none; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.item:hover { background: color-mix(in srgb, var(--mustard) 8%, transparent); }
+.item[aria-current="true"] { background: color-mix(in srgb, var(--mustard) 16%, transparent); }
+.item .name { font-weight: 500; min-width: 0; }
+.item .meta { font: 12px var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.swatch { width: 12px; height: 12px; border-radius: 2px; align-self: center; }
+.chip { font: 600 11px var(--display); letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; border: 1px solid currentColor; }
+.chip.first { color: var(--mustard-ink); } .chip.planned { color: var(--planned); } .chip.later { color: var(--later); }
+.detail { padding: 14px 18px 18px; border-bottom: 1px solid var(--rule); display: grid; gap: 10px; }
+.detail h2 { font: 700 22px/1.1 var(--display); margin: 0; text-wrap: balance; }
+.detail p { margin: 0; max-width: 62ch; }
+.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px 12px; }
+.fact { display: grid; }
+.fact b { font: 500 16px var(--mono); font-variant-numeric: tabular-nums; }
+.fact span { font: 600 11px var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+.cover { display: flex; height: 10px; border-radius: 2px; overflow: hidden; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.profile { width: 100%; height: 130px; display: block; }
+.note { font-size: 13px; color: var(--ink-2); }
+.remix { padding: 12px 18px; border-bottom: 1px solid var(--rule); display: grid; gap: 4px; }
+.remix h3 { margin: 0; font: 700 18px var(--display); }
+.remix .now { color: var(--ink-2); font-size: 13px; }
+.toolbar { position: absolute; left: 12px; top: 12px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 24px); }
+.btn { font: 600 14px var(--display); letter-spacing: .05em; text-transform: uppercase; background: var(--panel); color: var(--ink); border: 1px solid var(--rule); border-radius: 4px; padding: 5px 10px; cursor: pointer; }
+.btn[aria-pressed="true"] { background: var(--mustard); color: #1d1a10; border-color: var(--mustard); }
+.readout { position: absolute; left: 12px; bottom: 12px; font: 12px var(--mono); background: var(--label-halo); padding: 4px 8px; border-radius: 3px; font-variant-numeric: tabular-nums; pointer-events: none; max-width: calc(100% - 24px); }
+.edit-bar { padding: 10px 18px; border-bottom: 1px solid var(--rule); display: grid; gap: 8px; background: color-mix(in srgb, var(--mustard) 10%, var(--panel)); }
+.edit-bar .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+textarea#out { width: 100%; height: 160px; font: 11px/1.4 var(--mono); background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 3px; box-sizing: border-box; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; font: 600 20px var(--display); letter-spacing: .05em; color: var(--ink-2); }
+footer.src { padding: 12px 18px 18px; font-size: 11.5px; color: var(--ink-2); display: grid; gap: 4px; }
+@media (max-width: 760px) {
+  body { overflow: auto; }
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: 58vh auto; height: auto; }
+  .panel { border-left: 0; border-top: 1px solid var(--rule); }
+  .scroll { overflow: visible; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="app">
+  <div class="map" id="mapwrap">
+    <canvas id="map" aria-label="Map of the San Mateo peninsula with the open world's plan"></canvas>
+    <div class="toolbar">
+      <button class="btn" id="t-regions" aria-pressed="true">Regions</button>
+      <button class="btn" id="t-routes" aria-pressed="true">Routes</button>
+      <button class="btn" id="t-roads" aria-pressed="true">Roads</button>
+      <button class="btn" id="t-parks" aria-pressed="false">Parks</button>
+      <button class="btn" id="t-edit" aria-pressed="false">Edit</button>
+    </div>
+    <div class="readout" id="readout">Loading the atlas…</div>
+    <div class="loading" id="loading">Loading the atlas…</div>
+  </div>
+  <aside class="panel">
+    <header class="bar">
+      <h1>Peninsula Atlas <small id="scale"></small></h1>
+      <p class="sub">The open world's plan over the real ground: regions, places, routes along real roads, and what each existing level becomes.</p>
+    </header>
+    <div class="edit-bar" id="editbar" hidden>
+      <div class="note">Drag places and the selected region's corners. Click the map with <b>Add place</b> on to drop a new one. Your edits stay in this browser until you copy them out.</div>
+      <div class="row">
+        <button class="btn" id="e-add" aria-pressed="false">Add place</button>
+        <button class="btn" id="e-copy">Copy plan.json</button>
+        <button class="btn" id="e-reset">Discard edits</button>
+        <span class="note" id="e-status"></span>
+      </div>
+      <textarea id="out" hidden readonly></textarea>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="regions" aria-selected="true">Regions</button>
+      <button role="tab" data-tab="routes" aria-selected="false">Routes</button>
+      <button role="tab" data-tab="places" aria-selected="false">Places</button>
+      <button role="tab" data-tab="remix" aria-selected="false">Remix</button>
+    </nav>
+    <div class="scroll" id="scroll">
+      <div id="detail"></div>
+      <div id="list" class="list"></div>
+      <footer class="src" id="sources"></footer>
+    </div>
+  </aside>
+</div>
+
+<script>
+'use strict';
+// Data: beside the repo's tools/ the atlas is in assets/atlas/peninsula/;
+// published on its own, in data/.
+const DATA = /\/tools\//.test(location.pathname) ? '../assets/atlas/peninsula/' : 'data/';
+const COVER = ['sea', 'water', 'urban', 'crop', 'grass', 'shrub', 'forest', 'barren', 'wetland', 'sand'];
+const PAL = {
+  light: { sea: [185, 211, 223], water: [150, 192, 214], urban: [221, 214, 204], crop: [236, 209, 112], grass: [207, 217, 165],
+    shrub: [212, 207, 166], forest: [148, 180, 138], barren: [226, 214, 188], wetland: [172, 203, 186], sand: [240, 228, 194], contour: [120, 96, 70] },
+  dark: { sea: [14, 27, 39], water: [20, 42, 60], urban: [44, 44, 52], crop: [96, 78, 24], grass: [46, 58, 36],
+    shrub: [56, 56, 42], forest: [30, 54, 40], barren: [60, 54, 44], wetland: [30, 52, 48], sand: [74, 68, 51], contour: [150, 140, 110] },
+};
+const COVER_LABEL = { sea: 'Sea', water: 'Lakes', urban: 'Towns', crop: 'Farms', grass: 'Grass', shrub: 'Scrub', forest: 'Forest', barren: 'Bare', wetland: 'Marsh', sand: 'Sand' };
+
+const $ = (s) => document.querySelector(s);
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const dark = () => { const t = document.documentElement.dataset.theme; return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; };
+
+let T, G, P0, R, plan;               // terrain, geo, plan as published, resolved, plan as edited
+let base;                            // the shaded map at grid resolution
+const view = { cx: 0, cz: 0, s: 0.03 };   // centre (m) and screen px per metre
+const show = { regions: true, routes: true, roads: true, parks: false, edit: false, add: false };
+let sel = null;                      // { kind, id }
+let tab = 'regions';
+
+// ── Loading ──────────────────────────────────────────────────────
+async function load() {
+  const get = async (n, kind) => { const r = await fetch(DATA + n); if (!r.ok) throw new Error(`${n}: ${r.status}`); return kind === 'bin' ? r.arrayBuffer() : r.json(); };
+  const [tb, g, p, r] = await Promise.all([get('terrain.bin', 'bin').catch(() => null), get('geo.json'), get('plan.json'), get('resolved.json')]);
+  if (tb) {
+    const dv = new DataView(tb);
+    const w = dv.getUint32(8, true), h = dv.getUint32(12, true);
+    T = { w, h, step: dv.getFloat32(16, true), x0: dv.getFloat32(20, true), z0: dv.getFloat32(24, true),
+      hgt: new Int16Array(tb.slice(32, 32 + w * h * 2)), cov: new Uint8Array(tb, 32 + w * h * 2, w * h) };
+  } else {
+    // The same grid as a PNG (where raw binaries are not served): height in
+    // decimetres + 32768 across red and green, land cover in blue.
+    const res = await fetch(DATA + 'terrain.png'); if (!res.ok) throw new Error(`terrain: ${res.status}`);
+    const bmp = await createImageBitmap(await res.blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
+    const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+    const cx = c.getContext('2d', { willReadFrequently: true }); cx.drawImage(bmp, 0, 0);
+    const px = cx.getImageData(0, 0, bmp.width, bmp.height).data, n = bmp.width * bmp.height;
+    const hgt = new Int16Array(n), cov = new Uint8Array(n);
+    for (let k = 0; k < n; k++) { hgt[k] = px[k * 4] * 256 + px[k * 4 + 1] - 32768; cov[k] = px[k * 4 + 2]; }
+    const gr = g.grid;
+    T = { w: gr.width, h: gr.height, step: gr.step, x0: gr.x0, z0: gr.z0, hgt, cov };
+  }
+  G = g; P0 = p; R = r;
+  plan = JSON.parse(JSON.stringify(p));
+  try { const d = localStorage.getItem('atlas-draft'); if (d) { const j = JSON.parse(d); if (j.world === p.world) plan = j; } } catch (e) {}
+  for (const rd of G.roads) { let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; for (const [x, z] of rd.pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); } rd.bb = [x0, z0, x1, z1]; }
+}
+const kLat = () => G.projection.m_per_deg_lat, kLon = () => G.projection.m_per_deg_lon;
+const toLocal = ([lat, lon]) => [(lon - G.origin.lon) * kLon(), -(lat - G.origin.lat) * kLat()];
+const toLL = (x, z) => [+(G.origin.lat - z / kLat()).toFixed(5), +(G.origin.lon + x / kLon()).toFixed(5)];
+function heightAt(x, z) {
+  const gx = (x - T.x0) / T.step, gz = (z - T.z0) / T.step;
+  const i = Math.max(0, Math.min(T.w - 2, Math.floor(gx))), j = Math.max(0, Math.min(T.h - 2, Math.floor(gz)));
+  const fx = Math.min(1, Math.max(0, gx - i)), fz = Math.min(1, Math.max(0, gz - j));
+  const a = (ii, jj) => T.hgt[jj * T.w + ii] / 10;
+  return (a(i, j) * (1 - fx) + a(i + 1, j) * fx) * (1 - fz) + (a(i, j + 1) * (1 - fx) + a(i + 1, j + 1) * fx) * fz;
+}
+function coverAt(x, z) {
+  const i = Math.round((x - T.x0) / T.step), j = Math.round((z - T.z0) / T.step);
+  if (i < 0 || j < 0 || i >= T.w || j >= T.h) return null;
+  return COVER[T.cov[j * T.w + i]];
+}
+
+// ── The shaded base: cover colours, hillshade from the north-west, 100 m contours ──
+function buildBase() {
+  const pal = PAL[dark() ? 'dark' : 'light'];
+  const c = document.createElement('canvas'); c.width = T.w; c.height = T.h;
+  const g = c.getContext('2d'); const im = g.createImageData(T.w, T.h); const d = im.data;
+  const H = (i, j) => T.hgt[Math.min(T.h - 1, Math.max(0, j)) * T.w + Math.min(T.w - 1, Math.max(0, i))] / 10;
+  for (let j = 0; j < T.h; j++) for (let i = 0; i < T.w; i++) {
+    const k = j * T.w + i, cv = COVER[T.cov[k]], h = T.hgt[k] / 10;
+    let col = pal[cv] || pal.grass;
+    let sh = 1;
+    if (cv !== 'sea') {
+      const dx = (H(i + 1, j) - H(i - 1, j)) / (2 * T.step), dz = (H(i, j + 1) - H(i, j - 1)) / (2 * T.step);
+      sh = Math.max(0.55, Math.min(1.25, 0.95 + (-dx * 0.7 - dz * 0.7) * 2.2));
+      const band = Math.floor(h / 100);
+      if (h > 0 && (Math.floor(H(i + 1, j) / 100) !== band || Math.floor(H(i, j + 1) / 100) !== band)) col = col.map((v, n) => v * 0.72 + pal.contour[n] * 0.28);
+    } else {
+      sh = 1 + Math.max(-0.25, h / 400);   // deeper water darker
+    }
+    d[k * 4] = col[0] * sh; d[k * 4 + 1] = col[1] * sh; d[k * 4 + 2] = col[2] * sh; d[k * 4 + 3] = 255;
+  }
+  g.putImageData(im, 0, 0);
+  base = c;
+}
+
+// ── Drawing ──────────────────────────────────────────────────────
+const cv = $('#map'); const ctx = cv.getContext('2d');
+let W = 0, Hs = 0, DPR = 1;
+function resize() {
+  const r = cv.getBoundingClientRect(); DPR = Math.min(2, devicePixelRatio || 1);
+  W = r.width; Hs = r.height; cv.width = Math.round(W * DPR); cv.height = Math.round(Hs * DPR); draw();
+}
+const sx = (x) => (x - view.cx) * view.s + W / 2, sz = (z) => (z - view.cz) * view.s + Hs / 2;
+const wx = (px) => (px - W / 2) / view.s + view.cx, wz = (py) => (py - Hs / 2) / view.s + view.cz;
+const STAGE_COL = { first: '--mustard', planned: '--planned', later: '--later' };
+const ROAD_W = { motorway: 3, trunk: 2.6, primary: 2, secondary: 1.5, tertiary: 1 };
+
+function path(pts, f = (p) => p) {
+  ctx.beginPath();
+  pts.forEach((p, i) => { const [x, z] = f(p); i ? ctx.lineTo(sx(x), sz(z)) : ctx.moveTo(sx(x), sz(z)); });
+}
+function draw() {
+  if (!T) return;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = css('--paper'); ctx.fillRect(0, 0, W, Hs);
+  ctx.imageSmoothingEnabled = view.s * T.step < 6;
+  ctx.drawImage(base, sx(T.x0 - T.step / 2), sz(T.z0 - T.step / 2), T.w * T.step * view.s, T.h * T.step * view.s);
+  const vx0 = wx(0), vx1 = wx(W), vz0 = wz(0), vz1 = wz(Hs);
+  const visible = (bb) => bb[2] >= vx0 && bb[0] <= vx1 && bb[3] >= vz0 && bb[1] <= vz1;
+
+  if (show.parks) {
+    ctx.setLineDash([4, 3]); ctx.lineWidth = 1; ctx.strokeStyle = css('--ink-2');
+    for (const a of G.areas) { path(a.ring); ctx.closePath(); ctx.stroke(); }
+    ctx.setLineDash([]);
+  }
+  if (show.regions) for (const r of plan.regions) {
+    if (!r.ring?.length) continue;
+    const col = css(STAGE_COL[r.stage] || '--planned');
+    path(r.ring, toLocal); ctx.closePath();
+    const on = sel?.kind === 'region' && sel.id === r.id;
+    ctx.globalAlpha = on ? 0.22 : 0.09; ctx.fillStyle = col; ctx.fill(); ctx.globalAlpha = 1;
+    ctx.lineWidth = on ? 2.5 : 1.4; ctx.strokeStyle = col;
+    ctx.setLineDash(r.stage === 'later' ? [6, 4] : []); ctx.stroke(); ctx.setLineDash([]);
+  }
+  // Rail
+  ctx.strokeStyle = css('--ink-2'); ctx.lineWidth = 1; ctx.setLineDash([5, 3]);
+  for (const r of G.rail) if (r.class === 'standard_gauge') { path(r.pts); ctx.stroke(); }
+  ctx.setLineDash([]);
+  // Roads, minor first
+  if (show.roads) {
+    const zoomMin = { tertiary: 0.025, secondary: 0.012, primary: 0.006, trunk: 0, motorway: 0 };
+    for (const pass of ['edge', 'fill']) for (const cls of ['tertiary', 'secondary', 'primary', 'trunk', 'motorway']) {
+      if (view.s < zoomMin[cls]) continue;
+      const w = ROAD_W[cls] * Math.max(0.6, Math.min(1.6, view.s / 0.03));
+      ctx.lineWidth = pass === 'edge' ? w + 1.6 : w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.strokeStyle = pass === 'edge' ? css('--road-edge') : (cls === 'motorway' || cls === 'trunk') ? css('--mustard') : css('--road');
+      ctx.globalAlpha = pass === 'edge' ? 0.5 : 1;
+      ctx.beginPath();
+      for (const r of G.roads) { if (r.class !== cls || !visible(r.bb)) continue; r.pts.forEach(([x, z], i) => i ? ctx.lineTo(sx(x), sz(z)) : ctx.moveTo(sx(x), sz(z))); }
+      ctx.stroke(); ctx.globalAlpha = 1;
+    }
+  }
+  // Routes and events
+  if (show.routes) for (const r of R.routes) {
+    const on = sel && (sel.id === r.id);
+    if (r.kind === 'event' && !on) continue;
+    path(r.pts);
+    ctx.lineWidth = on ? 7 : 4.5; ctx.strokeStyle = css('--paper'); ctx.globalAlpha = 0.8; ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.lineWidth = on ? 4.5 : 2.6; ctx.strokeStyle = r.kind === 'event' ? css('--mustard') : css('--route');
+    ctx.stroke();
+    if (on) for (const c of r.crests) { ctx.beginPath(); ctx.arc(sx(c.x), sz(c.z), 4, 0, 7); ctx.fillStyle = css('--paper'); ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = css('--ink'); ctx.stroke(); }
+  }
+  // Towns
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const label = (t, x, y, font, col) => { ctx.font = font; ctx.lineWidth = 3.5; ctx.strokeStyle = css('--label-halo'); ctx.strokeText(t, x, y); ctx.fillStyle = col; ctx.fillText(t, x, y); };
+  for (const t of G.towns) {
+    if (t.kind === 'neighborhood' || t.kind === 'macrohood') { if (view.s < 0.08) continue; }
+    else if (!(t.population > 20000 || view.s > 0.03 || t.kind === 'town' && view.s > 0.015)) continue;
+    const x = sx(t.x), y = sz(t.z); if (x < -50 || x > W + 50 || y < -20 || y > Hs + 20) continue;
+    label(t.name, x, y, `italic 500 ${t.population > 50000 ? 13 : 11}px ${css('--body')}`, css('--ink-2'));
+  }
+  // Region names
+  if (show.regions) for (const r of plan.regions) {
+    if (!r.ring?.length) continue;
+    const pts = r.ring.map(toLocal); const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length, cz = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+    label(r.name.toUpperCase(), sx(cx), sz(cz), `700 ${view.s > 0.05 ? 16 : 13}px ${css('--display')}`, css(STAGE_COL[r.stage] || '--planned'));
+  }
+  // Places
+  for (const p of plan.places) {
+    const [x, z] = toLocal(p.at); const X = sx(x), Y = sz(z);
+    if (X < -20 || X > W + 20 || Y < -20 || Y > Hs + 20) continue;
+    const on = sel?.kind === 'place' && sel.id === p.id;
+    ctx.save(); ctx.translate(X, Y); ctx.rotate(Math.PI / 4);
+    const s = on ? 7 : 5; ctx.fillStyle = p.kind === 'start' ? css('--mustard') : css('--ink'); ctx.strokeStyle = css('--paper'); ctx.lineWidth = 1.5;
+    ctx.fillRect(-s, -s, 2 * s, 2 * s); ctx.strokeRect(-s, -s, 2 * s, 2 * s); ctx.restore();
+    if (view.s > 0.035 || on || p.kind === 'start') { ctx.textAlign = 'left'; label(p.name, X + 10, Y, `500 12px ${css('--body')}`, css('--ink')); ctx.textAlign = 'center'; }
+  }
+  // Region handles in edit mode
+  if (show.edit && sel?.kind === 'region') {
+    const r = plan.regions.find((q) => q.id === sel.id);
+    for (const ll of r?.ring || []) { const [x, z] = toLocal(ll); ctx.beginPath(); ctx.arc(sx(x), sz(z), 6, 0, 7); ctx.fillStyle = css('--mustard'); ctx.fill(); ctx.strokeStyle = css('--ink'); ctx.lineWidth = 1.5; ctx.stroke(); }
+  }
+  // Scale bar
+  const km = [1, 2, 5, 10, 20].find((k) => k * 1000 * view.s > 70) || 20;
+  const bx = W - 20 - km * 1000 * view.s, by = Hs - 18;
+  ctx.fillStyle = css('--ink'); ctx.fillRect(bx, by, km * 1000 * view.s, 3);
+  ctx.textAlign = 'right'; label(`${km} km`, W - 20, by - 9, `500 11px ${css('--mono')}`, css('--ink'));
+}
+let raf = 0; const redraw = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); }); };
+
+// ── Picking and interaction ──────────────────────────────────────
+function distSeg(px, py, ax, ay, bx, by) { const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy; const t = l2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0; return Math.hypot(px - ax - t * dx, py - ay - t * dy); }
+function inside(x, z, ring) { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [ax, az] = ring[i], [bx, bz] = ring[j]; if ((az > z) !== (bz > z) && x < (bx - ax) * (z - az) / (bz - az) + ax) c = !c; } return c; }
+function pick(px, py) {
+  for (const p of plan.places) { const [x, z] = toLocal(p.at); if (Math.hypot(sx(x) - px, sz(z) - py) < 11) return { kind: 'place', id: p.id }; }
+  if (show.routes) {
+    let best = null;
+    for (const r of R.routes) { if (r.kind === 'event' && sel?.id !== r.id) continue; for (let i = 1; i < r.pts.length; i++) { const d = distSeg(px, py, sx(r.pts[i - 1][0]), sz(r.pts[i - 1][1]), sx(r.pts[i][0]), sz(r.pts[i][1])); if (d < 8 && (!best || d < best.d)) best = { d, id: r.id }; } }
+    if (best) return { kind: 'route', id: best.id };
+  }
+  if (show.regions) { const x = wx(px), z = wz(py); for (const r of plan.regions) if (r.ring && inside(x, z, r.ring.map(toLocal))) return { kind: 'region', id: r.id }; }
+  return null;
+}
+const pointers = new Map(); let dragging = null, moved = 0, pinch = null;
+cv.addEventListener('pointerdown', (e) => {
+  cv.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY }); moved = 0;
+  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: view.s }; dragging = null; return; }
+  dragging = { kind: 'pan', x: e.offsetX, y: e.offsetY, cx: view.cx, cz: view.cz };
+  if (show.edit) {
+    if (sel?.kind === 'region') { const r = plan.regions.find((q) => q.id === sel.id); const k = r?.ring.findIndex((ll) => { const [x, z] = toLocal(ll); return Math.hypot(sx(x) - e.offsetX, sz(z) - e.offsetY) < 10; }); if (k >= 0) dragging = { kind: 'vertex', r, k }; }
+    const hit = pick(e.offsetX, e.offsetY); if (dragging.kind === 'pan' && hit?.kind === 'place') { dragging = { kind: 'place', p: plan.places.find((p) => p.id === hit.id) }; select(hit); }
+  }
+  cv.classList.add('drag');
+});
+cv.addEventListener('pointermove', (e) => {
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+  if (pinch && pointers.size === 2) { const [a, b] = [...pointers.values()]; view.s = Math.max(0.004, Math.min(0.6, pinch.s * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d)); redraw(); return; }
+  const x = wx(e.offsetX), z = wz(e.offsetY);
+  if (dragging) {
+    moved += Math.abs(e.movementX) + Math.abs(e.movementY);
+    if (dragging.kind === 'pan') { view.cx = dragging.cx - (e.offsetX - dragging.x) / view.s; view.cz = dragging.cz - (e.offsetY - dragging.y) / view.s; }
+    else if (dragging.kind === 'place') { dragging.p.at = toLL(x, z); edited(); }
+    else if (dragging.kind === 'vertex') { dragging.r.ring[dragging.k] = toLL(x, z); edited(); }
+    redraw();
+  }
+  const [lat, lon] = toLL(x, z), c = coverAt(x, z);
+  $('#readout').textContent = c ? `${lat.toFixed(5)}, ${lon.toFixed(5)} · ${Math.max(0, heightAt(x, z)).toFixed(0)} m · ${COVER_LABEL[c]}` : `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+});
+const up = (e) => {
+  pointers.delete(e.pointerId); if (pointers.size < 2) pinch = null;
+  cv.classList.remove('drag');
+  if (dragging && moved < 4) {
+    if (show.edit && show.add) addPlace(wx(e.offsetX), wz(e.offsetY));
+    else { const hit = pick(e.offsetX, e.offsetY); select(hit); }
+  }
+  if (dragging && dragging.kind !== 'pan') renderPanel();
+  dragging = null;
+};
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+cv.addEventListener('wheel', (e) => {
+  e.preventDefault(); const x = wx(e.offsetX), z = wz(e.offsetY);
+  view.s = Math.max(0.004, Math.min(0.6, view.s * Math.exp(-e.deltaY * 0.0015)));
+  view.cx = x - (e.offsetX - W / 2) / view.s; view.cz = z - (e.offsetY - Hs / 2) / view.s; redraw();
+}, { passive: false });
+
+function frame(ptsLocal, pad = 60) {
+  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+  for (const [x, z] of ptsLocal) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+  view.cx = (x0 + x1) / 2; view.cz = (z0 + z1) / 2;
+  view.s = Math.max(0.004, Math.min(0.15, Math.min((W - 2 * pad) / Math.max(1, x1 - x0), (Hs - 2 * pad) / Math.max(1, z1 - z0))));
+}
+function select(s, zoom = false) {
+  sel = s;
+  if (s && zoom) {
+    if (s.kind === 'route') frame(R.routes.find((r) => r.id === s.id).pts);
+    if (s.kind === 'region') frame(plan.regions.find((r) => r.id === s.id).ring.map(toLocal));
+    if (s.kind === 'place') { const [x, z] = toLocal(plan.places.find((p) => p.id === s.id).at); view.cx = x; view.cz = z; view.s = Math.max(view.s, 0.08); }
+  }
+  renderPanel(); redraw();
+}
+
+// ── Editing ──────────────────────────────────────────────────────
+function edited() { try { localStorage.setItem('atlas-draft', JSON.stringify(plan)); } catch (e) {} $('#e-status').textContent = 'Edited: copy it out to keep it.'; }
+function addPlace(x, z) {
+  let n = 1; while (plan.places.some((p) => p.id === `new-place-${n}`)) n++;
+  const p = { id: `new-place-${n}`, name: `New place ${n}`, kind: 'landmark', at: toLL(x, z) };
+  plan.places.push(p); edited(); show.add = false; $('#e-add').setAttribute('aria-pressed', 'false'); select({ kind: 'place', id: p.id });
+}
+function planText() {
+  // Compact arrays of coordinates, one object per line, as the file is written.
+  const j = JSON.stringify(plan, null, 2);
+  return j.replace(/\[\s+(-?[\d.]+),\s+(-?[\d.]+)\s+\]/g, '[$1, $2]') + '\n';
+}
+$('#e-copy').onclick = () => {
+  const t = planText(); const out = $('#out');
+  navigator.clipboard?.writeText(t).then(() => { $('#e-status').textContent = 'Copied. Paste it into assets/atlas/peninsula/plan.json, or into the chat.'; out.hidden = true; })
+    .catch(() => { out.hidden = false; out.value = t; out.focus(); out.select(); $('#e-status').textContent = 'Select all and copy the text below.'; });
+};
+$('#e-reset').onclick = () => { plan = JSON.parse(JSON.stringify(P0)); try { localStorage.removeItem('atlas-draft'); } catch (e) {} $('#e-status').textContent = 'Back to the published plan.'; select(null); };
+$('#e-add').onclick = (e) => { show.add = !show.add; e.target.setAttribute('aria-pressed', String(show.add)); };
+
+// ── The panel ───────────────────────────────────────────────────
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const km = (m) => `${(m / 1000).toFixed(1)} km`;
+function coverBar(cover) {
+  const pal = PAL[dark() ? 'dark' : 'light'];
+  const e = Object.entries(cover).filter(([, f]) => f >= 0.01);
+  const bar = e.map(([k, f]) => `<i style="flex:${f};background:rgb(${pal[k].join(',')})" title="${COVER_LABEL[k]} ${Math.round(f * 100)} %"></i>`).join('');
+  const leg = e.slice(0, 5).map(([k, f]) => `<span><i style="background:rgb(${pal[k].join(',')})"></i>${COVER_LABEL[k]} ${Math.round(f * 100)} %</span>`).join('');
+  return `<div class="cover">${bar}</div><div class="legend">${leg}</div>`;
+}
+const fact = (v, k) => `<div class="fact"><b>${v}</b><span>${k}</span></div>`;
+function detailHTML() {
+  if (!sel) return `<div class="detail"><p class="note">Tap a region, a route or a place on the map, or pick one below. Drag to pan; pinch or scroll to zoom.</p></div>`;
+  if (sel.kind === 'region') {
+    const r = plan.regions.find((q) => q.id === sel.id), m = R.regions.find((q) => q.id === sel.id);
+    return `<div class="detail"><div><span class="chip ${esc(r.stage)}">${esc(r.stage)}</span></div><h2>${esc(r.name)}</h2>
+      ${r.real ? `<p class="note">Real: ${esc(r.real)}</p>` : ''}<p>${esc(r.character)}</p>
+      ${m ? `<div class="facts">${fact(`${m.land_km2.toFixed(0)} km²`, 'land')}${fact(`${m.h_min.toFixed(0)}–${m.h_max.toFixed(0)} m`, 'heights')}${fact(`${m.h_mean.toFixed(0)} m`, 'mean height')}</div>${coverBar(m.cover)}` : ''}
+      ${r.kits?.length ? `<p class="note">Scenery kits: ${r.kits.map(esc).join(', ')}</p>` : ''}
+      ${m?.towns?.length ? `<p class="note">Towns: ${m.towns.slice(0, 10).map(esc).join(', ')}</p>` : ''}</div>`;
+  }
+  if (sel.kind === 'route') {
+    const m = R.routes.find((q) => q.id === sel.id);
+    const src = (m.kind === 'event' ? plan.events : plan.routes).find((q) => q.id === sel.id) || {};
+    return `<div class="detail"><div><span class="chip planned">${esc(src.kind || m.kind)}</span></div><h2>${esc(m.name)}</h2>
+      ${src.light ? `<p class="note">Light: ${esc(src.light)}</p>` : ''}${src.note ? `<p>${esc(src.note)}</p>` : ''}
+      <div class="facts">${fact(km(m.length_m), 'real')}${fact(km(m.game_m), 'in the game')}${fact(`${m.climb_m} m`, 'climb')}${fact(`${m.h_min.toFixed(0)}–${m.h_max.toFixed(0)} m`, 'heights')}${fact(`${Math.round(m.max_grade * 100)} %`, 'steepest')}${fact(m.crests.length, 'crests')}</div>
+      <canvas class="profile" id="profile" aria-label="Elevation profile"></canvas>${coverBar(m.cover)}</div>`;
+  }
+  const p = plan.places.find((q) => q.id === sel.id), m = R.places.find((q) => q.id === sel.id);
+  const [x, z] = toLocal(p.at);
+  return `<div class="detail"><div><span class="chip later">${esc(p.kind)}</span></div><h2>${esc(p.name)}</h2>${p.note ? `<p>${esc(p.note)}</p>` : ''}
+    <div class="facts">${fact(`${Math.max(0, heightAt(x, z)).toFixed(0)} m`, 'height')}${fact(COVER_LABEL[coverAt(x, z)] || '–', 'ground')}${fact(`${p.at[0].toFixed(5)}, ${p.at[1].toFixed(5)}`, 'lat, lon')}</div>
+    ${m?.road ? `<p class="note">${m.road[1]} m from ${esc(m.road[0])}</p>` : ''}${!m ? '<p class="note">New: measured once the plan is resolved.</p>' : ''}</div>`;
+}
+function drawProfile() {
+  const c = $('#profile'); if (!c) return; const m = R.routes.find((q) => q.id === sel.id);
+  const r = c.getBoundingClientRect(), d = Math.min(2, devicePixelRatio || 1); c.width = r.width * d; c.height = r.height * d;
+  const g = c.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0);
+  const pad = { l: 34, r: 8, t: 8, b: 18 }, w = r.width - pad.l - pad.r, h = r.height - pad.t - pad.b;
+  const hs = m.pts.map((p) => p[2]); const top = Math.max(50, Math.ceil(Math.max(...hs) / 100) * 100);
+  const X = (i) => pad.l + (i / (m.pts.length - 1)) * w, Y = (v) => pad.t + h - (v / top) * h;
+  g.font = `11px ${css('--mono')}`; g.fillStyle = css('--ink-2'); g.strokeStyle = css('--rule'); g.lineWidth = 1;
+  const stepH = top > 400 ? 200 : 100;
+  for (let v = 0; v <= top; v += stepH) { g.beginPath(); g.moveTo(pad.l, Y(v)); g.lineTo(pad.l + w, Y(v)); g.stroke(); g.textAlign = 'right'; g.fillText(`${v}`, pad.l - 4, Y(v) + 4); }
+  g.textAlign = 'center'; const L = m.length_m / 1000; const kstep = L > 15 ? 5 : L > 6 ? 2 : 1;
+  for (let k = 0; k <= L; k += kstep) g.fillText(`${k} km`, pad.l + (k / L) * w, pad.t + h + 14);
+  g.beginPath(); g.moveTo(X(0), Y(0)); hs.forEach((v, i) => g.lineTo(X(i), Y(v))); g.lineTo(X(hs.length - 1), Y(0)); g.closePath();
+  g.globalAlpha = 0.25; g.fillStyle = css('--route'); g.fill(); g.globalAlpha = 1;
+  g.beginPath(); hs.forEach((v, i) => i ? g.lineTo(X(i), Y(v)) : g.moveTo(X(i), Y(v))); g.strokeStyle = css('--route'); g.lineWidth = 2; g.stroke();
+  for (const cr of m.crests) { const x = pad.l + (cr.d / m.length_m) * w; g.beginPath(); g.arc(x, Y(cr.h), 3, 0, 7); g.fillStyle = css('--panel'); g.fill(); g.strokeStyle = css('--ink'); g.lineWidth = 1.5; g.stroke(); }
+}
+function listHTML() {
+  const cur = (k, id) => sel?.kind === k && sel.id === id ? 'aria-current="true"' : '';
+  if (tab === 'regions') return plan.regions.map((r) => { const m = R.regions.find((q) => q.id === r.id);
+    return `<button class="item" data-k="region" data-id="${esc(r.id)}" ${cur('region', r.id)}><span class="swatch" style="background:var(${STAGE_COL[r.stage] || '--planned'})"></span><span class="name">${esc(r.name)}</span><span class="meta">${m ? `${m.land_km2.toFixed(0)} km²` : 'new'}</span></button>`; }).join('');
+  if (tab === 'routes') {
+    const circ = R.circuits.map((c) => `<div class="item" style="cursor:default"><span class="swatch" style="background:var(--route)"></span><span class="name">${esc(c.name)}</span><span class="meta">${km(c.length_m)} ${c.closes ? '· closes' : '· open!'}</span></div>`).join('');
+    return circ + R.routes.map((r) => `<button class="item" data-k="route" data-id="${esc(r.id)}" ${cur('route', r.id)}><span class="swatch" style="background:var(${r.kind === 'event' ? '--mustard' : '--route'})"></span><span class="name">${esc(r.name)}</span><span class="meta">${km(r.length_m)} · ${r.climb_m} m↑</span></button>`).join('');
+  }
+  if (tab === 'places') return plan.places.map((p) => `<button class="item" data-k="place" data-id="${esc(p.id)}" ${cur('place', p.id)}><span class="swatch" style="background:var(${p.kind === 'start' ? '--mustard' : '--ink'});transform:rotate(45deg) scale(.7)"></span><span class="name">${esc(p.name)}</span><span class="meta">${esc(p.kind)}</span></button>`).join('');
+  return (plan.remix || []).map((m) => `<div class="remix"><h3>${esc(m.level[0].toUpperCase() + m.level.slice(1))}</h3><div class="now">Now: ${esc(m.now)}</div><div>${esc(m.becomes)}</div></div>`).join('');
+}
+function renderPanel() {
+  $('#detail').innerHTML = detailHTML();
+  $('#list').innerHTML = listHTML();
+  for (const b of document.querySelectorAll('#list .item[data-k]')) b.onclick = () => select({ kind: b.dataset.k, id: b.dataset.id }, true);
+  if (sel?.kind === 'route') drawProfile();
+}
+for (const b of document.querySelectorAll('.tabs button')) b.onclick = () => {
+  tab = b.dataset.tab; for (const o of document.querySelectorAll('.tabs button')) o.setAttribute('aria-selected', String(o === b)); renderPanel();
+};
+for (const k of ['regions', 'routes', 'roads', 'parks', 'edit']) $(`#t-${k}`).onclick = (e) => {
+  show[k] = !show[k]; e.target.setAttribute('aria-pressed', String(show[k]));
+  if (k === 'edit') { $('#editbar').hidden = !show.edit; show.add = false; $('#e-add').setAttribute('aria-pressed', 'false'); }
+  redraw();
+};
+function retheme() { if (!T) return; buildBase(); draw(); renderPanel(); }
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', retheme);
+new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+addEventListener('resize', resize);
+
+load().then(() => {
+  $('#loading').hidden = true;
+  $('#scale').textContent = `game scale ${plan.scale}`;
+  $('#sources').innerHTML = G.sources.map((s) => `<div>${esc(s)}</div>`).join('');
+  buildBase(); resize();
+  // Open on the first race.
+  sel = { kind: 'route', id: 'first-race' };
+  const r = R.routes.find((q) => q.id === 'first-race');
+  if (r) frame(r.pts.concat([[0, -9000], [-6000, 16000]])); else frame([[-20000, -30000], [30000, 40000]]);
+  renderPanel(); draw();
+  $('#readout').textContent = 'Tap the map for heights and ground';
+}).catch((e) => { $('#loading').textContent = `Could not load the atlas: ${e.message}`; });
+</script>

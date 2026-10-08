@@ -9671,3 +9671,37 @@ Found by rendering the release build headless at a flock that world
 generation's animator places 30 m over the track; the worldgen tests had
 passed throughout, since the bug was in the client.
 
+## D1157. The atlas: the open world planned on the real peninsula
+
+2026-10-08. The owner asked for the system to plan the open world with:
+real elevation for the whole peninsula, regions on it, a proposal, and the
+loop of 84, 1, 92 and 35 with the first race from the crest above San
+Gregorio to Half Moon Bay. `docs/vision/atlas.md` is the design; the
+choices:
+
+- **Overture Maps on AWS for the map data, Tilezen's Terrarium tiles for
+  the terrain.** OpenStreetMap's own servers, Overpass and USGS's services
+  are blocked from the cloud sessions; both of these are public S3
+  buckets. Overture's segments are OpenStreetMap's (ODbL), its land cover
+  ESA WorldCover (CC BY 4.0); `geo.json` carries the attribution.
+- **A 50 m grid in git, the 15 m tiles in the cache.** Planning needs the
+  shape of the land; 3.7 MB of terrain and 2.1 MB of roads are committed
+  so the planner and the tests need no network. Corridor generation will
+  read the cache.
+- **The origin is Half Moon Bay's big intersection** and the frame the
+  levels' (x east, z south). Equirectangular with the metres per degree
+  computed by the build script: `mp_atlas` uses square roots only, so it
+  keeps the simulation crates' rules (pure, exact maths) for the day world
+  generation reads real ground from it.
+- **`plan.json` by hand, `resolved.json` measured.** The plan says where
+  and what in `[lat, lon]` (pasteable from a map); `mp-atlas resolve`
+  routes it over the real road graph and profiles it, and a test fails
+  when `resolved.json` is stale, as the goldens do. The planner page only
+  draws: one implementation of the measuring, in Rust.
+- **Places snap to roads, not junctions;** tunnels and bridges keep the
+  road's level in a profile.
+- **The proposal is a draft for the owner:** eleven regions, the loop
+  (69.8 km of real road), the first race (15.3 km real, 7.7 km at the
+  plan's scale of 0.5, the length of today's Coast Highway), the remix of
+  each level, and road trips (Cruis'n World's jumps) for the Sierra, the
+  desert and the raceway. No level changes.
