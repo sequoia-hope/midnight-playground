@@ -152,6 +152,7 @@ const RULES: &[Rule] = &[
             "mp_canvas",
             "mp_worldgen",
             "mp_audio",
+            "mp_music",
         ],
         banned: &[],
         pure: false,

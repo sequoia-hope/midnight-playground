@@ -21,6 +21,8 @@ mp_net = { workspace = true, features = ["rtc"] }
 mp_scene.workspace = true
 mp_worldgen.workspace = true
 mp_audio.workspace = true
+# The radio's stations and their schedule (what plays now, for the HUD).
+mp_music.workspace = true
 mp_track.workspace = true
 mp_levels.workspace = true
 mp_math.workspace = true

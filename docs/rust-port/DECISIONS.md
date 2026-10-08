@@ -9447,7 +9447,9 @@ as the engine lab is for `mp_exhaust` (D1110):
   five tracks from a given bar; `renders.json`, the engine's output for
   fourteen runs as RMS per 50 ms and whole 256-sample windows. The grammars
   and the sequencer are integer and seeded-float arithmetic, so the port
-  reproduces the first two to the bit; the renders agree to a tolerance.
+  reproduces the first two to the bit; the renders agree to the last bit
+  of an `f32` (worst RMS difference 5.9e-8 relative, worst sample 1.5e-8
+  over the fourteen runs).
 - **JS semantics kept** (SPEC 4.2 holds for a port even when parity with
   the JS game is no longer the goal, D1111): `Math.round` as
   `floor(x + 0.5)`, `>>> 0` and `| 0` as ToUint32 / ToInt32 of a double,
@@ -9499,6 +9501,10 @@ design; the choices:
   breaks. This keeps the facade's one model (params, logged and validated
   by the null backend) and the native and web processors identical
   (`mp_music::radio::Player`, shared by both).
+- **Cost.** A minute of each station renders in 1.0 to 1.7 s natively
+  in release (`cargo run --release -p mp_music --example bench`): 2 to 3 %
+  of one desktop core, against the lab's 15 to 35 % in JavaScript. The
+  phones are still to be measured (sound.md S1's gate).
 - **The tuner** (`mp_music::radio::Tuner`) is new Rust with no JS oracle:
   the sweep's static with a gliding centre, two heterodyne whistles, the
   lock's opening low-pass, the click and hiss of off. Its tests are its

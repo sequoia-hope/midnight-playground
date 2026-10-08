@@ -400,6 +400,9 @@ pub struct Settings {
     pub sfx: f64,
     /// `'auto'` (the level's own) or a track id.
     pub track: String,
+    /// The radio (D1151): `auto` (the level's station), a station key, or
+    /// `playlist` (the arranged songs, the JS game's music).
+    pub station: String,
 }
 
 impl Default for Settings {
@@ -408,6 +411,7 @@ impl Default for Settings {
             music: 0.7,
             sfx: 0.85,
             track: "auto".into(),
+            station: "auto".into(),
         }
     }
 }
@@ -666,6 +670,23 @@ pub struct RaceAudio {
     pub frame_ms_max_tick: u32,
     pub frame_ms_sum: f64,
     pub frames: u32,
+    /// The radio: the station tuned, what plays, the DJ (D1151).
+    pub station: super::station::StationState,
+    /// The level `pick_music` last saw (the T key re-picks for it).
+    level: Option<String>,
+}
+
+/// The wall clock, Unix seconds: the stations' time (radio.md 7).
+#[cfg(target_arch = "wasm32")]
+pub fn wall_now() -> f64 {
+    js_sys::Date::now() / 1000.0
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn wall_now() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64())
 }
 
 impl RaceAudio {
@@ -676,6 +697,8 @@ impl RaceAudio {
             log: record.then(Vec::new),
             tick: 0,
             music_key: None,
+            station: super::station::StationState::new(),
+            level: None,
             started: 0,
             prepared: false,
             was_nitro: false,
@@ -722,7 +745,8 @@ impl RaceAudio {
     /// `pickMusic`: only switch when the level or the choice changed, so a
     /// restart (or a skipped-to track) keeps playing.
     fn pick_music(&mut self, level: &str) {
-        let key = format!("{level}|{}", self.settings.track);
+        self.level = Some(level.to_owned());
+        let key = format!("{level}|{}|{}", self.settings.track, self.settings.station);
         if self.music_key.as_deref() == Some(key.as_str()) {
             return;
         }
@@ -732,7 +756,15 @@ impl RaceAudio {
         } else {
             self.settings.track.clone()
         };
+        // The playlist's track is picked as the JS does (and logged), so the
+        // call log is the JS drive's whatever the radio does; a station on
+        // top of it keeps the playlist silent (D1151). Tuning is not a JS
+        // call, so it is not logged.
         self.call(Call::PlayTrack(id));
+        let station = super::station::resolve(&self.settings.station, level);
+        let wall = wall_now();
+        self.audio.set_station(station, wall);
+        self.station.tuned(station, wall);
     }
 
     /// `applyVolume`.
@@ -807,11 +839,35 @@ impl RaceAudio {
         self.apply_volume();
     }
 
-    /// `nextTrack` (T).
+    /// `nextTrack` (T): the next station on the dial while the radio plays
+    /// (the stations, then the playlist, round again; D1151), else the
+    /// playlist's next track.
     pub fn next_track(&mut self) {
-        if self.audio.ready() {
+        if !self.audio.ready() {
+            return;
+        }
+        let level = self
+            .level
+            .clone()
+            .unwrap_or_else(|| self.settings.station.clone());
+        if super::station::resolve(&self.settings.station, &level).is_some() {
+            self.settings.station = super::station::next_setting(&self.settings.station, &level);
+            store_set("station", &json_str(&self.settings.station));
+            self.pick_music(&level);
+        } else {
             self.call(Call::NextTrack);
         }
+    }
+
+    /// Whether a station is playing (the pause screen's button says
+    /// "Next station" then).
+    pub fn on_station(&self) -> bool {
+        self.station.station.is_some()
+    }
+
+    /// `#np-pause`: the station and its song while the radio plays.
+    pub fn station_text(&self) -> Option<&str> {
+        self.station.station.map(|_| self.station.text.as_str())
     }
 
     /// A menu button's click (the results' race-again tap).
@@ -823,7 +879,7 @@ impl RaceAudio {
     /// `applyVolume` when the sound is up, and `pickMusic` for a new track
     /// choice.
     pub fn menu_settings(&mut self, s: Settings, level: &str) {
-        let track = s.track != self.settings.track;
+        let track = s.track != self.settings.track || s.station != self.settings.station;
         self.settings = s;
         if self.audio.ready() {
             self.apply_volume();
@@ -1191,10 +1247,15 @@ fn settings() -> Settings {
         .and_then(|v| serde_json::from_str::<String>(&v).ok())
         .filter(|t| t == "auto" || GameAudio::tracks().iter().any(|i| i.id == t))
         .unwrap_or(d.track);
+    let station = store_get("station")
+        .and_then(|v| serde_json::from_str::<String>(&v).ok())
+        .filter(|v| crate::ui::store::station_ok(v))
+        .unwrap_or(d.station);
     Settings {
         music: number("musicVol", d.music),
         sfx: number("sfxVol", d.sfx),
         track,
+        station,
     }
 }
 
@@ -1285,7 +1346,11 @@ fn frame(shared: NonSend<Shared>, mut play: ResMut<Play>, mut keys: MessageReade
             a.next_track();
         }
         a.poll();
-        publish(&mut a);
+        let wall = wall_now();
+        let a = &mut *a;
+        a.station
+            .frame(&mut a.audio, wall, super::station::Scene::default());
+        publish(a);
         return;
     };
     let t0 = now_ms();
@@ -1323,8 +1388,27 @@ fn frame(shared: NonSend<Shared>, mut play: ResMut<Play>, mut keys: MessageReade
     let track = race.session.lr.track.clone();
     let (mode, look_back) = (race.rig.mode, race.input.state.look_back);
     a.ticks(&race.audio_ticks, &track, mode, look_back);
+    let scene = super::station::Scene {
+        racing: true,
+        countdown: race.audio_ticks.last().is_some_and(|t| t.countdown),
+        results: race.mode == Mode::Results,
+        pursuit: a.pursuit,
+        speed: race
+            .audio_ticks
+            .last()
+            .and_then(|t| t.state.speed)
+            .map_or(0.0, f64::abs),
+        police: !race.radio.said.is_empty(),
+    };
     race.audio_ticks.clear();
     a.poll();
+    {
+        let a = &mut *a;
+        a.station.frame(&mut a.audio, wall_now(), scene);
+    }
+    if let Some(text) = a.station.flash.take() {
+        race.hud.toast(text, 3.5);
+    }
     let ms = now_ms() - t0;
     if ms > a.frame_ms_max {
         a.frame_ms_max = ms;
@@ -1401,6 +1485,7 @@ fn publish(a: &mut RaceAudio) {
     set(&o, "music", JsValue::from_f64(a.settings.music));
     set(&o, "sfx", JsValue::from_f64(a.settings.sfx));
     set(&o, "track", JsValue::from_str(&a.settings.track));
+    set(&o, "station", JsValue::from_str(&a.settings.station));
     set(
         &o,
         "playing",

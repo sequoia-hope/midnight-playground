@@ -234,6 +234,7 @@ fn stage_control(
                 "opt-pedals" => Sel::Pedals,
                 "opt-guide" => Sel::Guide,
                 "opt-assist" => Sel::Assist,
+                "opt-station" => Sel::Station,
                 _ => return true,
             };
             let value = v["value"].as_str().unwrap_or("").to_owned();
@@ -514,6 +515,7 @@ fn publish_settings(mr: &Object, s: &super::store::Settings) {
         (Sel::Pedals, "opt-pedals"),
         (Sel::Guide, "opt-guide"),
         (Sel::Assist, "opt-assist"),
+        (Sel::Station, "opt-station"),
     ] {
         let (opts, _) = super::menu::select_options(sel, s);
         selects.insert(

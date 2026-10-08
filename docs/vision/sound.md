@@ -586,10 +586,12 @@ decision is revisited, narrowly:
   cheap enough for phones in the game, as `mp_exhaust` did for engines.
 - **The port and the radio (2026-10-08):** `crates/mp_music` is the lab
   ported line for line and checked against `parity/golden/music/` (written
-  by `tools/music-lab/test/golden.mjs`: every grammar's tracks, the
-  sequencer's events, and renders); it is the music of the radio stations
-  (radio.md 5 and 7), which play it as persistent streams on the wall
-  clock.
+  by `tools/music-lab/test/golden.mjs`: every grammar's tracks and the
+  sequencer's events to the bit, the renders to the last bit of an f32);
+  it is the music of the radio stations (radio.md 5 and 7), which play it
+  as persistent streams on the wall clock through a worklet node in
+  `mp_audio`. A station costs 2 to 3 % of a desktop core natively; the
+  phones are S1's measurement still to make.
 
 ## 6. Questions for the owner
 

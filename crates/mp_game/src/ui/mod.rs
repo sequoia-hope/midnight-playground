@@ -100,6 +100,8 @@ pub enum Sel {
     Guide,
     /// The steering assist (Rust only, D1083).
     Assist,
+    /// The radio station (Rust only, D1151).
+    Station,
 }
 
 /// What activating a control does.
@@ -227,6 +229,8 @@ pub struct UiState {
     pub inset_top: f32,
     /// `#np-pause`: the track playing (`showNowPlaying`), empty until one does.
     pub now_playing: String,
+    /// A radio station plays: the pause screen's button says "Next station".
+    pub on_station: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -336,6 +340,7 @@ pub fn plugin(app: &mut App) {
             pads: false,
             inset_top: 0.0,
             now_playing: String::new(),
+            on_station: false,
         })
         .init_resource::<nav::MenuNav>()
         .init_resource::<pad_setup::PadSetup>()
@@ -590,7 +595,7 @@ fn flow(
 fn sync_audio(
     mut ui: ResMut<UiState>,
     shared: Option<NonSend<crate::play::audio::Shared>>,
-    mut last: Local<Option<(f64, f64, String)>>,
+    mut last: Local<Option<(f64, f64, String, String)>>,
 ) {
     let Some(shared) = shared else { return };
     let Ok(mut a) = shared.0.try_borrow_mut() else {
@@ -600,12 +605,19 @@ fn sync_audio(
         ui.settings.music,
         ui.settings.sfx,
         ui.settings.track.clone(),
+        ui.settings.station.clone(),
     );
-    let theirs = (a.settings.music, a.settings.sfx, a.settings.track.clone());
+    let theirs = (
+        a.settings.music,
+        a.settings.sfx,
+        a.settings.track.clone(),
+        a.settings.station.clone(),
+    );
     if last.as_ref().is_some_and(|l| *l != theirs) {
         ui.settings.music = theirs.0;
         ui.settings.sfx = theirs.1;
         ui.settings.track = theirs.2.clone();
+        ui.settings.station = theirs.3.clone();
         ui.dirty = true;
     } else if last.as_ref() != Some(&ours) || theirs != ours {
         let level = ui.settings.level.clone();
@@ -614,21 +626,35 @@ fn sync_audio(
                 music: ours.0,
                 sfx: ours.1,
                 track: ours.2.clone(),
+                station: ours.3.clone(),
             },
             &level,
         );
     }
-    *last = Some((a.settings.music, a.settings.sfx, a.settings.track.clone()));
+    *last = Some((
+        a.settings.music,
+        a.settings.sfx,
+        a.settings.track.clone(),
+        a.settings.station.clone(),
+    ));
     // The engine's voice (D1110): not a call the JS makes, so not logged.
     a.audio.set_engine_model(!ui.settings.classic_engine);
-    // `audio.onTrackChange`: `#np-pause` names the new track.
-    if let Some(i) = a.audio.track_info() {
-        let t = format!("♪ {} · {}", i.title, i.style);
-        if t != ui.now_playing {
-            ui.now_playing = t;
-            if ui.screen == Screen::Pause {
-                ui.dirty = true;
-            }
+    // `audio.onTrackChange`: `#np-pause` names the new track; on a station,
+    // the station and its song (D1151).
+    let t = match a.station_text() {
+        Some(s) => Some(format!("♪ {s}")),
+        None => a
+            .audio
+            .track_info()
+            .map(|i| format!("♪ {} · {}", i.title, i.style)),
+    };
+    if let Some(t) = t
+        && t != ui.now_playing
+    {
+        ui.now_playing = t;
+        ui.on_station = a.on_station();
+        if ui.screen == Screen::Pause {
+            ui.dirty = true;
         }
     }
     if std::mem::take(&mut ui.to_menu) {
@@ -1187,6 +1213,10 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
                     ui.settings.assist = v.clone();
                     ctx.store.set_str("steerAssist", &v);
                 }
+                Sel::Station => {
+                    ui.settings.station = v.clone();
+                    ctx.store.set_str("station", &v);
+                }
             }
         }
         Act::CloseDropdown => ui.dropdown = None,
@@ -1444,6 +1474,7 @@ pub fn sel_id(sel: Sel) -> &'static str {
         Sel::Pedals => "opt-pedals",
         Sel::Guide => "opt-guide",
         Sel::Assist => "opt-assist",
+        Sel::Station => "opt-station",
     }
 }
 
@@ -1818,6 +1849,7 @@ pub(crate) mod tests {
             pads: false,
             inset_top: 0.0,
             now_playing: String::new(),
+            on_station: false,
         }
     }
 
