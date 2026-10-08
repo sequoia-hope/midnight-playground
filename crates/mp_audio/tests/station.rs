@@ -298,6 +298,48 @@ fn the_dj_talks_over_a_ducked_station() {
 }
 
 #[test]
+fn a_station_change_cuts_the_dj_off() {
+    let (mut a, h, _) = game(true, true);
+    a.set_station(Some(0), WALL);
+    a.poll();
+    let log = take(&h);
+    let out = made(log.iter().find(|l| l.contains("\"Gain\"")).unwrap());
+    a.dj_say("marisol-ident-3", 1);
+    a.poll();
+    let log = take(&h);
+    let src = made(log.iter().find(|l| l.contains("\"BufferSource\"")).unwrap());
+
+    // Mid-sentence (the clip is a second long), the dial moves: the clip
+    // stops now and the station comes straight back up.
+    a.set_station(Some(1), WALL + 0.5);
+    a.poll();
+    let log = take(&h);
+    assert!(
+        log.iter().any(|l| l == &format!(r#"[0,"stop","{src}"]"#)),
+        "{log:#?}"
+    );
+    assert_eq!(
+        about(&log, out)
+            .iter()
+            .filter(|l| l.contains(".gain"))
+            .collect::<Vec<_>>(),
+        [
+            &format!(r#"[0,"cancel","{out}.gain",0]"#),
+            &format!(r#"[0,"setTarget","{out}.gain",1,0,0.05]"#),
+        ]
+    );
+
+    // Retuning the same station (a re-sync) leaves the DJ talking.
+    a.dj_say("marisol-ident-3", 1);
+    a.poll();
+    take(&h);
+    a.set_station(Some(1), WALL + 1.0);
+    a.poll();
+    assert!(!take(&h).iter().any(|l| l.contains("\"stop\"")));
+    assert!(ctx(&h).problems().is_empty(), "{:?}", ctx(&h).problems());
+}
+
+#[test]
 fn no_dj_fetcher_no_dj() {
     let (mut a, h, _) = game(true, false);
     assert!(a.dj().is_none());

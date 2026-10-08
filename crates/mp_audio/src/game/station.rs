@@ -50,6 +50,9 @@ impl GameAudio {
         if !self.ready() {
             return;
         }
+        if station != was {
+            self.dj_cut();
+        }
         if station.is_some() {
             self.station_tune += 1.0;
             if was.is_none() && !matches!(self.station, StState::Unavailable) {

@@ -210,7 +210,11 @@ so that tuning to a station catches its song wherever it happens to be.
   and T is the JS's next track.
 - **Energy.** The race drives the station's `energy` (sound.md 3.4): a
   pursuit, the final lap and a close battle raise it, a standstill lowers
-  it; the mix closes down and layers drop out below full.
+  it; the mix closes down and layers drop out below full. The Radio page
+  has no race, so there energy grows with each song (half at the start,
+  full by two thirds in) until a hand on the slider takes it over.
+- **A station change cuts the DJ off** at once (the page as the game): a
+  DJ does not follow the listener off their station.
 - **The Radio page is a music app** (`tools/radio.html`, 2026-10-08, the
   owner: "make radio work like a music app", "keep playing when I close
   the phone"). Its graph ends in an `<audio>` element playing a

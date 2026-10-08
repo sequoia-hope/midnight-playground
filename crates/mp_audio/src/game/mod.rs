@@ -45,8 +45,8 @@ use crate::radio::{Bytes, Fetch, RadioVoice, Random};
 use crate::session::{AudioSession, ask_for_playback};
 use crate::timers::{Task, TimerId, Timers};
 use crate::wa::{
-    AudioBuffer, AudioContext, AudioParam, ContextOptions, ContextState, GainNode, Node, Pending,
-    PeriodicWave,
+    AudioBuffer, AudioBufferSourceNode, AudioContext, AudioParam, ContextOptions, ContextState,
+    GainNode, Node, Pending, PeriodicWave,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -393,9 +393,11 @@ pub struct GameAudio {
     station_energy: f64,
     station_made: u32,
     /// The DJs' clips ([`crate::dj`]), the clips decoding for `dj_say`,
-    /// and when the one talking ends.
+    /// the sources talking (cut on a station change), and when the last
+    /// of them ends.
     dj_voice: Option<DjVoice>,
     dj_clips: Vec<Pending<Option<AudioBuffer>>>,
+    dj_srcs: Vec<AudioBufferSourceNode>,
     dj_end: f64,
 }
 
@@ -475,6 +477,7 @@ impl GameAudio {
             station_made: 0,
             dj_voice,
             dj_clips: Vec::new(),
+            dj_srcs: Vec::new(),
             dj_end: 0.0,
         }
     }
@@ -881,6 +884,8 @@ impl GameAudio {
         let t0 = if self.dj_end > now {
             self.dj_end + 0.1
         } else {
+            // Everything before has finished talking.
+            self.dj_srcs.clear();
             now + 0.01
         };
         let end = t0 + buf.duration();
@@ -895,7 +900,27 @@ impl GameAudio {
             out.gain.set_target_at_time(DJ_DUCK, t0, DJ_DUCK_TC);
             out.gain.set_target_at_time(1.0, end, DJ_BACK_TC);
         }
+        self.dj_srcs.push(src);
         self.dj_end = end;
+    }
+
+    /// Cuts the DJ off: the clips talking or queued stop at once, the ones
+    /// still decoding are dropped, and the station comes back up. A
+    /// station change (or off): a DJ does not follow the listener.
+    pub(super) fn dj_cut(&mut self) {
+        self.dj_clips.clear();
+        if self.dj_srcs.is_empty() {
+            return;
+        }
+        for src in self.dj_srcs.drain(..) {
+            let _ = src.stop();
+        }
+        let now = self.now();
+        if let Some(out) = self.station_out().filter(|_| self.dj_end > now) {
+            out.gain.cancel_scheduled_values(now);
+            out.gain.set_target_at_time(1.0, now, DJ_DUCK_TC);
+        }
+        self.dj_end = 0.0;
     }
 
     // ── Car and environment ──────────────────────────────────────────

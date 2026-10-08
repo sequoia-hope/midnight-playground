@@ -156,3 +156,41 @@ test('skips ahead on its own clock, rates the song where the file is writable, a
     assert.deepEqual(game.errors, [], 'no page errors');
   } finally { await game.close(); }
 });
+
+// The page's energy grows with the song, and a DJ is cut off by a station
+// change.
+test('energy follows the song until the slider takes over, and the DJ stops when the dial moves', async () => {
+  const game = await openRadio(browser);
+  try {
+    await game.page.click('#play');
+    await until(game, (x) => x.station === 0 && x.ctx === 'running', 'playing');
+    await sleep(1200);
+    const e = await game.eval(() => {
+      const sc = window.radio.schedule;
+      const s = sc.slots[sc.slot];
+      return { frac: (sc.into - s.start) / s.secs, slider: Number(document.getElementById('energy').value), auto: document.getElementById('energyAuto').checked };
+    });
+    assert.equal(e.auto, true);
+    const want = 0.5 + 0.5 * Math.min(1, e.frac / 0.67);
+    assert.ok(Math.abs(e.slider - want) < 0.02, `the slider follows the song: ${JSON.stringify({ e, want })}`);
+    // A hand on the slider takes over.
+    await game.eval(() => { const el = document.getElementById('energy'); el.value = 0.2; el.dispatchEvent(new Event('input')); });
+    await sleep(1200);
+    const h = await game.eval(() => ({ slider: Number(document.getElementById('energy').value), auto: document.getElementById('energyAuto').checked }));
+    assert.equal(h.auto, false);
+    assert.equal(h.slider, 0.2);
+
+    // The DJ speaks on The Tide; stepping to Ridgeline cuts her off and the
+    // station comes back up.
+    await game.eval(() => window.radio.sayDj());
+    await game.waitFor(() => window.radio.djPlaying && document.getElementById('dj').textContent.startsWith('marisol'), { what: 'the DJ talking' });
+    await game.page.click('#next');
+    await until(game, (x) => x.station === 1, 'Ridgeline');
+    await sleep(400);
+    const d = await game.eval(() => ({ playing: window.radio.djPlaying, text: document.getElementById('dj').textContent, gain: window.radio.stationGain }));
+    assert.equal(d.playing, false, 'the clip stopped');
+    assert.equal(d.text, '');
+    assert.ok(d.gain > 0.95, `the station is back up: ${d.gain}`);
+    assert.deepEqual(game.errors, [], 'no page errors');
+  } finally { await game.close(); }
+});
