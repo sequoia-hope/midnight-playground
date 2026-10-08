@@ -38,7 +38,8 @@ fun, and sound is where it falls shortest.
 - Instruments with character: 808, 909, 303, Juno-style voices, and
   Mutable Instruments' open modules (Plaits first).
 - Arrangements that evolve: genre grammars for house, techno and more,
-  seeded variation, music that follows the race.
+  seeded variation, music that follows the race. Off the dance floor:
+  country, classical and chicha (sound.md 3.5; chicha built 2026-10-08).
 - A small Rust DSP module in the AudioWorklet (revisiting port SPEC 7.1).
 - **Gate:** sound.md S2 to S4: a V8 that rumbles on a phone, and a house
   and a techno track the owner would play outside the game.
@@ -97,9 +98,11 @@ classes at the owner's request; Seaside Raceway first.
 - Stations by genre on M12's music system (sound.md S5).
 - DJ chatter and station identities voiced like the police radio (Qwen
   voice design): sparse, and about what this player did (WORLD 1.1).
-- **Radio v0 comes early:** two stations over the existing songs, DJ
-  breaks at song changes (radio.md R1). It needs only cutover, so it can
-  land right after it, alongside multiplayer.
+- **Radio v0** (radio.md R1, 7): stations as persistent streams of the
+  generated music on the wall clock, so a tune-in catches a song wherever
+  it is; DJ breaks at song changes; the tuner's static. The owner made the
+  generated music the foundation (2026-10-08), so this waits on nothing
+  but the music's port (`mp_music`).
 - **Gate:** the owner leaves it on for a whole session.
 - Design doc: `docs/vision/radio.md` (draft written).
 

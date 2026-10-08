@@ -9411,3 +9411,111 @@ The first half of V2, with the client (`mp_game`) untouched:
   six, a fifth to a half slower than the arcade rivals, with a few wall
   hits and resets after rear-ending traffic. One sim car costs about
   7 µs a tick on the track natively (5 µs on the flat rig).
+
+## Music: the lab's port and the radio's streams (sound.md 3.5, radio.md 7)
+
+## D1150. `mp_music`: the Music Lab ported line for line, checked against its goldens
+
+2026-10-08. The owner: "build the rust crate" for the Music Lab, as the
+foundation of a car radio. The lab (`tools/music-lab/`) stays the oracle,
+as the engine lab is for `mp_exhaust` (D1110):
+
+- **One crate, no dependencies.** `mp_music` holds the lab's `dsp.js`,
+  `instruments.js` (with `kits.rs` and `patches.rs`, the KITS and BPATCH
+  tables), `seq.js`, `compose.js`, `gen.js` (`genres.rs`: `gen` is a
+  reserved word in Rust 2024) and `engine.js`, module for module, function
+  for function. `#![forbid(unsafe_code)]`; `SIM_BANNED` in `check-deps`
+  (no clock, no `rand`, no engine). Audio is not simulation: the lab uses
+  `Math.*` and the crate the platform's `f64` functions, as `mp_exhaust`
+  does. It builds as an rlib (the client reads the grammars and the
+  station schedule; the native backend runs the engine) and, with the
+  `worklet` feature, as its own small wasm for the browser's AudioWorklet.
+- **The data model is the JS object graph.** A JS object whose keys the
+  lab iterates is a `Vec` of pairs in insertion order (`track::Pairs`);
+  every optional key is an `Option`. A `Lab` patch is a struct of
+  `Option<f64>` fields named by their JS keys, with `get` / `set` by name
+  for section automation. The BPATCH and KITS tables are **generated from
+  the evaluated JS objects** (`tools/music-lab/test/dump-tables.mjs` piped into `gen-rust-tables.py`), not
+  transcribed: an object literal that writes a key twice keeps the last
+  value (the FM operators' `r`: the ratio, then the release), and that is
+  what the lab plays with. A hash test pins each table to the lab's.
+- **Goldens** (`parity/golden/music/`, `node tools/music-lab/test/golden.mjs`):
+  `tracks.json`, every grammar over seeds 1–6 as the SHA-256 of the
+  track's canonical JSON (sorted keys, `undefined` dropped, numbers as JS
+  prints them; `json.rs` reproduces that text), with one whole track per
+  genre so a difference reads; `events.json`, the sequencer's events for
+  five tracks from a given bar; `renders.json`, the engine's output for
+  fourteen runs as RMS per 50 ms and whole 256-sample windows. The grammars
+  and the sequencer are integer and seeded-float arithmetic, so the port
+  reproduces the first two to the bit; the renders agree to a tolerance.
+- **JS semantics kept** (SPEC 4.2 holds for a port even when parity with
+  the JS game is no longer the goal, D1111): `Math.round` as
+  `floor(x + 0.5)`, `>>> 0` and `| 0` as ToUint32 / ToInt32 of a double,
+  `^` on Int32 (the sequencer's humaniser goes negative and `%` keeps the
+  sign), `Float32Array` stores rounded to `f32`, random draws in the same
+  order.
+- The game's seven arranged songs are **not** re-voiced in this step: they
+  stay on `mp_audio::music` as the Playlist choice. The lab's `voiceTrack`
+  mapping waits for a later package.
+
+## D1151. Radio stations as streams on the wall clock
+
+2026-10-08. The owner: the generated music is "the foundation of a car
+radio system, including controls, channel selection, and a sense of
+persistent streams that exist outside the player - including catching
+songs at any phase of completion on new channels". radio.md 7 is the
+design; the choices:
+
+- **Time is the wall clock since an epoch** (`mp_music::radio::EPOCH`,
+  2026-01-01T00:00Z), and a station's programme a pure function of it:
+  nothing is stored or streamed, every player hears the same song at the
+  same moment, and a tune-in catches the song wherever it is. The client
+  reads the clock (`Date.now()`, `SystemTime`); `mp_music` never does.
+- **Blocks of twenty minutes**, each seeded by (station, block index):
+  genres by the station's weights, a seed per song, grammar after grammar
+  until the block is full. Seeking from the epoch would walk years of
+  songs; a block costs its four to six grammar runs. The last song is
+  fitted to the block's end: whole 8-bar blocks of its groove (copies of
+  the last `drop` section, or its removal) bring it within half a block,
+  then the tempo is nudged, under 4 % on any song of two and a half
+  minutes or more, so the block ends on its boundary and songs follow
+  with no gap. With under 150 s left, the previous song is stretched over
+  the remainder instead. (Rejected: carrying a block's overrun into the
+  next, which makes block *n* depend on every block before it; filling the
+  remainder with silence or a loop, which no station does.)
+- **The cue** is a 16th: the song, the step index and the fraction into
+  it. The engine starts on the next 16th boundary, with the bar's
+  section state (the song filter, the automation) set as if it had played
+  from the bar's start; notes already sounding are lost, which the tuner's
+  static covers. (Rejected: rendering the missed part of the bar silently,
+  up to two seconds of DSP on the audio thread at a tune.)
+- **One node, params only.** The radio node is driven like the exhaust
+  node, by k-rate params: `station` (an index in `STATIONS`, −1 off),
+  `wallDay` and `wallSec` (an `f32` cannot hold Unix seconds), `tune` (a
+  serial, to re-sync), `energy`. The processor keeps the schedule itself
+  from then on: at a song's end it computes the next slot from the
+  station's clock, so the main thread posts nothing per song. The main
+  thread computes the same schedule to show the title and place the DJ's
+  breaks. This keeps the facade's one model (params, logged and validated
+  by the null backend) and the native and web processors identical
+  (`mp_music::radio::Player`, shared by both).
+- **The tuner** (`mp_music::radio::Tuner`) is new Rust with no JS oracle:
+  the sweep's static with a gliding centre, two heterodyne whistles, the
+  lock's opening low-pass, the click and hiss of off. Its tests are its
+  own.
+- **Stations** (`STATIONS`): The Tide 88.1 (Marisol: house, UK garage,
+  liquid drum & bass), Ridgeline Radio 97.7 (Kit: techno, psytrance,
+  trance, eurobeat, roller drum & bass), Radio Pacífico 104.3 (chicha, no
+  DJ yet). The `dj-voice` clips are the DJs' idents and song intros.
+
+## D1152. Three genres specified, chicha built
+
+2026-10-08. sound.md 3.5: country, classical and Peruvian chicha, each
+to the depth of 3.4 (sound, instruments, rhythm, harmony, melody, form,
+energy, what the composer lacks, what makes it grab). Chicha is built in
+the lab (its grammar, the plucked string instrument, the latin kit, the
+'dom' chord extension, pentatonic realisation through `avoid`) and ported
+with the rest; country and classical wait, their specs naming the
+sequencer and composer extensions they need (`swing8`, `steps` per bar,
+per-note slides in chord parts, a cadence-aware harmony generator,
+counterpoint, rubato, the bowed voice).

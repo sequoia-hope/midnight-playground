@@ -101,7 +101,8 @@ pub fn run(args: &[String]) -> Result {
         built.push(b.name);
     }
 
-    build_exhaust(release, &out)?;
+    build_worklet(release, &out, &EXHAUST_WORKLET)?;
+    build_worklet(release, &out, &MUSIC_WORKLET)?;
     copy_dir(&root.join("crates/mp_game/web"), &out)?;
     copy_runtime_files(&root, &out)?;
     // Where the page finds the scene exports: the parity cache of this JS
@@ -280,19 +281,46 @@ fn build_backend(b: &Backend, release: bool, profile: &str, out: &Path) -> Resul
     Ok(())
 }
 
-/// The exhaust node's files (`mp_audio`'s web backend loads them beside the
-/// page): the model as its own small wasm, with the C-ABI exports of its
+/// A crate that is also its own small wasm on the audio thread, and the
+/// AudioWorklet shim (in `crates/mp_audio/web/`) that runs it.
+struct WorkletBuild {
+    krate: &'static str,
+    /// The wasm's name (the crate's, as cargo writes it).
+    wasm: &'static str,
+    /// The shim.
+    js: &'static str,
+    what: &'static str,
+}
+
+/// The exhaust node's (D1110).
+const EXHAUST_WORKLET: WorkletBuild = WorkletBuild {
+    krate: "mp_exhaust",
+    wasm: "mp_exhaust.wasm",
+    js: "exhaust-worklet.js",
+    what: "exhaust",
+};
+
+/// The radio node's: the Music Lab's port with the station player (D1151).
+const MUSIC_WORKLET: WorkletBuild = WorkletBuild {
+    krate: "mp_music",
+    wasm: "mp_music.wasm",
+    js: "music-worklet.js",
+    what: "radio",
+};
+
+/// A worklet's files (`mp_audio`'s web backend loads them beside the
+/// page): the crate as its own small wasm, with the C-ABI exports of its
 /// `worklet` feature (kept out of the game's wasm), and the AudioWorklet
 /// shim that runs it. Optimised even for a debug build (the `release`
 /// profile): it runs per sample on the audio thread.
-fn build_exhaust(release: bool, out: &Path) -> Result {
+fn build_worklet(release: bool, out: &Path, b: &WorkletBuild) -> Result {
     let root = root();
     let profile = if release { "web-release" } else { "release" };
     let mut build = cargo();
     build.args([
         "build",
         "-p",
-        "mp_exhaust",
+        b.krate,
         "--lib",
         "--features",
         "worklet",
@@ -301,17 +329,13 @@ fn build_exhaust(release: bool, out: &Path) -> Result {
         "--profile",
         profile,
     ]);
-    println!("web: building the exhaust worklet");
+    println!("web: building the {} worklet", b.what);
     exec(&mut build)?;
-    let wasm = root
-        .join("target")
-        .join(TARGET)
-        .join(profile)
-        .join("mp_exhaust.wasm");
-    let name = "mp_exhaust.wasm";
+    let wasm = root.join("target").join(TARGET).join(profile).join(b.wasm);
+    let name = b.wasm;
     let dest = out.join(name);
     std::fs::copy(&wasm, &dest).map_err(|e| format!("copying {}: {e}", wasm.display()))?;
-    let js = "exhaust-worklet.js";
+    let js = b.js;
     let src = root.join("crates/mp_audio/web").join(js);
     std::fs::copy(&src, out.join(js)).map_err(|e| format!("copying {}: {e}", src.display()))?;
     if release {

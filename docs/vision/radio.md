@@ -111,11 +111,15 @@ in a row, a long night drive in the cruise mode.
 
 ## 5. Code (Rust, after cutover)
 
-- `mp_audio::dj`: beside `mp_audio::radio` (the police radio), reusing its
-  fetching and decoding. Plays clips, ducks the music, generates the
-  tuner sweep and the reception noise.
-- `mp_audio::music`: playlists per station instead of one playlist; a
-  hook at song changes for the director.
+- `mp_music::radio` (section 7): the stations, their schedules on the wall
+  clock, the cue for a tune-in, and the tuner's static and lock. Pure: no
+  clock of its own, the caller passes the time.
+- `mp_audio`: a `Radio` node in the facade (the `mp_music` engine in an
+  AudioWorklet, as the exhaust model), `GameAudio::set_station`, the DJ
+  clips beside `mp_audio::radio` (the police radio), reusing its fetching
+  and decoding, ducking the station while a clip plays.
+- The seven arranged songs stay as the **Playlist** choice on
+  `mp_audio::music`, unchanged.
 - **The director** lives in the client (`mp_game`). It reads `SimEvent`s
   and the player's records. It is presentation, not simulation: its random
   choices use its own generator, never the simulation's streams, and in
@@ -128,10 +132,76 @@ in a row, a long night drive in the cruise mode.
 | | What | Gate |
 |---|---|---|
 | **R0. Side quest** | Lines recorded, auditioned, rewritten from the owner's 👍/👎 | Enough lines the owner likes to fill two stations |
-| **R1. Radio v0** | Two stations over the existing songs, live (own clocks); station IDs and general lines at song changes; ducking; the tune button with the generated tuner sweep; the DJ-talk setting | The owner drives a whole cruise session with the radio on and doesn't turn the DJ off |
+| **R1. Radio v0** | Stations as persistent streams of the generated music (section 7), live on the wall clock; station IDs and general lines at song changes; ducking; the tune control with the generated tuner sweep; the DJ-talk setting | The owner drives a whole cruise session with the radio on and doesn't turn the DJ off |
 | **R2. Context** | Tags; lines chosen by level, mode and event; cooldowns and history; reception (Ridgeline's static on the far side of the ridge, tunnels) | Lines feel like they belong where they're heard |
 | **R3. Memory** | Player templates pre-rendered for every combination; records and rivals feed them | The owner hears a line about their own run and it lands |
-| **R4. Real stations** | Each station's own music from the new music system (`sound.md` S4) | vision ROADMAP M16's gate |
+| **R4. More stations** | Country and classical stations when their grammars exist (sound.md 3.5), each with its own DJ | vision ROADMAP M16's gate |
 
-R1 needs nothing but cutover, so it can come right after it, alongside
-multiplayer (M10), well before the rest of M16.
+R1 was first planned over the seven arranged songs; the owner
+(2026-10-08) made the generated music the foundation instead, so R1 and
+the old R4 are one step.
+
+## 7. Streams: stations that exist outside the player (2026-10-08)
+
+The owner's direction: the generated music (sound.md 3) is the foundation
+of a car radio with controls, channel selection, and persistent streams,
+so that tuning to a station catches its song wherever it happens to be.
+
+- **The clock.** A station's time is the wall clock (UTC) since its epoch,
+  2026-01-01T00:00Z (`mp_music::radio::EPOCH`, the day the stations went
+  on air). The schedule is a pure function of (station, time): every
+  player, device and session hears the same song at the same moment; tune
+  away and back and it has moved on; two players racing together hear the
+  same station in step, each from their own clock (phones agree to well
+  under a second). Nothing is stored and nothing is streamed.
+- **Blocks.** Time is cut into 20-minute blocks (`BLOCK_SECS`). A block's
+  songs come from a generator seeded by the station's seed and the block's
+  index: genres drawn by the station's weights, a seed per song, grammar
+  after grammar until the block is full. The last song is **fitted** to the
+  block's end: whole 8-bar blocks of its groove are added or dropped, then
+  its tempo nudged (under 4 %, inaudible on a song nobody has heard
+  before) so it ends on the boundary. Songs follow each other without a
+  gap, as on a station. A tune-in costs the block's four to six grammar
+  runs, well under a millisecond in Rust; nothing walks the schedule from
+  the epoch.
+- **Catching a song mid-way.** The cue is the song, the 16th it is on and
+  the fraction into that 16th; the engine starts on the next 16th with the
+  section's state (the filter sweep, the automation) set as if it had
+  played from the bar's start. Notes already sounding are missed, which a
+  tune-in hides: it comes in through the tuner's static (2.1).
+- **The node.** One AudioWorklet node per client (`mp_music` as its own
+  small wasm, as `mp_exhaust`), driven by k-rate params: `station` (an
+  index, −1 off), `wallDay` and `wallSec` (the wall time at the moment of
+  tuning, in two parts because an `f32` cannot hold Unix seconds), `tune`
+  (a serial, bumped to re-sync), `energy`. From then on the node runs the
+  schedule on its own sample clock: at a song's end it computes the next
+  from the station's time. The main thread computes the same schedule to
+  show the title and to place the DJ's breaks. Natively the same code runs
+  in `mp_audio`'s worklet processor, so both render alike.
+- **The tuner.** Between stations: half a second to a second of
+  band-passed static whose centre glides, two heterodyne whistles crossing,
+  then the lock: the static drops away while the station comes up through
+  a low-pass opening from a few hundred hertz to full width in 300 ms.
+  Off: a click and the hiss falling away. Generated in `mp_music::radio`
+  (`Tuner`), seeded, never the same twice.
+- **The DJ** talks from clips on the main thread's graph (as the police
+  radio does), ducking the station: idents and song intros at the seams the
+  schedule gives, chosen by the director in `mp_game` (section 2's rules).
+- **Stations**, the first three (`mp_music::radio::STATIONS`):
+
+  | Station | DJ | Music |
+  |---|---|---|
+  | The Tide, 88.1 | Marisol | house, UK garage, liquid drum & bass |
+  | Ridgeline Radio | Kit | techno, psytrance, trance, eurobeat, roller drum & bass |
+  | Radio Pacífico, 104.3 | (none yet) | chicha |
+
+  Country and classical get stations when their grammars exist (sound.md
+  3.5.1, 3.5.2); a KPIG-like coast country station and a classical one.
+- **Controls.** T, the pause screen's button and a pad button step through
+  the stations and off; the station's name and frequency show on the HUD
+  for a moment; M toggles the music volume as before. The level picks a
+  default station (`LEVEL_STATION`) as `LEVEL_TRACK` picks a song today,
+  and the choice persists (`mr.station`). "Playlist" is the old music.
+- **Energy.** The race drives the station's `energy` (sound.md 3.4): a
+  pursuit, the final lap and a close battle raise it, a standstill lowers
+  it; the mix closes down and layers drop out below full.
