@@ -752,7 +752,7 @@ impl FmVoice {
                     o.a.unwrap_or(0.002),
                     o.d.unwrap_or(0.5) * rs,
                     o.s.unwrap_or(0.2),
-                    o.r.or(p.r).unwrap_or(0.3),
+                    o.rel.or(p.r).unwrap_or(0.3),
                 );
                 self.env[i].on();
                 self.ph[i] = 0.0;
@@ -841,13 +841,17 @@ impl FmVoice {
 /// `pick` is how hard the pick is (brighter burst), `decay` the ring time
 /// in seconds, `r` how fast it is muted when the note ends, `bend` /
 /// `bendT` a slide up into the note, `glide` a slide from the last note
-/// when legato, `strum` seconds between the notes of a chord. The amp
+/// when legato, `strum` seconds between the notes of a chord; `pickPos`
+/// where along the string it is plucked (a fraction of the length from the
+/// bridge: the comb that gives a pluck its twang, 0 for none). The amp
 /// (drive, wah, tremolo) is the instrument's, in [`Poly`].
 #[derive(Clone, Debug)]
 struct StringVoice {
     r: Rng,
     /// A `Float32Array`: stores round to `f32`.
     buf: Vec<f32>,
+    /// The pluck, made at the note's start (a `Float32Array` too).
+    burst: Vec<f32>,
     w: usize,
     d: f64,
     g: f64,
@@ -860,6 +864,8 @@ struct StringVoice {
     wait: i64,
     rel: bool,
     exc: i64,
+    exc_n: i64,
+    exc_d: i64,
     exc_lp: OnePole,
     body: Svf,
     tone: OnePole,
@@ -878,6 +884,7 @@ impl StringVoice {
         StringVoice {
             r: Rng::new(seed),
             buf: vec![0.0; (sr / 20.0).ceil() as usize + 8], // down to 20 Hz
+            burst: vec![0.0; (sr / 20.0).ceil() as usize + 8],
             w: 0,
             d: 2.0,
             g: 1.0,
@@ -890,6 +897,8 @@ impl StringVoice {
             wait: 0,
             rel: false,
             exc: 0,
+            exc_n: 0,
+            exc_d: 0,
             exc_lp: OnePole::new(4000.0, sr),
             body: Svf::new(),
             tone: OnePole::new(6000.0, sr),
@@ -934,12 +943,25 @@ impl StringVoice {
         let gt = if legato { p.glide } else { p.bend_t };
         self.glide_k = 1.0 - (-1.0 / (gt.unwrap_or(0.05) * sr / 3.0)).exp();
         // The pluck: a burst one period long, low-passed by the pick's
-        // softness, brighter when hit harder. The loop is cleared: a new
-        // pluck on a ringing string restarts it (the voice would be another
-        // one if not).
-        self.exc = js_round(sr / self.cur).max(2.0) as i64;
+        // softness, brighter when hit harder, made now so the pick position
+        // can comb it (the burst less itself delayed by that fraction of the
+        // period: the partials with a node at the pick are not excited). The
+        // loop is cleared: a new pluck on a ringing string restarts it (the
+        // voice would be another one if not).
+        let n = js_round(sr / self.cur).max(2.0) as i64;
         self.exc_lp
             .set_hz(1200.0 + p.pick.unwrap_or(0.5) * 9000.0 * (0.4 + 0.6 * vel));
+        self.exc_lp.reset();
+        for i in 0..n as usize {
+            let w = self.r.next() * 2.0 - 1.0;
+            self.burst[i] = self.exc_lp.lp(w) as f32;
+        }
+        self.exc_d = match tru(p.pick_pos) {
+            Some(pos) => (js_round(pos * n as f64) as i64).max(1),
+            None => 0,
+        };
+        self.exc_n = n + self.exc_d;
+        self.exc = self.exc_n;
         self.body
             .set(p.body.unwrap_or(2500.0), p.body_q.unwrap_or(1.2), sr);
         self.tone.set_hz(p.tone.unwrap_or(6000.0));
@@ -951,15 +973,18 @@ impl StringVoice {
         self.tune(p);
     }
 
-    /// Loop delay: the period less the damping filter's half sample, read
-    /// fractionally. Loss per period from the decay time (RT60), and the
-    /// release's extra loss once the note has ended.
+    /// Loop delay: the period less the damping filter's own delay (`damp`
+    /// samples, at the low partials), read fractionally. Loss per period
+    /// from the decay time (RT60), and the release's extra loss once the
+    /// note has ended. `damp` is the one-zero's weight on the previous
+    /// sample: 0.5 is the most damping (the plain average), and past it the
+    /// filter only lengthens the loop, so it stops there.
     fn tune(&mut self, p: &Lab) {
         let sr = self.sr;
-        self.d = (sr / self.cur - 0.5).max(2.0);
+        self.damp = clamp(p.damp.unwrap_or(0.4), 0.0, 0.5);
+        self.d = (sr / self.cur - self.damp).max(2.0);
         self.g = 10f64.powf(-3.0 / (p.decay.unwrap_or(1.5).max(0.02) * self.cur));
         self.g_rel = 10f64.powf(-3.0 / (p.r.unwrap_or(0.3).max(0.01) * self.cur));
-        self.damp = clamp(p.damp.unwrap_or(0.4), 0.0, 0.95);
     }
 
     fn done(&self) -> bool {
@@ -1002,9 +1027,18 @@ impl StringVoice {
                 self.g
             });
         if self.exc > 0 {
+            let i = self.exc_n - self.exc;
             self.exc -= 1;
-            let w = self.r.next() * 2.0 - 1.0;
-            x += self.exc_lp.lp(w) * self.vel * 0.9;
+            let n = self.exc_n - self.exc_d;
+            let mut e = if i < n {
+                self.burst[i as usize] as f64
+            } else {
+                0.0
+            };
+            if self.exc_d > 0 && i >= self.exc_d {
+                e = (e - self.burst[(i - self.exc_d) as usize] as f64) * 0.7;
+            }
+            x += e * self.vel * 0.9;
         }
         self.buf[self.w] = x as f32;
         self.w = (self.w + 1) % n;

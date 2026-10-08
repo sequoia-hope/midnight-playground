@@ -33,7 +33,7 @@ use crate::compose::Item::{Deg as D, Ext as X};
 use crate::compose::{
     DORIAN, Density, FIGURES, Item, MINOR, Motif, MotifOpts, NOTE, PHRYGIAN, PROGS, R, Realise,
     Scale, bars, bass_bar, cells, changes_after, euclid, expand, lane, loop_, motif, mutate,
-    progression, realise, thin, variants,
+    no_dim, progression, realise, thin, variants,
 };
 use crate::patches::bpatch;
 use crate::track::{Ch, KitTweak, Lab, Pairs, Part, Pump, Section, Track, lookup, put};
@@ -322,10 +322,14 @@ pub fn house(seed: u32, dejavu: Option<f64>) -> Track {
     let prog_a = progression(
         scale,
         tonic,
-        r.pick(if deep { PROGS.deep } else { PROGS.anthem }),
+        r.pick(&if deep {
+            no_dim(scale, PROGS.deep)
+        } else {
+            PROGS.anthem.to_vec()
+        }),
         ext,
     );
-    let prog_b = progression(scale, tonic, r.pick(PROGS.verse), ext);
+    let prog_b = progression(scale, tonic, r.pick(&no_dim(scale, PROGS.verse)), ext);
     let mut t = Track::skeleton(&format!("house-{seed}"));
     t.title = Some(format!("House {seed}"));
     t.style = Some(format!(
@@ -552,7 +556,7 @@ pub fn house(seed: u32, dejavu: Option<f64>) -> Track {
                 ..Default::default()
             },
             pat: sp(&[("hold", HOLD)]),
-            lab: p0("warmPad"),
+            lab: p("warmPad", |l| l.r = Some(0.6)),
             ..Default::default()
         },
     );
@@ -573,12 +577,14 @@ pub fn house(seed: u32, dejavu: Option<f64>) -> Track {
             pat: sp(&[("hold", HOLD)]),
             lab: p("choir", |l| {
                 l.vowel = s(if deep { "u" } else { r.pick(&["a", "o"]) });
+                l.r = Some(0.5);
             }),
             ..Default::default()
         },
     );
 
-    // The hook: a riff on keys (deep: low and sparse) or a melody over the drop.
+    // The hook: a riff on keys (deep: low and sparse) or a melody over the
+    // drop; its answer is realised over the verse progression it plays on.
     let m_bars = if r.chance(0.5) { 1 } else { 2 };
     let m = motif(
         r,
@@ -611,6 +617,21 @@ pub fn house(seed: u32, dejavu: Option<f64>) -> Track {
             ..Default::default()
         },
     );
+    let hb = hooks(
+        r,
+        &m,
+        HookOpts {
+            scale,
+            tonic: (if deep { 48 } else { 60 }) + tonic,
+            prog: &prog_b,
+            lo: -2,
+            hi: 9,
+            gate: Some(if deep { 6 } else { 4 }),
+            ..Default::default()
+        },
+    );
+    let mut lead_pat = h.pat();
+    lead_pat.push(("answerB".to_owned(), hb.answer));
     put(
         &mut t.parts,
         "lead",
@@ -626,7 +647,7 @@ pub fn house(seed: u32, dejavu: Option<f64>) -> Track {
                 level: Some(0.9),
                 ..Default::default()
             },
-            pat: h.pat(),
+            pat: lead_pat,
             lab: lead_patch,
             ..Default::default()
         },
@@ -700,7 +721,7 @@ pub fn house(seed: u32, dejavu: Option<f64>) -> Track {
         p: sp(&[
             ("bass", "b"),
             ("stab", "s"),
-            ("lead", "answer"),
+            ("lead", "answerB"),
             ("choir", "hold"),
         ]),
         v: vv(&[("bass", nb), ("stab", ns)]),
@@ -2545,7 +2566,11 @@ pub fn dnb(seed: u32, dejavu: Option<f64>) -> Track {
     } else {
         MINOR
     };
-    let degs = r.pick(if liquid { PROGS.deep } else { PROGS.verse });
+    let degs = r.pick(&if liquid {
+        no_dim(scale, PROGS.deep)
+    } else {
+        PROGS.verse.to_vec()
+    });
     let ext = if liquid {
         r.pick(&["7", "9"])
     } else {
@@ -2986,10 +3011,10 @@ pub fn garage(seed: u32, dejavu: Option<f64>) -> Track {
     let tonic = r.int(0, 11);
     let bpm = r.int(132, 136);
     let scale = if r.chance(0.6) { DORIAN } else { MINOR };
-    let degs = r.pick(PROGS.deep);
+    let degs = r.pick(&no_dim(scale, PROGS.deep));
     let ext = r.pick(&["7", "9"]);
     let prog = progression(scale, tonic, degs, ext);
-    let prog_b = progression(scale, tonic, r.pick(PROGS.verse), "7");
+    let prog_b = progression(scale, tonic, r.pick(&no_dim(scale, PROGS.verse)), "7");
     let mut t = Track::skeleton(&format!("garage-{seed}"));
     t.title = Some(format!("Garage {seed}"));
     t.style = Some(format!(
@@ -3215,6 +3240,7 @@ pub fn garage(seed: u32, dejavu: Option<f64>) -> Track {
             ..Default::default()
         },
     );
+    // The hook, and its answer realised over the verse progression it plays on.
     let h = hooks(
         r,
         &m,
@@ -3228,6 +3254,21 @@ pub fn garage(seed: u32, dejavu: Option<f64>) -> Track {
             ..Default::default()
         },
     );
+    let hb = hooks(
+        r,
+        &m,
+        HookOpts {
+            scale,
+            tonic: 60 + tonic,
+            prog: &prog_b,
+            lo: -2,
+            hi: 8,
+            gate: Some(4),
+            ..Default::default()
+        },
+    );
+    let mut lead_pat = h.pat();
+    lead_pat.push(("answerB".to_owned(), hb.answer));
     put(
         &mut t.parts,
         "lead",
@@ -3243,7 +3284,7 @@ pub fn garage(seed: u32, dejavu: Option<f64>) -> Track {
                 level: Some(0.85),
                 ..Default::default()
             },
-            pat: h.pat(),
+            pat: lead_pat,
             lab: p("glass", |l| l.gain = Some(0.2)),
             ..Default::default()
         },
@@ -3313,7 +3354,7 @@ pub fn garage(seed: u32, dejavu: Option<f64>) -> Track {
         vd: Some(nd),
         prog: s("b"),
         fill: s("skip"),
-        p: sp(&[("bass", "b"), ("chords", "c"), ("lead", "answer")]),
+        p: sp(&[("bass", "b"), ("chords", "c"), ("lead", "answerB")]),
         v: vv(&[("bass", nb), ("chords", nc)]),
         ..Default::default()
     });
@@ -3726,10 +3767,10 @@ pub fn chicha(seed: u32, dejavu: Option<f64>) -> Track {
         &mo,
         HookOpts {
             scale,
-            tonic: 72 + tonic,
+            tonic: 60 + tonic,
             prog: &prog_v,
-            lo: -4,
-            hi: 8,
+            lo: -3,
+            hi: 7,
             gate: Some(3),
             avoid: pent,
             ..Default::default()
@@ -3749,7 +3790,7 @@ pub fn chicha(seed: u32, dejavu: Option<f64>) -> Track {
                 ..Default::default()
             },
             pat: ho.pat(),
-            lab: p("comboOrgan", |l| l.gain = Some(0.065)),
+            lab: p("comboOrgan", |l| l.gain = Some(0.15)),
             ..Default::default()
         },
     );

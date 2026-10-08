@@ -9540,3 +9540,45 @@ with the rest; country and classical wait, their specs naming the
 sequencer and composer extensions they need (`swing8`, `steps` per bar,
 per-note slides in chord parts, a cadence-aware harmony generator,
 counterpoint, rubato, the bowed voice).
+
+## D1153. The FM operators' `r`, the string's tuning, and chords that clash
+
+2026-10-08. The owner: the chicha instruments "don't sound right", and
+house has "dissonant tones, maybe from Mutable Rings". There is no Rings
+in the lab (sound.md 3.1 lists it as a wish); the causes were found by
+numbers (offline renders analysed, every note of every part checked
+against the chord under it), and fixed in the lab first, then ported:
+
+- **Every FM patch played the wrong ratios.** The operator literals wrote
+  `r` twice (the ratio, then the release) and JS keeps the last, so the
+  `organ` played at 15 Hz (inaudible, which is why chicha seemed to have
+  no organ), the `ep` and `piano` carriers sat at ratios 0.4 and 0.3
+  against modulators at 1 and 7, inharmonic: the resonator-like tones in
+  house. D1150 ported the evaluated values on purpose; this was a bug in
+  the oracle. An operator's release is `rel` now (`Op.rel`), and
+  `gen-rust-tables.py` carries it.
+- **The deep progressions landed on the diminished degree** (vi° in
+  dorian, as `Am7b5` in C dorian) and the bass's `f` was a fixed perfect
+  fifth over it, a semitone from the chord's flat fifth. `noDim(scale,
+  progs)` filters a family for the scale in hand (house, garage, liquid
+  drum & bass; `PROGS.deep` gained dorian vamps); 'f' is the chord's own
+  fifth.
+- **The hook's `answer` was realised over progression A and played over
+  B** (house, garage): an `answerB` realised over B plays there.
+- **Long non-chord tones.** `realise` snaps any note of a dotted 8th or
+  more to a chord tone; passing tones stay short. Over a V7 in a minor
+  key the bar's scale is the harmonic minor (the leading tone, not the
+  b7 a semitone from the chord's third).
+- **The plucked string** was tuned 3 cents sharp (the loop compensated a
+  half sample for a one-zero whose delay is `damp` samples); `damp` is
+  0..0.5 now (past 0.5 the filter only lengthened the loop) and the
+  compensation exact. A pick-position comb (`pickPos`) gives the pluck
+  its twang; the quarter-tone scoop on every surf note is gone.
+- **The combo organ** was four sines (a soft flute, not a reed) through
+  chorus mode 3, a ±28-cent square-wave wobble at 9.75 Hz. It is a Juno
+  voice now: square and saw with the octave below, open filter, a
+  shallow sine vibrato at 6.4 Hz. The organ solo moved down an octave.
+- The house pad and choir release in 0.6 and 0.5 s, so five-note chords
+  a bar apart do not pile up.
+
+The goldens are regenerated; the render tests pass at their tolerance.

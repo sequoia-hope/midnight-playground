@@ -21,7 +21,7 @@
 // (the touge: Initial D's mountain roads), psytrance, drum & bass (liquid,
 // roller) and UK garage.
 
-import { R, NOTE, SCALES, PROGS, progression, lane, bars, loop, euclid, cells, FIGURES, mutate, motif, thin, realise, bassBar, changesAfter, variants, expand } from './compose.js';
+import { R, NOTE, SCALES, PROGS, noDim, progression, lane, bars, loop, euclid, cells, FIGURES, mutate, motif, thin, realise, bassBar, changesAfter, variants, expand } from './compose.js';
 import { BPATCH } from './instruments.js';
 
 // A lab patch by name, with overrides.
@@ -86,8 +86,8 @@ export function house(seed, { dejavu = 0.7 } = {}) {
   const tonic = r.int(0, 11), bpm = r.int(122, 126);
   const scale = sub === 'deep' ? SCALES.dorian : SCALES.minor;
   const ext = sub === 'deep' ? '9' : r.pick(['', '7']);
-  const progA = progression(scale, tonic, r.pick(sub === 'deep' ? PROGS.deep : PROGS.anthem), ext);
-  const progB = progression(scale, tonic, r.pick(PROGS.verse), ext);
+  const progA = progression(scale, tonic, r.pick(sub === 'deep' ? noDim(scale, PROGS.deep) : PROGS.anthem), ext);
+  const progB = progression(scale, tonic, r.pick(noDim(scale, PROGS.verse)), ext);
   const T = skeleton(`house-${seed}`, {
     title: `House ${seed}`, style: `${sub === 'deep' ? 'Deep house' : 'Piano house'} · ${NOTE[tonic]} ${scaleName(scale)} · ${progA}`,
     bpm, gain: 0.9, swing: r.pick([0, 0.05, 0.08]), kitName: r.chance(0.7) ? 'tr909' : 'tr808',
@@ -125,15 +125,19 @@ export function house(seed, { dejavu = 0.7 } = {}) {
   T.parts.stab = { type: 'chord', lo: sub === 'deep' ? 55 : 58, ch: { pump: true, rev: 0.3, dly: 0.25, level: 0.45 }, pat: {}, lab: sub === 'deep' ? (r.chance(0.5) ? P('organ') : P('ep')) : (r.chance(0.6) ? P('piano') : P('organ')) };
   const ns = setPats(T.parts.stab, 's', variants(r, stabCore, 2, 0.08, ['x', '.']));
 
-  T.parts.pad = { type: 'chord', lo: 55, ch: { pump: true, rev: 0.5, hp: 180, level: 0.8 }, pat: { hold: 'x---------------' }, lab: P('warmPad') };
+  // The pad and the choir let go of a chord before the next one is well in
+  // (five-note chords a bar apart would otherwise pile up for a second).
+  T.parts.pad = { type: 'chord', lo: 55, ch: { pump: true, rev: 0.5, hp: 180, level: 0.8 }, pat: { hold: 'x---------------' }, lab: P('warmPad', { r: 0.6 }) };
   // The choir: 'ah' over the anthem, a quieter 'oo' under the deep one.
-  T.parts.choir = { type: 'chord', lo: 60, ch: { pump: true, rev: 0.55, hp: 200, level: sub === 'deep' ? 0.35 : 0.5 }, pat: { hold: 'x---------------' }, lab: P('choir', { vowel: sub === 'deep' ? 'u' : r.pick(['a', 'o']) }) };
+  T.parts.choir = { type: 'chord', lo: 60, ch: { pump: true, rev: 0.55, hp: 200, level: sub === 'deep' ? 0.35 : 0.5 }, pat: { hold: 'x---------------' }, lab: P('choir', { vowel: sub === 'deep' ? 'u' : r.pick(['a', 'o']), r: 0.5 }) };
 
-  // The hook: a riff on keys (deep: low and sparse) or a melody over the drop.
+  // The hook: a riff on keys (deep: low and sparse) or a melody over the
+  // drop; its answer is realised over the verse progression it plays on.
   const m = motif(r, { bars: r.chance(0.5) ? 1 : 2, density: sub === 'deep' ? 'sparse' : 'medium', figure: 0.5 });
   const leadPatch = sub === 'deep' ? P('ep') : r.pick([P('ep'), P('glass'), P('piano'), P('bell')]);
   const H = hooks(r, m, { scale, tonic: (sub === 'deep' ? 48 : 60) + tonic, prog: progA, lo: -2, hi: 9, gate: sub === 'deep' ? 6 : 4 });
-  T.parts.lead = { type: 'mel', res: 1, ch: { rev: 0.35, dly: 0.3, pan: 0.1, pump: true, hp: 250, level: 0.9 }, pat: H, lab: leadPatch };
+  const HB = hooks(r, m, { scale, tonic: (sub === 'deep' ? 48 : 60) + tonic, prog: progB, lo: -2, hi: 9, gate: sub === 'deep' ? 6 : 4 });
+  T.parts.lead = { type: 'mel', res: 1, ch: { rev: 0.35, dly: 0.3, pan: 0.1, pump: true, hp: 250, level: 0.9 }, pat: { ...H, answerB: HB.answer }, lab: leadPatch };
 
   const S = T.sections;
   S.push({ bars: 8, drums: 'intro', lp: [600, 16000], p: {} });
@@ -142,7 +146,7 @@ export function house(seed, { dejavu = 0.7 } = {}) {
   S.push({ bars: 8, drums: 'brk', down: 2, auto: { 'pad.cutoff': [600, 2400] }, p: { pad: 'hold', lead: 'sparse' } });
   S.push({ bars: 8, drums: 'build', riser: 8, swell: true, fill: 'roll', gap: 2, p: { pad: 'hold', stab: 's0', bass: 'b0' } });
   S.push({ bars: 16, drums: 'g', vd: nd, crash: true, drop: true, fill: 'clap', p: { bass: 'b', stab: 's', pad: 'hold', lead: 'hook', choir: 'hold' }, v: { bass: nb, stab: ns } });
-  S.push({ bars: 16, drums: 'g', vd: nd, prog: 'b', fill: 'clap', p: { bass: 'b', stab: 's', lead: 'answer', choir: 'hold' }, v: { bass: nb, stab: ns } });
+  S.push({ bars: 16, drums: 'g', vd: nd, prog: 'b', fill: 'clap', p: { bass: 'b', stab: 's', lead: 'answerB', choir: 'hold' }, v: { bass: nb, stab: ns } });
   S.push({ bars: 16, drums: 'brk2', down: 2, auto: { 'pad.cutoff': [500, 2800] }, p: { pad: 'hold', lead: 'hook', choir: 'hold' } });
   S.push({ bars: 8, drums: 'build', riser: 8, swell: true, fill: 'roll', gap: 2, p: { pad: 'hold', stab: 's0', choir: 'hold' } });
   S.push({ bars: 16, drums: 'g', vd: nd, crash: true, drop: true, fill: 'clap', p: { bass: 'b', stab: 's', pad: 'hold', lead: 'hook', choir: 'hold' }, v: { bass: nb, stab: ns } });
@@ -433,7 +437,7 @@ export function dnb(seed, { dejavu = 0.75 } = {}) {
   const sub = r.fork(1).chance(0.6) ? 'liquid' : 'roller';
   const tonic = r.int(0, 11), bpm = r.int(172, 176);
   const scale = sub === 'liquid' ? (r.chance(0.5) ? SCALES.dorian : SCALES.minor) : SCALES.minor;
-  const prog = progression(scale, tonic, r.pick(sub === 'liquid' ? PROGS.deep : PROGS.verse), sub === 'liquid' ? r.pick(['7', '9']) : r.pick(['', '7']));
+  const prog = progression(scale, tonic, r.pick(sub === 'liquid' ? noDim(scale, PROGS.deep) : PROGS.verse), sub === 'liquid' ? r.pick(['7', '9']) : r.pick(['', '7']));
   const T = skeleton(`dnb-${seed}`, {
     title: `Drum & bass ${seed}`, style: `${sub === 'liquid' ? 'Liquid' : 'Roller'} drum & bass · ${NOTE[tonic]} ${scaleName(scale)} · ${prog}`,
     bpm, gain: 1.2, delay: 0.75, delayFb: 0.35, pump: { depth: 0.3, release: 0.1 },
@@ -496,8 +500,8 @@ export function garage(seed, { dejavu = 0.7 } = {}) {
   const r = R(seed, 7);
   const tonic = r.int(0, 11), bpm = r.int(132, 136);
   const scale = r.chance(0.6) ? SCALES.dorian : SCALES.minor;
-  const prog = progression(scale, tonic, r.pick(PROGS.deep), r.pick(['7', '9']));
-  const progB = progression(scale, tonic, r.pick(PROGS.verse), '7');
+  const prog = progression(scale, tonic, r.pick(noDim(scale, PROGS.deep)), r.pick(['7', '9']));
+  const progB = progression(scale, tonic, r.pick(noDim(scale, PROGS.verse)), '7');
   const T = skeleton(`garage-${seed}`, {
     title: `Garage ${seed}`, style: `UK garage · ${NOTE[tonic]} ${scaleName(scale)} · ${prog}`,
     bpm, swing: r.pick([0.18, 0.22, 0.25]), gain: 1, delay: 0.75, delayFb: 0.3, pump: { depth: 0.35, release: 0.14 },
@@ -529,7 +533,10 @@ export function garage(seed, { dejavu = 0.7 } = {}) {
   T.parts.vox = { type: 'chord', lo: 64, gate: 0.5, ch: { rev: 0.45, dly: 0.35, pan: -0.2, pump: true, level: 0.8 }, pat: { stab: r.pick(['..x...x.....x...', '......x.......x.', '..x.......x.....']) }, lab: P('choir', { a: 0.01, r: 0.2, vowel: r.pick(['o', 'e']), name: 'vox' }) };
   T.parts.pad = { type: 'chord', lo: 55, ch: { pump: true, rev: 0.5, hp: 180, level: 0.75 }, pat: { hold: 'x---------------' }, lab: P('warmPad') };
   const m = motif(r, { bars: 2, density: 'sparse', figure: 0.5 });
-  T.parts.lead = { type: 'mel', res: 1, ch: { rev: 0.4, dly: 0.4, pan: 0.2, pump: true, hp: 300, level: 0.85 }, pat: hooks(r, m, { scale, tonic: 60 + tonic, prog, lo: -2, hi: 8, gate: 4 }), lab: P('glass', { gain: 0.2 }) };
+  // The hook, and its answer realised over the verse progression it plays on.
+  const H = hooks(r, m, { scale, tonic: 60 + tonic, prog, lo: -2, hi: 8, gate: 4 });
+  const HB = hooks(r, m, { scale, tonic: 60 + tonic, prog: progB, lo: -2, hi: 8, gate: 4 });
+  T.parts.lead = { type: 'mel', res: 1, ch: { rev: 0.4, dly: 0.4, pan: 0.2, pump: true, hp: 300, level: 0.85 }, pat: { ...H, answerB: HB.answer }, lab: P('glass', { gain: 0.2 }) };
 
   const S = T.sections;
   S.push({ bars: 8, drums: 'intro', lp: [600, 16000], p: { chords: 'c0' } });
@@ -538,7 +545,7 @@ export function garage(seed, { dejavu = 0.7 } = {}) {
   S.push({ bars: 8, drums: 'brk', down: 2, auto: { 'pad.cutoff': [600, 2400] }, p: { pad: 'hold', lead: 'sparse', vox: 'stab' } });
   S.push({ bars: 8, drums: 'build', riser: 8, swell: true, fill: 'roll', gap: 2, p: { pad: 'hold', chords: 'c0', bass: 'b0' } });
   S.push({ bars: 16, drums: 'g', vd: nd, crash: true, drop: true, fill: 'skip', p: { bass: 'b', chords: 'c', lead: 'hook', vox: 'stab' }, v: { bass: nb, chords: nc } });
-  S.push({ bars: 16, drums: 'g', vd: nd, prog: 'b', fill: 'skip', p: { bass: 'b', chords: 'c', lead: 'answer' }, v: { bass: nb, chords: nc } });
+  S.push({ bars: 16, drums: 'g', vd: nd, prog: 'b', fill: 'skip', p: { bass: 'b', chords: 'c', lead: 'answerB' }, v: { bass: nb, chords: nc } });
   S.push({ bars: 16, drums: 'brk', down: 2, auto: { 'pad.cutoff': [500, 2800] }, p: { pad: 'hold', lead: 'hook', vox: 'stab' } });
   S.push({ bars: 8, drums: 'build', riser: 8, swell: true, fill: 'roll', gap: 2, p: { pad: 'hold', chords: 'c0' } });
   S.push({ bars: 16, drums: 'g', vd: nd, crash: true, drop: true, fill: 'skip', p: { bass: 'b', chords: 'c', lead: 'hook', vox: 'stab', pad: 'hold' }, v: { bass: nb, chords: nc } });
@@ -621,9 +628,10 @@ export function chicha(seed, { dejavu = 0.75 } = {}) {
   const HV = hooks(r, mv, { scale, tonic: 60 + tonic, prog: progV, lo: -5, hi: 6, gate: 6, avoid: pent });
   T.parts.lead = { type: 'mel', res: 1, legato: true, ch: { rev: 0.4, dly: 0.2, pan: 0.1, level: 1.4 }, pat: { hook: HC.hook, sparse: HC.sparse, answer: HC.answer, verse: HV.hook, verse2: HV.answer }, lab: leadPatch };
   T.parts.lead2 = { type: 'mel', res: 1, legato: true, ch: { rev: 0.4, dly: 0.15, pan: -0.3, level: 0.8 }, pat: { third: HC.answer }, lab: P('surfGuitar', { trem: 0.3, tremRate: 5.2, gain: 0.26 }) };
-  // The organ solo: its own figure over the verse chords, pentatonic too.
+  // The organ solo: its own figure over the verse chords, pentatonic too,
+  // in the organ's middle register (the top octave of a combo organ cuts).
   const mo = motif(r, { bars: 2, density: 'dense', figure: 0.6 });
-  T.parts.organLead = { type: 'mel', res: 1, ch: { rev: 0.3, dly: 0.2, pan: -0.2, level: 0.8 }, pat: hooks(r, mo, { scale, tonic: 72 + tonic, prog: progV, lo: -4, hi: 8, gate: 3, avoid: pent }), lab: P('comboOrgan', { gain: 0.065 }) };
+  T.parts.organLead = { type: 'mel', res: 1, ch: { rev: 0.3, dly: 0.2, pan: -0.2, level: 0.8 }, pat: hooks(r, mo, { scale, tonic: 60 + tonic, prog: progV, lo: -3, hi: 7, gate: 3, avoid: pent }), lab: P('comboOrgan', { gain: 0.15 }) };
 
   const S = T.sections;
   S.push({ bars: 8, prog: 'c', drums: 'intro', p: { lead: 'hook' } });

@@ -96,8 +96,10 @@ export const PROGS = {
   anthem: [[0, 5, 2, 6], [0, 6, 5, 6], [0, 5, 6, 0], [5, 6, 0, 0], [0, 3, 5, 6], [0, 2, 6, 5], [0, 4, 5, 3], [5, 3, 0, 6]],
   // Verses that sit still and wait for the chorus.
   verse: [[0, 0, 5, 5], [0, 0, 6, 6], [0, 5, 0, 5], [0, 6, 0, 6], [0, 0, 3, 3], [0, 0, 0, 6]],
-  // Deep house and liquid: two-chord vamps and 7th/9th colour.
-  deep: [[0, 0, 3, 3], [0, 3, 0, 4], [0, 5, 2, 6], [0, 0, 5, 6], [3, 4, 0, 0], [0, 6, 5, 4]],
+  // Deep house and liquid: two-chord vamps and 7th/9th colour. Some of
+  // these land on a scale's diminished degree (5 in dorian, 1 in minor):
+  // pick through `noDim`, which drops those for the scale in hand.
+  deep: [[0, 0, 3, 3], [0, 3, 0, 4], [0, 5, 2, 6], [0, 0, 5, 6], [3, 4, 0, 0], [0, 6, 5, 4], [0, 1, 0, 1], [0, 0, 1, 3], [0, 3, 6, 0], [0, 1, 3, 4]],
   // Techno and psy: one chord, or a step away and back.
   drone: [[0, 0, 0, 0], [0, 0, 0, 6], [0, 0, 1, 0], [0, 0, 0, 5], [0, 1, 0, 1]],
   // Major keys for the brightest choruses.
@@ -106,6 +108,13 @@ export const PROGS = {
   // the VII and VI of the Andean side; two-chord vamps mostly.
   cumbia: [[0, 0, 3, 3], [0, 3, [4, 'dom'], 0], [0, 6, 0, 6], [0, 0, [4, 'dom'], [4, 'dom']], [0, 3, 0, [4, 'dom']], [3, [4, 'dom'], 0, 0], [0, [4, 'dom'], 0, [4, 'dom']], [5, 6, 0, 0]],
 };
+
+// Whether the diatonic chord on degree d of a scale is diminished (a
+// tritone for a fifth: ii° in minor, vi° in dorian, vii° in major).
+export const isDim = (scale, d) => degSemi(scale, d + 4) - degSemi(scale, d) === 6;
+// The progressions of a family that stay off the scale's diminished degree:
+// a half-diminished chord is not a vamp anyone dances to.
+export const noDim = (scale, progs) => progs.filter((p) => p.every((it) => !isDim(scale, Array.isArray(it) ? it[0] : it)));
 
 // Pitch class set of a chord name, and the chord's root pitch class.
 export function chordPcs(name) {
@@ -270,10 +279,16 @@ function snap(scale, tonicPc, k, pcs, dir = 1) {
 //   avoid    scale degrees (0..6) the line steps over when it is not on a
 //            chord tone: [1, 5] in minor leaves the minor pentatonic, the
 //            Andean side of chicha; [3, 6] in major the major pentatonic.
-export function realise(m, { scale, tonic, chords, lo = -3, hi = 9, phrase = 4, gate = null, home = null, start = 0, accents = true, avoid = [] }) {
+export function realise(m, { scale: keyScale, tonic, chords, lo = -3, hi = 9, phrase = 4, gate = null, home = null, start = 0, accents = true, avoid = [] }) {
   const nb = chords.length;
   const tonicPc = ((tonic % 12) + 12) % 12;
   const toks = new Array(nb * 16).fill('.');
+  // Over a dominant in a minor key (the V7's major third is the leading
+  // tone) the bar's scale is the harmonic minor: the line's 7th degree is
+  // the leading tone there, as a cumbia or a cadence sings it, not the b7
+  // a semitone from the chord's third.
+  const barScale = (ch) => (keyScale === SCALES.minor && ch.pcs.includes((tonicPc + 11) % 12) ? SCALES.harmonicMinor : keyScale);
+  let scale = keyScale;
   const midiOf = (k) => tonic + degSemi(scale, k);
   const deg = (kk) => ((kk % 7) + 7) % 7;
   // Steps past the avoided degrees the way the line is moving, turning back
@@ -292,6 +307,7 @@ export function realise(m, { scale, tonic, chords, lo = -3, hi = 9, phrase = 4, 
     for (let i = 0; i < onsets.length; i++) {
       const o = onsets[i], bar = Math.floor(o / 16);
       const ch = chordPcs(chords[bar % nb]);
+      scale = barScale(ch);
       if (i === 0) {
         // Each statement starts where the hook lives, on a chord tone.
         k = snap(scale, tonicPc, home ?? Math.round((lo + hi) / 2) + start, ch.pcs, 1);
@@ -304,16 +320,19 @@ export function realise(m, { scale, tonic, chords, lo = -3, hi = 9, phrase = 4, 
       }
       const last = i === onsets.length - 1 || Math.floor(onsets[i + 1] / 16) !== bar;
       const phraseEnd = last && (bar % phrase === phrase - 1 || bar === nb - 1);
+      const next = i + 1 < onsets.length ? onsets[i + 1] : (b0 + m.bars) * 16;
+      // A note that lasts a dotted 8th or more is a chord tone; passing and
+      // neighbour tones are the short ones, off the beat.
+      const long = next - o >= 3;
       if (phraseEnd) {
         const closed = Math.floor(bar / phrase) % 2 === 1 || bar === nb - 1;
         const want = closed ? [ch.root] : ch.pcs.filter((p) => p !== ch.root);
         k = snap(scale, tonicPc, k, want.length ? want : ch.pcs, dir);
-      } else if (o % 4 === 0 || last) {
+      } else if (o % 4 === 0 || last || long) {
         k = snap(scale, tonicPc, k, ch.pcs, dir);
       } else if (avoid.length) {
         k = skip(k, dir);
       }
-      const next = i + 1 < onsets.length ? onsets[i + 1] : (b0 + m.bars) * 16;
       let len = Math.max(1, next - o);
       if (gate) len = Math.min(len, gate);
       if (phraseEnd) len = Math.min(len, 8);

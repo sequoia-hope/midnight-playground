@@ -263,6 +263,11 @@ impl OnePole {
         self
     }
 
+    /// `this.y = 0`: the string's pluck filter starts each burst clean.
+    pub fn reset(&mut self) {
+        self.y = 0.0;
+    }
+
     pub fn lp(&mut self, x: f64) -> f64 {
         self.y += self.a * (x - self.y);
         self.y
