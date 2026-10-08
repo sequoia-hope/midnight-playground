@@ -195,11 +195,21 @@ pub const RUNTIME_FILES: &[(&str, &str)] = &[
     ("assets/seaside/survey.bin", "assets/seaside/survey.bin"),
     ("src/levels/seaside/photo.jpg", "assets/seaside/photo.jpg"),
     ("audio/radio", "audio/radio"),
+    ("audio/dj", "audio/dj"),
 ];
+
+/// Runtime files a checkout may not have yet: skipped with a note rather
+/// than failing the build. The DJ clips (D1151) are recorded locally and
+/// not committed yet.
+const OPTIONAL_RUNTIME_FILES: &[&str] = &["audio/dj"];
 
 fn copy_runtime_files(root: &Path, out: &Path) -> Result {
     for (from, to) in RUNTIME_FILES {
         let (src, dest) = (root.join(from), out.join(to));
+        if !src.exists() && OPTIONAL_RUNTIME_FILES.contains(from) {
+            println!("note: {from} is not in this checkout; skipped");
+            continue;
+        }
         if src.is_dir() {
             std::fs::create_dir_all(&dest)
                 .map_err(|e| format!("creating {}: {e}", dest.display()))?;

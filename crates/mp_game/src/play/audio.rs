@@ -1082,6 +1082,9 @@ impl mp_math::Rng for JsRandom {
 /// repository's `audio/radio/` into the build (D1112).
 #[cfg(target_arch = "wasm32")]
 const RADIO_BASE: &str = "audio/radio/";
+/// The radio DJs' clips, likewise (`audio/dj/`, D1151).
+#[cfg(target_arch = "wasm32")]
+const DJ_BASE: &str = "audio/dj/";
 
 #[cfg(target_arch = "wasm32")]
 fn platform() -> Platform {
@@ -1099,6 +1102,9 @@ fn platform() -> Platform {
         radio: Rc::new(mp_audio::radio::web::WebFetch {
             base: RADIO_BASE.into(),
         }),
+        dj: Some(Rc::new(mp_audio::radio::web::WebFetch {
+            base: DJ_BASE.into(),
+        })),
         random: Rc::new(RefCell::new(JsRandom)),
     }
 }
@@ -1137,6 +1143,9 @@ fn platform() -> Platform {
         radio: Rc::new(mp_audio::radio::DirFetch(
             crate::native::repo_root().join("audio/radio"),
         )),
+        dj: Some(Rc::new(mp_audio::radio::DirFetch(
+            crate::native::repo_root().join("audio/dj"),
+        ))),
         random: Rc::new(RefCell::new(mp_math::Mulberry32::new(seed))),
     }
 }

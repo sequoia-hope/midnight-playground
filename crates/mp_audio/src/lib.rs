@@ -25,6 +25,7 @@
 // for line (DECISIONS D52).
 #![allow(clippy::needless_range_loop)]
 
+pub mod dj;
 pub mod engine;
 pub mod game;
 pub mod music;

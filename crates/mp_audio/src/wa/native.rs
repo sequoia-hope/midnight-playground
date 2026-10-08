@@ -13,6 +13,7 @@
 use super::backend::{Attr, Backend, BufferId, NodeId, OfflineRender, Op, WaveId};
 use super::compressor::ChromeCompressor;
 use super::exhaust::ExhaustProcessor;
+use super::music::{RadioProcessor, SEED as RADIO_SEED};
 use super::oscillator::{BasicType, ChromeOscillator, OscMessage, WaveTables, basic_tables};
 use super::timeline::{Event, EventKind, Timeline};
 use super::{
@@ -52,6 +53,8 @@ enum NativeNode {
     Analyser(wn::AnalyserNode),
     /// The exhaust model (see [`super::exhaust`]).
     Exhaust(AudioWorkletNode),
+    /// The radio's station player (see [`super::music`]).
+    Radio(AudioWorkletNode),
 }
 
 impl NativeNode {
@@ -70,6 +73,7 @@ impl NativeNode {
             NativeNode::Pan(n) => n,
             NativeNode::Analyser(n) => n,
             NativeNode::Exhaust(n) => n,
+            NativeNode::Radio(n) => n,
         }
     }
 
@@ -93,6 +97,7 @@ impl NativeNode {
             (NativeNode::Delay(n), P::DelayTime) => n.delay_time(),
             (NativeNode::Pan(n), P::Pan) => n.pan(),
             (NativeNode::Exhaust(n), p) => n.parameters().get(p.as_str())?,
+            (NativeNode::Radio(n), p) => n.parameters().get(p.as_str())?,
             _ => return None,
         })
     }
@@ -536,6 +541,21 @@ impl<C: NativeContext> NativeBackend<C> {
                     },
                 ))
             }
+            NodeKind::Radio => NativeNode::Radio(AudioWorkletNode::new::<RadioProcessor>(
+                c,
+                AudioWorkletNodeOptions {
+                    number_of_inputs: 0,
+                    number_of_outputs: 1,
+                    output_channel_count: vec![2],
+                    parameter_data: HashMap::new(),
+                    processor_options: RADIO_SEED,
+                    audio_node_options: AudioNodeOptions {
+                        channel_count: 2,
+                        channel_count_mode: ChannelCountMode::Explicit,
+                        channel_interpretation: ChannelInterpretation::Speakers,
+                    },
+                },
+            )),
         }
     }
 
@@ -1007,6 +1027,11 @@ impl<C: NativeContext> Backend for NativeBackend<C> {
 
     fn prepare_exhaust(&mut self, done: Pending<bool>) {
         // The processor is compiled in: ready at the next settle.
+        self.tasks.push(Box::new(move || done.resolve(Ok(true))));
+    }
+
+    fn prepare_radio(&mut self, done: Pending<bool>) {
+        // As the exhaust's: compiled in.
         self.tasks.push(Box::new(move || done.resolve(Ok(true))));
     }
 

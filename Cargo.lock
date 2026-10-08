@@ -4342,6 +4342,7 @@ dependencies = [
  "mp_exhaust",
  "mp_levels",
  "mp_math",
+ "mp_music",
  "mp_sim",
  "mp_track",
  "serde_json",

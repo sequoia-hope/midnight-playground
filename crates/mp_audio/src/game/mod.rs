@@ -35,8 +35,10 @@
 mod build;
 mod exhaust;
 mod shots;
+mod station;
 mod steer;
 
+use crate::dj::DjVoice;
 use crate::engine::{self, CarProfile};
 use crate::music::{Music, TrackInfo};
 use crate::radio::{Bytes, Fetch, RadioVoice, Random};
@@ -273,6 +275,8 @@ pub struct Platform {
     pub audio_session: Option<Box<dyn AudioSession>>,
     /// Fetches `audio/radio/` files.
     pub radio: Rc<dyn Fetch>,
+    /// Fetches `audio/dj/` files (the radio DJs' clips; `None`: no DJ).
+    pub dj: Option<Rc<dyn Fetch>>,
     /// `Math.random`.
     pub random: Random,
 }
@@ -295,10 +299,17 @@ impl Platform {
             new_context: None,
             audio_session: None,
             radio: Rc::new(NoFetch),
+            dj: None,
             random: Rc::new(RefCell::new(mp_math::Mulberry32::new(seed))),
         }
     }
 }
+
+/// The DJ's duck on the station while a clip plays, and how long its
+/// gain takes to settle either way (a time constant).
+const DJ_DUCK: f64 = 0.4;
+const DJ_DUCK_TC: f64 = 0.05;
+const DJ_BACK_TC: f64 = 0.15;
 
 /// The current radio transmission (`_radioCur`).
 struct RadioCur {
@@ -370,6 +381,22 @@ pub struct GameAudio {
     ex_live: bool,
     /// Exhaust nodes made (one per graph, whatever the car changes).
     ex_made: u32,
+    /// The car radio ([`station`]): the node's state, the station asked for
+    /// (an index in `mp_music::radio::STATIONS`) and the wall time it was
+    /// asked at, whether that request still waits on the node, the `tune`
+    /// serial, the energy, and nodes made (one per graph).
+    station: station::StState,
+    station_want: Option<usize>,
+    station_wall: f64,
+    station_pending: bool,
+    station_tune: f64,
+    station_energy: f64,
+    station_made: u32,
+    /// The DJs' clips ([`crate::dj`]), the clips decoding for `dj_say`,
+    /// and when the one talking ends.
+    dj_voice: Option<DjVoice>,
+    dj_clips: Vec<Pending<Option<AudioBuffer>>>,
+    dj_end: f64,
 }
 
 struct CarWaveSet {
@@ -390,6 +417,10 @@ struct SirenState {
 impl GameAudio {
     pub fn new(platform: Platform) -> GameAudio {
         let radio_voice = RadioVoice::new(platform.radio.clone());
+        let dj_voice = platform
+            .dj
+            .clone()
+            .map(|f| DjVoice::new(f, platform.random.clone()));
         GameAudio {
             platform,
             ctx: None,
@@ -435,7 +466,22 @@ impl GameAudio {
             ex: exhaust::ExState::Idle,
             ex_live: false,
             ex_made: 0,
+            station: station::StState::Idle,
+            station_want: None,
+            station_wall: 0.0,
+            station_pending: false,
+            station_tune: 0.0,
+            station_energy: 1.0,
+            station_made: 0,
+            dj_voice,
+            dj_clips: Vec::new(),
+            dj_end: 0.0,
         }
+    }
+
+    /// The DJs' clips, for prefetching (`None`: the platform has none).
+    pub fn dj(&self) -> Option<&DjVoice> {
+        self.dj_voice.as_ref()
     }
 
     /// `_radioCur.srcs`: the sources of the radio transmission on the air
@@ -553,6 +599,11 @@ impl GameAudio {
         }
         if self.music_wanted == Some(true) {
             self.set_music(true);
+        }
+        // A station asked for before init: tuned now, as a fresh request.
+        if self.station_pending {
+            let (want, wall) = (self.station_want.take(), self.station_wall);
+            self.set_station(want, wall);
         }
         if opts.context.is_none() {
             self.unlock();
@@ -753,6 +804,7 @@ impl GameAudio {
         let now = self.now();
         self.run_due_timers(now, |_| {});
         self.settle();
+        self.station_poll();
     }
 
     fn run_task(&mut self, task: Task) {
@@ -777,16 +829,73 @@ impl GameAudio {
     }
 
     /// Let every pending promise settle: the context's (resume, suspend,
-    /// decoding), then the radio lines waiting on them.
+    /// decoding), then the radio lines and DJ clips waiting on them.
     pub fn settle(&mut self) {
         loop {
             if let Some(ctx) = &self.ctx {
                 ctx.settle();
             }
-            if !self.poll_radio() {
+            let radio = self.poll_radio();
+            let dj = self.poll_dj();
+            if !radio && !dj {
                 break;
             }
         }
+    }
+
+    // ── The radio DJ ──────────────────────────────────────────────────
+    /// The DJ says clip `id` (take `take`, 1-based; 0 for a random one):
+    /// decoded and played once into the music bus, ducking the station
+    /// while it talks. A clip that is missing or fails to load plays
+    /// nothing, silently, as the police radio copes.
+    pub fn dj_say(&mut self, id: &str, take: u32) {
+        if !self.ready() {
+            return;
+        }
+        let Some(dj) = &self.dj_voice else {
+            return;
+        };
+        let ctx = self.ctx.clone().expect("a context");
+        self.dj_clips.push(dj.buffer(&ctx, id, take));
+    }
+
+    /// The DJ clips whose buffers are in (or known to be missing) play.
+    /// Returns whether one settled.
+    fn poll_dj(&mut self) -> bool {
+        let Some(i) = self.dj_clips.iter().position(Pending::is_settled) else {
+            return false;
+        };
+        let p = self.dj_clips.remove(i);
+        if let Some(Ok(Some(buf))) = p.result() {
+            self.dj_play(&buf);
+        }
+        true
+    }
+
+    /// One DJ clip, after the one still talking if there is one; the
+    /// station comes down to `DJ_DUCK` under it and back after.
+    fn dj_play(&mut self, buf: &AudioBuffer) {
+        let ctx = self.ctx.clone().expect("a context");
+        let g = self.graph();
+        let now = self.now();
+        let t0 = if self.dj_end > now {
+            self.dj_end + 0.1
+        } else {
+            now + 0.01
+        };
+        let end = t0 + buf.duration();
+        let vg = ctx.create_gain();
+        let src = ctx.create_buffer_source();
+        let _ = src.set_buffer(Some(buf));
+        let _ = src.connect(&vg);
+        let _ = vg.connect(&g.music_in);
+        let _ = src.start_at(t0);
+        if let Some(out) = self.station_out() {
+            out.gain.cancel_scheduled_values(t0);
+            out.gain.set_target_at_time(DJ_DUCK, t0, DJ_DUCK_TC);
+            out.gain.set_target_at_time(1.0, end, DJ_BACK_TC);
+        }
+        self.dj_end = end;
     }
 
     // ── Car and environment ──────────────────────────────────────────
@@ -908,8 +1017,12 @@ impl GameAudio {
             self.music_on = true;
             g.music_gate.gain.cancel_scheduled_values(t);
             g.music_gate.gain.set_target_at_time(1.0, t, 0.3);
-            let m = self.music.as_mut().expect("music");
-            m.start(&mut self.timers);
+            // With a station tuned the gate opens for it; the playlist
+            // stays stopped until the radio is turned off.
+            if self.station().is_none() {
+                let m = self.music.as_mut().expect("music");
+                m.start(&mut self.timers);
+            }
         } else if !on && self.music_on {
             self.music_on = false;
             g.music_gate.gain.cancel_scheduled_values(t);

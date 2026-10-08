@@ -182,6 +182,12 @@ pub trait Backend {
         done.resolve(Ok(true));
     }
 
+    /// Load what a radio node needs; `done` settles `true` once
+    /// `New { kind: Radio }` can be applied, `false` if it never can.
+    fn prepare_radio(&mut self, done: Pending<bool>) {
+        done.resolve(Ok(true));
+    }
+
     /// The facade dropped its last handle on a node, buffer or wave.
     fn release_node(&mut self, _node: NodeId) {}
     fn release_buffer(&mut self, _buffer: BufferId) {}

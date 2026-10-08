@@ -77,6 +77,8 @@ pub struct NullShared {
     decoder: RefCell<Option<Decoder>>,
     tasks: RefCell<Vec<Task>>,
     throws: RefCell<Vec<String>>,
+    /// What `prepare_radio` settles (tests: a platform without AudioWorklet).
+    radio: Cell<bool>,
 }
 
 /// The driver's handle on a null backend.
@@ -127,6 +129,12 @@ impl NullHandle {
         *self.0.decoder.borrow_mut() = Some(Box::new(d));
     }
 
+    /// What `prepare_radio` settles from now on (`true` by default): tests
+    /// stand in a platform without AudioWorklet with `false`.
+    pub fn set_radio_available(&self, on: bool) {
+        self.0.radio.set(on);
+    }
+
     /// A param's automation timeline (for tests).
     pub fn timeline(&self, p: ParamId) -> Option<Timeline> {
         self.0.params.borrow().get(&p.node).and_then(|ps| {
@@ -172,6 +180,7 @@ impl NullBackend {
             decoder: RefCell::new(None),
             tasks: RefCell::new(Vec::new()),
             throws: RefCell::new(Vec::new()),
+            radio: Cell::new(true),
         });
         (NullBackend(shared.clone()), NullHandle(shared))
     }
@@ -496,6 +505,11 @@ impl Backend for NullBackend {
     fn prepare_exhaust(&mut self, done: Pending<bool>) {
         // Nothing to load: ready at the next settle, as a promise would be.
         self.queue(Box::new(move || done.resolve(Ok(true))));
+    }
+
+    fn prepare_radio(&mut self, done: Pending<bool>) {
+        let on = self.0.radio.get();
+        self.queue(Box::new(move || done.resolve(Ok(on))));
     }
 
     fn release_node(&mut self, node: NodeId) {
