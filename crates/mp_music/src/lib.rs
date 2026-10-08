@@ -41,6 +41,7 @@ pub mod instruments;
 pub mod json;
 pub mod kits;
 pub mod patches;
+pub mod player;
 pub mod radio;
 pub mod seq;
 pub mod track;

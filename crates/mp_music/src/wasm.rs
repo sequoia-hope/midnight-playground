@@ -7,7 +7,7 @@
 //! [`mpm_process`], which renders 128 frames into the player's own buffer
 //! (left then right) and returns its address in linear memory.
 
-use crate::radio::Player;
+use crate::player::Player;
 
 /// The worklet's block.
 pub const BLOCK: usize = 128;
