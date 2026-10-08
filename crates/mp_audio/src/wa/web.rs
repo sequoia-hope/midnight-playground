@@ -35,6 +35,8 @@ enum WebNode {
     Analyser(ws::AnalyserNode),
     /// `web/exhaust-worklet.js` running `mp_exhaust.wasm`.
     Exhaust(ws::AudioWorkletNode),
+    /// `web/music-worklet.js` running `mp_music.wasm`.
+    Radio(ws::AudioWorkletNode),
 }
 
 impl WebNode {
@@ -53,6 +55,7 @@ impl WebNode {
             WebNode::Pan(n) => n,
             WebNode::Analyser(n) => n,
             WebNode::Exhaust(n) => n,
+            WebNode::Radio(n) => n,
         }
     }
 
@@ -76,6 +79,7 @@ impl WebNode {
             (WebNode::Delay(n), P::DelayTime) => n.delay_time(),
             (WebNode::Pan(n), P::Pan) => n.pan(),
             (WebNode::Exhaust(n), p) => n.parameters().ok()?.get(p.as_str())?,
+            (WebNode::Radio(n), p) => n.parameters().ok()?.get(p.as_str())?,
             _ => return None,
         })
     }
@@ -107,6 +111,9 @@ pub struct WebBackend {
     exhaust_module: Rc<RefCell<Option<JsValue>>>,
     /// That load, while it runs or once it has settled.
     exhaust_ready: Option<Pending<bool>>,
+    /// The radio's station player, likewise ([`Backend::prepare_radio`]).
+    radio_module: Rc<RefCell<Option<JsValue>>>,
+    radio_ready: Option<Pending<bool>>,
 }
 
 /// Where the exhaust worklet's files are, beside the game's page. Relative:
@@ -115,31 +122,76 @@ const EXHAUST_WORKLET_URL: &str = "exhaust-worklet.js";
 const EXHAUST_WASM_URL: &str = "mp_exhaust.wasm";
 /// The engines' noise seed (the native processor's too).
 const EXHAUST_SEED: u32 = 12345;
+/// The radio worklet's files (D1151), beside the page too.
+const RADIO_WORKLET_URL: &str = "music-worklet.js";
+const RADIO_WASM_URL: &str = "mp_music.wasm";
+/// The station player's seed (the native processor's too).
+const RADIO_SEED: u32 = 2026;
 
 /// `ctx.audioWorklet.addModule(worklet)`, then the wasm fetched and
 /// compiled: the module, or why not.
-async fn load_exhaust(ctx: ws::BaseAudioContext) -> Result<JsValue, JsValue> {
+async fn load_worklet(
+    ctx: ws::BaseAudioContext,
+    worklet_url: &str,
+    wasm_url: &str,
+) -> Result<JsValue, JsValue> {
     // An insecure context or an old browser has no `audioWorklet`.
     let worklet = js_sys::Reflect::get(&ctx, &JsValue::from_str("audioWorklet"))?;
     if worklet.is_undefined() || worklet.is_null() {
         return Err(JsValue::from_str("no AudioWorklet"));
     }
     let worklet: ws::AudioWorklet = worklet.unchecked_into();
-    let added = worklet.add_module(EXHAUST_WORKLET_URL)?;
+    let added = worklet.add_module(worklet_url)?;
     let window = ws::window().ok_or_else(|| JsValue::from_str("no window"))?;
-    let fetched = window.fetch_with_str(EXHAUST_WASM_URL);
+    let fetched = window.fetch_with_str(wasm_url);
     wasm_bindgen_futures::JsFuture::from(added).await?;
     let resp: ws::Response = wasm_bindgen_futures::JsFuture::from(fetched)
         .await?
         .unchecked_into();
     if !resp.ok() {
         return Err(JsValue::from_str(&format!(
-            "{EXHAUST_WASM_URL}: HTTP {}",
+            "{wasm_url}: HTTP {}",
             resp.status()
         )));
     }
     let bytes = wasm_bindgen_futures::JsFuture::from(resp.array_buffer()?).await?;
     wasm_bindgen_futures::JsFuture::from(js_sys::WebAssembly::compile(&bytes)).await
+}
+
+/// A worklet's files loaded once per context into `module`; `ready` is
+/// that load, and a second call follows the first. `done` settles `true`
+/// with the module in place, `false` (with the reason among the failures)
+/// if the platform cannot run it.
+#[allow(clippy::too_many_arguments)]
+fn prepare_worklet(
+    ctx: ws::BaseAudioContext,
+    failures: Rc<RefCell<Vec<String>>>,
+    module: Rc<RefCell<Option<JsValue>>>,
+    ready: &mut Option<Pending<bool>>,
+    done: Pending<bool>,
+    what: &'static str,
+    worklet_url: &'static str,
+    wasm_url: &'static str,
+) {
+    if let Some(r) = ready {
+        r.then(move |r| done.resolve(r.clone()));
+        return;
+    }
+    *ready = Some(done.clone());
+    wasm_bindgen_futures::spawn_local(async move {
+        match load_worklet(ctx, worklet_url, wasm_url).await {
+            Ok(m) => {
+                *module.borrow_mut() = Some(m);
+                done.resolve(Ok(true));
+            }
+            Err(e) => {
+                let m = format!("{what}: {}", js_err(&e));
+                ws_console(&m);
+                failures.borrow_mut().push(m);
+                done.resolve(Ok(false));
+            }
+        }
+    });
 }
 
 fn js_err(e: &JsValue) -> String {
@@ -179,6 +231,8 @@ impl WebBackend {
             failures: Rc::new(RefCell::new(Vec::new())),
             exhaust_module: Rc::new(RefCell::new(None)),
             exhaust_ready: None,
+            radio_module: Rc::new(RefCell::new(None)),
+            radio_ready: None,
         }
     }
 
@@ -254,6 +308,24 @@ impl WebBackend {
                     c,
                     "mp-exhaust",
                     &opts,
+                )?)
+            }
+            NodeKind::Radio => {
+                let module = self
+                    .radio_module
+                    .borrow()
+                    .clone()
+                    .ok_or_else(|| JsValue::from_str("createRadio before prepareRadio"))?;
+                let po = js_sys::Object::new();
+                js_sys::Reflect::set(&po, &"module".into(), &module)?;
+                js_sys::Reflect::set(&po, &"seed".into(), &RADIO_SEED.into())?;
+                let opts = ws::AudioWorkletNodeOptions::new();
+                opts.set_number_of_inputs(0);
+                opts.set_number_of_outputs(1);
+                opts.set_output_channel_count(&js_sys::Array::of1(&2.into()));
+                opts.set_processor_options(Some(&po));
+                WebNode::Radio(ws::AudioWorkletNode::new_with_options(
+                    c, "mp-radio", &opts,
                 )?)
             }
         })
@@ -568,29 +640,29 @@ impl Backend for WebBackend {
     }
 
     fn prepare_exhaust(&mut self, done: Pending<bool>) {
-        // One load per context; a second call follows the first.
-        if let Some(ready) = &self.exhaust_ready {
-            ready.then(move |r| done.resolve(r.clone()));
-            return;
-        }
-        self.exhaust_ready = Some(done.clone());
-        let ctx = self.ctx.base().clone();
-        let module = self.exhaust_module.clone();
-        let failures = self.failures.clone();
-        wasm_bindgen_futures::spawn_local(async move {
-            match load_exhaust(ctx).await {
-                Ok(m) => {
-                    *module.borrow_mut() = Some(m);
-                    done.resolve(Ok(true));
-                }
-                Err(e) => {
-                    let m = format!("prepareExhaust: {}", js_err(&e));
-                    ws_console(&m);
-                    failures.borrow_mut().push(m);
-                    done.resolve(Ok(false));
-                }
-            }
-        });
+        prepare_worklet(
+            self.ctx.base().clone(),
+            self.failures.clone(),
+            self.exhaust_module.clone(),
+            &mut self.exhaust_ready,
+            done,
+            "prepareExhaust",
+            EXHAUST_WORKLET_URL,
+            EXHAUST_WASM_URL,
+        );
+    }
+
+    fn prepare_radio(&mut self, done: Pending<bool>) {
+        prepare_worklet(
+            self.ctx.base().clone(),
+            self.failures.clone(),
+            self.radio_module.clone(),
+            &mut self.radio_ready,
+            done,
+            "prepareRadio",
+            RADIO_WORKLET_URL,
+            RADIO_WASM_URL,
+        );
     }
 
     fn release_node(&mut self, node: NodeId) {

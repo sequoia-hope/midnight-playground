@@ -9,6 +9,8 @@ use mp_math::kernel::{pow, sin};
 impl GameAudio {
     // ── Per-frame update ─────────────────────────────────────────────
     pub fn update(&mut self, dt: f64, s: &CarState) {
+        // The radio's request waiting on its node (nothing, unless tuned).
+        self.station_poll();
         if self.paused || !self.steer() {
             return;
         }

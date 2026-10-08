@@ -44,6 +44,9 @@ pub mod oscillator;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod exhaust;
 
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod music;
+
 pub use backend::{Attr, Backend, BufferId, NodeId, OfflineRender, Op, WaveId};
 
 use std::cell::{Cell, RefCell};
@@ -73,6 +76,9 @@ pub enum NodeKind {
     /// inputs, one stereo output. Its argument is the preset's index in
     /// [`mp_exhaust::ORDER`].
     Exhaust,
+    /// The radio: `mp_music`'s station player in an AudioWorklet
+    /// (DECISIONS D1151): no inputs, one stereo output, no argument.
+    Radio,
 }
 
 impl NodeKind {
@@ -91,13 +97,16 @@ impl NodeKind {
             NodeKind::StereoPanner => "StereoPanner",
             NodeKind::Analyser => "Analyser",
             NodeKind::Exhaust => "Exhaust",
+            NodeKind::Radio => "Radio",
         }
     }
 
     /// `numberOfInputs` (the merger's is its argument).
     fn inputs(self, arg: Option<f64>) -> u32 {
         match self {
-            NodeKind::Oscillator | NodeKind::BufferSource | NodeKind::Exhaust => 0,
+            NodeKind::Oscillator | NodeKind::BufferSource | NodeKind::Exhaust | NodeKind::Radio => {
+                0
+            }
             NodeKind::ChannelMerger => arg.unwrap_or(6.0) as u32,
             _ => 1,
         }
@@ -140,6 +149,12 @@ pub enum ParamName {
     Speed,
     Running,
     Preset,
+    // The radio node's (read once per block too).
+    Station,
+    WallDay,
+    WallSec,
+    Tune,
+    Energy,
 }
 
 impl ParamName {
@@ -163,6 +178,11 @@ impl ParamName {
             ParamName::Speed => "speed",
             ParamName::Running => "running",
             ParamName::Preset => "preset",
+            ParamName::Station => "station",
+            ParamName::WallDay => "wallDay",
+            ParamName::WallSec => "wallSec",
+            ParamName::Tune => "tune",
+            ParamName::Energy => "energy",
         }
     }
 }
@@ -229,6 +249,14 @@ pub fn param_spec(
         (K::Exhaust, P::Speed) => (0.0, -F32_MAX, F32_MAX),
         (K::Exhaust, P::Running) => (1.0, 0.0, 1.0),
         (K::Exhaust, P::Preset) => (0.0, 0.0, (mp_exhaust::ORDER.len() - 1) as f64),
+        // The station is an index in `mp_music::radio::STATIONS` (-1: off);
+        // the wall time at tuning comes in two parts because an f32 cannot
+        // hold Unix seconds; `tune` is a serial.
+        (K::Radio, P::Station) => (-1.0, -1.0, 63.0),
+        (K::Radio, P::WallDay) => (0.0, 0.0, 1e6),
+        (K::Radio, P::WallSec) => (0.0, 0.0, 86400.0),
+        (K::Radio, P::Tune) => (0.0, 0.0, 1e9),
+        (K::Radio, P::Energy) => (1.0, 0.0, 1.0),
         _ => return None,
     })
 }
@@ -252,6 +280,7 @@ pub fn params_of(kind: NodeKind) -> &'static [ParamName] {
             P::Running,
             P::Preset,
         ],
+        NodeKind::Radio => &[P::Station, P::WallDay, P::WallSec, P::Tune, P::Energy],
         _ => &[],
     }
 }
@@ -1316,6 +1345,34 @@ impl AudioContext {
         }
     }
 
+    /// Starts loading what a radio node needs (the web backend's worklet
+    /// module and `mp_music`'s wasm); settles `true` when
+    /// [`AudioContext::create_radio`] may be called, `false` if it never can
+    /// (no AudioWorklet). As [`AudioContext::prepare_exhaust`]: settles at
+    /// the next [`AudioContext::settle`] on a virtual clock, by itself in a
+    /// browser; not a Web Audio call, so not in the call log.
+    pub fn prepare_radio(&self) -> Pending<bool> {
+        self.flush_released();
+        let p = Pending::new();
+        self.0.backend.borrow_mut().prepare_radio(p.clone());
+        p
+    }
+
+    /// The radio node (DECISIONS D1151): off until its `station` param
+    /// names a station. On the web, only once [`AudioContext::prepare_radio`]
+    /// has settled `true`.
+    pub fn create_radio(&self) -> RadioNode {
+        let node = self.new_node(NodeKind::Radio, None);
+        RadioNode {
+            station: self.param(&node, ParamName::Station),
+            wall_day: self.param(&node, ParamName::WallDay),
+            wall_sec: self.param(&node, ParamName::WallSec),
+            tune: self.param(&node, ParamName::Tune),
+            energy: self.param(&node, ParamName::Energy),
+            node,
+        }
+    }
+
     pub fn create_analyser(&self) -> AnalyserNode {
         AnalyserNode {
             node: self.new_node(NodeKind::Analyser, None),
@@ -2057,6 +2114,24 @@ pub struct ExhaustNode {
     pub preset: AudioParam,
 }
 
+/// The radio's node ([`AudioContext::create_radio`]): `mp_music`'s station
+/// player, driven by k-rate params read once per block (drive them with
+/// `set_value_at_time`). `station` is an index in
+/// `mp_music::radio::STATIONS` (-1: off); `wall_day` and `wall_sec` are
+/// the wall time at the moment of tuning (days since the Unix epoch and
+/// seconds into the day: an f32 cannot hold Unix seconds); a change of
+/// `tune` (a serial) re-syncs the player to that time, even on the same
+/// station; `energy` (0..1) is the game's intensity. From then on the
+/// processor keeps the station's schedule on its own clock.
+pub struct RadioNode {
+    node: Node,
+    pub station: AudioParam,
+    pub wall_day: AudioParam,
+    pub wall_sec: AudioParam,
+    pub tune: AudioParam,
+    pub energy: AudioParam,
+}
+
 node_deref!(
     GainNode,
     BiquadFilterNode,
@@ -2068,7 +2143,8 @@ node_deref!(
     DelayNode,
     StereoPannerNode,
     AnalyserNode,
-    ExhaustNode
+    ExhaustNode,
+    RadioNode
 );
 
 // ── Buffers and waves ──────────────────────────────────────────────

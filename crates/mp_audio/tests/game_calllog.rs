@@ -271,6 +271,7 @@ fn replay(drive: &str) -> Run {
         })),
         audio_session: None,
         radio: Rc::new(DiskFetch),
+        dj: None,
         random: Rc::new(RefCell::new(mp_math::Mulberry32::new(1))),
     };
     let mut a = GameAudio::new(platform);

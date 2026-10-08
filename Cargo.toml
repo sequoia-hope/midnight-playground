@@ -22,6 +22,7 @@ mp_canvas = { path = "crates/mp_canvas" }
 mp_worldgen = { path = "crates/mp_worldgen" }
 mp_audio = { path = "crates/mp_audio" }
 mp_exhaust = { path = "crates/mp_exhaust" }
+mp_music = { path = "crates/mp_music" }
 mp_net = { path = "crates/mp_net" }
 mp_vdyn = { path = "crates/mp_vdyn" }
 # The CLI that post-processes the wasm must be this exact version;
@@ -52,6 +53,14 @@ opt-level = 3
 # The same on the web, where it is its own wasm in the AudioWorklet
 # (`cargo xtask web --release`): speed over size there.
 [profile.web-release.package.mp_exhaust]
+opt-level = 3
+
+# The radio's station player (the Music Lab's port) runs per sample on the
+# audio thread too: natively in a dev build, on the web as its own wasm.
+[profile.dev.package.mp_music]
+opt-level = 3
+
+[profile.web-release.package.mp_music]
 opt-level = 3
 
 # xtask's image metrics run over hundreds of screenshots.
