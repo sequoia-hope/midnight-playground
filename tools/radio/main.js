@@ -3,8 +3,17 @@
 // from a second copy of the wasm on the main thread (mpm_stations,
 // mpm_schedule), and the DJ's clips between songs as the game plays them.
 //
-//   music-worklet (mp-radio) ─ gain ─ analyser ─ out
+//   music-worklet (mp-radio) ─ gain ─ analyser ─ media stream ─ <audio>
 //   dj clip (AudioBufferSource) ─ gain ──┘   (ducks the station)
+//
+// It plays like a music app (radio.md 7): the graph ends in an <audio>
+// element playing a MediaStream, not the context's destination, so the
+// browser treats the page as media: it keeps playing with the screen
+// locked and the app in the background, the Silent switch does not mute
+// it, and the lock screen and the notification shade show the station and
+// the song with play, pause and next. The Media Session API carries the
+// metadata and the controls; `navigator.audioSession` asks iOS for a
+// playback session before the context exists.
 
 const $ = (id) => document.getElementById(id);
 const status = (html, err = false) => { $('status').innerHTML = html; $('status').classList.toggle('err', err); };
@@ -35,13 +44,18 @@ async function loadInfo() {
 }
 
 // ── Audio ────────────────────────────────────────────────────────
-let ctx = null, node = null, gain = null, stationGain = null, analyser = null, module = null;
+let ctx = null, node = null, gain = null, stationGain = null, analyser = null, module = null, out = null;
 let station = -1, serial = 0;
+// The station to come back to on play, and the one remembered between visits.
+const STORE = 'radio.station';
+let last = 0;
 async function ensureAudio() {
   if (ctx) return;
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) throw new Error('this browser has no Web Audio');
   if (!window.isSecureContext || !window.AudioWorkletNode) throw new Error('AudioWorklet needs a secure page (https or localhost): open this through the tailnet https address');
+  // iOS: a playback session (music), not ambient sound, before the context.
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* older Safari */ }
   const ac = new AC({ latencyHint: 'playback' });
   await ac.audioWorklet.addModule(await find('music-worklet.js'));
   module = await WebAssembly.compileStreaming(fetch(await find('mp_music.wasm')));
@@ -49,10 +63,36 @@ async function ensureAudio() {
   stationGain = ac.createGain(); // the DJ ducks this one
   gain = ac.createGain(); gain.gain.value = Number($('vol').value);
   analyser = ac.createAnalyser(); analyser.fftSize = 1024;
-  node.connect(stationGain); stationGain.connect(gain); gain.connect(analyser); analyser.connect(ac.destination);
+  node.connect(stationGain); stationGain.connect(gain); gain.connect(analyser);
+  // Out through a media element (see the top): the page is a music app.
+  const el = $('out');
+  if (ac.createMediaStreamDestination && el && 'srcObject' in el) {
+    const dest = ac.createMediaStreamDestination();
+    analyser.connect(dest);
+    el.srcObject = dest.stream;
+    out = el;
+  } else {
+    analyser.connect(ac.destination);
+  }
   ctx = ac;
+  mediaActions();
+}
+// Falls back to the context's own output if the element will not play.
+async function playOut() {
+  if (!out) return;
+  try { await out.play(); } catch (e) {
+    console.warn('media element', e);
+    analyser.connect(ctx.destination);
+    out = null;
+  }
 }
 document.addEventListener('click', () => { if (ctx && ctx.state !== 'running') ctx.resume(); }, { capture: true });
+// Back from the lock screen or another app: the context may have been
+// interrupted (iOS says so with a state of its own); pick it up again.
+const wake = () => { if (ctx && station >= 0 && ctx.state !== 'running') { ctx.resume(); playOut(); } };
+document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
+window.addEventListener('pageshow', wake);
+window.addEventListener('focus', wake);
 
 const wallNow = () => Date.now() / 1000;
 
@@ -62,6 +102,7 @@ async function tune(i) {
     await ctx.resume();
   } catch (e) { status('Audio failed: ' + e.message, true); console.error(e); return; }
   station = i;
+  if (i >= 0) { last = i; try { localStorage.setItem(STORE, info.stations[i].key); } catch { /* private mode */ } }
   serial++;
   const t = ctx.currentTime;
   const wall = wallNow();
@@ -74,10 +115,16 @@ async function tune(i) {
   p.get('energy').setValueAtTime(Number($('energy').value), t);
   lastSlot = null;
   djDue = i >= 0 && Math.random() < 0.5 ? wall + 2 : null;
+  if (i >= 0) await playOut(); else out?.pause();
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = i >= 0 ? 'playing' : 'paused';
   buildDial();
   refresh(true);
   status(i >= 0 ? `Tuned to <b>${info.stations[i].name} ${info.stations[i].freq}</b>.` : 'Off.');
 }
+// The player's buttons: play comes back to the last station (live: the
+// song has moved on), pause is off, next and previous step the dial.
+const step = (d) => tune((last + d + info.stations.length) % info.stations.length);
+const toggle = () => tune(station >= 0 ? -1 : last);
 
 function buildDial() {
   const el = $('dial');
@@ -90,12 +137,69 @@ function buildDial() {
     el.append(b);
   });
   $('off').className = station < 0 && ctx ? 'on' : '';
+  $('play').textContent = station >= 0 ? '❚❚' : '▶';
+  $('play').setAttribute('aria-label', station >= 0 ? 'Pause' : 'Play');
+  $('play').title = station >= 0 ? 'Pause (space)' : `Play ${info.stations[last].name} (space)`;
 }
 $('off').onclick = () => tune(-1);
+$('play').onclick = toggle;
+$('prev').onclick = () => step(-1);
+$('next').onclick = () => step(1);
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.code === 'Space') { e.preventDefault(); toggle(); } else if (e.code === 'ArrowRight' || e.code === 'KeyT') step(1); else if (e.code === 'ArrowLeft') step(-1);
+});
+
+// ── The lock screen: Media Session ───────────────────────────────
+const art = {};
+// A tile per station for the lock screen: the station's name and
+// frequency on the dial's dark, drawn once.
+function artwork(st) {
+  if (art[st.key]) return art[st.key];
+  const c = document.createElement('canvas'); c.width = c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#0d0f14'; g.fillRect(0, 0, 512, 512);
+  const glow = g.createRadialGradient(256, 330, 20, 256, 330, 300);
+  glow.addColorStop(0, 'rgba(255,61,127,0.35)'); glow.addColorStop(1, 'rgba(255,61,127,0)');
+  g.fillStyle = glow; g.fillRect(0, 0, 512, 512);
+  g.strokeStyle = '#e6e9ee'; g.lineWidth = 10; g.lineCap = 'round';
+  g.beginPath(); g.arc(256, 340, 180, Math.PI * 1.1, Math.PI * 1.9); g.stroke();
+  g.strokeStyle = '#ff3d7f'; g.lineWidth = 14;
+  const a = Math.PI * (1.1 + 0.8 * (parseFloat(st.freq) - 87) / 21);
+  g.beginPath(); g.moveTo(256, 340); g.lineTo(256 + 185 * Math.cos(a), 340 + 185 * Math.sin(a)); g.stroke();
+  g.fillStyle = '#ff3d7f'; g.beginPath(); g.arc(256, 340, 16, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#e6e9ee'; g.textAlign = 'center';
+  g.font = 'bold 54px ui-sans-serif, system-ui, sans-serif'; g.fillText(st.name, 256, 420);
+  g.font = '36px ui-sans-serif, system-ui, sans-serif'; g.fillStyle = '#8b94a3'; g.fillText(st.freq, 256, 468);
+  const url = c.toDataURL('image/png');
+  art[st.key] = [{ src: url, sizes: '512x512', type: 'image/png' }];
+  return art[st.key];
+}
+let mediaSlot = null;
+function mediaUpdate(st, s, into) {
+  if (!('mediaSession' in navigator)) return;
+  const ms = navigator.mediaSession;
+  const slot = `${station}:${s.title}`;
+  if (slot !== mediaSlot) {
+    mediaSlot = slot;
+    ms.metadata = new MediaMetadata({ title: s.title, artist: `${st.name} ${st.freq}`, album: s.style, artwork: artwork(st) });
+  }
+  try { ms.setPositionState({ duration: s.secs, position: Math.max(0, Math.min(into, s.secs)), playbackRate: 1 }); } catch { /* not everywhere */ }
+}
+function mediaActions() {
+  if (!('mediaSession' in navigator)) return;
+  const ms = navigator.mediaSession;
+  const on = (name, f) => { try { ms.setActionHandler(name, f); } catch { /* not supported here */ } };
+  on('play', () => tune(last));
+  on('pause', () => tune(-1));
+  on('stop', () => tune(-1));
+  on('nexttrack', () => step(1));
+  on('previoustrack', () => step(-1));
+}
 
 function bindRange(el, fmt, on) {
-  const out = el.parentElement.querySelector('output');
-  const show = () => { out.textContent = fmt(Number(el.value)); };
+  const out_ = el.parentElement.querySelector('output');
+  const show = () => { out_.textContent = fmt(Number(el.value)); };
   el.addEventListener('input', () => { show(); on?.(Number(el.value)); });
   show();
 }
@@ -108,7 +212,7 @@ let lastSlot = null, lastSec = -1, sched = null;
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 function refresh(force = false) {
   if (!info || station < 0) {
-    $('now').textContent = ctx ? 'Off' : '–'; $('nowSub').textContent = ''; $('prog').firstChild.style.width = '0';
+    $('now').textContent = ctx ? `Off · tap ▶ for ${info?.stations[last]?.name ?? 'the radio'}` : '–'; $('nowSub').textContent = ''; $('prog').firstChild.style.width = '0';
     $('clock').textContent = ''; $('prog-table').innerHTML = ''; $('blockNote').textContent = '';
     return;
   }
@@ -134,6 +238,7 @@ function refresh(force = false) {
     tr.innerHTML = `<td>${mmss(x.start)}</td><td>${x.title}</td><td>${x.style}</td><td class="r">${x.bpm.toFixed(1)}</td><td class="r">${mmss(x.secs)}</td>`;
     tb.append(tr);
   });
+  mediaUpdate(st, s, into);
   const slot = `${sched.block}:${sched.slot}`;
   if (lastSlot !== null && slot !== lastSlot && Math.random() < 0.35) djDue = wall;
   lastSlot = slot;
@@ -184,21 +289,28 @@ async function maybeDj(wall) {
 }
 
 // ── Level meter and the clock ────────────────────────────────────
+// The meter on frames; what is on (and the DJ, and the lock screen's
+// metadata) on a timer, which still runs with the screen off, where
+// frames do not.
 const data = new Float32Array(1024);
+let level = 0;
 function frame() {
   requestAnimationFrame(frame);
   if (analyser) {
     analyser.getFloatTimeDomainData(data);
     let p = 0; for (const v of data) p = Math.max(p, Math.abs(v));
+    level = p;
     $('meter').firstChild.style.width = Math.min(100, p * 120) + '%';
   }
-  refresh();
 }
 
 try {
   await loadInfo();
+  try { const k = localStorage.getItem(STORE); const i = info.stations.findIndex((s) => s.key === k); if (i >= 0) last = i; } catch { /* private mode */ }
   buildDial();
+  status(`Tap ▶ or a station to start${last ? `: last time it was ${info.stations[last].name}` : ''}.`);
   await loadDj();
   requestAnimationFrame(frame);
+  setInterval(refresh, 1000);
 } catch (e) { status(e.message, true); console.error(e); }
-window.radio = { tune, get station() { return station; }, get schedule() { return sched; }, get ctx() { return ctx; } };
+window.radio = { tune, step, toggle, get station() { return station; }, get schedule() { return sched; }, get ctx() { return ctx; }, get out() { return out; }, get level() { return level; } };
