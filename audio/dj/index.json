@@ -1,0 +1,753 @@
+{
+ "clips": {
+  "kit-ads-1": {
+   "takes": 1,
+   "text": "Ridgeline Radio is brought to you by nobody, because we are illegal. But if we had a sponsor, it would be Summit Gas and Bait. Gas. Bait. Do not mix them up.",
+   "voice": "kit-bright"
+  },
+  "kit-ads-2": {
+   "takes": 1,
+   "text": "Skyline Garage. They'll fix your car at two in the morning. They'll ask no questions. They'll charge you for not asking.",
+   "voice": "kit-bright"
+  },
+  "kit-ads-3": {
+   "takes": 1,
+   "text": "The Redwood Coffee Cart, at the vista point from five a.m. Fuel for people who made poor decisions in the forest. Which is all of us.",
+   "voice": "kit-bright"
+  },
+  "kit-ads-4": {
+   "takes": 1,
+   "text": "Need new tyres? Need them now? Need them without a receipt? Tony's. Behind the fire station. Knock twice.",
+   "voice": "kit-bright"
+  },
+  "kit-banter-1": {
+   "takes": 1,
+   "text": "Marisol's on eighty-eight one playing a nine-minute disco edit for the third time tonight. Babe. Respectfully. Pick a tempo.",
+   "voice": "kit-bright"
+  },
+  "kit-banter-2": {
+   "takes": 1,
+   "text": "Marisol says I should drink more water. Marisol is correct. I hate it here.",
+   "voice": "kit-bright"
+  },
+  "kit-banter-3": {
+   "takes": 1,
+   "text": "Love you, Marisol. Your station is the smoothest thing on the coast, and I mean that as an insult and a compliment.",
+   "voice": "kit-bright"
+  },
+  "kit-banter-4": {
+   "takes": 1,
+   "text": "Okay, earlier I said Marisol plays music for people who've never been tired. That was mean, and also wrong, because she's always tired, mostly of people like me. Sorry, Marisol. Here's a slow one. For you. Don't get used to it.",
+   "voice": "kit-bright"
+  },
+  "kit-callers-1": {
+   "takes": 1,
+   "text": "Got a text: Kit, play something for the delivery drivers. Every song tonight is for the delivery drivers. You're the real night crew.",
+   "voice": "kit-bright"
+  },
+  "kit-callers-2": {
+   "takes": 1,
+   "text": "This one's for Danny, whose car broke down on the ridge and who now, apparently, lives here. Welcome, neighbour.",
+   "voice": "kit-bright"
+  },
+  "kit-callers-3": {
+   "takes": 1,
+   "text": "Shout-out to the tow truck guy who keeps rescuing people off Skyline. Absolute angel. Wears a terrible hat.",
+   "voice": "kit-bright"
+  },
+  "kit-callers-4": {
+   "takes": 1,
+   "text": "Somebody wants a dedication to, quote, whoever I'm going to be. I love that. Turn it up for them.",
+   "voice": "kit-bright"
+  },
+  "kit-callers-5": {
+   "takes": 1,
+   "text": "A caller just told me my station is just noise. Okay, first of all, it's curated noise. Second, wow, rude. Third, actually, are you okay? You sound like you're having a night. This one's for you. Even though you're wrong.",
+   "voice": "kit-bright"
+  },
+  "kit-callers-6": {
+   "takes": 1,
+   "text": "Earlier I yelled at a guy in the summit lot for revving his engine at the owls. He's here now. He brought me a coffee. We're friends. The owls remain unimpressed.",
+   "voice": "kit-bright"
+  },
+  "kit-camping-1": {
+   "takes": 1,
+   "text": "Camping spot of the week: the clearing above the creek, off the old logging road. Flat ground, no cell signal, owls. Perfect.",
+   "voice": "kit-bright"
+  },
+  "kit-camping-2": {
+   "takes": 1,
+   "text": "If you sleep in your car at the summit, crack a window. The fog gets in either way, but at least it's invited.",
+   "voice": "kit-bright"
+  },
+  "kit-camping-3": {
+   "takes": 1,
+   "text": "Best camping hack: park facing east. Wake up to the sunrise through the windshield. Feel like you're in a movie. Feel cold. Mostly cold.",
+   "voice": "kit-bright"
+  },
+  "kit-camping-4": {
+   "takes": 1,
+   "text": "There's a beach north of town where you can camp right by the water, and the sea lions bark all night. Bring earplugs. Or don't. Join the choir.",
+   "voice": "kit-bright"
+  },
+  "kit-ident-1": {
+   "takes": 1,
+   "text": "Ridgeline Radio! Broadcasting from a van, on a hill, in the fog, on a frequency the government would prefer we didn't.",
+   "voice": "kit-bright"
+  },
+  "kit-ident-2": {
+   "takes": 1,
+   "text": "You've found Ridgeline. Don't tell anyone. Actually, tell everyone. Actually, I don't know, use your judgment.",
+   "voice": "kit-bright"
+  },
+  "kit-ident-3": {
+   "takes": 1,
+   "text": "Ridgeline Radio, live from Skyline, somewhere between a redwood and a bad idea.",
+   "voice": "kit-bright"
+  },
+  "kit-ident-4": {
+   "takes": 1,
+   "text": "If this sounds crunchy, that's not your speakers, that's my antenna, which is a coat hanger. Ridgeline Radio!",
+   "voice": "kit-bright"
+  },
+  "kit-ident-5": {
+   "takes": 1,
+   "text": "This is Kit. This is Ridgeline. This is a hundred and seventy-four beats per minute. Hold on.",
+   "voice": "kit-bright"
+  },
+  "kit-morning-1": {
+   "takes": 1,
+   "text": "Gooooooood MORNING, Ridgeline!\n\nIt is six a.m., I have not been to sleep, the fog is so thick I can't see the end of my own van, and I have never been more alive. Or less alive. One of those.\n\nIf you're driving to work right now, I salute you. If you're driving home from the forest right now, I am you. We are the same. Drink some water.\n\nThis is Ridgeline Radio, and we are still going. Somehow.",
+   "voice": "kit-bright"
+  },
+  "kit-morning-2": {
+   "takes": 1,
+   "text": "Good morning? Is it morning? The birds say it's morning. The birds are being very loud about it.",
+   "voice": "kit-bright"
+  },
+  "kit-morning-3": {
+   "takes": 1,
+   "text": "Morning, everybody. I'm running on gas station coffee and the memory of a bassline. That's a full breakfast.",
+   "voice": "kit-bright"
+  },
+  "kit-morning-4": {
+   "takes": 1,
+   "text": "It's Monday. I know it's Monday because my body filed a formal complaint.",
+   "voice": "kit-bright"
+  },
+  "kit-music-1": {
+   "takes": 1,
+   "text": "This next one's techno. Not the nice kind. The kind that looks at you.",
+   "voice": "kit-bright"
+  },
+  "kit-music-2": {
+   "takes": 1,
+   "text": "Okay, okay, okay, here comes the drop. Are you on a straight? Get on a straight. Okay. Now.",
+   "voice": "kit-bright"
+  },
+  "kit-music-3": {
+   "takes": 1,
+   "text": "That track was made by a teenager in a bedroom in Fremont, and it's better than everything on the actual radio. Respect the bedroom.",
+   "voice": "kit-bright"
+  },
+  "kit-music-4": {
+   "takes": 1,
+   "text": "Breakbeat, for the twisty bits. You'll thank me on the way down.",
+   "voice": "kit-bright"
+  },
+  "kit-music-5": {
+   "takes": 1,
+   "text": "I've played this one four times tonight. I'll play it four more. It's my van.",
+   "voice": "kit-bright"
+  },
+  "kit-night-1": {
+   "takes": 1,
+   "text": "Sometimes I just sit up here and listen to the cars go by on the ridge, and think, everybody's going somewhere. Even me. Eventually.",
+   "voice": "kit-bright"
+  },
+  "kit-night-2": {
+   "takes": 1,
+   "text": "Nobody up here has it figured out. That's why we're up here.",
+   "voice": "kit-bright"
+  },
+  "kit-night-3": {
+   "takes": 1,
+   "text": "Drive like you're figuring something out. Because you probably are.",
+   "voice": "kit-bright"
+  },
+  "kit-night-4": {
+   "takes": 1,
+   "text": "The fog makes everything feel like a secret. Even you. Especially you.",
+   "voice": "kit-bright"
+  },
+  "kit-offair-1": {
+   "takes": 1,
+   "text": "Hiked the ridge trail at sunrise. Found a patch of redwood sorrel the size of a parking lot. Little clover hearts everywhere. I lay down in it. I'm not sorry.",
+   "voice": "kit-bright"
+  },
+  "kit-offair-2": {
+   "takes": 1,
+   "text": "Plant fact for the drive: the redwoods drink the fog. Straight through their needles. That's why it drips up here. The trees are sipping and spilling. Same.",
+   "voice": "kit-bright"
+  },
+  "kit-offair-3": {
+   "takes": 1,
+   "text": "If you're hiking this weekend, stay on the trail. The moss took a hundred years. You took four minutes. Show some respect.",
+   "voice": "kit-bright"
+  },
+  "kit-offair-4": {
+   "takes": 1,
+   "text": "Made a new antenna today out of a coat hanger, a cake tin and pure spite. You're hearing it right now. You're welcome, science.",
+   "voice": "kit-bright"
+  },
+  "kit-offair-5": {
+   "takes": 1,
+   "text": "I've been printing stickers in the van. Little mushrooms. Little pelicans. If you see one on a road sign, that wasn't me. It was me.",
+   "voice": "kit-bright"
+  },
+  "kit-offair-6": {
+   "takes": 1,
+   "text": "Someone left a fern on my windshield with a note that said, for the van. Whoever you are, she's thriving. Her name is Gerald.",
+   "voice": "kit-bright"
+  },
+  "kit-offair-7": {
+   "takes": 1,
+   "text": "Wildflowers are coming up along the fire road. Purple ones, orange ones, the ones that smell like honey. Do not pick them. I will find you. Kindly. But I will.",
+   "voice": "kit-bright"
+  },
+  "kit-offair-8": {
+   "takes": 1,
+   "text": "Vegan tip for the ridge: the taco truck at the bottom of 84 does a mushroom thing on Thursdays that will change your life. Don't tell them I sent you. Actually, do.",
+   "voice": "kit-bright"
+  },
+  "kit-places-1": {
+   "takes": 1,
+   "text": "If you're coming down the redwood road tonight, hug the inside on the hairpins. The road. Not the trees. Don't hug the trees, they're wet.",
+   "voice": "kit-bright"
+  },
+  "kit-places-2": {
+   "takes": 1,
+   "text": "Shout-out to whoever keeps leaving their headlights on in the summit lot. Your battery says hi. Your battery says goodbye.",
+   "voice": "kit-bright"
+  },
+  "kit-places-3": {
+   "takes": 1,
+   "text": "The view from the vista point at three in the morning is the whole bay just glittering. Go look. Then drive away from it carefully.",
+   "voice": "kit-bright"
+  },
+  "kit-places-4": {
+   "takes": 1,
+   "text": "There's a dirt road behind the old fire station that nobody uses. I'm not saying use it. I'm saying it exists.",
+   "voice": "kit-bright"
+  },
+  "kit-player-1": {
+   "takes": 1,
+   "text": "Who is in the black three thousand G T? Because you just took the Skyline record, and the whole comment section of my brain is screaming.",
+   "voice": "kit-bright"
+  },
+  "kit-player-2": {
+   "takes": 1,
+   "text": "That red Firebird is back! T-tops off! In this fog! Absolute legend, absolute menace.",
+   "voice": "kit-bright"
+  },
+  "kit-player-3": {
+   "takes": 1,
+   "text": "Somebody just lost the cops on the redwood road, and the scanner went completely silent. That's the sound of respect.",
+   "voice": "kit-bright"
+  },
+  "kit-player-4": {
+   "takes": 1,
+   "text": "You again! You're on my frequency every night. At this point you're basically my co-host. Say something. Oh, right, you can't. That's fine.",
+   "voice": "kit-bright"
+  },
+  "kit-player-5": {
+   "takes": 1,
+   "text": "New record on the coast road. Ten seconds faster. Ten! What are you running on? Don't tell me. Tell me.",
+   "voice": "kit-bright"
+  },
+  "kit-raves-1": {
+   "takes": 1,
+   "text": "Forest party this Saturday, out past the state park. Follow the bass. If you get lost, you're doing it right.",
+   "voice": "kit-bright"
+  },
+  "kit-raves-2": {
+   "takes": 1,
+   "text": "Just got back from the thing in the redwoods. The sound system was in a tree. I don't know how. Nobody knows how.",
+   "voice": "kit-bright"
+  },
+  "kit-raves-3": {
+   "takes": 1,
+   "text": "Reminder for the weekend: the party's in the forest, the forest is dry, so no fire. Glow sticks only. Be cool.",
+   "voice": "kit-bright"
+  },
+  "kit-raves-4": {
+   "takes": 1,
+   "text": "Last night I danced until the sun came up, then I danced at the sun for a bit, then I fell asleep in a hammock that wasn't mine. Thank you to the hammock owner.",
+   "voice": "kit-bright"
+  },
+  "kit-scene-1": {
+   "takes": 1,
+   "text": "Scanner says two Highway Patrol units are parked at the bottom of 92 doing their little stakeout. Love that for them. Take the long way.",
+   "voice": "kit-bright"
+  },
+  "kit-scene-2": {
+   "takes": 1,
+   "text": "Meet tonight at the summit lot. Bring your car, bring your friends, bring snacks, do not bring drama.",
+   "voice": "kit-bright"
+  },
+  "kit-scene-3": {
+   "takes": 1,
+   "text": "Somebody just went past my van so fast my coffee rippled. Was that you? That was you. Respect.",
+   "voice": "kit-bright"
+  },
+  "kit-scene-4": {
+   "takes": 1,
+   "text": "Okay, the scanner's getting chatty. Lots of units heading for the coast road. Which means the ridge is wide open. I'm just reading the news.",
+   "voice": "kit-bright"
+  },
+  "kit-scene-5": {
+   "takes": 1,
+   "text": "Rumour on the ridge: there's a crew from the city coming down this weekend to take the Skyline record. Defend your mountain.",
+   "voice": "kit-bright"
+  },
+  "kit-scene-6": {
+   "takes": 1,
+   "text": "To the guy who called me a menace on the forum: I read it. I was mad. I'm less mad now. I'm still a menace. But I'm a menace who hopes your week gets better.",
+   "voice": "kit-bright"
+  },
+  "kit-scene-7": {
+   "takes": 1,
+   "text": "Okay. Alice's Restaurant, Skyline and 84, this Sunday, everybody's going. You can get anything you want at Alice's Restaurant. Except a hearty vegan meal. I've checked. I've checked many times. I'm bringing a sandwich.",
+   "voice": "kit-bright"
+  },
+  "kit-scene-8": {
+   "takes": 1,
+   "text": "Overheard at Alice's this morning: two guys arguing about tyre pressure for forty-five minutes. I said, have you tried just driving? They did not appreciate that. I apologised. Mostly.",
+   "voice": "kit-bright"
+  },
+  "kit-scene-9": {
+   "takes": 1,
+   "text": "Rumour from Alice's: somebody parked a black three thousand G T out front last night, left the engine ticking, and vanished up Skyline before anyone could ask. Mysterious. Love it.",
+   "voice": "kit-bright"
+  },
+  "kit-tired-1": {
+   "takes": 1,
+   "text": "I'm so tired I just introduced the same song twice. You know what? It deserved it.",
+   "voice": "kit-bright"
+  },
+  "kit-tired-2": {
+   "takes": 1,
+   "text": "Haven't slept since Friday. Not a flex. A medical concern. Here's some ambient.",
+   "voice": "kit-bright"
+  },
+  "kit-tired-3": {
+   "takes": 1,
+   "text": "My legs are still at the party. The rest of me is in the van. We're working on a reunion.",
+   "voice": "kit-bright"
+  },
+  "kit-tired-4": {
+   "takes": 1,
+   "text": "If I sound rough, it's because I am rough. I'm a rough draft of a person right now. Play the hits.",
+   "voice": "kit-bright"
+  },
+  "kit-weather-1": {
+   "takes": 1,
+   "text": "The fog on Skyline is absolutely biblical right now. I put my hand out the window and lost it. Found it. It's fine.",
+   "voice": "kit-bright"
+  },
+  "kit-weather-2": {
+   "takes": 1,
+   "text": "The trees are dripping so hard up here it sounds like rain on the van roof. It's not raining. The forest is just sweaty.",
+   "voice": "kit-bright"
+  },
+  "kit-weather-3": {
+   "takes": 1,
+   "text": "Wind's coming over the ridge and my antenna is doing a little dance. If I cut out, that's why. If I come back, that's also why.",
+   "voice": "kit-bright"
+  },
+  "kit-weather-4": {
+   "takes": 1,
+   "text": "Clear skies down on the bay side, fog up top. Basically the mountain's wearing a hat.",
+   "voice": "kit-bright"
+  },
+  "kit-weather-5": {
+   "takes": 1,
+   "text": "The sun is coming up over the reservoir, it's pink, it's gold, it's too much, I'm emotional, here's a banger.",
+   "voice": "kit-bright"
+  },
+  "marisol-ads-1": {
+   "takes": 1,
+   "text": "This hour of The Tide is brought to you by Half Moon Fuel and Snacks. Open twenty-four hours. The coffee is bad. The coffee is always there.",
+   "voice": "marisol-warm"
+  },
+  "marisol-ads-2": {
+   "takes": 1,
+   "text": "Coastside Car Wash. We get the salt off. We get the fog off. We cannot get the bad decisions off. Exit right after the harbour.",
+   "voice": "marisol-warm"
+  },
+  "marisol-ads-3": {
+   "takes": 1,
+   "text": "Abuela's Tacos, on the coast road by the farms. Open late, cash only, and yes, they know who you are.",
+   "voice": "marisol-warm"
+  },
+  "marisol-ads-4": {
+   "takes": 1,
+   "text": "Pumpkin season at Fernandez Farms. Pick your own. Please do not drift in the parking lot. They have asked twice.",
+   "voice": "marisol-warm"
+  },
+  "marisol-banter-1": {
+   "takes": 1,
+   "text": "Kit's on the pirate frequency again, up on Skyline. If you can hear her through the static, tell her to drink some water.",
+   "voice": "marisol-warm"
+  },
+  "marisol-banter-2": {
+   "takes": 1,
+   "text": "Somebody up on the ridge is playing drum and bass at a hundred and seventy-four beats per minute. At this hour. That's Kit. That's always Kit.",
+   "voice": "marisol-warm"
+  },
+  "marisol-banter-3": {
+   "takes": 1,
+   "text": "Kit said on air that I play music for people who own linen. I do. It breathes.",
+   "voice": "marisol-warm"
+  },
+  "marisol-callers-1": {
+   "takes": 1,
+   "text": "This one's for Rosa, on the night shift at the hospital, driving home over 92. You did good tonight.",
+   "voice": "marisol-warm"
+  },
+  "marisol-callers-2": {
+   "takes": 1,
+   "text": "Going out to the baker on Main Street, who starts at four and leaves the back door open so the whole block smells like bread. Hero.",
+   "voice": "marisol-warm"
+  },
+  "marisol-callers-3": {
+   "takes": 1,
+   "text": "A caller says, Marisol, my car makes a noise. Darling, they all make a noise. That's how you know they're alive.",
+   "voice": "marisol-warm"
+  },
+  "marisol-callers-4": {
+   "takes": 1,
+   "text": "For the truck driver who flashes his lights at me every morning by the pumpkin farm. I see you, Hector.",
+   "voice": "marisol-warm"
+  },
+  "marisol-callers-5": {
+   "takes": 1,
+   "text": "A request from someone who signed it, still figuring it out. Aren't we all. This is for you.",
+   "voice": "marisol-warm"
+  },
+  "marisol-camping-1": {
+   "takes": 1,
+   "text": "If you need somewhere quiet this weekend, there's a campground above the reservoir with one spot where you can hear the whole valley wake up. I won't say which spot. Find it.",
+   "voice": "marisol-warm"
+  },
+  "marisol-camping-2": {
+   "takes": 1,
+   "text": "Camping advice from a grown woman: bring the good blanket. The cold comes off the ocean at three in the morning, and it does not care about your plans.",
+   "voice": "marisol-warm"
+  },
+  "marisol-ident-1": {
+   "takes": 1,
+   "text": "You're on The Tide. Eighty-eight point one. Coastside, after dark.",
+   "voice": "marisol-warm"
+  },
+  "marisol-ident-2": {
+   "takes": 1,
+   "text": "Eighty-eight one, The Tide. I'm Marisol. Keep it between the lines. Mostly.",
+   "voice": "marisol-warm"
+  },
+  "marisol-ident-3": {
+   "takes": 1,
+   "text": "This is The Tide. We don't do hits. We do the long version.",
+   "voice": "marisol-warm"
+  },
+  "marisol-ident-4": {
+   "takes": 1,
+   "text": "Eighty-eight point one. If you can hear me, you're west of the ridge, and you're up too late. Same.",
+   "voice": "marisol-warm"
+  },
+  "marisol-ident-5": {
+   "takes": 1,
+   "text": "The Tide. Deep house for the coast road, and for whoever's still awake on it.",
+   "voice": "marisol-warm"
+  },
+  "marisol-morning-1": {
+   "takes": 1,
+   "text": "Good morning, coastside.\n\nIt is five fifty-two. The fog is sitting on the harbour like it pays rent there, the pelicans are already at work, and somebody parked a very loud car outside the bakery. You know who you are.\n\nIf you're just waking up, welcome. If you never went to bed, I see you, and I'm not telling anyone.\n\nThis is The Tide, eighty-eight point one. Coffee's on. Let's go to work.",
+   "voice": "marisol-warm"
+  },
+  "marisol-morning-2": {
+   "takes": 1,
+   "text": "Good morning. It's Monday. If you need me today, I'm in at eleven. If you really need me, ten. Let's not make it ten.",
+   "voice": "marisol-warm"
+  },
+  "marisol-morning-3": {
+   "takes": 1,
+   "text": "Morning, everyone. The sun is up somewhere behind the hill. We'll take its word for it.",
+   "voice": "marisol-warm"
+  },
+  "marisol-morning-4": {
+   "takes": 1,
+   "text": "Six a.m. on The Tide. The night shift is driving home, the day shift is driving in, and for about ten minutes on Highway 1, everyone's equally tired.",
+   "voice": "marisol-warm"
+  },
+  "marisol-music-1": {
+   "takes": 1,
+   "text": "That was eleven minutes long, and I'm not apologising. Here's another one.",
+   "voice": "marisol-warm"
+  },
+  "marisol-music-2": {
+   "takes": 1,
+   "text": "Something slow to start. Let the kick come in on its own time.",
+   "voice": "marisol-warm"
+  },
+  "marisol-music-3": {
+   "takes": 1,
+   "text": "Back to back, two records that have no business working together. They do.",
+   "voice": "marisol-warm"
+  },
+  "marisol-music-4": {
+   "takes": 1,
+   "text": "That one's from a basement in Oakland, nineteen ninety-four. Still the best thing to come out of that side of the bay.",
+   "voice": "marisol-warm"
+  },
+  "marisol-music-5": {
+   "takes": 1,
+   "text": "If your windows are down, turn this up. If they're up, roll them down first.",
+   "voice": "marisol-warm"
+  },
+  "marisol-music-6": {
+   "takes": 1,
+   "text": "Coming up, a little disco. Don't make that face.",
+   "voice": "marisol-warm"
+  },
+  "marisol-night-1": {
+   "takes": 1,
+   "text": "There's a version of you that only exists on this road, at this hour. Be kind to that one.",
+   "voice": "marisol-warm"
+  },
+  "marisol-night-2": {
+   "takes": 1,
+   "text": "Nobody knows where you're going tonight. Maybe including you. That's allowed.",
+   "voice": "marisol-warm"
+  },
+  "marisol-night-3": {
+   "takes": 1,
+   "text": "Twenty years I've driven this coast, and I'm still not who I'm going to be. I find that comforting.",
+   "voice": "marisol-warm"
+  },
+  "marisol-night-4": {
+   "takes": 1,
+   "text": "Some nights the drive is the whole point. You don't have to arrive anywhere.",
+   "voice": "marisol-warm"
+  },
+  "marisol-night-5": {
+   "takes": 1,
+   "text": "Whoever you were when you got in the car, you're a little different by the bottom of the hill. That's the job of a good road.",
+   "voice": "marisol-warm"
+  },
+  "marisol-offair-1": {
+   "takes": 1,
+   "text": "Rode up 92 this morning before the show. Three cars passed me. Two of them waved. The third one is why I'm doing a traffic report about you.",
+   "voice": "marisol-warm"
+  },
+  "marisol-offair-2": {
+   "takes": 1,
+   "text": "Somebody asked how I stay sane doing nights. I ride up Skyline at dawn and come back down before the world wakes up. It's cheaper than therapy, and the hills don't interrupt.",
+   "voice": "marisol-warm"
+  },
+  "marisol-offair-3": {
+   "takes": 1,
+   "text": "Cyclists on the ridge this weekend. Give them the lane. One of them might be me, and I know where the transmitter is.",
+   "voice": "marisol-warm"
+  },
+  "marisol-offair-4": {
+   "takes": 1,
+   "text": "I took a photograph of the fog coming over the ridge this morning. It looked like the whole mountain was breathing out. I'll put it on the station wall with the others.",
+   "voice": "marisol-warm"
+  },
+  "marisol-offair-5": {
+   "takes": 1,
+   "text": "Best light on the coast is the ten minutes after the sun drops. Everything goes blue and the harbour lights come on. If you've got a camera, that's your window. If you've got a car, slow down and look.",
+   "voice": "marisol-warm"
+  },
+  "marisol-offair-6": {
+   "takes": 1,
+   "text": "I shoot on film, mostly. You get thirty-six chances and you have to mean every one. Same as a good set. Same as a good corner.",
+   "voice": "marisol-warm"
+  },
+  "marisol-offair-7": {
+   "takes": 1,
+   "text": "I've been photographing old cars parked along the coast for years. Rust, salt, sun-bleached paint. If yours is on the wall, you'll know. Come say hi.",
+   "voice": "marisol-warm"
+  },
+  "marisol-places-1": {
+   "takes": 1,
+   "text": "Pelicans off Highway 1 this evening, flying right alongside the cars. They're not racing you. They're just better at it.",
+   "voice": "marisol-warm"
+  },
+  "marisol-places-2": {
+   "takes": 1,
+   "text": "If you're heading north to Pacifica, the tunnel's empty tonight. Enjoy the echo. I know you will.",
+   "voice": "marisol-warm"
+  },
+  "marisol-places-3": {
+   "takes": 1,
+   "text": "The reservoir is like glass tonight. The only thing moving on it is the moon.",
+   "voice": "marisol-warm"
+  },
+  "marisol-places-4": {
+   "takes": 1,
+   "text": "Harbour lights are on, and the fishing boats are heading out. Somebody out there gets up earlier than me. Respect.",
+   "voice": "marisol-warm"
+  },
+  "marisol-places-5": {
+   "takes": 1,
+   "text": "The redwoods on the way down to the coast don't care how fast you're going. That's their whole thing. Learn from them.",
+   "voice": "marisol-warm"
+  },
+  "marisol-places-6": {
+   "takes": 1,
+   "text": "Rode my bike up to Alice's this morning. I was the slowest thing in the parking lot, and the only one who earned the pancakes.",
+   "voice": "marisol-warm"
+  },
+  "marisol-player-1": {
+   "takes": 1,
+   "text": "Somebody in a black three thousand G T just took the Skyline record. Whoever you are, that was rude to the previous holder. Good.",
+   "voice": "marisol-warm"
+  },
+  "marisol-player-2": {
+   "takes": 1,
+   "text": "Someone just did the coast road faster than the pelicans. I saw. Everyone saw.",
+   "voice": "marisol-warm"
+  },
+  "marisol-player-3": {
+   "takes": 1,
+   "text": "Quiet night, and then a silver Audi came through town like it owed somebody money. That one's for you.",
+   "voice": "marisol-warm"
+  },
+  "marisol-player-4": {
+   "takes": 1,
+   "text": "Last week you were losing to the orange rally car. This week the orange rally car is losing to you. Funny how that works.",
+   "voice": "marisol-warm"
+  },
+  "marisol-player-5": {
+   "takes": 1,
+   "text": "You've been driving all night. Nobody's keeping score but you. And me. A little.",
+   "voice": "marisol-warm"
+  },
+  "marisol-raves-1": {
+   "takes": 1,
+   "text": "Went to the thing in the redwoods on Saturday. Good sound system. Danced until the sun came up, slept in the car for an hour, and woke up in time to help with the load-out. Honestly, the best part. Quiet forest, coffee, a crew that knows what it's doing.",
+   "voice": "marisol-warm"
+  },
+  "marisol-raves-2": {
+   "takes": 1,
+   "text": "There's a gathering out past the state park this weekend. I'm not giving directions on air. If you need directions, you're not ready.",
+   "voice": "marisol-warm"
+  },
+  "marisol-raves-3": {
+   "takes": 1,
+   "text": "People ask if I still go out. Of course I go out. Where do you think I find the records?",
+   "voice": "marisol-warm"
+  },
+  "marisol-raves-4": {
+   "takes": 1,
+   "text": "Best set I heard all year was at sunrise, in a clearing, off a generator that kept cutting out. Every time it came back, the whole forest cheered.",
+   "voice": "marisol-warm"
+  },
+  "marisol-scene-1": {
+   "takes": 1,
+   "text": "Word is there's a meet at the summit lot tonight. I didn't say that. I'm a licensed broadcaster.",
+   "voice": "marisol-warm"
+  },
+  "marisol-scene-2": {
+   "takes": 1,
+   "text": "Highway Patrol has two units sitting at the bottom of 92. I mention this purely as a traffic report.",
+   "voice": "marisol-warm"
+  },
+  "marisol-scene-3": {
+   "takes": 1,
+   "text": "To whoever keeps running the coast road at two in the morning in something very loud: the farmers have asked me to say hello. Loudly.",
+   "voice": "marisol-warm"
+  },
+  "marisol-scene-4": {
+   "takes": 1,
+   "text": "I hear the Skyline record changed hands last night. I don't follow these things. It was a red Firebird. I don't follow these things.",
+   "voice": "marisol-warm"
+  },
+  "marisol-scene-5": {
+   "takes": 1,
+   "text": "Some of you treat the lights on Main Street as a starting signal. I'm not your mother. But I have met her.",
+   "voice": "marisol-warm"
+  },
+  "marisol-scene-6": {
+   "takes": 1,
+   "text": "Sunday morning at Alice's Restaurant, up at Skyline and 84. Two hundred motorcycles, forty Porsches, one very patient waitress. You can get anything you want there. Except a parking space.",
+   "voice": "marisol-warm"
+  },
+  "marisol-scene-7": {
+   "takes": 1,
+   "text": "People ask where the scene really starts. Not the summit lot. Alice's, at seven on a Sunday, coffee in one hand, somebody else's engine in your ears.",
+   "voice": "marisol-warm"
+  },
+  "marisol-tired-1": {
+   "takes": 1,
+   "text": "I'm tired, coastside. Not from dancing. From a meeting that could have been an email, about an email that could have been nothing.",
+   "voice": "marisol-warm"
+  },
+  "marisol-tired-2": {
+   "takes": 1,
+   "text": "Somebody at work said, let's circle back. We circled. We came back. Nothing had changed. Here's a record.",
+   "voice": "marisol-warm"
+  },
+  "marisol-tired-3": {
+   "takes": 1,
+   "text": "I'm not tired of the night. I'm tired of people who talk through it.",
+   "voice": "marisol-warm"
+  },
+  "marisol-tired-4": {
+   "takes": 1,
+   "text": "Long day. Other people's emergencies. Other people's nonsense. Other people's bullshit, if we're being precise. Anyway. Music.",
+   "voice": "marisol-warm"
+  },
+  "marisol-weather-1": {
+   "takes": 1,
+   "text": "The marine layer is in. Visibility on the coast road is about a song and a half. Drive accordingly.",
+   "voice": "marisol-warm"
+  },
+  "marisol-weather-2": {
+   "takes": 1,
+   "text": "Up on Skyline the fog is so thick the redwoods are dripping. It isn't raining. It just feels like it, which is honestly worse.",
+   "voice": "marisol-warm"
+  },
+  "marisol-weather-3": {
+   "takes": 1,
+   "text": "Clear tonight on the bay side. Fog on the coast. Pick your weather by picking your road.",
+   "voice": "marisol-warm"
+  },
+  "marisol-weather-4": {
+   "takes": 1,
+   "text": "Wind's coming up off the water. If you've got a soft top, now's the time to have opinions about it.",
+   "voice": "marisol-warm"
+  },
+  "marisol-weather-5": {
+   "takes": 1,
+   "text": "Full moon over the reservoir tonight. Worth pulling over for. Just pull over properly.",
+   "voice": "marisol-warm"
+  },
+  "marisol-weather-6": {
+   "takes": 1,
+   "text": "Sunrise in twenty minutes. If you're on 92, you're about to get the good view. You're welcome.",
+   "voice": "marisol-warm"
+  },
+  "marisol-weather-7": {
+   "takes": 1,
+   "text": "Fog's lifting off the beach right now in long, slow sheets. If I weren't on the air I'd be out there with a camera. Somebody go take the picture for me.",
+   "voice": "marisol-warm"
+  }
+ },
+ "voices": {
+  "kit": "kit-bright",
+  "marisol": "marisol-warm"
+ }
+}

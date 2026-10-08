@@ -37,9 +37,11 @@ If the long "good morning" lines (`marisol-morning-1`, `kit-morning-1`)
 come out garbled, they are already split into parts at their blank lines;
 split them further in `lines.json` and run `render.py` again.
 
-Commit `audio/dj/` and `tools/dj-voice/voices/` with the scripts when the
-owner is happy, as `audio/radio/` is; the clips are small (24 kHz mono, 64
-kbit/s MP3).
+`audio/dj/` and `tools/dj-voice/voices/` are committed (2026-10-08) with
+one take per line: the owner kept the second take of each render, as
+`<id>.mp3`, and `index.json` says `takes: 1`. The clips are small (24 kHz
+mono, 64 kbit/s MP3, 8.5 MB in all). Running `render.py` again adds the
+missing second takes back; commit only what the owner picks.
 
 ## For the owner
 
