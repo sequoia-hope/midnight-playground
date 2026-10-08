@@ -334,7 +334,11 @@ pub fn pause(
                 p,
                 &bp,
                 Control::act("btn-next-track", Act::NextTrack),
-                "Next track",
+                if ui.on_station {
+                    "Next station"
+                } else {
+                    "Next track"
+                },
                 Some(cx.icons.next.clone()),
                 f,
             );

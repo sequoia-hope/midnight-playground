@@ -390,6 +390,15 @@ pub struct Settings {
     /// `mr.classicEngine` (Rust only): the player's engine on the old
     /// wavetable voice instead of the physical exhaust model (D1110).
     pub classic_engine: bool,
+    /// `mr.station` (Rust only, D1151): the radio. `auto` (the level's
+    /// station), a station key (`mp_music::radio::STATIONS`), or
+    /// `playlist` (the seven arranged songs, as the JS game plays them).
+    pub station: String,
+}
+
+/// Whether a station setting is one the menu offers.
+pub fn station_ok(v: &str) -> bool {
+    v == "auto" || v == "playlist" || mp_music::radio::station(v).is_some()
 }
 
 impl Settings {
@@ -419,7 +428,11 @@ impl Settings {
             guide: store.string("guideLine", if touch_ui { "full" } else { "off" }),
             assist: store.string("steerAssist", if touch_ui { "light" } else { "off" }),
             classic_engine: store.bool("classicEngine", false),
+            station: store.string("station", "auto"),
         };
+        if !station_ok(&s.station) {
+            s.station = "auto".into();
+        }
         if !GUIDE.contains(&s.guide.as_str()) {
             s.guide = if touch_ui { "full" } else { "off" }.into();
         }
@@ -540,6 +553,7 @@ mod tests {
                 guide: "off".into(),
                 assist: "off".into(),
                 classic_engine: false,
+                station: "auto".into(),
             }
         );
         // Touch screens get lighter rendering by default, and the guide
@@ -566,6 +580,7 @@ mod tests {
             ("mr.guideLine", "\"brake\""),
             ("mr.steerAssist", "\"off\""),
             ("mr.classicEngine", "true"),
+            ("mr.station", "\"ridgeline\""),
         ]);
         let s = Settings::load(&store, true);
         assert_eq!(
@@ -588,12 +603,18 @@ mod tests {
                 guide: "brake".into(),
                 assist: "off".into(),
                 classic_engine: true,
+                station: "ridgeline".into(),
             }
         );
         // A choice the menu does not offer falls back to the default.
-        let store = seeded(&[("mr.guideLine", "\"rainbow\""), ("mr.steerAssist", "3")]);
+        let store = seeded(&[
+            ("mr.guideLine", "\"rainbow\""),
+            ("mr.steerAssist", "3"),
+            ("mr.station", "\"kzzz\""),
+        ]);
         let s = Settings::load(&store, false);
         assert_eq!((s.guide.as_str(), s.assist.as_str()), ("off", "off"));
+        assert_eq!(s.station, "auto");
     }
 
     /// `store.get(k, d)` gives `d` for a value that does not parse, as the

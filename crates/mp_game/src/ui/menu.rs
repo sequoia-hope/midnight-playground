@@ -120,6 +120,14 @@ pub fn select_options(sel: Sel, s: &Settings) -> (Vec<(String, String)>, String)
             ],
             s.assist.clone(),
         ),
+        Sel::Station => {
+            let mut o = vec![("auto".to_owned(), "Auto".to_owned())];
+            for st in mp_music::radio::STATIONS {
+                o.push((st.key.to_owned(), crate::play::station::label(st)));
+            }
+            o.push(("playlist".into(), "Playlist".into()));
+            (o, s.station.clone())
+        }
     }
 }
 
@@ -764,6 +772,7 @@ fn options(
     for (sel, label, value) in [
         (Sel::Guide, "Guide line", &s.guide),
         (Sel::Assist, "Steer assist", &s.assist),
+        (Sel::Station, "Radio", &s.station),
     ] {
         let id = super::sel_id(sel);
         let f = cx.f(id);

@@ -4386,6 +4386,7 @@ dependencies = [
  "mp_canvas",
  "mp_levels",
  "mp_math",
+ "mp_music",
  "mp_net",
  "mp_scene",
  "mp_sim",
