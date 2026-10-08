@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radio</title>
+<link rel="icon" href="data:,">
+<!--
+  Radio: the game's stations on a dial (docs/vision/radio.md 7). The same
+  station player the game runs (mp_music.wasm in music-worklet.js, built by
+  `cargo xtask web`) plays here through an AudioWorklet; a second copy of
+  the wasm on the main thread answers what is on (mpm_schedule), so the
+  page shows the song playing, how far it is, and the block's programme.
+  Stations run on the wall clock: tune away and back and the song has
+  moved on, and another device tuned here hears the same thing.
+-->
+<style>
+:root { --bg: #0d0f14; --card: #161a22; --line: #262c36; --fg: #e6e9ee; --muted: #8b94a3; --accent: #ff3d7f; --ok: #4dff8a; --low: #ffb84d; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; padding: 16px; }
+h1 { font-size: 1.25rem; margin: 0 0 6px; }
+h2 { font-size: 1rem; margin: 0 0 8px; }
+p { color: var(--muted); margin: 0 0 10px; max-width: 760px; }
+code { color: var(--fg); font-size: 13px; }
+button, select { background: #222834; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; font: inherit; font-size: 14px; }
+button:hover { border-color: var(--accent); }
+button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: 0.4; cursor: default; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#status { position: sticky; top: 0; z-index: 2; margin: 10px -16px 12px; padding: 8px 16px; background: var(--bg); border-bottom: 1px solid var(--line); color: var(--muted); }
+#status.err { color: #ff8a8a; }
+#status b { color: var(--fg); font-weight: 600; }
+.grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); max-width: 1100px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+.card.wide { grid-column: 1 / -1; }
+.dial { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin: 8px 0; }
+.dial button { padding: 14px 10px; text-align: left; line-height: 1.3; }
+.dial button small { display: block; color: var(--muted); font-size: 12px; }
+.dial button.on small { color: #ffd6e4; }
+.now { font-size: 1.1rem; margin: 6px 0 2px; }
+.now b { font-weight: 600; }
+.sub { color: var(--muted); font-size: 13px; }
+.bar { height: 8px; background: #0a0c10; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; margin: 8px 0; }
+.bar i { display: block; height: 100%; background: var(--accent); width: 0; }
+label.sl { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(90px, 2fr) 56px; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); padding: 1px 0; }
+label.sl output { color: var(--fg); text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+table { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; width: 100%; }
+th, td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+td.r, th.r { text-align: right; }
+tr.cur td { color: var(--ok); }
+tr.past td { color: var(--muted); }
+.clock { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }
+.meter { display: inline-block; width: 120px; height: 8px; background: #0a0c10; border: 1px solid var(--line); border-radius: 4px; vertical-align: middle; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--ok); width: 0; }
+#dj { color: var(--fg); font-size: 14px; min-height: 1.5em; }
+@media (max-width: 600px) { label.sl { grid-template-columns: 1fr 56px; } label.sl input { grid-column: 1 / -1; grid-row: 2; } }
+</style>
+</head>
+<body>
+<h1>Radio</h1>
+<p>The game's stations (<code>docs/vision/radio.md</code> 7): streams of generated music on the wall clock, in twenty-minute
+blocks, the same on every device. Tune away and back and the song has moved on. This is the player the game runs
+(<code>mp_music.wasm</code>), so what you hear here is what the car hears.</p>
+<div id="status">Tap a station to start.</div>
+
+<div class="grid">
+  <div class="card wide">
+    <h2>The dial</h2>
+    <div class="dial" id="dial"></div>
+    <div class="row">
+      <button id="off">Off</button>
+      <label class="sl" style="flex:1;min-width:220px">Volume <input type="range" id="vol" min="0" max="1" step="0.01" value="0.7"><output></output></label>
+      <label class="sl" style="flex:1;min-width:220px">Energy <input type="range" id="energy" min="0" max="1" step="0.01" value="1"><output></output></label>
+      <span class="sub">level <span class="meter" id="meter"><i></i></span></span>
+    </div>
+    <p style="margin-top:6px">Energy is what the game drives from the race (a pursuit, speed, a standstill): below full, layers drop out and the mix
+    closes down.</p>
+  </div>
+
+  <div class="card">
+    <h2>On now</h2>
+    <div class="now" id="now">–</div>
+    <div class="sub" id="nowSub"></div>
+    <div class="bar" id="prog"><i></i></div>
+    <div class="clock" id="clock"></div>
+    <div id="dj"></div>
+    <label class="row" style="gap:6px;color:var(--muted);font-size:13px;margin-top:8px"><input type="checkbox" id="djOn" checked> The DJ talks between songs (clips in <code>audio/dj/</code>)</label>
+  </div>
+
+  <div class="card">
+    <h2>This block's programme</h2>
+    <p id="blockNote"></p>
+    <table id="prog-table"></table>
+  </div>
+</div>
+
+<script type="module" src="radio/main.js"></script>
+</body>
+</html>
