@@ -256,7 +256,8 @@ export class Seq {
       const lo = part.lo ?? 33;
       const root = lo + ((chord.bass - lo) % 12 + 12) % 12;
       const d = e.deg;
-      const iv = d === 't' ? chord.iv[1] : d === 's' ? (chord.iv[3] ?? 10) : BASS_DEG[d] ?? 0;
+      // 'f' is the chord's own fifth (a diminished or augmented one too).
+      const iv = d === 't' ? chord.iv[1] : d === 's' ? (chord.iv[3] ?? 10) : d === 'f' ? (chord.iv.find((x) => x >= 6 && x <= 8) ?? 7) : BASS_DEG[d] ?? 0;
       const midi = d === 'n' ? lo + ((nextChord.bass - lo) % 12 + 12) % 12 : root + iv;
       const prev = this.last[name];
       const glideFrom = prev && prev.slide ? prev.midi : null;

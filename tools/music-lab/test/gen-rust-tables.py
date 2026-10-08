@@ -14,7 +14,7 @@ import sys
 d = json.load(sys.stdin)
 KITS, TWEAK, SHA = d["KITS"], d["SAMPLE_TWEAK"], d["sha"]["KITS"]
 
-NUMS = {"a":"a","d":"d","s":"s","r":"r","fa":"fa","fd":"fd","fs":"fs","fr":"fr","gain":"gain","oct":"oct","cutoff":"cutoff","res":"res","fenv":"fenv","keytrack":"keytrack","drive":"drive","sub":"sub","noise":"noise","glide":"glide","bend":"bend","bendT":"bend_t","vib":"vib","vibRate":"vib_rate","vibDelay":"vib_delay","saw":"saw","pulse":"pulse","pw":"pw","pwm":"pwm","unison":"unison","detune":"detune","hpf":"hpf","chorus":"chorus","lfoRate":"lfo_rate","vowelMix":"vowel_mix","vowelQ":"vowel_q","env":"env","decay":"decay","accent":"accent","fbk":"fbk","damp":"damp","pick":"pick","body":"body","bodyQ":"body_q","bodyMix":"body_mix","tone":"tone","trem":"trem","tremRate":"trem_rate","wah":"wah","wahHz":"wah_hz","wahQ":"wah_q","wahRate":"wah_rate","strum":"strum"}
+NUMS = {"a":"a","d":"d","s":"s","r":"r","fa":"fa","fd":"fd","fs":"fs","fr":"fr","gain":"gain","oct":"oct","cutoff":"cutoff","res":"res","fenv":"fenv","keytrack":"keytrack","drive":"drive","sub":"sub","noise":"noise","glide":"glide","bend":"bend","bendT":"bend_t","vib":"vib","vibRate":"vib_rate","vibDelay":"vib_delay","saw":"saw","pulse":"pulse","pw":"pw","pwm":"pwm","unison":"unison","detune":"detune","hpf":"hpf","chorus":"chorus","lfoRate":"lfo_rate","vowelMix":"vowel_mix","vowelQ":"vowel_q","env":"env","decay":"decay","accent":"accent","fbk":"fbk","damp":"damp","pick":"pick","pickPos":"pick_pos","body":"body","bodyQ":"body_q","bodyMix":"body_mix","tone":"tone","trem":"trem","tremRate":"trem_rate","wah":"wah","wahHz":"wah_hz","wahQ":"wah_q","wahRate":"wah_rate","strum":"strum"}
 
 
 def gen_patches(d):
@@ -63,7 +63,7 @@ fn build() -> Vec<(&'static str, Lab)> {
                 if o is None:
                     ops.append("None")
                     continue
-                parts = ["%s: Some(%s)" % (k, f(o[k])) for k in ["r", "l", "a", "d", "s", "v", "det", "fix", "rs"] if k in o]
+                parts = ["%s: Some(%s)" % (k, f(o[k])) for k in ["r", "rel", "l", "a", "d", "s", "v", "det", "fix", "rs"] if k in o]
                 ops.append("Some(Op { %s, ..Default::default() })" % ", ".join(parts))
             fields.append("ops: Some(vec![%s])" % ", ".join(ops))
         for k, v in p.items():

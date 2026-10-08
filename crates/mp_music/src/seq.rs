@@ -664,10 +664,18 @@ impl Voices {
             let lo = part.lo.unwrap_or(33.0);
             let root = lo + ((chord.bass as f64 - lo) % 12.0 + 12.0) % 12.0;
             let d = e.deg;
+            // 'f' is the chord's own fifth (a diminished or augmented one too).
             let iv = if d == 't' {
                 chord.iv[1]
             } else if d == 's' {
                 chord.iv.get(3).copied().unwrap_or(10)
+            } else if d == 'f' {
+                chord
+                    .iv
+                    .iter()
+                    .copied()
+                    .find(|x| (6..=8).contains(x))
+                    .unwrap_or(7)
             } else {
                 bass_deg(d)
             };

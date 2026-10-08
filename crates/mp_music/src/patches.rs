@@ -24,7 +24,7 @@ pub fn all() -> &'static [(&'static str, Lab)] {
 }
 
 /// The SHA-256 of the lab's `canon(BPATCH)` (`dump-tables.mjs` prints it).
-pub const LAB_SHA256: &str = "6a4f0edecc3a35ac286a2ab0428c82a40c4f3b48f937b58b7e5b369b97f76547";
+pub const LAB_SHA256: &str = "b3e2628df1defa3a932e4edb1b7fc13e316547e6501f64c4f3f12c5b00796466";
 
 fn build() -> Vec<(&'static str, Lab)> {
     vec![
@@ -328,7 +328,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                 algo: Some("ep".into()),
                 ops: Some(vec![
                     Some(Op {
-                        r: Some(0.5),
+                        r: Some(1.0),
+                        rel: Some(0.5),
                         l: Some(1.0),
                         a: Some(0.002),
                         d: Some(1.6),
@@ -344,7 +345,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                         ..Default::default()
                     }),
                     Some(Op {
-                        r: Some(0.4),
+                        r: Some(1.0),
+                        rel: Some(0.4),
                         l: Some(0.6),
                         a: Some(0.002),
                         d: Some(1.1),
@@ -374,7 +376,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                 algo: Some("bell".into()),
                 ops: Some(vec![
                     Some(Op {
-                        r: Some(0.8),
+                        r: Some(1.0),
+                        rel: Some(0.8),
                         l: Some(1.0),
                         d: Some(1.6),
                         s: Some(0.05),
@@ -388,7 +391,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                         ..Default::default()
                     }),
                     Some(Op {
-                        r: Some(0.9),
+                        r: Some(2.0),
+                        rel: Some(0.9),
                         l: Some(0.5),
                         d: Some(2.4),
                         s: Some(0.0),
@@ -416,7 +420,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                 algo: Some("pair".into()),
                 ops: Some(vec![
                     Some(Op {
-                        r: Some(0.35),
+                        r: Some(1.0),
+                        rel: Some(0.35),
                         l: Some(1.0),
                         d: Some(0.5),
                         s: Some(0.1),
@@ -488,7 +493,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                 algo: Some("stack".into()),
                 ops: Some(vec![
                     Some(Op {
-                        r: Some(0.3),
+                        r: Some(1.0),
+                        rel: Some(0.3),
                         l: Some(1.0),
                         d: Some(0.8),
                         s: Some(0.2),
@@ -693,7 +699,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                 algo: Some("organ".into()),
                 ops: Some(vec![
                     Some(Op {
-                        r: Some(0.08),
+                        r: Some(1.0),
+                        rel: Some(0.08),
                         l: Some(1.0),
                         a: Some(0.002),
                         d: Some(0.3),
@@ -701,7 +708,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                         ..Default::default()
                     }),
                     Some(Op {
-                        r: Some(0.08),
+                        r: Some(2.0),
+                        rel: Some(0.08),
                         l: Some(0.6),
                         a: Some(0.002),
                         d: Some(0.2),
@@ -709,7 +717,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                         ..Default::default()
                     }),
                     Some(Op {
-                        r: Some(0.06),
+                        r: Some(3.0),
+                        rel: Some(0.06),
                         l: Some(0.35),
                         a: Some(0.001),
                         d: Some(0.08),
@@ -717,7 +726,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                         ..Default::default()
                     }),
                     Some(Op {
-                        r: Some(0.05),
+                        r: Some(4.02),
+                        rel: Some(0.05),
                         l: Some(0.25),
                         a: Some(0.001),
                         d: Some(0.05),
@@ -949,7 +959,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                 algo: Some("ep".into()),
                 ops: Some(vec![
                     Some(Op {
-                        r: Some(0.3),
+                        r: Some(1.0),
+                        rel: Some(0.3),
                         l: Some(1.0),
                         a: Some(0.001),
                         d: Some(1.4),
@@ -965,7 +976,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                         ..Default::default()
                     }),
                     Some(Op {
-                        r: Some(0.3),
+                        r: Some(2.0),
+                        rel: Some(0.3),
                         l: Some(0.45),
                         a: Some(0.001),
                         d: Some(0.9),
@@ -1047,7 +1059,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                 algo: Some("stack".into()),
                 ops: Some(vec![
                     Some(Op {
-                        r: Some(0.1),
+                        r: Some(1.0),
+                        rel: Some(0.1),
                         l: Some(1.0),
                         a: Some(0.001),
                         d: Some(0.3),
@@ -1090,7 +1103,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                 kind: "string".into(),
                 decay: Some(1.8),
                 damp: Some(0.3),
-                pick: Some(0.65),
+                pick: Some(0.6),
+                pick_pos: Some(0.13),
                 body: Some(2900.0),
                 body_q: Some(1.4),
                 body_mix: Some(0.6),
@@ -1098,8 +1112,6 @@ fn build() -> Vec<(&'static str, Lab)> {
                 drive: Some(0.5),
                 trem: Some(0.45),
                 trem_rate: Some(5.6),
-                bend: Some(0.25),
-                bend_t: Some(0.04),
                 glide: Some(0.04),
                 r: Some(0.5),
                 chorus: Some(0.0),
@@ -1113,7 +1125,8 @@ fn build() -> Vec<(&'static str, Lab)> {
                 kind: "string".into(),
                 decay: Some(1.8),
                 damp: Some(0.3),
-                pick: Some(0.7),
+                pick: Some(0.65),
+                pick_pos: Some(0.13),
                 body: Some(2600.0),
                 body_q: Some(1.2),
                 body_mix: Some(0.5),
@@ -1123,8 +1136,6 @@ fn build() -> Vec<(&'static str, Lab)> {
                 wah_hz: Some(380.0),
                 wah_q: Some(4.5),
                 wah_rate: Some(1.6),
-                bend: Some(0.2),
-                bend_t: Some(0.04),
                 glide: Some(0.04),
                 r: Some(0.4),
                 chorus: Some(0.0),
@@ -1137,8 +1148,9 @@ fn build() -> Vec<(&'static str, Lab)> {
             Lab {
                 kind: "string".into(),
                 decay: Some(0.35),
-                damp: Some(0.55),
+                damp: Some(0.5),
                 pick: Some(0.45),
+                pick_pos: Some(0.2),
                 body: Some(2200.0),
                 body_q: Some(1.0),
                 body_mix: Some(0.4),
@@ -1156,8 +1168,9 @@ fn build() -> Vec<(&'static str, Lab)> {
             Lab {
                 kind: "string".into(),
                 decay: Some(1.2),
-                damp: Some(0.75),
+                damp: Some(0.5),
                 pick: Some(0.25),
+                pick_pos: Some(0.3),
                 body: Some(320.0),
                 body_q: Some(0.8),
                 body_mix: Some(0.5),
@@ -1172,45 +1185,25 @@ fn build() -> Vec<(&'static str, Lab)> {
         (
             "comboOrgan",
             Lab {
-                kind: "fm".into(),
-                algo: Some("organ".into()),
-                ops: Some(vec![
-                    Some(Op {
-                        r: Some(0.06),
-                        l: Some(1.0),
-                        a: Some(0.004),
-                        d: Some(0.3),
-                        s: Some(0.8),
-                        ..Default::default()
-                    }),
-                    Some(Op {
-                        r: Some(0.06),
-                        l: Some(0.8),
-                        a: Some(0.004),
-                        d: Some(0.2),
-                        s: Some(0.7),
-                        ..Default::default()
-                    }),
-                    Some(Op {
-                        r: Some(0.05),
-                        l: Some(0.55),
-                        a: Some(0.003),
-                        d: Some(0.1),
-                        s: Some(0.45),
-                        ..Default::default()
-                    }),
-                    Some(Op {
-                        r: Some(0.05),
-                        l: Some(0.4),
-                        a: Some(0.002),
-                        d: Some(0.08),
-                        s: Some(0.3),
-                        ..Default::default()
-                    }),
-                ]),
-                r: Some(0.06),
-                chorus: Some(3.0),
-                gain: Some(0.14),
+                kind: "juno".into(),
+                saw: Some(0.5),
+                pulse: Some(0.8),
+                pw: Some(0.5),
+                sub: Some(0.3),
+                cutoff: Some(7000.0),
+                res: Some(0.05),
+                fenv: Some(0.0),
+                keytrack: Some(0.3),
+                a: Some(0.004),
+                d: Some(0.1),
+                s: Some(1.0),
+                r: Some(0.04),
+                hpf: Some(70.0),
+                vib: Some(8.0),
+                vib_rate: Some(6.4),
+                vib_delay: Some(0.0),
+                chorus: Some(0.0),
+                gain: Some(0.33),
                 ..Default::default()
             },
         ),

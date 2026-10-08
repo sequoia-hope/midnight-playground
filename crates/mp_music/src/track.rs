@@ -38,13 +38,13 @@ impl OscSpec {
     }
 }
 
-/// An FM operator (`p.ops[i]`). The lab's patches write `r` twice in some
-/// operators (the ratio, then the release): the JS keeps the last, so a
-/// table generated from the evaluated objects carries the value the lab
-/// plays with.
+/// An FM operator (`p.ops[i]`): `r` its ratio, `rel` its release (one key
+/// each since D1153; the lab once wrote `r` for both and played the release
+/// as the ratio).
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Op {
     pub r: Option<f64>,
+    pub rel: Option<f64>,
     pub l: Option<f64>,
     pub a: Option<f64>,
     pub d: Option<f64>,
@@ -59,6 +59,7 @@ impl Op {
     pub fn to_val(&self) -> Val {
         Val::obj(vec![
             ("r", Val::onum(self.r)),
+            ("rel", Val::onum(self.rel)),
             ("l", Val::onum(self.l)),
             ("a", Val::onum(self.a)),
             ("d", Val::onum(self.d)),
@@ -144,7 +145,7 @@ lab_nums! {
     unison: "unison", detune: "detune", hpf: "hpf", chorus: "chorus",
     lfo_rate: "lfoRate", vowel_mix: "vowelMix", vowel_q: "vowelQ",
     env: "env", decay: "decay", accent: "accent", fbk: "fbk",
-    damp: "damp", pick: "pick", body: "body", body_q: "bodyQ", body_mix: "bodyMix",
+    damp: "damp", pick: "pick", pick_pos: "pickPos", body: "body", body_q: "bodyQ", body_mix: "bodyMix",
     tone: "tone", trem: "trem", trem_rate: "tremRate", wah: "wah", wah_hz: "wahHz",
     wah_q: "wahQ", wah_rate: "wahRate", strum: "strum",
 }

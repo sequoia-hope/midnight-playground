@@ -270,7 +270,9 @@ pub struct Progs {
     pub anthem: &'static [&'static [Item]],
     /// Verses that sit still and wait for the chorus.
     pub verse: &'static [&'static [Item]],
-    /// Deep house and liquid: two-chord vamps and 7th/9th colour.
+    /// Deep house and liquid: two-chord vamps and 7th/9th colour. Some of
+    /// these land on a scale's diminished degree (5 in dorian, 1 in minor):
+    /// pick through [`no_dim`], which drops those for the scale in hand.
     pub deep: &'static [&'static [Item]],
     /// Techno and psy: one chord, or a step away and back.
     pub drone: &'static [&'static [Item]],
@@ -307,6 +309,10 @@ pub const PROGS: Progs = Progs {
         &[D(0), D(0), D(5), D(6)],
         &[D(3), D(4), D(0), D(0)],
         &[D(0), D(6), D(5), D(4)],
+        &[D(0), D(1), D(0), D(1)],
+        &[D(0), D(0), D(1), D(3)],
+        &[D(0), D(3), D(6), D(0)],
+        &[D(0), D(1), D(3), D(4)],
     ],
     drone: &[
         &[D(0), D(0), D(0), D(0)],
@@ -333,6 +339,29 @@ pub const PROGS: Progs = Progs {
         &[D(5), D(6), D(0), D(0)],
     ],
 };
+
+/// Whether the diatonic chord on degree d of a scale is diminished (a
+/// tritone for a fifth: ii° in minor, vi° in dorian, vii° in major).
+pub fn is_dim(scale: &Scale, d: i32) -> bool {
+    deg_semi(scale, d + 4) - deg_semi(scale, d) == 6
+}
+
+/// The progressions of a family that stay off the scale's diminished
+/// degree: a half-diminished chord is not a vamp anyone dances to. (A
+/// split bar is never diminished, as the JS reads it: `it[0]` of an array
+/// of arrays is no degree.)
+pub fn no_dim(scale: &Scale, progs: &[&'static [Item]]) -> Vec<&'static [Item]> {
+    progs
+        .iter()
+        .copied()
+        .filter(|p| {
+            p.iter().all(|it| match it {
+                Item::Deg(d) | Item::Ext(d, _) => !is_dim(scale, *d),
+                Item::Split(_) => true,
+            })
+        })
+        .collect()
+}
 
 /// Pitch class set of a chord name, and the chord's root pitch class.
 #[derive(Clone, Debug, PartialEq)]
@@ -765,7 +794,18 @@ pub fn realise(m: &Motif, o: &Realise) -> String {
     let nb = o.chords.len();
     let tonic_pc = o.tonic.rem_euclid(12);
     let mut toks: Vec<String> = vec![".".to_owned(); nb * 16];
-    let midi_of = |k: i32| o.tonic + deg_semi(o.scale, k);
+    // Over a dominant in a minor key (the V7's major third is the leading
+    // tone) the bar's scale is the harmonic minor: the line's 7th degree is
+    // the leading tone there, as a cumbia or a cadence sings it, not the b7
+    // a semitone from the chord's third.
+    let bar_scale = |ch: &ChordPcs| -> &'static Scale {
+        if o.scale == MINOR && ch.pcs.contains(&((tonic_pc + 11) % 12)) {
+            HARMONIC_MINOR
+        } else {
+            o.scale
+        }
+    };
+    let mut scale: &'static Scale;
     let deg = |kk: i32| kk.rem_euclid(7);
     // Steps past the avoided degrees the way the line is moving, turning back
     // at the register's edge.
@@ -796,10 +836,11 @@ pub fn realise(m: &Motif, o: &Realise) -> String {
             let on = onsets[i];
             let bar = on / 16;
             let ch = chord_pcs(&o.chords[bar % nb]);
+            scale = bar_scale(&ch);
             if i == 0 {
                 // Each statement starts where the hook lives, on a chord tone.
                 k = snap(
-                    o.scale,
+                    scale,
                     tonic_pc,
                     o.home.unwrap_or(middle + o.start),
                     &ch.pcs,
@@ -818,6 +859,14 @@ pub fn realise(m: &Motif, o: &Realise) -> String {
             }
             let last = i == onsets.len() - 1 || onsets[i + 1] / 16 != bar;
             let phrase_end = last && (bar % o.phrase == o.phrase - 1 || bar == nb - 1);
+            let next = if i + 1 < onsets.len() {
+                onsets[i + 1]
+            } else {
+                (b0 + m.bars) * 16
+            };
+            // A note that lasts a dotted 8th or more is a chord tone; passing
+            // and neighbour tones are the short ones, off the beat.
+            let long = next - on >= 3;
             if phrase_end {
                 let closed = (bar / o.phrase) % 2 == 1 || bar == nb - 1;
                 let want: Vec<i32> = if closed {
@@ -826,22 +875,17 @@ pub fn realise(m: &Motif, o: &Realise) -> String {
                     ch.pcs.iter().copied().filter(|p| *p != ch.root).collect()
                 };
                 k = snap(
-                    o.scale,
+                    scale,
                     tonic_pc,
                     k,
                     if want.is_empty() { &ch.pcs } else { &want },
                     dir,
                 );
-            } else if on.is_multiple_of(4) || last {
-                k = snap(o.scale, tonic_pc, k, &ch.pcs, dir);
+            } else if on.is_multiple_of(4) || last || long {
+                k = snap(scale, tonic_pc, k, &ch.pcs, dir);
             } else if !o.avoid.is_empty() {
                 k = skip(k, dir);
             }
-            let next = if i + 1 < onsets.len() {
-                onsets[i + 1]
-            } else {
-                (b0 + m.bars) * 16
-            };
             let mut len = next.saturating_sub(on).max(1);
             if let Some(gate) = o.gate.filter(|g| *g != 0) {
                 len = len.min(gate);
@@ -849,7 +893,7 @@ pub fn realise(m: &Motif, o: &Realise) -> String {
             if phrase_end {
                 len = len.min(8);
             }
-            let midi = midi_of(k);
+            let midi = o.tonic + deg_semi(scale, k);
             toks[on] = format!(
                 "{}{}{}",
                 NOTE[midi.rem_euclid(12) as usize],

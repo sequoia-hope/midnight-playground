@@ -15,6 +15,9 @@
 //          with drive, filter and amp ADSRs, glide, vibrato, bend.
 //   fm     a DX-style 4-operator FM voice with a few algorithms (EP, bell,
 //          stack, organ), per-operator envelopes, velocity to index, feedback.
+//          An operator's `r` is its ratio and `rel` its release: one key
+//          each, since a literal that wrote `r` twice kept the release as
+//          the ratio and every FM voice played inharmonic for a day.
 //   string a plucked string (Karplus-Strong as Jaffe and Smith extended it):
 //          a pick burst into a tuned delay loop with damping, a pickup or
 //          body resonance, then the amp: drive, a pedal wah, tremolo. Chicha's
@@ -246,7 +249,7 @@ class FMVoice {
       if (!o) continue;
       // Higher notes decay faster (rate scaling).
       const rs = Math.pow(2, -((midi - 60) / 12) * (o.rs ?? 0.3));
-      this.env[i].setAll(o.a ?? 0.002, (o.d ?? 0.5) * rs, o.s ?? 0.2, o.r ?? p.r ?? 0.3);
+      this.env[i].setAll(o.a ?? 0.002, (o.d ?? 0.5) * rs, o.s ?? 0.2, o.rel ?? p.r ?? 0.3);
       this.env[i].on();
       this.ph[i] = 0;
     }
@@ -289,7 +292,9 @@ class FMVoice {
 // than the lower (`damp`), and a loss per period sets the decay time. The
 // string is read through a resonance (`body`: the pickup's peak on an
 // electric, the top on an acoustic) and a tone control. What a note does:
-// `pick` is how hard the pick is (brighter burst), `decay` the ring time
+// `pick` is how hard the pick is (brighter burst), `pickPos` where along
+// the string it is plucked (a fraction of the length from the bridge: the
+// comb that gives a pluck its twang, 0 for none), `decay` the ring time
 // in seconds, `r` how fast it is muted when the note ends, `bend` / `bendT`
 // a slide up into the note, `glide` a slide from the last note when legato,
 // `strum` seconds between the notes of a chord. The amp (drive, wah,
@@ -298,9 +303,10 @@ class StringVoice {
   constructor(seed) {
     this.r = rng(seed);
     this.buf = new Float32Array(Math.ceil(SR / 20) + 8); // down to 20 Hz
+    this.burst = new Float32Array(this.buf.length);
     this.w = 0; this.d = 2; this.g = 1; this.gRel = 1; this.damp = 0.4; this.lp = 0;
     this.on = false; this.left = 0; this.age = 0; this.wait = 0; this.rel = false;
-    this.exc = 0; this.excLp = new OnePole(4000);
+    this.exc = 0; this.excN = 0; this.excD = 0; this.excLp = new OnePole(4000);
     this.body = new SVF(); this.tone = new OnePole(6000);
     this.midi = -1; this.cur = 110; this.hz = 110; this.glideK = 0; this.k = 0; this.amp = 0;
   }
@@ -311,24 +317,35 @@ class StringVoice {
     this.cur = legato ? mtof(glideFrom + 12 * (p.oct ?? 0)) : p.bend ? this.hz * Math.pow(2, -p.bend / 12) : this.hz;
     this.glideK = 1 - Math.exp(-1 / (((legato ? p.glide : p.bendT) ?? 0.05) * SR / 3));
     // The pluck: a burst one period long, low-passed by the pick's softness,
-    // brighter when hit harder. The loop is cleared: a new pluck on a
-    // ringing string restarts it (the voice would be another one if not).
-    this.exc = Math.max(2, Math.round(SR / this.cur));
+    // brighter when hit harder, made now so the pick position can comb it
+    // (the burst less itself delayed by that fraction of the period: the
+    // partials with a node at the pick are not excited). The loop is
+    // cleared: a new pluck on a ringing string restarts it (the voice would
+    // be another one if not).
+    const n = Math.max(2, Math.round(SR / this.cur));
     this.excLp.setHz(1200 + (p.pick ?? 0.5) * 9000 * (0.4 + 0.6 * vel));
+    this.excLp.y = 0;
+    for (let i = 0; i < n; i++) this.burst[i] = this.excLp.lp(this.r() * 2 - 1);
+    this.excD = p.pickPos ? Math.max(1, Math.round(p.pickPos * n)) : 0;
+    this.excN = n + this.excD;
+    this.exc = this.excN;
     this.body.set(p.body ?? 2500, p.bodyQ ?? 1.2);
     this.tone.setHz(p.tone ?? 6000);
     this.rel = false; this.k = 0; this.amp = 1; this.lp = 0;
     this.buf.fill(0);
     this._tune(p);
   }
-  // Loop delay: the period less the damping filter's half sample, read
-  // fractionally. Loss per period from the decay time (RT60), and the
-  // release's extra loss once the note has ended.
+  // Loop delay: the period less the damping filter's own delay (`damp`
+  // samples, at the low partials), read fractionally. Loss per period from
+  // the decay time (RT60), and the release's extra loss once the note has
+  // ended. `damp` is the one-zero's weight on the previous sample: 0.5 is
+  // the most damping (the plain average), and past it the filter only
+  // lengthens the loop, so it stops there.
   _tune(p) {
-    this.d = Math.max(2, SR / this.cur - 0.5);
+    this.damp = clamp(p.damp ?? 0.4, 0, 0.5);
+    this.d = Math.max(2, SR / this.cur - this.damp);
     this.g = Math.pow(10, -3 / (Math.max(0.02, p.decay ?? 1.5) * this.cur));
     this.gRel = Math.pow(10, -3 / (Math.max(0.01, p.r ?? 0.3) * this.cur));
-    this.damp = clamp(p.damp ?? 0.4, 0, 0.95);
   }
   get done() { return !this.on; }
   run(p) {
@@ -347,7 +364,12 @@ class StringVoice {
     const avg = y * (1 - this.damp) + this.lp * this.damp;
     this.lp = y;
     let x = avg * (this.rel ? this.g * this.gRel : this.g);
-    if (this.exc > 0) { this.exc--; x += this.excLp.lp(this.r() * 2 - 1) * this.vel * 0.9; }
+    if (this.exc > 0) {
+      const i = this.excN - this.exc--, n = this.excN - this.excD;
+      let e = i < n ? this.burst[i] : 0;
+      if (this.excD && i >= this.excD) e = (e - this.burst[i - this.excD]) * 0.7;
+      x += e * this.vel * 0.9;
+    }
     this.buf[this.w] = x;
     this.w = (this.w + 1) % n;
     this.body.run(x);
@@ -732,19 +754,19 @@ export const BPATCH = {
   darkPad: { kind: 'juno', saw: 1, pulse: 0.3, pwm: 0.5, sub: 0.2, unison: 2, detune: 10, cutoff: 750, res: 0.25, fenv: 0.4, fa: 1.5, fd: 2, fs: 0.6, a: 0.7, s: 1, r: 1.1, hpf: 110, chorus: 2, lfoRate: 0.25, gain: 0.1654 },
   stab: { kind: 'juno', saw: 1, pulse: 0.4, sub: 0.15, unison: 2, detune: 12, cutoff: 1300, res: 0.2, fenv: 1.6, fa: 0.001, fd: 0.18, fs: 0.15, a: 0.002, d: 0.25, s: 0.3, r: 0.15, chorus: 1, gain: 0.5114 },
   hit: { kind: 'juno', saw: 1, pulse: 0.2, sub: 0.45, unison: 3, detune: 22, cutoff: 2200, res: 0.15, fenv: 1.2, fa: 0.001, fd: 0.35, fs: 0.3, a: 0.004, d: 0.6, s: 0.25, r: 0.5, chorus: 2, gain: 0.3034 },
-  ep: { kind: 'fm', algo: 'ep', ops: [{ r: 1, l: 1, a: 0.002, d: 1.6, s: 0.15, r: 0.5 }, { r: 1, l: 1.6, d: 0.9, s: 0.12, v: 0.8 }, { r: 1, det: 7, l: 0.6, a: 0.002, d: 1.1, s: 0.1, r: 0.4 }, { r: 14, l: 0.9, d: 0.05, s: 0, v: 0.9 }], r: 0.45, chorus: 1, gain: 0.2335 },
-  bell: { kind: 'fm', algo: 'bell', ops: [{ r: 1, l: 1, d: 1.6, s: 0.05, r: 0.8 }, { r: 3.5, l: 2.4, d: 0.8, s: 0.05 }, { r: 2, det: 4, l: 0.5, d: 2.4, s: 0, r: 0.9 }, { r: 7.07, l: 1.2, d: 0.4, s: 0 }], r: 0.7, chorus: 1, gain: 0.0914 },
-  glass: { kind: 'fm', algo: 'pair', ops: [{ r: 1, l: 1, d: 0.5, s: 0.1, r: 0.35 }, { r: 2, l: 1.3, d: 0.3, s: 0.1 }], r: 0.3, chorus: 1, gain: 0.069 },
+  ep: { kind: 'fm', algo: 'ep', ops: [{ r: 1, l: 1, a: 0.002, d: 1.6, s: 0.15, rel: 0.5 }, { r: 1, l: 1.6, d: 0.9, s: 0.12, v: 0.8 }, { r: 1, det: 7, l: 0.6, a: 0.002, d: 1.1, s: 0.1, rel: 0.4 }, { r: 14, l: 0.9, d: 0.05, s: 0, v: 0.9 }], r: 0.45, chorus: 1, gain: 0.2335 },
+  bell: { kind: 'fm', algo: 'bell', ops: [{ r: 1, l: 1, d: 1.6, s: 0.05, rel: 0.8 }, { r: 3.5, l: 2.4, d: 0.8, s: 0.05 }, { r: 2, det: 4, l: 0.5, d: 2.4, s: 0, rel: 0.9 }, { r: 7.07, l: 1.2, d: 0.4, s: 0 }], r: 0.7, chorus: 1, gain: 0.0914 },
+  glass: { kind: 'fm', algo: 'pair', ops: [{ r: 1, l: 1, d: 0.5, s: 0.1, rel: 0.35 }, { r: 2, l: 1.3, d: 0.3, s: 0.1 }], r: 0.3, chorus: 1, gain: 0.069 },
   pluck: { kind: 'juno', saw: 1, pulse: 0, unison: 2, detune: 8, cutoff: 500, res: 0.3, fenv: 3.2, fa: 0.001, fd: 0.11, fs: 0, a: 0.002, d: 0.2, s: 0, r: 0.15, chorus: 1, gain: 0.2148 },
   sqArp: { kind: 'juno', saw: 0, pulse: 1, pw: 0.25, cutoff: 2400, res: 0.15, fenv: 0.8, fa: 0.001, fd: 0.09, fs: 0.3, a: 0.002, d: 0.14, s: 0.5, r: 0.1, chorus: 1, gain: 0.0932 },
-  twang: { kind: 'fm', algo: 'stack', ops: [{ r: 1, l: 1, d: 0.8, s: 0.2, r: 0.3 }, { r: 1, l: 2.4, d: 0.25, s: 0.15 }, { r: 3, l: 0.9, d: 0.08, s: 0 }, { r: 1, l: 0.3, d: 0.1, s: 0 }], bend: 0.7, bendT: 0.07, r: 0.3, chorus: 0, gain: 0.081 },
+  twang: { kind: 'fm', algo: 'stack', ops: [{ r: 1, l: 1, d: 0.8, s: 0.2, rel: 0.3 }, { r: 1, l: 2.4, d: 0.25, s: 0.15 }, { r: 3, l: 0.9, d: 0.08, s: 0 }, { r: 1, l: 0.3, d: 0.1, s: 0 }], bend: 0.7, bendT: 0.07, r: 0.3, chorus: 0, gain: 0.081 },
   brassLead: { kind: 'mono', osc: [{ w: 'saw' }, { w: 'saw', det: 9 }], cutoff: 1300, res: 0.2, fenv: 1.5, fa: 0.04, fd: 0.35, fs: 0.55, a: 0.02, d: 0.35, s: 0.85, r: 0.2, vib: 14, vibRate: 5.3, vibDelay: 0.25, drive: 0.8, gain: 0.0693 },
   sawLead: { kind: 'mono', osc: [{ w: 'saw', det: -12 }, { w: 'saw', det: 12 }, { w: 'saw', oct: 1, lvl: 0.35 }], cutoff: 3200, res: 0.1, fenv: 0.6, fd: 0.3, fs: 0.6, a: 0.008, s: 0.9, r: 0.14, vib: 10, vibDelay: 0.3, glide: 0.05, drive: 0.6, gain: 0.0682 },
   sqLead: { kind: 'mono', osc: [{ w: 'pulse', pw: 0.35 }, { w: 'pulse', det: 7, pw: 0.5, lvl: 0.7 }], cutoff: 2800, res: 0.25, fenv: 0.8, fd: 0.2, fs: 0.5, a: 0.006, s: 0.85, r: 0.12, vib: 12, vibDelay: 0.2, glide: 0.04, gain: 0.0838 },
   whistle: { kind: 'mono', osc: [{ w: 'sine' }], noise: 0.04, cutoff: 6000, res: 0, fenv: 0, a: 0.03, s: 0.9, r: 0.25, vib: 24, vibRate: 5.8, vibDelay: 0.16, bend: 0.5, bendT: 0.08, glide: 0.06, gain: 0.0931 },
   flute: { kind: 'mono', osc: [{ w: 'tri' }, { w: 'sine', oct: 1, lvl: 0.15 }], noise: 0.12, cutoff: 2600, res: 0.05, fenv: 0.5, fa: 0.06, fd: 0.3, fs: 0.6, a: 0.05, s: 0.85, r: 0.22, vib: 16, vibDelay: 0.25, glide: 0.05, gain: 0.1238 },
   // Lab-only voices for the generated tracks.
-  organ: { kind: 'fm', algo: 'organ', ops: [{ r: 1, l: 1, a: 0.002, d: 0.3, s: 0.7, r: 0.08 }, { r: 2, l: 0.6, a: 0.002, d: 0.2, s: 0.5, r: 0.08 }, { r: 3, l: 0.35, a: 0.001, d: 0.08, s: 0.2, r: 0.06 }, { r: 4.02, l: 0.25, a: 0.001, d: 0.05, s: 0, r: 0.05 }], r: 0.08, chorus: 1, gain: 0.19 },
+  organ: { kind: 'fm', algo: 'organ', ops: [{ r: 1, l: 1, a: 0.002, d: 0.3, s: 0.7, rel: 0.08 }, { r: 2, l: 0.6, a: 0.002, d: 0.2, s: 0.5, rel: 0.08 }, { r: 3, l: 0.35, a: 0.001, d: 0.08, s: 0.2, rel: 0.06 }, { r: 4.02, l: 0.25, a: 0.001, d: 0.05, s: 0, rel: 0.05 }], r: 0.08, chorus: 1, gain: 0.19 },
   dubChord: { kind: 'juno', saw: 1, pulse: 0.5, pw: 0.4, unison: 2, detune: 9, cutoff: 900, res: 0.35, fenv: 1.8, fa: 0.001, fd: 0.16, fs: 0.05, a: 0.002, d: 0.22, s: 0.15, r: 0.2, hpf: 220, chorus: 1, gain: 0.45 },
   rumble: { kind: 'mono', osc: [{ w: 'sine' }, { w: 'tri', lvl: 0.4 }], cutoff: 260, res: 0.1, fenv: 0.8, fd: 0.12, fs: 0, drive: 2.5, a: 0.002, d: 0.22, s: 0.2, r: 0.1, gain: 0.12 },
   // The supersaw (JP-8000): seven detuned saws, high-passed so the bass
@@ -760,26 +782,28 @@ export const BPATCH = {
   // Eurobeat lead: bright, three saws, fast vibrato after a moment, glide.
   euroLead: { kind: 'mono', osc: [{ w: 'saw', det: -14 }, { w: 'saw', det: 14 }, { w: 'pulse', oct: 1, pw: 0.3, lvl: 0.3 }], cutoff: 4200, res: 0.12, fenv: 0.8, fa: 0.005, fd: 0.25, fs: 0.7, a: 0.004, d: 0.2, s: 0.9, r: 0.12, vib: 18, vibRate: 6, vibDelay: 0.18, glide: 0.03, drive: 0.7, gain: 0.07 },
   // A piano for house: two FM pairs, a bright hammer that fades at once.
-  piano: { kind: 'fm', algo: 'ep', ops: [{ r: 1, l: 1, a: 0.001, d: 1.4, s: 0.1, r: 0.3 }, { r: 1, l: 2.0, d: 0.22, s: 0.08, v: 0.8 }, { r: 2, det: 3, l: 0.45, a: 0.001, d: 0.9, s: 0.05, r: 0.3 }, { r: 7, l: 1.1, d: 0.06, s: 0, v: 0.9 }], r: 0.3, chorus: 0, gain: 0.2 },
+  piano: { kind: 'fm', algo: 'ep', ops: [{ r: 1, l: 1, a: 0.001, d: 1.4, s: 0.1, rel: 0.3 }, { r: 1, l: 2.0, d: 0.22, s: 0.08, v: 0.8 }, { r: 2, det: 3, l: 0.45, a: 0.001, d: 0.9, s: 0.05, rel: 0.3 }, { r: 7, l: 1.1, d: 0.06, s: 0, v: 0.9 }], r: 0.3, chorus: 0, gain: 0.2 },
   // A choir: pulse with PWM through the vowel bank, slow and wide.
   choir: { kind: 'juno', saw: 0.4, pulse: 0.8, pwm: 0.5, sub: 0, unison: 3, detune: 12, cutoff: 3500, res: 0.05, fenv: 0, a: 0.5, d: 1, s: 1, r: 1.2, hpf: 150, chorus: 2, lfoRate: 0.35, vowel: 'a', vowelMix: 0.85, vowelQ: 8, gain: 0.07 },
   // A trance pluck: the arp's voice, bright attack, no sustain.
   pluckTrance: { kind: 'juno', saw: 1, pulse: 0.3, pw: 0.3, unison: 3, detune: 14, cutoff: 900, res: 0.25, fenv: 3, fa: 0.001, fd: 0.13, fs: 0, a: 0.001, d: 0.22, s: 0, r: 0.15, hpf: 200, chorus: 2, gain: 0.16 },
   // A psy lead: FM zap, a fast falling index, short.
-  zap: { kind: 'fm', algo: 'stack', ops: [{ r: 1, l: 1, a: 0.001, d: 0.3, s: 0.2, r: 0.1 }, { r: 2, l: 2.6, d: 0.07, s: 0.1, v: 0.9 }, { r: 3, l: 1.2, d: 0.04, s: 0 }, { r: 1, l: 0.4, d: 0.05, s: 0 }], fbk: 0.3, r: 0.1, chorus: 1, gain: 0.1 },
+  zap: { kind: 'fm', algo: 'stack', ops: [{ r: 1, l: 1, a: 0.001, d: 0.3, s: 0.2, rel: 0.1 }, { r: 2, l: 2.6, d: 0.07, s: 0.1, v: 0.9 }, { r: 3, l: 1.2, d: 0.04, s: 0 }, { r: 1, l: 0.4, d: 0.05, s: 0 }], fbk: 0.3, r: 0.1, chorus: 1, gain: 0.1 },
   // Chicha (sound.md 3.5.3). The lead: a clean single-coil electric, the
   // pickup's peak near 3 kHz, a little amp drive, the Fender-style tremolo
   // and a short slide up into each note (the surf articulation).
-  surfGuitar: { kind: 'string', decay: 1.8, damp: 0.3, pick: 0.65, body: 2900, bodyQ: 1.4, bodyMix: 0.6, tone: 5200, drive: 0.5, trem: 0.45, tremRate: 5.6, bend: 0.25, bendT: 0.04, glide: 0.04, r: 0.5, chorus: 0, gain: 0.3 },
+  surfGuitar: { kind: 'string', decay: 1.8, damp: 0.3, pick: 0.6, pickPos: 0.13, body: 2900, bodyQ: 1.4, bodyMix: 0.6, tone: 5200, drive: 0.5, trem: 0.45, tremRate: 5.6, glide: 0.04, r: 0.5, chorus: 0, gain: 0.3 },
   // The Amazonian lead (Juaneco): the same guitar through a wah rocked once
   // a beat, no tremolo.
-  wahGuitar: { kind: 'string', decay: 1.8, damp: 0.3, pick: 0.7, body: 2600, bodyQ: 1.2, bodyMix: 0.5, tone: 6000, drive: 0.9, wah: 2.2, wahHz: 380, wahQ: 4.5, wahRate: 1.6, bend: 0.2, bendT: 0.04, glide: 0.04, r: 0.4, chorus: 0, gain: 0.22 },
+  wahGuitar: { kind: 'string', decay: 1.8, damp: 0.3, pick: 0.65, pickPos: 0.13, body: 2600, bodyQ: 1.2, bodyMix: 0.5, tone: 6000, drive: 0.9, wah: 2.2, wahHz: 380, wahQ: 4.5, wahRate: 1.6, glide: 0.04, r: 0.4, chorus: 0, gain: 0.22 },
   // The rhythm guitar: muted strums on the off-beats, strummed, damped fast.
-  rhythmGuitar: { kind: 'string', decay: 0.35, damp: 0.55, pick: 0.45, body: 2200, bodyQ: 1, bodyMix: 0.4, tone: 4200, drive: 0.3, strum: 0.014, r: 0.06, chorus: 0, gain: 0.6 },
+  rhythmGuitar: { kind: 'string', decay: 0.35, damp: 0.5, pick: 0.45, pickPos: 0.2, body: 2200, bodyQ: 1, bodyMix: 0.4, tone: 4200, drive: 0.3, strum: 0.014, r: 0.06, chorus: 0, gain: 0.6 },
   // The electric bass: a round finger-picked string with a soft top.
-  fingerBass: { kind: 'string', decay: 1.2, damp: 0.75, pick: 0.25, body: 320, bodyQ: 0.8, bodyMix: 0.5, tone: 1800, drive: 0.6, r: 0.08, chorus: 0, gain: 0.5 },
-  // A combo organ (Farfisa-like): bright drawbars, the wobble of its vibrato.
-  comboOrgan: { kind: 'fm', algo: 'organ', ops: [{ r: 1, l: 1, a: 0.004, d: 0.3, s: 0.8, r: 0.06 }, { r: 2, l: 0.8, a: 0.004, d: 0.2, s: 0.7, r: 0.06 }, { r: 3, l: 0.55, a: 0.003, d: 0.1, s: 0.45, r: 0.05 }, { r: 4, l: 0.4, a: 0.002, d: 0.08, s: 0.3, r: 0.05 }], r: 0.06, chorus: 3, gain: 0.14 },
+  fingerBass: { kind: 'string', decay: 1.2, damp: 0.5, pick: 0.25, pickPos: 0.3, body: 320, bodyQ: 0.8, bodyMix: 0.5, tone: 1800, drive: 0.6, r: 0.08, chorus: 0, gain: 0.5 },
+  // A combo organ (Farfisa, Vox Continental): divide-down reeds, not
+  // drawbar sines. A square and a saw with the octave below, open filter,
+  // no envelope to speak of, and the fast shallow vibrato those organs had.
+  comboOrgan: { kind: 'juno', saw: 0.5, pulse: 0.8, pw: 0.5, sub: 0.3, cutoff: 7000, res: 0.05, fenv: 0, keytrack: 0.3, a: 0.004, d: 0.1, s: 1, r: 0.04, hpf: 70, vib: 8, vibRate: 6.4, vibDelay: 0, chorus: 0, gain: 0.33 },
 };
 
 // The game's patch for a part: by identity, else the closest by fields
@@ -822,7 +846,7 @@ export const KNOBS = {
   juno: [['saw', 'Saw', 0, 1, 0.01], ['pulse', 'Pulse', 0, 1, 0.01], ['pw', 'Pulse width', 0.05, 0.95, 0.01], ['pwm', 'PWM (LFO)', 0, 1, 0.01], ['sub', 'Sub', 0, 1, 0.01], ['noise', 'Noise', 0, 0.5, 0.01], ['unison', 'Unison', 1, 7, 1], ['detune', 'Detune (c)', 0, 40, 0.5], ['hpf', 'HPF (Hz)', 20, 1000, 1], ['cutoff', 'Cutoff (Hz)', 80, 12000, 1], ['res', 'Resonance', 0, 1, 0.01], ['fenv', 'Env (oct)', 0, 5, 0.01], ['keytrack', 'Keytrack', 0, 1, 0.01], ['fa', 'F attack', 0.001, 3, 0.001], ['fd', 'F decay', 0.01, 3, 0.01], ['fs', 'F sustain', 0, 1, 0.01], ['a', 'Attack', 0.001, 3, 0.001], ['d', 'Decay', 0.01, 3, 0.01], ['s', 'Sustain', 0, 1, 0.01], ['r', 'Release', 0.01, 4, 0.01], ['lfoRate', 'LFO (Hz)', 0.05, 8, 0.01], ['chorus', 'Chorus (0, I, II, I+II)', 0, 3, 1], ['drive', 'Drive', 0, 3, 0.01], ['gain', 'Level', 0, 1.5, 0.01]],
   mono: [['cutoff', 'Cutoff (Hz)', 40, 12000, 1], ['res', 'Resonance', 0, 1, 0.01], ['fenv', 'Env (oct)', 0, 5, 0.01], ['keytrack', 'Keytrack', 0, 1, 0.01], ['drive', 'Drive', 0, 4, 0.01], ['sub', 'Sub', 0, 1, 0.01], ['noise', 'Noise', 0, 0.5, 0.01], ['fa', 'F attack', 0.001, 2, 0.001], ['fd', 'F decay', 0.01, 2, 0.01], ['fs', 'F sustain', 0, 1, 0.01], ['a', 'Attack', 0.001, 2, 0.001], ['d', 'Decay', 0.01, 2, 0.01], ['s', 'Sustain', 0, 1, 0.01], ['r', 'Release', 0.01, 3, 0.01], ['glide', 'Glide (s)', 0, 0.4, 0.001], ['vib', 'Vibrato (c)', 0, 40, 0.5], ['gain', 'Level', 0, 1.5, 0.01]],
   fm: [['fbk', 'Feedback', 0, 1.5, 0.01], ['r', 'Release', 0.01, 3, 0.01], ['chorus', 'Chorus (0, I, II, I+II)', 0, 3, 1], ['gain', 'Level', 0, 1.5, 0.01]],
-  string: [['decay', 'Ring (s)', 0.05, 6, 0.01], ['damp', 'Damping', 0, 0.95, 0.01], ['pick', 'Pick', 0, 1, 0.01], ['body', 'Body (Hz)', 100, 6000, 1], ['bodyQ', 'Body Q', 0.3, 6, 0.01], ['bodyMix', 'Body mix', 0, 1.5, 0.01], ['tone', 'Tone (Hz)', 500, 12000, 1], ['drive', 'Drive', 0, 3, 0.01], ['wah', 'Wah (oct)', 0, 4, 0.01], ['wahHz', 'Wah from (Hz)', 100, 1500, 1], ['wahRate', 'Wah rate (Hz)', 0.1, 8, 0.01], ['trem', 'Tremolo', 0, 1, 0.01], ['tremRate', 'Tremolo rate (Hz)', 1, 12, 0.01], ['bend', 'Slide in (semi)', 0, 3, 0.01], ['bendT', 'Slide time (s)', 0.01, 0.3, 0.001], ['glide', 'Glide (s)', 0, 0.4, 0.001], ['strum', 'Strum (s)', 0, 0.06, 0.001], ['r', 'Mute (s)', 0.01, 3, 0.01], ['chorus', 'Chorus (0, I, II, I+II)', 0, 3, 1], ['gain', 'Level', 0, 1.5, 0.01]],
+  string: [['decay', 'Ring (s)', 0.05, 6, 0.01], ['damp', 'Damping', 0, 0.5, 0.01], ['pick', 'Pick', 0, 1, 0.01], ['pickPos', 'Pick position', 0, 0.5, 0.01], ['body', 'Body (Hz)', 100, 6000, 1], ['bodyQ', 'Body Q', 0.3, 6, 0.01], ['bodyMix', 'Body mix', 0, 1.5, 0.01], ['tone', 'Tone (Hz)', 500, 12000, 1], ['drive', 'Drive', 0, 3, 0.01], ['wah', 'Wah (oct)', 0, 4, 0.01], ['wahHz', 'Wah from (Hz)', 100, 1500, 1], ['wahRate', 'Wah rate (Hz)', 0.1, 8, 0.01], ['trem', 'Tremolo', 0, 1, 0.01], ['tremRate', 'Tremolo rate (Hz)', 1, 12, 0.01], ['bend', 'Slide in (semi)', 0, 3, 0.01], ['bendT', 'Slide time (s)', 0.01, 0.3, 0.001], ['glide', 'Glide (s)', 0, 0.4, 0.001], ['strum', 'Strum (s)', 0, 0.06, 0.001], ['r', 'Mute (s)', 0.01, 3, 0.01], ['chorus', 'Chorus (0, I, II, I+II)', 0, 3, 1], ['gain', 'Level', 0, 1.5, 0.01]],
 };
 // FM operators get their own knobs: index/level, ratio and decay per op.
 export const FM_OP_KNOBS = [['l', 'level', 0, 4, 0.01], ['r', 'ratio', 0.5, 16, 0.01], ['d', 'decay', 0.01, 4, 0.01], ['s', 'sustain', 0, 1, 0.01]];
