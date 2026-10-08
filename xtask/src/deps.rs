@@ -110,9 +110,18 @@ const RULES: &[Rule] = &[
         pure: false,
         exact_math: false,
     },
+    // The Music Lab's port: no dependencies at all (it also builds as the
+    // radio's standalone worklet wasm); the game's generated music.
+    Rule {
+        krate: "mp_music",
+        allowed: &[],
+        banned: SIM_BANNED,
+        pure: false,
+        exact_math: false,
+    },
     Rule {
         krate: "mp_audio",
-        allowed: &["mp_math", "mp_exhaust"],
+        allowed: &["mp_math", "mp_exhaust", "mp_music"],
         banned: NO_BEVY,
         pure: false,
         exact_math: false,

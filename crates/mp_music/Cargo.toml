@@ -1,0 +1,27 @@
+[package]
+name = "mp_music"
+description = "The Music Lab ported: instruments, sequencer, composer, genre grammars and mix, per sample; the radio's music"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# rlib: mp_audio's native backend runs the engine in a worklet processor,
+# and the client reads the grammars and the station schedule.
+# cdylib: on the web the engine is its own small wasm (no wasm-bindgen),
+# which the AudioWorklet shim `crates/mp_audio/web/music-worklet.js`
+# instantiates on the audio thread; `cargo xtask web` builds it into
+# dist/next/.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# The C-ABI exports of `src/wasm.rs`, for the standalone worklet wasm only
+# (`cargo xtask web` builds it with this feature). Off for the rlib, so the
+# exports never reach the game's own wasm.
+worklet = []
+
+[dev-dependencies]
+# The goldens (parity/golden/music/) are JSON; tracks are compared by the
+# SHA-256 of their canonical text.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "0.10"

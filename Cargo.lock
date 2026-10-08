@@ -4433,6 +4433,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mp_music"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "mp_net"
 version = "0.1.0"
 dependencies = [
