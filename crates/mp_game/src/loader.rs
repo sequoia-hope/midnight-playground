@@ -458,6 +458,11 @@ fn spawn_node(
                 spawned += 1;
             }
             Some(inst) => {
+                // An InstancedMesh with nothing to draw yet (the birds'
+                // pool, filled by its animator) still gets its entities,
+                // hidden, on a placeholder stream: the animator's first
+                // instances show it (`animate`, D1156).
+                let mut empty = false;
                 let made = stream.get_or_insert_with(|| {
                     instance_stream(
                         &b.scene,
@@ -466,6 +471,10 @@ fn spawn_node(
                         &node.matrix_world,
                         node.receive_shadow,
                     )
+                    .or_else(|| {
+                        empty = inst.capacity.max(inst.count) > 0;
+                        empty.then(placeholder_stream)
+                    })
                 });
                 let Some((stream, sphere)) = made.clone() else {
                     continue;
@@ -504,7 +513,7 @@ fn spawn_node(
                     }
                 }
                 shadows(&mut e);
-                if hidden {
+                if hidden || empty {
                     e.insert(Visibility::Hidden);
                 }
                 if let Some(p) = b.parent {
@@ -570,6 +579,14 @@ fn instance_stream(
             (c.as_vec3(), r as f32)
         });
     Some((Instances(Arc::new(InstanceStream::new(&data))), sphere))
+}
+
+/// One instance scaled to nothing: the stream of an InstancedMesh that has
+/// no instances yet (its entities are hidden until it has).
+fn placeholder_stream() -> Stream {
+    let mut data = Vec::with_capacity(instancing::INSTANCE_FLOATS);
+    instancing::push_instance(&mut data, &DMat4::ZERO, [1.0; 3], false);
+    (Instances(Arc::new(InstanceStream::new(&data))), None)
 }
 
 /// An InstancedMesh's instance-rate attributes, per instance: the first
