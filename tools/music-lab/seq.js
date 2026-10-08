@@ -123,10 +123,15 @@ export const FILLS = {
   perc: { from: 8, lanes: { rim: '........x..x.x.x', hat: '........xxxxxxxx', kick: 'x...x...x...x...' } },
   kickroll: { from: 0, ramp: true, lanes: { kick: 'x...x...x.x.xxxx', snare: '........x.x.xxxx' } },
   skip: { from: 8, lanes: { snare: '........x..x.xoX', kick: 'x.....x.x...x...' } },
+  // Chicha: the timbalero's abanico (a roll on the high drum opening onto
+  // the low one and the bell) into the chorus; the congas and güiro play on.
+  abanico: { from: 8, lanes: { timbaleH: '........xxxxxxx.', timbaleL: '...............X', cowbell: '...............x' } },
 };
-const FILL_REPLACES = new Set(['snare', 'clap', 'hat', 'ohat', 'ride', 'shaker', 'rim', 'snap', 'tomL', 'tomM', 'tomH']);
+const FILL_REPLACES = new Set(['snare', 'clap', 'hat', 'ohat', 'ride', 'shaker', 'rim', 'snap', 'tomL', 'tomM', 'tomH', 'timbaleH', 'timbaleL', 'cascara']);
 for (const f of Object.values(FILLS)) f.c = Object.entries(f.lanes).map(([v, str]) => ({ voice: v, steps: str.split('') }));
-export const DRUM_LANES = ['kick', 'snare', 'clap', 'hat', 'ohat', 'ride', 'crash', 'revCrash', 'shaker', 'rim', 'snap', 'tomL', 'tomM', 'tomH', 'boom', 'cowbell'];
+export const DRUM_LANES = ['kick', 'snare', 'clap', 'hat', 'ohat', 'ride', 'crash', 'revCrash', 'shaker', 'rim', 'snap', 'tomL', 'tomM', 'tomH', 'boom', 'cowbell',
+  // The latin kit's (instruments.js KITS.latin).
+  'congaO', 'congaS', 'tumba', 'bongoH', 'bongoL', 'timbaleH', 'timbaleL', 'cascara', 'guiroL', 'guiroS', 'clave'];
 
 export class Seq {
   constructor(T) {

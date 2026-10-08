@@ -46,10 +46,10 @@ const barChords = (prog) => prog.trim().split(/\s+/).map((b) => b.split(',')[0])
 // (two statements of a four-bar loop): full, thinned, and answered (the
 // same figure a third higher). `prog2` realises the full hook in another
 // key (eurobeat's final chorus).
-function hooks(r, m, { scale, tonic, prog, lo, hi, gate, phrase = 4 }) {
+function hooks(r, m, { scale, tonic, prog, lo, hi, gate, phrase = 4, avoid = [] }) {
   const c = barChords(prog);
   const chords = c.length >= 8 ? c.slice(0, 8) : [...c, ...c].slice(0, 8);
-  const over = (mm, opts = {}) => realise(mm, { scale, tonic, chords, lo, hi, gate, phrase, ...opts });
+  const over = (mm, opts = {}) => realise(mm, { scale, tonic, chords, lo, hi, gate, phrase, avoid, ...opts });
   return { hook: over(m), sparse: over(thin(m), { gate: null }), answer: over(m, { start: 2 }) };
 }
 
@@ -547,5 +547,97 @@ export function garage(seed, { dejavu = 0.7 } = {}) {
   return T;
 }
 
-export const GENRES = { house, techno, trance, eurobeat, psytrance, dnb, garage };
-export const GENRE_NAMES = { house: 'House', techno: 'Techno', trance: 'Trance', eurobeat: 'Eurobeat', psytrance: 'Psytrance', dnb: 'Drum & bass', garage: 'UK garage' };
+// ── Chicha ───────────────────────────────────────────────────────
+// Peruvian cumbia of the late sixties on (sound.md 3.5.3). Costeña (Los
+// Destellos, Los Mirlos): the surf guitar with tremolo carries the melody,
+// two guitars in thirds in the chorus, a combo organ underneath. Amazónica
+// (Juaneco y su Combo): the lead through a wah rocked once a beat, the
+// organ up front. Under both: the cumbia bass (root on the beat, the fifth
+// on the off-beat before the next), the güiro's long-short-short, congas
+// and bongos, the timbales' cáscara and the bell in the chorus. The
+// melodies are minor pentatonic (the huayno in it), the harmony i, iv and
+// V7 vamps. Form: the guitar hook alone, verse, chorus, verse, an organ
+// solo over the rhythm, the abanico back into the chorus, the chorus with
+// the organ in unison, and the hook again to close.
+export function chicha(seed, { dejavu = 0.75 } = {}) {
+  const r = R(seed, 8);
+  const sub = r.fork(1).chance(0.35) ? 'amazonica' : 'costena';
+  const tonic = r.int(0, 11), bpm = sub === 'amazonica' ? r.int(90, 98) : r.int(96, 104);
+  const scale = SCALES.minor;
+  const progV = progression(scale, tonic, r.pick(PROGS.cumbia));
+  const progC = progression(scale, tonic, r.pick([[0, [4, 'dom'], 0, [4, 'dom']], [0, 3, [4, 'dom'], 0], [0, 0, [4, 'dom'], [4, 'dom']], [3, [4, 'dom'], 0, 0]]));
+  const T = skeleton(`chicha-${seed}`, {
+    title: `Chicha ${seed}`, style: `${sub === 'amazonica' ? 'Cumbia amazónica' : 'Chicha'} · ${NOTE[tonic]} minor · ${progC}`,
+    bpm, gain: 1.1, delay: 0.5, delayFb: 0.22, pump: { depth: 0.08, release: 0.12 },
+    kitName: 'latin',
+    prog: { v: progV, c: progC },
+    lay: { guiroS: 0.3, cascara: 0.45, shaker: 0.5, bongoH: 0.4, bongoL: 0.4, cowbell: 0.55, clave: 0.6, lead2: 0.35, rhythm: 0.2, organ: 0.15 },
+  });
+
+  // Percussion. The güiro's stroke per beat: long on the beat, two shorts
+  // after; the conga's open tones on the "and" of 2 and the end of the bar,
+  // the slap on 2 and 4; the bongos' martillo in the verse; the cáscara and
+  // the bell in the chorus.
+  const guiro = { guiroL: 'x...x...x...x...', guiroS: r.pick(['..xx..xx..xx..xx', '.x.x.x.x.x.x.x.x', '..xx..xx..xx.xxx']) };
+  const congas = { congaO: r.pick(['......x.......xx', '......x.......x.', '..x...x.......xx']), congaS: '....x.......x...', tumba: r.pick(['............x...', '............x..x']) };
+  const bongos = { bongoH: 'o.x.o.x.o.x.o.x.', bongoL: r.pick(['......x.......x.', '..x.......x.....']) };
+  const kick = { kick: r.pick(['x.......x.......', 'x.......x.....x.']) };
+  const cascara = r.pick(['x.x.xx.x.x.xx.x.', 'x.xx.x.xx.xx.x.x']);
+  const verse = { ...kick, ...guiro, ...congas, ...bongos };
+  const chorus = { ...kick, ...guiro, ...congas, cascara, cowbell: 'x...x...x...x...', shaker: 'x.x.x.x.x.x.x.x.' };
+  const nv = setDrums(T, 'v', [verse, { ...verse, congaO: mutate(r, congas.congaO, 0.1, ['x', '.', '.']) }]);
+  const nc = setDrums(T, 'c', [chorus, { ...chorus, cowbell: 'x..xx..xx..xx..x' }, { ...chorus, cascara: mutate(r, cascara, 0.1, ['x', '.']) }]);
+  T.drums.intro = { ...guiro, clave: 'x..x..x...x.x...' };
+  T.drums.brk = { ...guiro, ...congas, clave: 'x..x..x...x.x...' };
+  T.drums.pre = { ...kick, ...guiro, ...congas, cascara };
+  T.drums.coda = { ...guiro, ...congas };
+
+  // The bass: the tumbao, root on the beat and the fifth on the off-beat
+  // before the next, a pickup into every change; the bordoneo (a repeated
+  // root) now and then.
+  const lo = bassLo(tonic);
+  const plain = [['r.....f.r.....f.', 6], ['r.....o.r.....f.', 1], ['r..r..f.r.....f.', 1.5], ['r.....f.r..r..f.', 1]];
+  const pickup = [['r.....f.r.....n.', 5], ['r.....f.r...r.n.', 1], ['r.....o.r.....n.', 1]];
+  const bassOver = (prog) => bars(4, (b) => r.weighted(changesAfter(prog, b) ? pickup : plain));
+  T.parts.bass = { type: 'bass', lo, gate: 0.85, ch: { pump: true, level: 1.05 }, pat: {}, lab: P('fingerBass') };
+  const nb = setPats(T.parts.bass, 'b', [bassOver(progV), bassOver(progV), bassOver(progC)]);
+
+  // The rhythm guitar's "chaka": muted strums on the off-beat 8ths, and a
+  // 16th pair at the end of the phrase.
+  const chaka = r.pick(['..x...x...x...x.', '..x...x...x...xx', '..x..xx...x...x.']);
+  T.parts.rhythm = { type: 'chord', lo: 55, gate: 0.45, ch: { rev: 0.15, pan: 0.3, level: 0.7 }, pat: {}, lab: P('rhythmGuitar') };
+  const nr = setPats(T.parts.rhythm, 'r', variants(r, loop(4, chaka, chaka.slice(0, 12) + 'x.xx'), 1, 0.1, ['x', '.']));
+
+  // The organ: held chords under the verse, stabs on 2 and 4 in the chorus.
+  T.parts.organ = { type: 'chord', lo: 60, ch: { rev: 0.3, pan: -0.25, level: sub === 'amazonica' ? 0.7 : 0.45 }, pat: { pad: 'x---------------', stab: '....x---....x---' }, lab: P('comboOrgan') };
+
+  // The guitars. The hook is the chorus; the verse has its own melody, lower
+  // and calmer; the second guitar answers a third up, at the same time.
+  const leadPatch = sub === 'amazonica' ? P('wahGuitar', { wahRate: bpm / 60 }) : P('surfGuitar', { tremRate: r.pick([5.2, 5.8, 6.4]) });
+  const pent = [1, 5];
+  const mc = motif(r, { bars: 2, density: 'medium', figure: 0.5 });
+  const mv = motif(r, { bars: 2, density: r.pick(['sparse', 'medium']), figure: 0.4 });
+  const HC = hooks(r, mc, { scale, tonic: 60 + tonic, prog: progC, lo: -3, hi: 9, gate: 5, avoid: pent });
+  const HV = hooks(r, mv, { scale, tonic: 60 + tonic, prog: progV, lo: -5, hi: 6, gate: 6, avoid: pent });
+  T.parts.lead = { type: 'mel', res: 1, legato: true, ch: { rev: 0.4, dly: 0.2, pan: 0.1, level: 1.4 }, pat: { hook: HC.hook, sparse: HC.sparse, answer: HC.answer, verse: HV.hook, verse2: HV.answer }, lab: leadPatch };
+  T.parts.lead2 = { type: 'mel', res: 1, legato: true, ch: { rev: 0.4, dly: 0.15, pan: -0.3, level: 0.8 }, pat: { third: HC.answer }, lab: P('surfGuitar', { trem: 0.3, tremRate: 5.2, gain: 0.26 }) };
+  // The organ solo: its own figure over the verse chords, pentatonic too.
+  const mo = motif(r, { bars: 2, density: 'dense', figure: 0.6 });
+  T.parts.organLead = { type: 'mel', res: 1, ch: { rev: 0.3, dly: 0.2, pan: -0.2, level: 0.8 }, pat: hooks(r, mo, { scale, tonic: 72 + tonic, prog: progV, lo: -4, hi: 8, gate: 3, avoid: pent }), lab: P('comboOrgan', { gain: 0.065 }) };
+
+  const S = T.sections;
+  S.push({ bars: 8, prog: 'c', drums: 'intro', p: { lead: 'hook' } });
+  S.push({ bars: 16, prog: 'v', drums: 'v', vd: nv, fill: 'abanico', p: { bass: 'b', rhythm: 'r', organ: 'pad', lead: 'verse' }, v: { bass: 2, rhythm: nr } });
+  S.push({ bars: 16, prog: 'c', drums: 'c', vd: nc, crash: true, drop: true, p: { bass: 'b2', rhythm: 'r', organ: 'stab', lead: 'hook', lead2: 'third' }, v: { rhythm: nr } });
+  S.push({ bars: 16, prog: 'v', drums: 'v', vd: nv, fill: 'abanico', p: { bass: 'b', rhythm: 'r', organ: 'pad', lead: 'verse2' }, v: { bass: 2, rhythm: nr } });
+  S.push({ bars: 16, prog: 'v', drums: 'brk', p: { bass: 'b0', organLead: 'hook' } });
+  S.push({ bars: 8, prog: 'v', drums: 'pre', fill: 'abanico', p: { bass: 'b0', rhythm: 'r0', organ: 'pad', lead: 'sparse' } });
+  S.push({ bars: 16, prog: 'c', drums: 'c', vd: nc, crash: true, drop: true, p: { bass: 'b2', rhythm: 'r', organ: 'stab', lead: 'hook', lead2: 'third' }, v: { rhythm: nr } });
+  S.push({ bars: 16, prog: 'c', drums: 'c', vd: nc, crash: true, fill: 'abanico', p: { bass: 'b2', rhythm: 'r', organ: 'stab', lead: 'answer', lead2: 'third', organLead: 'answer' }, v: { rhythm: nr } });
+  S.push({ bars: 8, prog: 'c', drums: 'coda', p: { bass: 'b2', lead: 'sparse' } });
+  T.sections = expand(S, r, dejavu);
+  return T;
+}
+
+export const GENRES = { house, techno, trance, eurobeat, psytrance, dnb, garage, chicha };
+export const GENRE_NAMES = { house: 'House', techno: 'Techno', trance: 'Trance', eurobeat: 'Eurobeat', psytrance: 'Psytrance', dnb: 'Drum & bass', garage: 'UK garage', chicha: 'Chicha' };

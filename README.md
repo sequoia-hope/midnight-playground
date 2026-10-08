@@ -445,11 +445,14 @@ A/B against the current game engine and offline measurements.
 
 `tools/music-lab.html` (the same way) is the Music Lab: the game's songs
 re-voiced on emulated classic instruments (TB-303, Juno-style pads, Moog-style
-monos, DX-style FM, TR-808 and TR-909) with a real mix, house, techno,
-trance, eurobeat, psytrance, drum & bass and UK garage tracks made from a
-seed (one hook each, `tools/music-lab/compose.js`), a keyboard and drum pads to play every instrument
+monos, DX-style FM, a plucked string for guitars, TR-808, TR-909 and a latin
+kit) with a real mix, house, techno, trance, eurobeat, psytrance, drum & bass,
+UK garage and chicha tracks made from a seed (one hook each,
+`tools/music-lab/compose.js`), a keyboard and drum pads to play every instrument
 with live knobs, an A/B against the game's music in step, and offline
-measurements. `npm run test:lab` runs both labs' tests.
+measurements. `npm run test:lab` runs both labs' tests;
+`node tools/music-lab/test/golden.mjs` writes `parity/golden/music/`, the
+reference the Rust port (`crates/mp_music`) is checked against.
 
 ## Music player
 

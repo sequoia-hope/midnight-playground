@@ -9,10 +9,11 @@
   Music Lab: a listening prototype of docs/vision/sound.md section 3 (music
   with real instruments, arrangements that evolve, a real mix): S3 and S4.
   Instruments in music-lab/instruments.js (TB-303, Juno-style poly, Moog-style
-  mono, 4-op FM, TR-808 and TR-909 synthesised per hit) on the DSP blocks in
-  music-lab/dsp.js; the sequencer (the game's song format) in seq.js; the
-  house and techno grammars in gen.js; the mix in engine.js, all run per
-  sample in the AudioWorklet (worklet.js). A plays the game's own music
+  mono, 4-op FM, a plucked string, TR-808, TR-909 and a latin kit synthesised
+  per hit) on the DSP blocks in music-lab/dsp.js; the sequencer (the game's
+  song format) in seq.js; the genre grammars in gen.js over the composer in
+  compose.js; the mix in engine.js, all run per sample in the AudioWorklet
+  (worklet.js). A plays the game's own music
   (src/game/audio/Music.js, used read-only) in step with B, for comparison.
 -->
 <style>
@@ -126,7 +127,7 @@ tracks made from genre grammars. <b>B</b> is the new sound; <b>A</b> is the game
     <label class="sl">Reverb <input type="range" id="reverb" min="0" max="2" step="0.01" value="1"><output></output></label>
     <label class="sl">Reverb time (s) <input type="range" id="revSize" min="0.5" max="6" step="0.1" value="2.4"><output></output></label>
     <label class="sl">Reverb tone <input type="range" id="revTone" min="0" max="1" step="0.01" value="0.5"><output></output></label>
-    <label class="sl">Drum kit <select id="kit"><option value="tr909">TR-909</option><option value="tr808">TR-808</option></select><output></output></label>
+    <label class="sl">Drum kit <select id="kit"><option value="tr909">TR-909</option><option value="tr808">TR-808</option><option value="latin">Latin (chicha)</option></select><output></output></label>
     <label class="sl">Speaker <select id="speaker">
       <option value="headphones">Headphones (as is)</option>
       <option value="big">Big speakers</option>
@@ -167,7 +168,7 @@ tracks made from genre grammars. <b>B</b> is the new sound; <b>A</b> is the game
   <div class="card wide">
     <h2>Drum machine</h2>
     <p>Tap a pad to hear it and edit it. The tweaks apply to the song too.</p>
-    <div class="row"><select id="kit2"><option value="tr909">TR-909</option><option value="tr808">TR-808</option></select><button id="drumCopy">Copy JSON</button><button id="drumReset">Reset</button><span id="drumNote" style="color:var(--muted);font-size:13px"></span></div>
+    <div class="row"><select id="kit2"><option value="tr909">TR-909</option><option value="tr808">TR-808</option><option value="latin">Latin (chicha)</option></select><button id="drumCopy">Copy JSON</button><button id="drumReset">Reset</button><span id="drumNote" style="color:var(--muted);font-size:13px"></span></div>
     <div class="pads" id="pads"></div>
     <div class="knobs" id="drumKnobs"></div>
   </div>

@@ -8,7 +8,7 @@ import { setRate, Osc, Ladder, ADSR, rng } from '../dsp.js';
 import { BPATCH, KITS, Drums, kitVoice, makeInstrument, voiceTrack, patchName } from '../instruments.js';
 import { Seq, compileTrack, DRUM_LANES, noteToMidi } from '../seq.js';
 import { GENRES } from '../gen.js';
-import { euclid, motif, thin, realise, chordOn, progression, SCALES, R, expand } from '../compose.js';
+import { euclid, motif, thin, realise, chordOn, chordPcs, progression, SCALES, R, expand } from '../compose.js';
 import { Engine } from '../engine.js';
 import { TRACKS, PATCHES } from '../../../src/game/audio/tracks.js';
 
@@ -124,6 +124,36 @@ test('FM operators modulate their carriers; the supersaw spreads seven oscillato
   assert.ok(a > hi, 'formant over the top');
 });
 
+test('the plucked string: in tune, ringing for its decay time, strummed, with tremolo and a wah', () => {
+  // A plain string on A3 rings at 220 Hz; its level falls with the decay.
+  const plain = { kind: 'string', decay: 0.6, damp: 0.3, pick: 0.6, body: 2500, bodyQ: 1, bodyMix: 0, tone: 8000, gain: 0.3 };
+  const { L } = renderInst(plain, [{ t: 0, midis: [57], dur: 2 }], 2);
+  // The fundamental carries more than the gap up to the second harmonic
+  // (a string's crossings count its harmonics, so not zcHz).
+  const seg = L.subarray(0.05 * RATE, 0.05 * RATE + 16384);
+  assert.ok(bandPower(seg, 210, 230) > 3 * bandPower(seg, 250, 420), 'in tune at 220 Hz');
+  const early = rms(L.subarray(0.05 * RATE, 0.15 * RATE)), late = rms(L.subarray(0.55 * RATE, 0.65 * RATE));
+  assert.ok(early > 0.01 && late < early * 0.3, `decays ${early} → ${late}`);
+  // Muting: the note's end damps the string within its `r`.
+  const muted = renderInst({ ...plain, decay: 3, r: 0.05 }, [{ t: 0, midis: [57], dur: 0.3 }], 1).L;
+  assert.ok(rms(muted.subarray(0.5 * RATE, 0.6 * RATE)) < rms(muted.subarray(0.1 * RATE, 0.2 * RATE)) * 0.1, 'muted after the gate');
+  // Tremolo: the level wobbles at the tremolo rate (a 5 Hz dip every 200 ms).
+  const trem = renderInst({ ...plain, decay: 4, trem: 0.9, tremRate: 5 }, [{ t: 0, midis: [57], dur: 2 }], 1).L;
+  const env = (a, b) => rms(trem.subarray(a * RATE, b * RATE));
+  const levels = [];
+  for (let t = 0.2; t < 0.9; t += 0.02) levels.push(env(t, t + 0.02));
+  assert.ok(Math.max(...levels) > Math.min(...levels) * 4, 'tremolo wobbles the level');
+  // Strum: the chord's strings start one after the other.
+  const chord = [{ t: 0, midis: [57, 61, 64, 69], dur: 1 }];
+  const strum = renderInst({ ...plain, strum: 0.03 }, chord, 0.5).L, flat = renderInst(plain, chord, 0.5).L;
+  const first = strum.findIndex((v) => Math.abs(v) > 1e-4);
+  assert.ok(first >= 0 && first < 64);
+  assert.ok(rms(strum.subarray(0, 0.025 * RATE)) < rms(flat.subarray(0, 0.025 * RATE)) * 0.7, 'one string first, the others after');
+  // Wah: finite, and the swept band-pass moves the spectrum between sweeps.
+  const wah = renderInst(BPATCH.wahGuitar, [{ t: 0, midis: [57], dur: 1.5 }], 1.5).L;
+  assert.ok(finite(wah) && peak(wah) > 0.01 && peak(wah) < 1.5);
+});
+
 test('the 303 slides: no new envelope, and the pitch glides', () => {
   const lab = { ...BPATCH.acid, res: 0, env: 0, drive: 0 };
   // A2 for one step, sliding into A3.
@@ -148,10 +178,26 @@ test('kits: every lane sounds, decays, and kicks sit low and hats high', () => {
       assert.ok(h.done, `${kit} ${lane} done`);
     }
     const one = (lane) => { const d = new Drums(1); d.hit(lane, kitVoice(kit, lane), 1); const x = new Float32Array(4096); for (let i = 0; i < x.length; i++) { let y = 0; d.run((_, v) => { y += v; }); x[i] = y; } return x; };
-    const k = one('kick'), h = one('hat');
+    const k = one('kick');
     assert.ok(bandPower(k, 30, 120) > 10 * bandPower(k, 2000, 4000), `${kit} kick is low`);
-    assert.ok(bandPower(h, 6000, 12000) > 10 * bandPower(h, 100, 1000), `${kit} hat is high`);
+    if (lanes.hat) { const h = one('hat'); assert.ok(bandPower(h, 6000, 12000) > 10 * bandPower(h, 100, 1000), `${kit} hat is high`); }
   }
+});
+
+test('the latin kit: congas sit under the bongos, the güiro is a stroke that stops, the slap is bright', () => {
+  const one = (lane, n = 8192) => { const d = new Drums(1); const h = d.hit(lane, kitVoice('latin', lane), 1); const x = new Float32Array(n); for (let i = 0; i < n; i++) { let y = 0; d.run((_, v) => { y += v; }); x[i] = y; } return { x, h }; };
+  const conga = one('congaO').x, bongo = one('bongoH').x;
+  assert.ok(bandPower(conga, 150, 260) > bandPower(conga, 350, 600), 'the conga is low');
+  assert.ok(bandPower(bongo, 350, 600) > bandPower(bongo, 150, 260), 'the bongo is high');
+  const slap = one('congaS').x;
+  assert.ok(bandPower(slap, 1500, 4000) / bandPower(slap, 150, 260) > bandPower(conga, 1500, 4000) / bandPower(conga, 150, 260), 'the slap is brighter than the open tone');
+  const { x: guiro, h } = one('guiroL', RATE / 2);
+  assert.ok(h.done, 'the long scrape ends');
+  const len = guiro.findLastIndex((v) => Math.abs(v) > 1e-4) / RATE;
+  assert.ok(len > 0.12 && len < 0.2, `scrape ${len} s`);
+  assert.ok(bandPower(guiro, 2000, 4500) > 5 * bandPower(guiro, 100, 800), 'the güiro is a rasp');
+  assert.ok(one('guiroS', RATE / 4).x.findLastIndex((v) => Math.abs(v) > 1e-4) / RATE < 0.06, 'the short one is short');
+  for (const lane of ['congaO', 'tumba', 'bongoL', 'timbaleH', 'cascara', 'guiroL', 'guiroS', 'clave', 'shaker', 'cowbell']) assert.ok(DRUM_LANES.includes(lane), lane + ' is a lane');
 });
 
 test('the game\'s sample names tweak the lab voices', () => {
@@ -312,6 +358,57 @@ test('every genre: the hook is stated sparse before the drop and in full at it, 
   for (let i = 0; i < 32; i++) for (const e of s.step()) if (e.k === 'note') notes.push(e.midis[0]);
   assert.deepEqual(notes, [33, 41, 41, 33]);
 });
+
+test('chicha: the cumbia bass, the güiro\'s stroke, a pentatonic lead, twin guitars, and the organ solo', () => {
+  for (let seed = 1; seed <= 12; seed++) {
+    const T = GENRES.chicha(seed);
+    assert.equal(T.kitName, 'latin');
+    // The tumbao: the root on beats 1 and 3, the fifth (or a pickup) on the
+    // off-beat before the next beat, in every bar of every pattern.
+    for (const pat of Object.values(T.parts.bass.pat)) {
+      for (let b = 0; b < pat.length; b += 16) {
+        const bar = pat.slice(b, b + 16);
+        assert.equal(bar[0], 'r', `${T.id} bar ${b / 16} starts on the root: ${bar}`);
+        assert.equal(bar[8], 'r', `${T.id} root on 3: ${bar}`);
+        assert.ok('fon'.includes(bar[6]) && 'fon'.includes(bar[14]), `${T.id} fifths off the beat: ${bar}`);
+      }
+    }
+    // The güiro: long on every beat, shorts between.
+    const v = T.drums.v0;
+    assert.equal(v.guiroL, 'x...x...x...x...');
+    assert.ok(v.guiroS.includes('x') && v.congaO && v.congaS && v.bongoH, 'the verse percussion');
+    assert.ok(T.drums.c0.cascara && T.drums.c0.cowbell, 'the chorus adds the timbales\' cáscara and the bell');
+    // The lead is minor pentatonic off the chord tones: no 2nd or 6th of the key
+    // except as a chord tone (the V7's 7th is the 4th; its 3rd is outside the scale).
+    const tonic = NOTE_PC(T.style.split(' · ')[1].split(' ')[0]);
+    const chords = T.prog.c.split(' ');
+    const toks = T.parts.lead.pat.hook.split(' ');
+    let off = 0, n = 0;
+    toks.forEach((t, i) => {
+      if (!/^[A-G]/.test(t)) return;
+      n++;
+      const pc = (noteToMidi(t.replace('!', '')) - tonic + 12 * 10) % 12;
+      const ch = chords[Math.floor(i / 16) % chords.length];
+      const tones = chordPcs(ch).pcs.map((p) => (p - tonic + 12) % 12);
+      if ((pc === 2 || pc === 8) && !tones.includes(pc)) off++;
+    });
+    assert.ok(n >= 8 && off === 0, `${T.id}: ${off} of ${n} lead notes off the pentatonic`);
+    // Twin guitars in the chorus, the organ solo in the break, the hook alone to open.
+    const drop = T.sections.find((s) => s.drop);
+    assert.equal(drop.p.lead, 'hook'); assert.equal(drop.p.lead2, 'third');
+    assert.ok(T.sections.some((s) => s.drums === 'brk' && s.p.organLead === 'hook'), 'organ solo');
+    assert.deepEqual(Object.keys(T.sections[0].p), ['lead']);
+    compileTrack(T);
+  }
+  // The dominant: 'dom' writes the V7 whatever the scale.
+  assert.equal(chordOn(SCALES.minor, 0, 4, 'dom'), 'G7');
+  assert.equal(progression(SCALES.minor, 9, [0, 3, [4, 'dom'], 0]), 'Am Dm E7 Am');
+  // avoid: the pentatonic realisation steps over the 2nd and 6th.
+  const m = motif(R(3), { bars: 2, density: 'dense' });
+  const toks = realise(m, { scale: SCALES.minor, tonic: 69, chords: ['Am', 'Am', 'Am', 'Am', 'Am', 'Am', 'Am', 'Am'], lo: -3, hi: 9, avoid: [1, 5] }).split(' ');
+  for (const t of toks) if (/^[A-G]/.test(t)) assert.ok(![11, 5].includes(noteToMidi(t.replace('!', '')) % 12), `${t} is not pentatonic`);
+});
+const NOTE_PC = (name) => ({ C: 0, 'C#': 1, D: 2, Eb: 3, E: 4, F: 5, 'F#': 6, G: 7, Ab: 8, A: 9, Bb: 10, B: 11 })[name];
 
 test('every genre renders: the drop is louder and brighter than the intro, over 25 seeds', () => {
   for (const [name, g] of Object.entries(GENRES)) {
