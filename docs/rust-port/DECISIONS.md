@@ -9509,6 +9509,15 @@ design; the choices:
   the sweep's static with a gliding centre, two heterodyne whistles, the
   lock's opening low-pass, the click and hiss of off. Its tests are its
   own.
+- **Checked in a browser.** `tools/parity/e2e/radio.test.mjs` on the
+  release build: the station node comes up after the first click, Coast
+  tunes The Tide, T steps Ridgeline, Radio Pacífico, the Playlist (the
+  level's own song plays) and round to The Tide, the choice survives a
+  reload, no page errors. The JS audio suite's playlist tests seed
+  `mr.station = playlist` on the Rust build; the other suites' failures
+  on this day (gamepad's drop-down, the menu's defaults, the pursuit
+  toggle, the saved best time) are the same on the commit before this
+  work (checked in a worktree), so they are not the radio's.
 - **Stations** (`STATIONS`): The Tide 88.1 (Marisol: house, UK garage,
   liquid drum & bass), Ridgeline Radio 97.7 (Kit: techno, psytrance,
   trance, eurobeat, roller drum & bass), Radio Pacífico 104.3 (chicha, no
