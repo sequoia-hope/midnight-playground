@@ -9612,3 +9612,40 @@ early twenties, the son of Peruvian farmers on the coast, bilingual and
 code-switching, a morning person who surfs and mountain bikes. Pacífico
 widens from chicha alone to chicha with some house and garage when he is
 wired in (`dj: Some("teo")`, the station's `genres`).
+
+## D1155. The Radio page rates and skips; the verdicts are a file in the tree
+
+2026-10-08. The owner: "expand the radio tool with affordances for me to
+rate songs and skip ahead (which real radio would not do). The local
+version will save my ratings to disk. This will not show up when served
+from Pages, but someone else's local clone from GitHub would." The
+choices, for radio.md 8's lists:
+
+- **The verdicts live at `crates/mp_music/favourites.json`,** beside the
+  stations they will be compiled into (D1154), tracked in git, so a
+  rating is a line in a diff and a clone has everyone's. The dev server
+  (`tools/serve.py`, what `serve.sh` runs) takes a POST on that one path
+  and upserts the song by its `(genre, seed)` pair, one object per line
+  and sorted, so diffs show songs; it is the only thing the server
+  writes. `mp-host` (the `MP_HOST=1` server) does not take the POST yet.
+- **Feature detection by a header,** not by hostname: the GET of the file
+  carries `X-Favourites: writable` from `serve.py`, and the page shows
+  the rating controls only then. On GitHub Pages the file is not even
+  published (`crates/` is not in the site), so nothing shows; on a clone
+  served another way the programme's marks show but not the controls.
+- **A rating is the pair plus what the page knows** (station, dj, title,
+  style, bpm, bars), the verdict (`keep` or `reject`), the note, when
+  (`at`), and `wall`, the song's start on the station's clock, which is
+  its address: `radio.html?station=<key>&wall=<it>` replays the station
+  there. The pair alone names the song; the rest is for reading the file.
+- **Skipping is a clock offset**, never a change to the player: the page's
+  station time is the wall clock plus `skew`, Skip sets `skew` so that
+  time is the next song's start (the next block's first after a block's
+  last) and retunes, Live sets it to 0. The player stays a pure function
+  of (station, time) (D1151), the page says how far ahead it is, and the
+  tuner's sweep plays on each skip as on any retune. The lock screen's
+  next and previous still step the dial: a listener with the screen off
+  is a listener, not a rater.
+- Also: Pacífico is wired to Teo (`dj: Some("teo")`, chicha 0.7, house
+  0.2, garage 0.1), as D1154 described, so his clips play on the page and
+  in the game once `audio/dj/` has them.

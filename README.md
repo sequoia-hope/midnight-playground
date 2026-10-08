@@ -449,7 +449,12 @@ is on, the block's programme and the DJ between songs (`docs/vision/radio.md`
 7). It plays like a music app: on a phone it keeps playing with the screen
 locked, shows the station and song on the lock screen with play, pause and
 next, and installs from "Add to Home Screen". It needs the Rust web build
-(`cargo xtask web --release`).
+(`cargo xtask web --release`). For listening with intent it has what a
+radio lacks: Skip song (the page's clock runs ahead of the station's until
+Live), and Keep / Reject with a note on the song playing, which the dev
+server writes to `crates/mp_music/favourites.json` in the working tree
+(`docs/vision/radio.md` 8); those controls show on a clone served by
+`serve.sh`, not on GitHub Pages.
 
 `tools/music-lab.html` (the same way) is the Music Lab: the game's songs
 re-voiced on emulated classic instruments (TB-303, Juno-style pads, Moog-style

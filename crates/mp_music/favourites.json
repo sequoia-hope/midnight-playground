@@ -1,0 +1,4 @@
+{
+ "about": "Songs heard on the Radio page and kept or rejected (docs/vision/radio.md 8). A song is its (genre, seed) pair: \"keep\" puts it in the station's rotation, \"reject\" keeps discovery from drawing it again; the note is why. Written by tools/serve.py; edit by hand freely.",
+ "songs": []
+}
