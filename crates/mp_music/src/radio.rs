@@ -80,8 +80,9 @@ pub const STATIONS: &[Station] = &[
         key: "pacifico",
         name: "Radio Pacífico",
         freq: "104.3",
-        dj: None,
-        genres: &[("chicha", 1.0)],
+        // Teo brings in some house and garage of a morning (D1154).
+        dj: Some("teo"),
+        genres: &[("chicha", 0.7), ("house", 0.2), ("garage", 0.1)],
         seed: 1043,
     },
 ];

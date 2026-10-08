@@ -271,16 +271,27 @@ generator intentional.
   lines instead of a generic intro. Favourites cross stations: Kit plays
   a house song and says it's Marisol's, which gives `banter` something
   true to chew on. The generic `music` lines stay for discovery.
-- **Building the lists.** The Radio page (`tools/radio.html`) already
-  plays the live schedule and shows what is on; it gains "keep" and
-  "skip" by the now-playing line, writing (station, genre, seed, title,
-  verdict, note) to a `favourites.json` beside the stations, which the
-  owner and the producer friends fill by listening, as a station gets a
-  rotation anyway. A song reached by its pair, from the Music Lab or a
-  URL, so a note can be checked. Crowd rating (a public stream where
-  listeners rate songs) is the same page with a backend, later and not on
-  the roadmap; the data shape is the same from day one, so nothing is
-  thrown away. Either way the lists are filtered by hand at the least.
+- **Building the lists** (built 2026-10-08, D1155). The Radio page
+  (`tools/radio.html`) plays the live schedule and shows what is on; by
+  the now-playing line it has **Keep** and **Reject** with a note (K, J),
+  which POST (station, dj, genre, seed, title, style, bpm, bars, verdict,
+  note, wall, at) to `crates/mp_music/favourites.json`, the file beside
+  the stations' Rust, which `tools/serve.py` writes on disk; a later
+  verdict on the same pair replaces the earlier one, and the programme
+  table marks every song the file knows. The controls show only where the
+  file's GET says `X-Favourites: writable`, so on a clone served the
+  registered way and not on GitHub Pages: the owner and the producer
+  friends fill the lists by listening, and the verdicts travel with the
+  repo as commits. Two affordances a real radio lacks: **Skip song** (S)
+  runs the page's clock ahead of the stations' to the next song's start
+  (the player stays a pure function of (station, time); the page says how
+  far ahead it is, and **Live** (L) puts the clock back), and a song's
+  **link** (`?station=<key>&wall=<its start on the station's clock>`, the
+  `wall` saved with the verdict) replays the station at that moment, so a
+  note can be checked. Crowd rating (a public stream where listeners rate
+  songs) is the same page with a backend, later and not on the roadmap;
+  the data shape is the same from day one, so nothing is thrown away.
+  Either way the lists are filtered by hand at the least.
 - **Data.** `crates/mp_music/src/radio.rs` gets the lists next to
   `STATIONS` (generated from `favourites.json` by the build, as the lab's
   tables are), a `rotation` weight per station, and the blocklist; the

@@ -69,6 +69,17 @@ tr.past td { color: var(--muted); }
 .meter { display: inline-block; width: 120px; height: 8px; background: #0a0c10; border: 1px solid var(--line); border-radius: 4px; vertical-align: middle; overflow: hidden; }
 .meter i { display: block; height: 100%; background: var(--ok); width: 0; }
 #dj { color: var(--fg); font-size: 14px; min-height: 1.5em; }
+/* The listener's affordances a real radio lacks: skipping, and the verdicts. */
+.skip { margin: 8px 0 4px; }
+.skip #live { color: var(--low); border-color: var(--low); }
+#rate { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+#rate[hidden] { display: none; }
+#rate button.keep.on { background: #1d4d2a; border-color: var(--ok); }
+#rate button.reject.on { background: #4d1d24; border-color: #ff6b6b; }
+#rate input[type=text] { background: #11141b; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font: inherit; font-size: 14px; flex: 1; min-width: 160px; }
+#rate .saved { color: var(--muted); font-size: 13px; }
+td.v { width: 1.5em; text-align: center; }
+td.v.keep { color: var(--ok); } td.v.reject { color: #ff8a8a; }
 @media (max-width: 600px) { label.sl { grid-template-columns: 1fr 56px; } label.sl input { grid-column: 1 / -1; grid-row: 2; } }
 </style>
 </head>
@@ -107,6 +118,26 @@ blocks, the same on every device. Tune away and back and the song has moved on. 
     <div class="clock" id="clock"></div>
     <div id="dj"></div>
     <label class="row" style="gap:6px;color:var(--muted);font-size:13px;margin-top:8px"><input type="checkbox" id="djOn" checked> The DJ talks between songs (clips in <code>audio/dj/</code>)</label>
+    <!-- Skipping is the page's own affordance: a radio does not, so this
+         page's clock runs ahead of the stations' until "Live". -->
+    <div class="row skip">
+      <button id="skip" title="Skip to the next song (S)">⏩ Skip song</button>
+      <button id="live" title="Back to the stations' clock (L)" hidden>● Live</button>
+      <span class="sub" id="skew"></span>
+    </div>
+    <!-- Rating (radio.md 8): keep or reject the song playing, with a note.
+         Shown only where the server writes crates/mp_music/favourites.json
+         (tools/serve.py): on a clone, not on GitHub Pages. -->
+    <div id="rate" hidden>
+      <div class="row">
+        <button class="keep" id="keep" title="Keep: into the station's rotation (K)">👍 Keep</button>
+        <button class="reject" id="reject" title="Reject: discovery never draws it again (J)">👎 Reject</button>
+        <input type="text" id="note" placeholder="why (optional, saved with the verdict)" maxlength="300">
+        <span class="saved" id="saved"></span>
+      </div>
+      <p style="margin:6px 0 0;font-size:13px">A song is its <code>(genre, seed)</code>; the verdict goes to <code>crates/mp_music/favourites.json</code> in this clone, by hand or by commit from there.
+      <a id="songLink" href="#">Link to this song</a> (the station at this moment, for a note to be checked).</p>
+    </div>
   </div>
 
   <div class="card">

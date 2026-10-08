@@ -14,6 +14,14 @@
 // the song with play, pause and next. The Media Session API carries the
 // metadata and the controls; `navigator.audioSession` asks iOS for a
 // playback session before the context exists.
+//
+// Two things a real radio lacks, for listening with intent (radio.md 8):
+// skipping ahead (the page's clock runs ahead of the stations' by `skew`,
+// so the player stays a pure function of (station, time) and "Live" is
+// skew 0), and keep / reject with a note on the song playing, written to
+// crates/mp_music/favourites.json by tools/serve.py; the controls appear
+// only where that file's GET says X-Favourites: writable, so on a clone
+// and not on GitHub Pages.
 
 const $ = (id) => document.getElementById(id);
 const status = (html, err = false) => { $('status').innerHTML = html; $('status').classList.toggle('err', err); };
@@ -94,7 +102,10 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) wake
 window.addEventListener('pageshow', wake);
 window.addEventListener('focus', wake);
 
-const wallNow = () => Date.now() / 1000;
+// The page's station time: the wall clock, plus how far it has skipped
+// ahead (0 when live; never behind, a station has no past to play).
+let skew = 0;
+const wallNow = () => Date.now() / 1000 + skew;
 
 async function tune(i) {
   try {
@@ -119,12 +130,29 @@ async function tune(i) {
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = i >= 0 ? 'playing' : 'paused';
   buildDial();
   refresh(true);
-  status(i >= 0 ? `Tuned to <b>${info.stations[i].name} ${info.stations[i].freq}</b>.` : 'Off.');
+  status(i >= 0 ? `Tuned to <b>${info.stations[i].name} ${info.stations[i].freq}</b>${skew > 0 ? `, ${mmss(skew)} ahead of the station` : ''}.` : 'Off.');
 }
 // The player's buttons: play comes back to the last station (live: the
 // song has moved on), pause is off, next and previous step the dial.
 const step = (d) => tune((last + d + info.stations.length) % info.stations.length);
 const toggle = () => tune(station >= 0 ? -1 : last);
+// Skip: the page's clock jumps to the next song's start (the next block's
+// first when this is the block's last) and the player re-cues there, with
+// the tuner's sweep as on any retune. Live puts the clock back.
+function skip() {
+  if (station < 0 || !info) return;
+  const wall = wallNow();
+  const sc = info.schedule(station, wall);
+  const blockStart = wall - sc.into;
+  const next = sc.slot + 1 < sc.slots.length ? blockStart + sc.slots[sc.slot + 1].start : blockStart + 1200;
+  skew += next + 0.05 - wall;
+  tune(station);
+}
+function live() {
+  if (skew === 0) return;
+  skew = 0;
+  if (station >= 0) tune(station); else refresh(true);
+}
 
 function buildDial() {
   const el = $('dial');
@@ -140,15 +168,69 @@ function buildDial() {
   $('play').textContent = station >= 0 ? '❚❚' : '▶';
   $('play').setAttribute('aria-label', station >= 0 ? 'Pause' : 'Play');
   $('play').title = station >= 0 ? 'Pause (space)' : `Play ${info.stations[last].name} (space)`;
+  $('skip').disabled = station < 0;
+  $('live').hidden = skew === 0;
+  $('skew').textContent = skew > 0 ? `${mmss(skew)} ahead of the station; others tuned here are behind you` : '';
 }
 $('off').onclick = () => tune(-1);
 $('play').onclick = toggle;
 $('prev').onclick = () => step(-1);
 $('next').onclick = () => step(1);
+$('skip').onclick = skip;
+$('live').onclick = live;
+$('keep').onclick = () => rate('keep');
+$('reject').onclick = () => rate('reject');
+$('note').addEventListener('keydown', (e) => { if (e.key === 'Enter' && current) rate(current.verdict || 'keep'); });
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.code === 'Space') { e.preventDefault(); toggle(); } else if (e.code === 'ArrowRight' || e.code === 'KeyT') step(1); else if (e.code === 'ArrowLeft') step(-1);
+  else if (e.code === 'KeyS') skip(); else if (e.code === 'KeyL') live();
+  else if (e.code === 'KeyK' && fav?.writable) rate('keep'); else if (e.code === 'KeyJ' && fav?.writable) rate('reject');
 });
+
+// ── Favourites: keep and reject (radio.md 8) ─────────────────────
+// The file the verdicts live in, beside the stations' Rust; the same path
+// is read and written. `fav.songs` is keyed by the pair, `genre:seed`.
+const FAV_URL = new URL('../../crates/mp_music/favourites.json', import.meta.url);
+let fav = null;     // { writable, songs: Map }
+let current = null; // the song playing, as a favourites entry (verdict from the file, if any)
+const pairKey = (s) => `${s.genre}:${s.seed}`;
+async function loadFavourites() {
+  try {
+    const r = await fetch(FAV_URL, { cache: 'no-store' });
+    if (!r.ok) return;
+    const data = await r.json();
+    fav = { writable: r.headers.get('X-Favourites') === 'writable', songs: new Map((data.songs || []).map((s) => [pairKey(s), s])) };
+    $('rate').hidden = !fav.writable;
+  } catch { /* not served here: no verdicts */ }
+}
+// The song playing as an entry: the pair, what the page knows about it,
+// and where on the station's clock it started (its address, for a note
+// to be checked: the link below replays the station there).
+function songEntry(st, sc, s) {
+  const start = Math.floor(wallNow() - sc.into + s.start);
+  return { station: st.key, dj: st.dj || null, genre: s.genre, seed: s.seed, title: s.title, style: s.style, bpm: Math.round(s.bpm * 10) / 10, bars: s.bars, wall: start };
+}
+function showVerdict() {
+  const v = current && fav?.songs.get(pairKey(current));
+  $('keep').classList.toggle('on', v?.verdict === 'keep');
+  $('reject').classList.toggle('on', v?.verdict === 'reject');
+  $('saved').textContent = v ? `${v.verdict === 'keep' ? 'kept' : 'rejected'} ${v.at ? v.at.slice(0, 10) : ''}` : '';
+}
+async function rate(verdict) {
+  if (!fav?.writable || !current) return;
+  const song = { ...current, verdict, note: $('note').value.trim(), at: new Date().toISOString().slice(0, 19) + 'Z' };
+  $('saved').textContent = 'saving…';
+  try {
+    const r = await fetch(FAV_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(song) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${(await r.text()).slice(0, 120)}`);
+    const data = await r.json();
+    fav.songs = new Map((data.songs || []).map((s) => [pairKey(s), s]));
+    showVerdict();
+    $('saved').textContent += ` · saved (${fav.songs.size} songs)`;
+    refresh(true);
+  } catch (e) { $('saved').textContent = 'not saved: ' + e.message; console.warn('favourites', e); }
+}
 
 // ── The lock screen: Media Session ───────────────────────────────
 const art = {};
@@ -231,15 +313,23 @@ function refresh(force = false) {
   $('clock').textContent = `station time ${new Date(wall * 1000).toISOString().replace('T', ' ').slice(0, 19)} UTC · block ${sched.block} (${mmss(sched.into)} of 20:00) · on air ${Math.floor(since / 86400)} days`;
   $('blockNote').textContent = `Block ${sched.block}: ${sched.slots.length} songs, the last fitted to the boundary (its tempo nudged).`;
   const tb = $('prog-table');
-  tb.innerHTML = '<tr><th>At</th><th>Song</th><th>Style</th><th class="r">bpm</th><th class="r">Length</th></tr>';
+  tb.innerHTML = `<tr><th>At</th><th>Song</th><th>Style</th><th class="r">bpm</th><th class="r">Length</th>${fav ? '<th></th>' : ''}</tr>`;
   sched.slots.forEach((x, i) => {
     const tr = document.createElement('tr');
     tr.className = i === sched.slot ? 'cur' : i < sched.slot ? 'past' : '';
-    tr.innerHTML = `<td>${mmss(x.start)}</td><td>${x.title}</td><td>${x.style}</td><td class="r">${x.bpm.toFixed(1)}</td><td class="r">${mmss(x.secs)}</td>`;
+    const v = fav?.songs.get(pairKey(x))?.verdict;
+    tr.innerHTML = `<td>${mmss(x.start)}</td><td>${x.title}</td><td>${x.style}</td><td class="r">${x.bpm.toFixed(1)}</td><td class="r">${mmss(x.secs)}</td>`
+      + (fav ? `<td class="v ${v || ''}" title="${v ? v + ': ' + (fav.songs.get(pairKey(x)).note || '') : ''}">${v === 'keep' ? '✓' : v === 'reject' ? '✗' : ''}</td>` : '');
     tb.append(tr);
   });
   mediaUpdate(st, s, into);
   const slot = `${sched.block}:${sched.slot}`;
+  if (slot !== lastSlot) {
+    current = songEntry(st, sched, s);
+    $('note').value = fav?.songs.get(pairKey(current))?.note || '';
+    $('songLink').href = `?station=${st.key}&wall=${current.wall}`;
+    showVerdict();
+  }
   if (lastSlot !== null && slot !== lastSlot && Math.random() < 0.35) djDue = wall;
   lastSlot = slot;
   maybeDj(wall);
@@ -307,10 +397,22 @@ function frame() {
 try {
   await loadInfo();
   try { const k = localStorage.getItem(STORE); const i = info.stations.findIndex((s) => s.key === k); if (i >= 0) last = i; } catch { /* private mode */ }
+  // A song's link (radio.md 8): the station at a moment on its clock. The
+  // page's clock is set ahead to that moment, so play lands on the song.
+  const q = new URLSearchParams(location.search);
+  const linked = info.stations.findIndex((s) => s.key === q.get('station'));
+  const at = Number(q.get('wall'));
+  if (linked >= 0 && at > 1767225600) { last = linked; skew = Math.max(0, at - Date.now() / 1000); }
   buildDial();
-  status(`Tap ▶ or a station to start${last ? `: last time it was ${info.stations[last].name}` : ''}.`);
-  await loadDj();
+  status(linked >= 0 && skew > 0
+    ? `Tap ▶ for <b>${info.stations[last].name}</b> at the linked moment, ${mmss(skew)} ahead of the station.`
+    : `Tap ▶ or a station to start${last ? `: last time it was ${info.stations[last].name}` : ''}.`);
+  await Promise.all([loadDj(), loadFavourites()]);
   requestAnimationFrame(frame);
   setInterval(refresh, 1000);
 } catch (e) { status(e.message, true); console.error(e); }
-window.radio = { tune, step, toggle, get station() { return station; }, get schedule() { return sched; }, get ctx() { return ctx; }, get out() { return out; }, get level() { return level; } };
+window.radio = {
+  tune, step, toggle, skip, live, rate,
+  get station() { return station; }, get schedule() { return sched; }, get ctx() { return ctx; }, get out() { return out; }, get level() { return level; },
+  get skew() { return skew; }, get favourites() { return fav; }, get current() { return current; },
+};
