@@ -6,6 +6,8 @@
 | `ROADMAP.md` | The order of work after the port, as milestones M12 onward |
 | `sound.md` | Engines and music: the sound milestone (draft) |
 | `radio.md` | Stations and DJs in the game (draft) |
+| `atlas.md` | Planning the open world on the real peninsula: the atlas, the plan, the proposal |
+| `living-world.md` | Birds and people: what is built and what is next |
 | `../vehicle-dynamics/SPEC.md` | Sim handling, soft-body tyres, the force-feedback wheel |
 
 ## How this is kept
@@ -117,3 +119,31 @@ these documents:
   look-ahead); the AWE cat-back is a preset beside the stock S4, the
   first stock-vs-aftermarket pair → `sound.md` 2.1. Asked for a major
   pass of tests across the workspace and tools.
+
+### 2026-10-08 (voice session: what next in the world)
+
+- **Birds and people:** played Seaside Raceway and saw neither. Found:
+  the birds were generated but the client never drew them, on any level:
+  their meshes start empty for the animator to fill, and the loader
+  skipped empty instanced meshes (fixed, port DECISIONS D1156); the fans
+  stand behind the concrete wall and the sponsor boards, so from the
+  track only their heads show. → `living-world.md` 2.
+- **The open world on the real peninsula:** Half Moon Bay and Pacifica
+  more like the real towns; over the mountain, the peninsula from Redwood
+  City to San Francisco is the city. Real elevation data and real maps of
+  the whole peninsula, regions mapped on them, a proposal for the regions.
+  → `atlas.md`, WORLD 3.
+- **The loop and the first race:** close the loop of 84, 1, 92 and 35.
+  The first race starts in the dark at the crest above San Gregorio, just
+  north of where 84 meets Highway 1 almost at sea level, races through
+  the farmland and finishes at Half Moon Bay's big intersection; the
+  coastal section can be extended. The owner worked in San Gregorio and
+  lived in Half Moon Bay. → `atlas.md` 3.1.
+- **Colour from the farms:** seasonal flowers, wildflowers, the yellow
+  mustard cover crops, pumpkins in their season. → `atlas.md` 3.4.
+- **Remixing the levels:** the desert and its train and the Sierra don't
+  fit the peninsula, but Cruis'n World's variety of jumping round the
+  world is fun. → `atlas.md` 3.5 (remixes and road trips).
+- **Don't change the levels yet;** build the system to plan the world
+  first. → the atlas (`tools/atlas/build.py`, `mp_atlas`,
+  `tools/atlas.html`).

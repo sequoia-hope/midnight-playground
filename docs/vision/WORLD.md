@@ -88,19 +88,28 @@ the crates became `mp_` (port DECISIONS D1100).
 ## 3. The first world: the Peninsula
 
 A video-game compression of the San Mateo coast and peninsula: it should
-feel like the place, not map it. Real roads are inspiration for character,
-not surveys. Seaside Raceway is the exception that proves the rule.
+feel like the place, not map it. Seaside Raceway is the exception that
+proves the rule.
+
+**Revised 2026-10-08:** the world is planned on the real peninsula, with
+real elevation and roads (`docs/vision/atlas.md`). Half Moon Bay and
+Pacifica become more like the real towns, and **over the hill the city is
+the peninsula**: Redwood City all the way up to San Francisco. The first
+piece is the loop of Highways 1, 92, 35 (Skyline) and 84, and the first
+race runs from the crest above San Gregorio to Half Moon Bay's big
+intersection. The table below is the first plan; the atlas's
+`plan.json` now holds the regions.
 
 | Region | Character | Real inspiration |
 |---|---|---|
 | **The coast** | A beautiful coastal highway, a big sweeping beach, farms and fields, fog in the mornings, pelicans flying alongside | Highway 1 at Half Moon Bay |
-| **The coastal city** | The sleepy town grown into a real city by the beach, with harbour, downtown and surface streets | Half Moon Bay, stretched toward a San Francisco |
+| **The coastal city** | The real Half Moon Bay: Main Street, the beaches, the harbour at Pillar Point (revised 2026-10-08: no longer grown into a city) | Half Moon Bay, El Granada, Princeton |
 | **North up the coast** | Highway 1 on to the next town, the drive home | Half Moon Bay to Pacifica |
 | **Over the hill** | The climb inland, a reservoir on the far side | Highway 92, Crystal Springs |
 | **The summit** | A ridge road in fog so dense the redwoods drip with it, so it feels like rain | Skyline Boulevard |
 | **The redwoods** | A twisty, turning descent through redwood forest, looping back down to the coast | Highway 84 with the character of Highway 9 in the Santa Cruz Mountains |
 | **The state park** | Dirt roads and clearings in the mountains: a rallycross loop and a rally sandbox | The state parks between the coast and the peninsula |
-| **The bay side** | Highways and surface streets down the other side of the hills | Redwood City |
+| **The bay side** | The city: the peninsula's towns as one city along the bay, from Redwood City up to San Francisco (revised 2026-10-08) | Redwood City to San Francisco |
 | **Crawler hills** | Steep, rocky hills north of the coastal city, trails and trailheads | The hills around Pacifica |
 
 **Later, the same world grows:**

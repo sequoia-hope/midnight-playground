@@ -51,7 +51,10 @@ fun, and sound is where it falls shortest.
 plan exists as data.
 
 - A **world plan file**: regions, the road network between them, and
-  which corridor each level is.
+  which corridor each level is. **Started 2026-10-08:** the atlas
+  (`docs/vision/atlas.md`): real terrain, land cover and roads for the
+  whole peninsula, `plan.json`, `mp_atlas` measuring it, and the planner
+  page `tools/atlas.html`.
 - **Corridor authoring:** a level's road drawn and edited in the level
   viewer (god mode), with annotations both sides can leave.
 - Scenery kits a corridor can draw on (the existing generators, made

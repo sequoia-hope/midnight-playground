@@ -1,0 +1,14 @@
+[package]
+name = "mp_atlas"
+description = "The atlas: real geography (terrain, land cover, the road graph) and the open world's plan, measured (docs/vision/atlas.md)"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# geo.json and plan.json.
+serde_json = "1"
+
+[[bin]]
+name = "mp-atlas"
+path = "src/bin/mp-atlas.rs"
