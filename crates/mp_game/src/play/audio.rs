@@ -839,24 +839,22 @@ impl RaceAudio {
         self.apply_volume();
     }
 
-    /// `nextTrack` (T): the next station on the dial while the radio plays
-    /// (the stations, then the playlist, round again; D1151), else the
-    /// playlist's next track.
+    /// `nextTrack` (T): the next stop on the dial (the stations, then the
+    /// playlist, round again; D1151). The playlist is one stop, so its own
+    /// next track is the menu's picker; where the radio cannot run (no
+    /// AudioWorklet) T is the JS's next track.
     pub fn next_track(&mut self) {
         if !self.audio.ready() {
             return;
         }
-        let level = self
-            .level
-            .clone()
-            .unwrap_or_else(|| self.settings.station.clone());
-        if super::station::resolve(&self.settings.station, &level).is_some() {
-            self.settings.station = super::station::next_setting(&self.settings.station, &level);
-            store_set("station", &json_str(&self.settings.station));
-            self.pick_music(&level);
-        } else {
+        if self.audio.radio_unavailable() {
             self.call(Call::NextTrack);
+            return;
         }
+        let level = self.level.clone().unwrap_or_else(|| "coast".to_owned());
+        self.settings.station = super::station::next_setting(&self.settings.station, &level);
+        store_set("station", &json_str(&self.settings.station));
+        self.pick_music(&level);
     }
 
     /// Whether a station is playing (the pause screen's button says
@@ -1486,6 +1484,13 @@ fn publish(a: &mut RaceAudio) {
     set(&o, "sfx", JsValue::from_f64(a.settings.sfx));
     set(&o, "track", JsValue::from_str(&a.settings.track));
     set(&o, "station", JsValue::from_str(&a.settings.station));
+    // The station the radio node plays, as an index in STATIONS (-1 none).
+    set(
+        &o,
+        "tuned",
+        JsValue::from_f64(a.audio.station().map_or(-1.0, |i| i as f64)),
+    );
+    set(&o, "radioReady", JsValue::from_bool(a.audio.radio_ready()));
     set(
         &o,
         "playing",

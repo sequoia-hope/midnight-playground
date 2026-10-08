@@ -89,6 +89,12 @@ impl GameAudio {
         self.station_made
     }
 
+    /// Whether this platform cannot run the radio (no AudioWorklet): the
+    /// playlist plays whatever station is asked for.
+    pub fn radio_unavailable(&self) -> bool {
+        matches!(self.station, StState::Unavailable)
+    }
+
     /// Whether the radio node is built and the last request applied.
     pub fn radio_ready(&self) -> bool {
         matches!(self.station, StState::Ready(Some(_))) && !self.station_pending

@@ -6,7 +6,7 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, openGame } from './harness.js';
+import { launch, openGame, TARGET } from './harness.js';
 import { LEVEL_TRACK, TRACKS } from '../../src/game/audio/tracks.js';
 import { sleep, simWait, startRace, holdKeys } from './controls-helpers.js';
 
@@ -15,6 +15,9 @@ before(async () => { browser = await launch(); });
 after(async () => { await browser?.close(); });
 
 const Q = 'timescale=2';
+// The Rust game's music is the radio by default (DEVIATIONS.md, D1151);
+// the playlist tests ask for the playlist.
+const PLAYLIST = TARGET === 'rust' ? { 'mr.station': 'playlist' } : {};
 const ctxState = () => window.__audio.ctx?.state ?? 'none';
 const trackId = () => window.__audio.trackInfo?.id ?? null;
 const sliders = () => ({
@@ -133,11 +136,12 @@ test('desktop: M mutes and unmutes the music, and mute survives a reload', async
 });
 
 test('desktop: T and the pause screen\'s Next track change the track', async () => {
-  const game = await openGame(browser, { device: 'desktop', query: Q });
+  const game = await openGame(browser, { device: 'desktop', query: Q, storage: PLAYLIST });
   try {
     await startRace(game, { how: 'click' });
     const id0 = await game.waitFor(trackId, { what: 'a track to play' });
-    assert.equal(id0, LEVEL_TRACK.sierra, 'the level starts on its own track');
+    // The Rust menu starts on Coast (DEVIATIONS.md, D1102), the JS on Sierra.
+    assert.equal(id0, LEVEL_TRACK[TARGET === 'rust' ? 'coast' : 'sierra'], 'the level starts on its own track');
     await game.key('KeyT');
     const id1 = await game.waitFor(`(${trackId})() !== ${JSON.stringify(id0)} && (${trackId})()`, { what: 'T to change the track' });
     await game.key('Escape');
@@ -180,9 +184,9 @@ test('desktop: the music and SFX sliders stay in sync between menu and pause, an
 });
 
 test('desktop: the track picker\'s choice is what plays, and it is remembered', async () => {
-  const game = await openGame(browser, { device: 'desktop', query: Q });
+  const game = await openGame(browser, { device: 'desktop', query: Q, storage: PLAYLIST });
   try {
-    const own = LEVEL_TRACK.sierra;
+    const own = LEVEL_TRACK[TARGET === 'rust' ? 'coast' : 'sierra'];
     const pick = TRACKS.find((t) => t.id !== own).id;
     const options = await game.eval(() => [...document.getElementById('opt-track').options].map((o) => o.value));
     assert.deepEqual(options, ['auto', ...TRACKS.map((t) => t.id)], 'the level\'s own track, then every song');

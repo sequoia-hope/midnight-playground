@@ -197,11 +197,16 @@ so that tuning to a station catches its song wherever it happens to be.
 
   Country and classical get stations when their grammars exist (sound.md
   3.5.1, 3.5.2); a KPIG-like coast country station and a classical one.
-- **Controls.** T, the pause screen's button and a pad button step through
-  the stations and off; the station's name and frequency show on the HUD
-  for a moment; M toggles the music volume as before. The level picks a
-  default station (`LEVEL_STATION`) as `LEVEL_TRACK` picks a song today,
-  and the choice persists (`mr.station`). "Playlist" is the old music.
+- **Controls.** T and the pause screen's button ("Next station") step
+  round the dial: the stations in order, then the Playlist (the old music,
+  one stop on the dial; its own next track is the menu's picker), then
+  the first station again; a toast shows the station and the song for a
+  moment, and the pause screen's now-playing line names them; M toggles
+  the music volume as before. The level picks a default station
+  (`level_station`) as `LEVEL_TRACK` picks a song today, and the choice
+  persists (`mr.station`, also a "Radio" select on the menu). Where the
+  radio cannot run (no AudioWorklet: an insecure page) the playlist plays
+  and T is the JS's next track.
 - **Energy.** The race drives the station's `energy` (sound.md 3.4): a
   pursuit, the final lap and a close battle raise it, a standstill lowers
   it; the mix closes down and layers drop out below full.
