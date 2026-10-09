@@ -67,6 +67,14 @@ confirmed). We go further, and generate it, like the game's other effects
   centre glides with the "dial", heterodyne whistles that rise and fall
   as it passes carriers, and a flicker of a station that isn't one of
   ours (a word, a bar of music) fading through.
+- **Built (2026-10-09, `mp_music::radio::Tuner`):** each turn is drawn
+  afresh: its length, the dial's speed curve and the hand's wobble, zero
+  to four other stations on the way (a buzzing voice or a chord, quieting
+  the hiss as the dial passes and breaking up at the edges), how AM-like
+  it is (whistles falling to zero beat on each carrier, crackle, a
+  narrower band), and whether our station bleeds in before the lock.
+  `cargo run --release -p mp_music --example tuner -- out.wav` renders
+  ten turns to hear.
 - **The lock:** the static drops away while the station fades in, first
   narrow and a little detuned (thin, as if not quite on frequency), then
   opening to full width within a few hundred milliseconds.

@@ -346,41 +346,130 @@ enum TunerState {
     Silent,
 }
 
+/// Most other stations the dial passes on one turn.
+const MAX_PASSED: usize = 4;
+
+/// A station the dial passes on the way (one that isn't ours): where it
+/// sits on the sweep, how wide its signal is, and what it is playing.
+#[derive(Clone, Copy, Debug)]
+struct Passed {
+    /// Its place on the dial, 0 (where the turn starts) to 1 (ours).
+    pos: f64,
+    /// The half-width of its signal, on the same scale.
+    width: f64,
+    /// Hertz of beat per unit of dial: the heterodyne whistle falls to
+    /// zero on the carrier and rises again past it.
+    beat: f64,
+    /// Talk (a voice's formants) or music (a chord).
+    talk: bool,
+    /// The voice's pitch, or the chord's root, in hertz.
+    pitch: f64,
+    level: f64,
+    ph: [f64; 3],
+    w_ph: f64,
+}
+
+/// The vowels the far-off voices say: the first two formants.
+const VOWELS: [(f64, f64); 5] = [
+    (730.0, 1090.0),
+    (530.0, 1840.0),
+    (270.0, 2290.0),
+    (570.0, 840.0),
+    (440.0, 1020.0),
+];
+
 /// The sound of the dial (radio.md 2.1), applied in place to the
-/// station's output: a sweep of band-passed static whose centre glides,
-/// two heterodyne whistles crossing, then the lock, the station opening
-/// up from a few hundred hertz to full width; off is a click and the hiss
-/// falling away. Seeded, so never quite the same twice.
+/// station's output. A turn is modelled, not played back: the dial moves
+/// from 0 to our station at 1 along a drawn path (its speed curve and the
+/// hand's wobble), past a few other stations scattered on the way. Near
+/// each one the hiss quietens (an FM receiver's capture) and a scrap of
+/// it comes through, a voice or a bar of music, distorted at the edges;
+/// on an AM-like turn each also whistles, its beat falling to nothing on
+/// the carrier and rising past it, and the static crackles. Our station
+/// can bleed in before the dial gets there. Then the lock, the station
+/// opening up from a few hundred hertz to full width; off is a click and
+/// the hiss falling away. Every part is drawn from the seed, so no two
+/// turns sound alike.
 pub struct Tuner {
     sr: f64,
     rng: Rng,
     state: TunerState,
     t: usize,
     len: usize,
-    f0: f64,
-    f1: f64,
     bp: Svf,
     lock: [Svf; 2],
-    w: [f64; 2],
-    w_ph: [f64; 2],
     hiss: f64,
+    // The turn.
+    /// The dial's speed curve (an exponent on the turn's progress) and
+    /// the hand's wobble: depth and cycles over the turn.
+    curve: f64,
+    wobble: (f64, f64),
+    passed: [Passed; MAX_PASSED],
+    n_passed: usize,
+    /// How AM-like the turn is (whistles, crackle) against FM's clean hiss.
+    am: f64,
+    hiss_level: f64,
+    /// The receiver's audio bandwidth: FM's is wider than AM's.
+    band: Svf,
+    /// Crackle: impulses per second, and the one sounding.
+    crackle_rate: f64,
+    crack: f64,
+    /// The scraps' radio voice: a band-pass, and the formant filters.
+    tone: Svf,
+    formant: [Svf; 2],
+    /// The syllable: its vowel's formants, and when the next starts.
+    vowel: (f64, f64),
+    syllable: usize,
+    /// How much of our station leaks in before the lock, and from where.
+    bleed: f64,
+    bleed_from: f64,
+    bleed_lp: [Svf; 2],
+    // The lock.
+    lock_secs: f64,
+    lock_from: f64,
+    click: f64,
 }
 
 impl Tuner {
     pub fn new(seed: u32, sr: f64) -> Tuner {
+        let none = Passed {
+            pos: 0.0,
+            width: 0.0,
+            beat: 0.0,
+            talk: false,
+            pitch: 0.0,
+            level: 0.0,
+            ph: [0.0; 3],
+            w_ph: 0.0,
+        };
         let mut t = Tuner {
             sr,
             rng: Rng::new(seed),
             state: TunerState::Silent,
             t: 0,
             len: 1,
-            f0: 800.0,
-            f1: 2500.0,
             bp: Svf::new(),
             lock: [Svf::new(), Svf::new()],
-            w: [0.0; 2],
-            w_ph: [0.0; 2],
             hiss: 0.0,
+            curve: 1.0,
+            wobble: (0.0, 1.0),
+            passed: [none; MAX_PASSED],
+            n_passed: 0,
+            am: 0.0,
+            hiss_level: 0.2,
+            band: Svf::new(),
+            crackle_rate: 0.0,
+            crack: 0.0,
+            tone: Svf::new(),
+            formant: [Svf::new(), Svf::new()],
+            vowel: VOWELS[0],
+            syllable: 0,
+            bleed: 0.0,
+            bleed_from: 0.8,
+            bleed_lp: [Svf::new(), Svf::new()],
+            lock_secs: 0.3,
+            lock_from: 400.0,
+            click: 0.3,
         };
         t.bp.set(1200.0, 2.0, sr);
         for f in &mut t.lock {
@@ -389,29 +478,150 @@ impl Tuner {
         t
     }
 
-    /// The dial turned: the sweep starts (0.55 to 0.85 s), then the lock.
+    /// The dial turned: a new turn is drawn (0.45 to 1 s), then the lock.
     pub fn tune(&mut self) {
+        let sr = self.sr;
         self.state = TunerState::Sweep;
         self.t = 0;
-        self.len = ((0.55 + self.rng.next() * 0.3) * self.sr) as usize;
-        let up = self.rng.next() < 0.5;
-        let (a, b) = (
-            500.0 + self.rng.next() * 700.0,
-            2200.0 + self.rng.next() * 2000.0,
+        self.len = ((0.45 + self.rng.next() * 0.55) * sr) as usize;
+        // A slow start or a slow finish, and a hand that isn't steady.
+        self.curve = 0.6 + self.rng.next() * 1.0;
+        self.wobble = (self.rng.next() * 0.04, 1.0 + self.rng.next() * 3.0);
+        self.am = if self.rng.next() < 0.4 {
+            self.rng.next() * 0.3
+        } else {
+            0.4 + self.rng.next() * 0.6
+        };
+        self.hiss_level = 0.13 + self.rng.next() * 0.1;
+        self.crackle_rate = self.am * self.rng.next() * 40.0;
+        self.band.set(9000.0 - self.am * 5500.0, 0.7, sr);
+        // The hiss's colour: from dull to bright.
+        self.bp.set(
+            1200.0 + self.rng.next() * 3000.0,
+            0.5 + self.rng.next() * 0.8,
+            sr,
         );
-        (self.f0, self.f1) = if up { (a, b) } else { (b, a) };
-        self.w = [
-            300.0 + self.rng.next() * 400.0,
-            2800.0 + self.rng.next() * 1500.0,
-        ];
+        self.tone.set(
+            900.0 + self.rng.next() * 1200.0,
+            0.8 + self.rng.next() * 0.8,
+            sr,
+        );
+        // The stations on the way: none at all now and then, up to four.
+        let u = self.rng.next();
+        self.n_passed = if u < 0.12 {
+            0
+        } else {
+            1 + (self.rng.next() * MAX_PASSED as f64) as usize
+        }
+        .min(MAX_PASSED);
+        for k in 0..self.n_passed {
+            let slot = (k as f64 + 0.15 + self.rng.next() * 0.7) / self.n_passed as f64;
+            let talk = self.rng.next() < 0.5;
+            self.passed[k] = Passed {
+                pos: 0.05 + slot * 0.75,
+                width: 0.03 + self.rng.next() * 0.06,
+                beat: 4000.0 + self.rng.next() * 9000.0,
+                talk,
+                pitch: if talk {
+                    95.0 + self.rng.next() * 130.0
+                } else {
+                    110.0 * 2f64.powf(self.rng.next() * 2.0)
+                },
+                level: 0.3 + self.rng.next() * 0.7,
+                ph: [0.0; 3],
+                w_ph: 0.0,
+            };
+        }
+        self.syllable = 0;
+        // Our station: sometimes heard creeping in before the dial lands.
+        self.bleed = if self.rng.next() < 0.6 {
+            0.3 + self.rng.next() * 0.5
+        } else {
+            0.0
+        };
+        self.bleed_from = 0.7 + self.rng.next() * 0.2;
+        for f in &mut self.bleed_lp {
+            f.set(500.0 + self.rng.next() * 1500.0, 0.9, sr);
+        }
+        self.lock_secs = 0.2 + self.rng.next() * 0.25;
+        self.lock_from = 250.0 + self.rng.next() * 500.0;
         self.hiss = 1.0;
+    }
+
+    /// One sample of the sweep, with `inp` the station's own output (for
+    /// the bleed): the static, the stations passed, the crackle.
+    fn sweep_sample(&mut self, u: f64, inp: (f64, f64)) -> (f64, f64) {
+        let sr = self.sr;
+        let (wd, wc) = self.wobble;
+        let dial = u.powf(self.curve) + wd * (TAU * wc * u).sin() * u * (1.0 - u);
+        // A new syllable every 70 to 180 ms.
+        if self.syllable == 0 {
+            self.vowel = VOWELS[(self.rng.next() * VOWELS.len() as f64) as usize % VOWELS.len()];
+            self.syllable = ((0.07 + self.rng.next() * 0.11) * sr) as usize;
+            self.formant[0].set(self.vowel.0, 6.0, sr);
+            self.formant[1].set(self.vowel.1, 8.0, sr);
+        }
+        self.syllable -= 1;
+        let mut capture: f64 = 0.0;
+        let mut scrap = 0.0;
+        let mut whistle = 0.0;
+        for k in 0..self.n_passed {
+            let p = &mut self.passed[k];
+            let d = (dial - p.pos) / p.width;
+            let s = (-d * d).exp() * p.level;
+            capture = capture.max(s);
+            // The programme: a buzzing voice, or a chord.
+            if p.talk {
+                p.ph[0] = (p.ph[0] + p.pitch / sr).fract();
+                scrap += (p.ph[0] * 2.0 - 1.0) * s;
+            } else {
+                for (j, r) in [1.0, 1.25, 1.5].iter().enumerate() {
+                    p.ph[j] = (p.ph[j] + p.pitch * r / sr).fract();
+                    scrap += if p.ph[j] < 0.5 { 0.33 } else { -0.33 } * s;
+                }
+            }
+            // The whistle: heard wider than the programme.
+            let ws = (-d * d * 0.15).exp() * p.level;
+            let f = (p.beat * (dial - p.pos).abs()).min(7000.0);
+            p.w_ph = (p.w_ph + f / sr).fract();
+            whistle += (TAU * p.w_ph).sin() * ws;
+        }
+        let voice = {
+            self.formant[0].run(scrap);
+            self.formant[1].run(scrap);
+            self.tone.run(scrap);
+            (self.formant[0].bp + self.formant[1].bp * 0.7) * 0.5 + self.tone.bp * 0.5
+        };
+        // Off the carrier's centre it breaks up.
+        let garble = 1.0 + (self.rng.next() * 2.0 - 1.0) * (1.0 - capture) * 0.8;
+        let scrap = (voice * 4.0 * garble).tanh() * 0.16;
+        // FM quietens on a carrier; AM keeps its hiss.
+        let quiet = 1.0 - capture * (0.9 - 0.5 * self.am);
+        let noise = self.rng.next() * 2.0 - 1.0;
+        self.bp.run(noise);
+        let hiss = (self.bp.bp * 0.7 + noise * 0.3 * (1.0 - self.am)) * self.hiss_level * quiet;
+        // Crackle: sparse impulses, a few milliseconds each.
+        if self.rng.next() < self.crackle_rate / sr {
+            self.crack = 0.1 + self.rng.next() * 0.2;
+        }
+        self.crack *= 1.0 - 1.0 / (0.002 * sr);
+        let crackle = self.crack * (self.rng.next() * 2.0 - 1.0);
+        let wh = whistle * 0.05 * self.am;
+        let mono = self.band.run(hiss + scrap + wh + crackle);
+        // Our station, thin and coming up as the dial nears it.
+        let b = ((dial - self.bleed_from) / (1.0 - self.bleed_from)).clamp(0.0, 1.0);
+        let b = b * b * self.bleed;
+        let bl = self.bleed_lp[0].run(inp.0);
+        let br = self.bleed_lp[1].run(inp.1);
+        (mono + bl * b, mono + br * b)
     }
 
     /// Switched off: the click and the hiss falling away.
     pub fn off(&mut self) {
         self.state = TunerState::Off;
         self.t = 0;
-        self.len = (0.22 * self.sr) as usize;
+        self.len = ((0.15 + self.rng.next() * 0.15) * self.sr) as usize;
+        self.click = 0.15 + self.rng.next() * 0.3;
         self.hiss = 1.0;
     }
 
@@ -436,36 +646,21 @@ impl Tuner {
             TunerState::Sweep => {
                 for i in 0..l.len() {
                     let u = (self.t as f64 / self.len as f64).min(1.0);
-                    if self.t.is_multiple_of(32) {
-                        let f = self.f0 * (self.f1 / self.f0).powf(u);
-                        self.bp.set(f, 1.6 + u * 2.0, self.sr);
-                    }
-                    let noise = self.rng.next() * 2.0 - 1.0;
-                    self.bp.run(noise);
-                    // The whistles: one rising, one falling, crossing in the middle.
-                    let w0 = self.w[0] * (self.w[1] / self.w[0]).powf(u);
-                    let w1 = self.w[1] * (self.w[0] / self.w[1]).powf(u);
-                    self.w_ph[0] += w0 / self.sr;
-                    self.w_ph[1] += w1 / self.sr;
-                    let wh = ((TAU * self.w_ph[0]).sin() + (TAU * self.w_ph[1]).sin() * 0.6)
-                        * 0.035
-                        * (1.0 - (u * 2.0 - 1.0).abs()).max(0.0);
                     let env = (self.t as f64 / (0.01 * self.sr)).min(1.0);
-                    let y = (self.bp.bp * 0.22 + wh) * env;
-                    l[i] = y as f32;
-                    r[i] = y as f32;
+                    let (yl, yr) = self.sweep_sample(u, (l[i] as f64, r[i] as f64));
+                    l[i] = (yl * env) as f32;
+                    r[i] = (yr * env) as f32;
                     self.t += 1;
                     if self.t >= self.len {
                         // The lock starts with the next block; the rest of
                         // this one is the last of the static.
                         self.state = TunerState::Lock;
                         self.t = 0;
-                        self.len = (0.3 * self.sr) as usize;
+                        self.len = (self.lock_secs * self.sr) as usize;
                         for j in i + 1..l.len() {
-                            let noise = self.rng.next() * 2.0 - 1.0;
-                            self.bp.run(noise);
-                            l[j] = (self.bp.bp * 0.22) as f32;
-                            r[j] = l[j];
+                            let (yl, yr) = self.sweep_sample(1.0, (l[j] as f64, r[j] as f64));
+                            l[j] = yl as f32;
+                            r[j] = yr as f32;
                         }
                         break;
                     }
@@ -475,7 +670,7 @@ impl Tuner {
                 for i in 0..l.len() {
                     let u = (self.t as f64 / self.len as f64).min(1.0);
                     if self.t.is_multiple_of(32) {
-                        let f = 400.0 * (20000.0 / 400.0_f64).powf(u);
+                        let f = self.lock_from * (20000.0 / self.lock_from).powf(u);
                         for fl in &mut self.lock {
                             fl.set(f.min(self.sr * 0.45), 0.7, self.sr);
                         }
@@ -483,7 +678,7 @@ impl Tuner {
                     self.hiss *= 1.0 - 1.0 / (0.08 * self.sr);
                     let noise = self.rng.next() * 2.0 - 1.0;
                     self.bp.run(noise);
-                    let st = self.bp.bp * 0.22 * self.hiss;
+                    let st = self.bp.bp * self.hiss_level * self.hiss;
                     let gl = self.lock[0].run(l[i] as f64) * (0.5 + 0.5 * u) + st;
                     let gr = self.lock[1].run(r[i] as f64) * (0.5 + 0.5 * u) + st;
                     l[i] = gl as f32;
@@ -499,7 +694,7 @@ impl Tuner {
                 for i in 0..l.len() {
                     // A click (the first two milliseconds), then the hiss falling.
                     let click = if self.t < (0.002 * self.sr) as usize {
-                        0.3
+                        self.click
                     } else {
                         0.0
                     };
@@ -584,6 +779,33 @@ mod tests {
         let (day, sec) = wall_parts(wall);
         assert!((wall_from(day, sec) - wall).abs() < 1e-6);
         assert!((0.0..86400.0).contains(&sec));
+    }
+
+    #[test]
+    fn no_two_turns_of_the_dial_sound_alike() {
+        let sr = 48000.0;
+        let mut t = Tuner::new(11, sr);
+        let mut turns = Vec::new();
+        for _ in 0..4 {
+            t.tune();
+            let mut out = Vec::new();
+            let (mut l, mut r) = (vec![0.0f32; 128], vec![0.0f32; 128]);
+            while !t.station_audible() {
+                l.fill(0.0);
+                r.fill(0.0);
+                t.process(&mut l, &mut r);
+                out.extend_from_slice(&l);
+            }
+            assert!(out.iter().all(|x| x.is_finite() && x.abs() < 1.0));
+            turns.push(out);
+        }
+        for i in 0..turns.len() {
+            for j in i + 1..turns.len() {
+                assert_ne!(turns[i], turns[j], "turns {i} and {j} are the same");
+            }
+        }
+        let lens: Vec<usize> = turns.iter().map(Vec::len).collect();
+        assert!(lens.iter().any(|n| *n != lens[0]), "lengths vary: {lens:?}");
     }
 
     #[test]
