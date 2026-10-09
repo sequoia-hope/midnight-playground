@@ -63,22 +63,30 @@ GTA cut stations with a short burst of static (from memory; not
 confirmed). We go further, and generate it, like the game's other effects
 (`audio/samples.js`), so it is never the same twice:
 
-- **The sweep, about half a second to a second:** band-passed noise whose
-  centre glides with the "dial", heterodyne whistles that rise and fall
-  as it passes carriers, and a flicker of a station that isn't one of
-  ours (a word, a bar of music) fading through.
-- **Built (2026-10-09, `mp_music::radio::Tuner`):** each turn is drawn
-  afresh: its length, the dial's speed curve and the hand's wobble, zero
-  to four other stations on the way (a buzzing voice or a chord, quieting
-  the hiss as the dial passes and breaking up at the edges), how AM-like
-  it is (whistles falling to zero beat on each carrier, crackle, a
-  narrower band), and whether our station bleeds in before the lock.
+- **Symmetric (the owner, 2026-10-09):** the first build was a sweep, a
+  dial travelling one way: whistles sliding in pitch, our station bleeding
+  in at the end and opening through a low-pass. The owner heard it as a
+  whoosh "heading past you in one direction", lopsided, starting low and
+  ending high. What it should be: tuning off one station and onto
+  another, "the music fades to static, which then fades back to the other
+  music", with static that has some character, so turns sound different.
+- **Built (`mp_music::radio::Tuner`):** a turn is three parts: the
+  station we leave fades into static (muffling as it goes: a low-pass
+  closing from full width to a few hundred hertz), the static holds a
+  moment (0.1 to 0.4 s), and the static fades into the new station (the
+  same low-pass opening). The fade in is the fade out reversed: equal-power
+  curves, the same length (0.2 to 0.4 s), nothing sliding in pitch. The
+  player keeps the station being left playing through its fade (two
+  engines take turns). Each turn draws its static's character afresh and
+  holds it still: the hiss's colour and the receiver's bandwidth (AM-like:
+  narrow, crackly, sometimes a steady whistle; FM-like: wide and smooth),
+  a flutter as the signal comes and goes, and about half the time a
+  far-off station under the noise, a voice or a chord, garbled. Tuned again
+  mid-turn, it runs back from the same point, so nothing jumps.
   `cargo run --release -p mp_music --example tuner -- out.wav` renders
-  ten turns to hear.
-- **The lock:** the static drops away while the station fades in, first
-  narrow and a little detuned (thin, as if not quite on frequency), then
-  opening to full width within a few hundred milliseconds.
-- **Off:** a click, and the hiss falling away.
+  eight turns to hear.
+- **On and off:** on fades up from silence through the static to the
+  station; off fades the station into the static and the static away.
 - **Ridgeline is a pirate:** its signal is weaker. Static creeps in on the
   far side of the ridge, in tunnels, and in deep valleys, and it drops out
   for a moment under bridges. The Tide is clean near the coast and fades
@@ -187,12 +195,10 @@ so that tuning to a station catches its song wherever it happens to be.
   from the station's time. The main thread computes the same schedule to
   show the title and to place the DJ's breaks. Natively the same code runs
   in `mp_audio`'s worklet processor, so both render alike.
-- **The tuner.** Between stations: half a second to a second of
-  band-passed static whose centre glides, two heterodyne whistles crossing,
-  then the lock: the static drops away while the station comes up through
-  a low-pass opening from a few hundred hertz to full width in 300 ms.
-  Off: a click and the hiss falling away. Generated in `mp_music::radio`
-  (`Tuner`), seeded, never the same twice.
+- **The tuner.** Between stations: the station playing fades into
+  static, the static holds, and it fades into the new station, the two
+  fades mirror images (2.1). Generated in `mp_music::radio` (`Tuner`),
+  seeded, never the same twice.
 - **The DJ** talks from clips on the main thread's graph (as the police
   radio does), ducking the station: idents and song intros at the seams the
   schedule gives, chosen by the director in `mp_game` (section 2's rules).

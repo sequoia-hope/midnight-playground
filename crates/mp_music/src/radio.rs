@@ -14,8 +14,8 @@
 //! Nothing here reads a clock: the caller passes the wall time (the
 //! client's `Date.now()` or `SystemTime`), in seconds since the Unix epoch.
 //!
-//! [`Tuner`] is the sound of turning the dial: the static sweep between
-//! stations and the lock onto the next one.
+//! [`Tuner`] is the sound of turning the dial: one station fading into
+//! static, and the static fading into the next.
 
 use crate::dsp::{Rng, Svf, TAU};
 use crate::genres::{GENRES, Genre};
@@ -336,40 +336,14 @@ pub fn wall_from(day: f64, sec: f64) -> f64 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TunerState {
     /// Nothing between the station and the speaker.
-    On,
-    /// The dial moving: static, whistles, no station.
-    Sweep,
-    /// The station coming up through the opening filter.
-    Lock,
-    /// Switched off: the click and the hiss falling away, then silence.
-    Off,
+    Clear,
+    /// A turn of the dial (or the radio switching off): see [`Tuner`].
+    Turning,
+    /// Off and quiet.
     Silent,
 }
 
-/// Most other stations the dial passes on one turn.
-const MAX_PASSED: usize = 4;
-
-/// A station the dial passes on the way (one that isn't ours): where it
-/// sits on the sweep, how wide its signal is, and what it is playing.
-#[derive(Clone, Copy, Debug)]
-struct Passed {
-    /// Its place on the dial, 0 (where the turn starts) to 1 (ours).
-    pos: f64,
-    /// The half-width of its signal, on the same scale.
-    width: f64,
-    /// Hertz of beat per unit of dial: the heterodyne whistle falls to
-    /// zero on the carrier and rises again past it.
-    beat: f64,
-    /// Talk (a voice's formants) or music (a chord).
-    talk: bool,
-    /// The voice's pitch, or the chord's root, in hertz.
-    pitch: f64,
-    level: f64,
-    ph: [f64; 3],
-    w_ph: f64,
-}
-
-/// The vowels the far-off voices say: the first two formants.
+/// The vowels a far-off voice says: the first two formants.
 const VOWELS: [(f64, f64); 5] = [
     (730.0, 1090.0),
     (530.0, 1840.0),
@@ -378,338 +352,345 @@ const VOWELS: [(f64, f64); 5] = [
     (440.0, 1020.0),
 ];
 
-/// The sound of the dial (radio.md 2.1), applied in place to the
-/// station's output. A turn is modelled, not played back: the dial moves
-/// from 0 to our station at 1 along a drawn path (its speed curve and the
-/// hand's wobble), past a few other stations scattered on the way. Near
-/// each one the hiss quietens (an FM receiver's capture) and a scrap of
-/// it comes through, a voice or a bar of music, distorted at the edges;
-/// on an AM-like turn each also whistles, its beat falling to nothing on
-/// the carrier and rising past it, and the static crackles. Our station
-/// can bleed in before the dial gets there. Then the lock, the station
-/// opening up from a few hundred hertz to full width; off is a click and
-/// the hiss falling away. Every part is drawn from the seed, so no two
-/// turns sound alike.
+/// Where the muffling filter sits with the station all but gone, and
+/// fully open.
+const MUFFLED_HZ: f64 = 350.0;
+const OPEN_HZ: f64 = 20000.0;
+
+/// The sound of turning the dial (radio.md 2.1). The owner (2026-10-09):
+/// tuning off one station and onto another should be symmetric, "the
+/// music fades to static, which then fades back to the other music", and
+/// the static should have some character so no two turns sound alike.
+///
+/// A turn has three parts: the station we leave fades into static (its
+/// sound muffling as it goes), the static holds a moment, and the static
+/// fades into the new station (opening up as it comes). The fade in is
+/// the fade out played backwards: equal-power curves, the same length,
+/// the muffling filter closing on the way out and opening on the way in.
+/// Nothing slides in pitch, so the turn doesn't sweep past in one
+/// direction. Switching on fades in from silence through the static;
+/// switching off fades into the static and out to silence.
+///
+/// The static's character is drawn afresh for each turn and holds still
+/// through it: the hiss's colour and the receiver's bandwidth, a flutter
+/// (the signal coming and going), crackle, now and then a steady
+/// heterodyne whistle, and now and then a far-off station under the
+/// noise, a voice or a chord, garbled.
 pub struct Tuner {
     sr: f64,
     rng: Rng,
     state: TunerState,
+    /// Samples into the turn, and its parts' lengths: the fade out (and
+    /// the fade in, the same) and the static held between.
     t: usize,
-    len: usize,
-    bp: Svf,
-    lock: [Svf; 2],
-    hiss: f64,
-    // The turn.
-    /// The dial's speed curve (an exponent on the turn's progress) and
-    /// the hand's wobble: depth and cycles over the turn.
-    curve: f64,
-    wobble: (f64, f64),
-    passed: [Passed; MAX_PASSED],
-    n_passed: usize,
-    /// How AM-like the turn is (whistles, crackle) against FM's clean hiss.
-    am: f64,
-    hiss_level: f64,
-    /// The receiver's audio bandwidth: FM's is wider than AM's.
+    fade: usize,
+    hold: usize,
+    /// Whether a station is left (fades out) and one arrives (fades in).
+    from: bool,
+    to: bool,
+    /// The muffling filters: on the station leaving, on the one arriving.
+    muffle_out: [Svf; 2],
+    muffle_in: [Svf; 2],
+    // The static's character.
+    level: f64,
+    colour: Svf,
+    white: f64,
     band: Svf,
-    /// Crackle: impulses per second, and the one sounding.
+    flutter: (f64, f64, f64),
+    flutter_ph: f64,
     crackle_rate: f64,
     crack: f64,
-    /// The scraps' radio voice: a band-pass, and the formant filters.
+    whistle: (f64, f64),
+    whistle_ph: f64,
+    /// The far-off station: its level (0: none), talk or music, its pitch,
+    /// and its voice.
+    far: f64,
+    far_talk: bool,
+    far_pitch: f64,
+    far_ph: [f64; 3],
     tone: Svf,
     formant: [Svf; 2],
-    /// The syllable: its vowel's formants, and when the next starts.
-    vowel: (f64, f64),
     syllable: usize,
-    /// How much of our station leaks in before the lock, and from where.
-    bleed: f64,
-    bleed_from: f64,
-    bleed_lp: [Svf; 2],
-    // The lock.
-    lock_secs: f64,
-    lock_from: f64,
-    click: f64,
 }
 
 impl Tuner {
     pub fn new(seed: u32, sr: f64) -> Tuner {
-        let none = Passed {
-            pos: 0.0,
-            width: 0.0,
-            beat: 0.0,
-            talk: false,
-            pitch: 0.0,
-            level: 0.0,
-            ph: [0.0; 3],
-            w_ph: 0.0,
-        };
         let mut t = Tuner {
             sr,
             rng: Rng::new(seed),
             state: TunerState::Silent,
             t: 0,
-            len: 1,
-            bp: Svf::new(),
-            lock: [Svf::new(), Svf::new()],
-            hiss: 0.0,
-            curve: 1.0,
-            wobble: (0.0, 1.0),
-            passed: [none; MAX_PASSED],
-            n_passed: 0,
-            am: 0.0,
-            hiss_level: 0.2,
+            fade: 1,
+            hold: 0,
+            from: false,
+            to: false,
+            muffle_out: [Svf::new(), Svf::new()],
+            muffle_in: [Svf::new(), Svf::new()],
+            level: 0.18,
+            colour: Svf::new(),
+            white: 0.3,
             band: Svf::new(),
+            flutter: (0.0, 4.0, 0.0),
+            flutter_ph: 0.0,
             crackle_rate: 0.0,
             crack: 0.0,
+            whistle: (0.0, 0.0),
+            whistle_ph: 0.0,
+            far: 0.0,
+            far_talk: false,
+            far_pitch: 110.0,
+            far_ph: [0.0; 3],
             tone: Svf::new(),
             formant: [Svf::new(), Svf::new()],
-            vowel: VOWELS[0],
             syllable: 0,
-            bleed: 0.0,
-            bleed_from: 0.8,
-            bleed_lp: [Svf::new(), Svf::new()],
-            lock_secs: 0.3,
-            lock_from: 400.0,
-            click: 0.3,
         };
-        t.bp.set(1200.0, 2.0, sr);
-        for f in &mut t.lock {
-            f.set(20000.0, 0.7, sr);
-        }
+        t.colour.set(2000.0, 0.8, sr);
+        t.band.set(8000.0, 0.7, sr);
         t
     }
 
-    /// The dial turned: a new turn is drawn (0.45 to 1 s), then the lock.
+    /// A turn of the dial onto another station, from the one playing (if
+    /// any). Tuned again while the new station is fading in, the turn
+    /// runs back from the same point, so the sound never jumps: the caller
+    /// then hands over the station that was arriving as the one leaving.
     pub fn tune(&mut self) {
-        let sr = self.sr;
-        self.state = TunerState::Sweep;
+        self.start(true);
+    }
+
+    /// Switched off: the station fades into static and the static away.
+    pub fn off(&mut self) {
+        self.start(false);
+    }
+
+    fn start(&mut self, to: bool) {
+        match self.state {
+            TunerState::Turning if self.t < self.fade + self.hold => {
+                // Still leaving, or in the static: only the arrival changes.
+                self.to = to;
+                return;
+            }
+            TunerState::Turning => {
+                // Arriving: the arrival becomes the station leaving, at the
+                // mirrored point, where the gains are the same.
+                let total = 2 * self.fade + self.hold;
+                self.t = total.saturating_sub(self.t);
+                self.from = self.to;
+                self.muffle_out = self.muffle_in;
+                self.to = to;
+                return;
+            }
+            TunerState::Clear => self.from = true,
+            TunerState::Silent => self.from = false,
+        }
+        if !to && !self.from {
+            return; // off, and already quiet
+        }
+        self.to = to;
+        self.state = TunerState::Turning;
         self.t = 0;
-        self.len = ((0.45 + self.rng.next() * 0.55) * sr) as usize;
-        // A slow start or a slow finish, and a hand that isn't steady.
-        self.curve = 0.6 + self.rng.next() * 1.0;
-        self.wobble = (self.rng.next() * 0.04, 1.0 + self.rng.next() * 3.0);
-        self.am = if self.rng.next() < 0.4 {
-            self.rng.next() * 0.3
+        self.draw();
+    }
+
+    /// The turn's lengths and its static's character.
+    fn draw(&mut self) {
+        let sr = self.sr;
+        let r = &mut self.rng;
+        self.fade = ((0.22 + r.next() * 0.2) * sr) as usize;
+        self.hold = ((0.08 + r.next() * 0.3) * sr) as usize;
+        // AM-like (narrow, crackly, whistling) or FM-like (wide, smooth).
+        let am = r.next();
+        self.level = 0.17 + r.next() * 0.11;
+        self.colour
+            .set(700.0 + r.next() * 3800.0, 0.5 + r.next() * 1.2, sr);
+        self.white = (1.0 - am) * (0.15 + r.next() * 0.35);
+        self.band.set(9500.0 - am * 6000.0, 0.7, sr);
+        // The signal coming and going: depth, rate (Hz) and a second rate
+        // against it, so the flutter isn't a plain tremolo.
+        self.flutter = (r.next() * 0.55, 2.0 + r.next() * 8.0, 0.3 + r.next() * 1.5);
+        self.crackle_rate = am * am * r.next() * 45.0;
+        self.whistle = if am > 0.5 && r.next() < 0.5 {
+            (0.01 + r.next() * 0.02, 900.0 + r.next() * 5000.0)
         } else {
-            0.4 + self.rng.next() * 0.6
+            (0.0, 0.0)
         };
-        self.hiss_level = 0.13 + self.rng.next() * 0.1;
-        self.crackle_rate = self.am * self.rng.next() * 40.0;
-        self.band.set(9000.0 - self.am * 5500.0, 0.7, sr);
-        // The hiss's colour: from dull to bright.
-        self.bp.set(
-            1200.0 + self.rng.next() * 3000.0,
-            0.5 + self.rng.next() * 0.8,
-            sr,
-        );
-        self.tone.set(
-            900.0 + self.rng.next() * 1200.0,
-            0.8 + self.rng.next() * 0.8,
-            sr,
-        );
-        // The stations on the way: none at all now and then, up to four.
-        let u = self.rng.next();
-        self.n_passed = if u < 0.12 {
-            0
-        } else {
-            1 + (self.rng.next() * MAX_PASSED as f64) as usize
-        }
-        .min(MAX_PASSED);
-        for k in 0..self.n_passed {
-            let slot = (k as f64 + 0.15 + self.rng.next() * 0.7) / self.n_passed as f64;
-            let talk = self.rng.next() < 0.5;
-            self.passed[k] = Passed {
-                pos: 0.05 + slot * 0.75,
-                width: 0.03 + self.rng.next() * 0.06,
-                beat: 4000.0 + self.rng.next() * 9000.0,
-                talk,
-                pitch: if talk {
-                    95.0 + self.rng.next() * 130.0
-                } else {
-                    110.0 * 2f64.powf(self.rng.next() * 2.0)
-                },
-                level: 0.3 + self.rng.next() * 0.7,
-                ph: [0.0; 3],
-                w_ph: 0.0,
-            };
-        }
-        self.syllable = 0;
-        // Our station: sometimes heard creeping in before the dial lands.
-        self.bleed = if self.rng.next() < 0.6 {
-            0.3 + self.rng.next() * 0.5
+        self.far = if r.next() < 0.55 {
+            0.3 + r.next() * 0.7
         } else {
             0.0
         };
-        self.bleed_from = 0.7 + self.rng.next() * 0.2;
-        for f in &mut self.bleed_lp {
-            f.set(500.0 + self.rng.next() * 1500.0, 0.9, sr);
-        }
-        self.lock_secs = 0.2 + self.rng.next() * 0.25;
-        self.lock_from = 250.0 + self.rng.next() * 500.0;
-        self.hiss = 1.0;
-    }
-
-    /// One sample of the sweep, with `inp` the station's own output (for
-    /// the bleed): the static, the stations passed, the crackle.
-    fn sweep_sample(&mut self, u: f64, inp: (f64, f64)) -> (f64, f64) {
-        let sr = self.sr;
-        let (wd, wc) = self.wobble;
-        let dial = u.powf(self.curve) + wd * (TAU * wc * u).sin() * u * (1.0 - u);
-        // A new syllable every 70 to 180 ms.
-        if self.syllable == 0 {
-            self.vowel = VOWELS[(self.rng.next() * VOWELS.len() as f64) as usize % VOWELS.len()];
-            self.syllable = ((0.07 + self.rng.next() * 0.11) * sr) as usize;
-            self.formant[0].set(self.vowel.0, 6.0, sr);
-            self.formant[1].set(self.vowel.1, 8.0, sr);
-        }
-        self.syllable -= 1;
-        let mut capture: f64 = 0.0;
-        let mut scrap = 0.0;
-        let mut whistle = 0.0;
-        for k in 0..self.n_passed {
-            let p = &mut self.passed[k];
-            let d = (dial - p.pos) / p.width;
-            let s = (-d * d).exp() * p.level;
-            capture = capture.max(s);
-            // The programme: a buzzing voice, or a chord.
-            if p.talk {
-                p.ph[0] = (p.ph[0] + p.pitch / sr).fract();
-                scrap += (p.ph[0] * 2.0 - 1.0) * s;
-            } else {
-                for (j, r) in [1.0, 1.25, 1.5].iter().enumerate() {
-                    p.ph[j] = (p.ph[j] + p.pitch * r / sr).fract();
-                    scrap += if p.ph[j] < 0.5 { 0.33 } else { -0.33 } * s;
-                }
-            }
-            // The whistle: heard wider than the programme.
-            let ws = (-d * d * 0.15).exp() * p.level;
-            let f = (p.beat * (dial - p.pos).abs()).min(7000.0);
-            p.w_ph = (p.w_ph + f / sr).fract();
-            whistle += (TAU * p.w_ph).sin() * ws;
-        }
-        let voice = {
-            self.formant[0].run(scrap);
-            self.formant[1].run(scrap);
-            self.tone.run(scrap);
-            (self.formant[0].bp + self.formant[1].bp * 0.7) * 0.5 + self.tone.bp * 0.5
+        self.far_talk = r.next() < 0.5;
+        self.far_pitch = if self.far_talk {
+            95.0 + r.next() * 130.0
+        } else {
+            110.0 * 2f64.powf(r.next() * 2.0)
         };
-        // Off the carrier's centre it breaks up.
-        let garble = 1.0 + (self.rng.next() * 2.0 - 1.0) * (1.0 - capture) * 0.8;
-        let scrap = (voice * 4.0 * garble).tanh() * 0.16;
-        // FM quietens on a carrier; AM keeps its hiss.
-        let quiet = 1.0 - capture * (0.9 - 0.5 * self.am);
-        let noise = self.rng.next() * 2.0 - 1.0;
-        self.bp.run(noise);
-        let hiss = (self.bp.bp * 0.7 + noise * 0.3 * (1.0 - self.am)) * self.hiss_level * quiet;
-        // Crackle: sparse impulses, a few milliseconds each.
-        if self.rng.next() < self.crackle_rate / sr {
-            self.crack = 0.1 + self.rng.next() * 0.2;
+        self.tone
+            .set(800.0 + r.next() * 1400.0, 0.8 + r.next() * 0.8, sr);
+        self.syllable = 0;
+        self.flutter_ph = 0.0;
+        for f in self.muffle_in.iter_mut() {
+            *f = Svf::new();
+            f.set(MUFFLED_HZ, 0.7, sr);
         }
-        self.crack *= 1.0 - 1.0 / (0.002 * sr);
-        let crackle = self.crack * (self.rng.next() * 2.0 - 1.0);
-        let wh = whistle * 0.05 * self.am;
-        let mono = self.band.run(hiss + scrap + wh + crackle);
-        // Our station, thin and coming up as the dial nears it.
-        let b = ((dial - self.bleed_from) / (1.0 - self.bleed_from)).clamp(0.0, 1.0);
-        let b = b * b * self.bleed;
-        let bl = self.bleed_lp[0].run(inp.0);
-        let br = self.bleed_lp[1].run(inp.1);
-        (mono + bl * b, mono + br * b)
-    }
-
-    /// Switched off: the click and the hiss falling away.
-    pub fn off(&mut self) {
-        self.state = TunerState::Off;
-        self.t = 0;
-        self.len = ((0.15 + self.rng.next() * 0.15) * self.sr) as usize;
-        self.click = 0.15 + self.rng.next() * 0.3;
-        self.hiss = 1.0;
+        if self.from {
+            for f in self.muffle_out.iter_mut() {
+                *f = Svf::new();
+                f.set(OPEN_HZ.min(sr * 0.45), 0.7, sr);
+            }
+        }
     }
 
     /// Straight through (a node built already tuned).
     pub fn on(&mut self) {
-        self.state = TunerState::On;
+        self.state = TunerState::Clear;
     }
 
-    /// Whether the station is heard at all (off and silent are not).
+    /// Whether the station arriving is heard at all.
     pub fn station_audible(&self) -> bool {
-        matches!(self.state, TunerState::On | TunerState::Lock)
+        match self.state {
+            TunerState::Clear => true,
+            TunerState::Silent => false,
+            TunerState::Turning => self.to && self.t > self.fade + self.hold,
+        }
     }
 
-    /// Applies the tuner to one block of the station's output, in place.
-    pub fn process(&mut self, l: &mut [f32], r: &mut [f32]) {
+    /// Whether the station being left is still heard: the caller keeps
+    /// it playing and passes it to [`Tuner::process`] until it isn't.
+    pub fn leaving(&self) -> bool {
+        self.state == TunerState::Turning && self.from && self.t < self.fade
+    }
+
+    /// Whether a turn (or a switch off) is under way.
+    pub fn turning(&self) -> bool {
+        self.state == TunerState::Turning
+    }
+
+    /// One sample of static, at `s` of its full level.
+    fn static_sample(&mut self, s: f64) -> f64 {
+        let sr = self.sr;
+        let noise = self.rng.next() * 2.0 - 1.0;
+        self.colour.run(noise);
+        let mut hiss = self.colour.bp * (1.0 - self.white) + noise * self.white;
+        // Flutter: two slow rates beating, so it wanders.
+        let (depth, f1, f2) = self.flutter;
+        self.flutter_ph += 1.0 / sr;
+        let ph = self.flutter_ph;
+        let wob = 0.5 + 0.5 * ((TAU * f1 * ph).sin() * (TAU * f2 * ph).cos());
+        hiss *= 1.0 - depth * wob;
+        // Crackle: sparse impulses, a few milliseconds each.
+        if self.rng.next() < self.crackle_rate / sr {
+            self.crack = 0.1 + self.rng.next() * 0.25;
+        }
+        self.crack *= 1.0 - 1.0 / (0.002 * sr);
+        let crackle = self.crack * (self.rng.next() * 2.0 - 1.0);
+        // A steady whistle: another carrier close by, its beat held.
+        let (wl, wf) = self.whistle;
+        let mut whistle = 0.0;
+        if wl > 0.0 {
+            self.whistle_ph = (self.whistle_ph + wf / sr).fract();
+            whistle = (TAU * self.whistle_ph).sin() * wl;
+        }
+        // A far-off station under the noise, coming and going with it.
+        let mut far = 0.0;
+        if self.far > 0.0 {
+            if self.syllable == 0 {
+                let v = VOWELS[(self.rng.next() * VOWELS.len() as f64) as usize % VOWELS.len()];
+                self.formant[0].set(v.0, 6.0, sr);
+                self.formant[1].set(v.1, 8.0, sr);
+                self.syllable = ((0.07 + self.rng.next() * 0.11) * sr) as usize;
+            }
+            self.syllable -= 1;
+            let mut src = 0.0;
+            if self.far_talk {
+                self.far_ph[0] = (self.far_ph[0] + self.far_pitch / sr).fract();
+                src = self.far_ph[0] * 2.0 - 1.0;
+            } else {
+                for (j, k) in [1.0, 1.25, 1.5].iter().enumerate() {
+                    self.far_ph[j] = (self.far_ph[j] + self.far_pitch * k / sr).fract();
+                    src += if self.far_ph[j] < 0.5 { 0.33 } else { -0.33 };
+                }
+            }
+            self.formant[0].run(src);
+            self.formant[1].run(src);
+            self.tone.run(src);
+            let voice = if self.far_talk {
+                self.formant[0].bp + self.formant[1].bp * 0.7
+            } else {
+                self.tone.bp
+            };
+            let garble = 1.0 + (self.rng.next() * 2.0 - 1.0) * 0.6;
+            far = (voice * 3.0 * garble).tanh() * 0.05 * self.far * wob.max(0.3);
+        }
+        self.band.run(hiss * self.level + crackle + whistle + far);
+        self.band.lp * s
+    }
+
+    /// Applies the tuner to one block, in place: `l`/`r` hold the station
+    /// arriving (or anything, when switching off), `leaving` the station
+    /// being left while [`Tuner::leaving`] says so.
+    pub fn process(&mut self, l: &mut [f32], r: &mut [f32], leaving: Option<(&[f32], &[f32])>) {
         match self.state {
-            TunerState::On => {}
+            TunerState::Clear => {}
             TunerState::Silent => {
                 l.fill(0.0);
                 r.fill(0.0);
             }
-            TunerState::Sweep => {
+            TunerState::Turning => {
+                let sr = self.sr;
+                let (fade, hold) = (self.fade as f64, self.hold);
                 for i in 0..l.len() {
-                    let u = (self.t as f64 / self.len as f64).min(1.0);
-                    let env = (self.t as f64 / (0.01 * self.sr)).min(1.0);
-                    let (yl, yr) = self.sweep_sample(u, (l[i] as f64, r[i] as f64));
-                    l[i] = (yl * env) as f32;
-                    r[i] = (yr * env) as f32;
-                    self.t += 1;
-                    if self.t >= self.len {
-                        // The lock starts with the next block; the rest of
-                        // this one is the last of the static.
-                        self.state = TunerState::Lock;
-                        self.t = 0;
-                        self.len = (self.lock_secs * self.sr) as usize;
-                        for j in i + 1..l.len() {
-                            let (yl, yr) = self.sweep_sample(1.0, (l[j] as f64, r[j] as f64));
-                            l[j] = yl as f32;
-                            r[j] = yr as f32;
-                        }
-                        break;
-                    }
-                }
-            }
-            TunerState::Lock => {
-                for i in 0..l.len() {
-                    let u = (self.t as f64 / self.len as f64).min(1.0);
-                    if self.t.is_multiple_of(32) {
-                        let f = self.lock_from * (20000.0 / self.lock_from).powf(u);
-                        for fl in &mut self.lock {
-                            fl.set(f.min(self.sr * 0.45), 0.7, self.sr);
-                        }
-                    }
-                    self.hiss *= 1.0 - 1.0 / (0.08 * self.sr);
-                    let noise = self.rng.next() * 2.0 - 1.0;
-                    self.bp.run(noise);
-                    let st = self.bp.bp * self.hiss_level * self.hiss;
-                    let gl = self.lock[0].run(l[i] as f64) * (0.5 + 0.5 * u) + st;
-                    let gr = self.lock[1].run(r[i] as f64) * (0.5 + 0.5 * u) + st;
-                    l[i] = gl as f32;
-                    r[i] = gr as f32;
-                    self.t += 1;
-                    if self.t >= self.len {
-                        self.state = TunerState::On;
-                        break;
-                    }
-                }
-            }
-            TunerState::Off => {
-                for i in 0..l.len() {
-                    // A click (the first two milliseconds), then the hiss falling.
-                    let click = if self.t < (0.002 * self.sr) as usize {
-                        self.click
+                    let t = self.t;
+                    // The position in the turn: rising to 1 over the fade
+                    // out, 1 in the hold, falling over the fade in.
+                    let x = if t < self.fade {
+                        t as f64 / fade
+                    } else if t < self.fade + hold {
+                        1.0
                     } else {
-                        0.0
+                        1.0 - ((t - self.fade - hold) as f64 / fade).min(1.0)
                     };
-                    self.hiss *= 1.0 - 1.0 / (0.05 * self.sr);
-                    let noise = self.rng.next() * 2.0 - 1.0;
-                    self.bp.run(noise);
-                    let y = self.bp.bp * 0.15 * self.hiss + click * noise;
-                    l[i] = y as f32;
-                    r[i] = y as f32;
+                    let q = std::f64::consts::FRAC_PI_2 * x;
+                    let (music, stat) = (q.cos(), q.sin());
+                    // The muffling: open at x = 0, closed at x = 1.
+                    if t.is_multiple_of(32) {
+                        let hz = (OPEN_HZ * (MUFFLED_HZ / OPEN_HZ).powf(x)).min(sr * 0.45);
+                        for f in self.muffle_out.iter_mut().chain(self.muffle_in.iter_mut()) {
+                            f.set(hz, 0.7, sr);
+                        }
+                    }
+                    let st = self.static_sample(stat);
+                    let (mut yl, mut yr) = (st, st);
+                    if t < self.fade {
+                        if self.from
+                            && let Some((ll, lr)) = leaving
+                        {
+                            self.muffle_out[0].run(ll[i] as f64);
+                            self.muffle_out[1].run(lr[i] as f64);
+                            yl += self.muffle_out[0].lp * music;
+                            yr += self.muffle_out[1].lp * music;
+                        }
+                    } else if t >= self.fade + hold && self.to {
+                        self.muffle_in[0].run(l[i] as f64);
+                        self.muffle_in[1].run(r[i] as f64);
+                        yl += self.muffle_in[0].lp * music;
+                        yr += self.muffle_in[1].lp * music;
+                    }
+                    l[i] = yl as f32;
+                    r[i] = yr as f32;
                     self.t += 1;
-                    if self.t >= self.len {
-                        self.state = TunerState::Silent;
-                        for j in i + 1..l.len() {
-                            l[j] = 0.0;
-                            r[j] = 0.0;
+                    if self.t >= 2 * self.fade + hold {
+                        // The turn is over: the rest of the block is the
+                        // station, or silence.
+                        self.state = if self.to {
+                            TunerState::Clear
+                        } else {
+                            TunerState::Silent
+                        };
+                        if !self.to {
+                            for j in i + 1..l.len() {
+                                l[j] = 0.0;
+                                r[j] = 0.0;
+                            }
                         }
                         break;
                     }
@@ -781,24 +762,86 @@ mod tests {
         assert!((0.0..86400.0).contains(&sec));
     }
 
+    /// One turn from a steady "station" (a tone) at `old` to another at
+    /// `new`, returning the output with the leaving and arriving levels
+    /// measured per 10 ms window.
+    fn turn(t: &mut Tuner, sr: f64, from: bool) -> Vec<f32> {
+        let (mut l, mut r) = (vec![0.0f32; 128], vec![0.0f32; 128]);
+        let (mut ol, mut or) = (vec![0.0f32; 128], vec![0.0f32; 128]);
+        let mut out = Vec::new();
+        let mut n = 0usize;
+        t.tune();
+        while t.turning() {
+            for i in 0..128 {
+                let k = (n + i) as f64 / sr;
+                l[i] = (0.3 * (TAU * 440.0 * k).sin()) as f32;
+                r[i] = l[i];
+                ol[i] = (0.3 * (TAU * 220.0 * k).sin()) as f32;
+                or[i] = ol[i];
+            }
+            let leaving = (from && t.leaving()).then_some((&ol[..], &or[..]));
+            t.process(&mut l, &mut r, leaving);
+            out.extend_from_slice(&l);
+            n += 128;
+            assert!(n < (5.0 * sr) as usize, "the turn ends");
+        }
+        out
+    }
+
     #[test]
-    fn no_two_turns_of_the_dial_sound_alike() {
+    fn a_turn_fades_out_into_static_and_back_in_symmetrically() {
+        let sr = 48000.0;
+        let mut t = Tuner::new(5, sr);
+        t.on();
+        let out = turn(&mut t, sr, true);
+        assert!(out.iter().all(|x| x.is_finite() && x.abs() < 1.0));
+        // The level per 20 ms window: from the old station down into the
+        // static and back up to the new one, about the same on both sides.
+        let w = (0.02 * sr) as usize;
+        let rms: Vec<f64> = out
+            .chunks(w)
+            .map(|c| (c.iter().map(|x| (*x as f64).powi(2)).sum::<f64>() / c.len() as f64).sqrt())
+            .collect();
+        let n = rms.len();
+        let (head, tail) = (rms[0], rms[n - 2]);
+        assert!(
+            (head / tail).ln().abs() < 0.4,
+            "it starts and ends at the stations' level: {head:.3} vs {tail:.3}"
+        );
+        // The static's middle is not the stations: the old tone (220 Hz)
+        // and the new (440 Hz) are both all but gone there.
+        let mid = &out[out.len() / 2 - w..out.len() / 2 + w];
+        let tone = |f: f64| {
+            let (mut c, mut s) = (0.0, 0.0);
+            for (i, x) in mid.iter().enumerate() {
+                let p = TAU * f * i as f64 / sr;
+                c += *x as f64 * p.cos();
+                s += *x as f64 * p.sin();
+            }
+            (c * c + s * s).sqrt() / mid.len() as f64
+        };
+        assert!(
+            tone(220.0) < 0.02 && tone(440.0) < 0.02,
+            "{} {}",
+            tone(220.0),
+            tone(440.0)
+        );
+        // The fade out and the fade in last the same: the level envelope
+        // is symmetric about the turn's middle.
+        let half = n / 2;
+        let mut asym = 0.0;
+        for k in 0..half.min(8) {
+            asym += (rms[k] - rms[n - 1 - k]).abs();
+        }
+        assert!(asym / 8.0 < 0.06, "symmetric: {rms:?}");
+        assert!(t.station_audible() && !t.turning());
+    }
+
+    #[test]
+    fn no_two_turns_sound_alike() {
         let sr = 48000.0;
         let mut t = Tuner::new(11, sr);
-        let mut turns = Vec::new();
-        for _ in 0..4 {
-            t.tune();
-            let mut out = Vec::new();
-            let (mut l, mut r) = (vec![0.0f32; 128], vec![0.0f32; 128]);
-            while !t.station_audible() {
-                l.fill(0.0);
-                r.fill(0.0);
-                t.process(&mut l, &mut r);
-                out.extend_from_slice(&l);
-            }
-            assert!(out.iter().all(|x| x.is_finite() && x.abs() < 1.0));
-            turns.push(out);
-        }
+        let turns: Vec<Vec<f32>> = (0..4).map(|_| turn(&mut t, sr, true)).collect();
         for i in 0..turns.len() {
             for j in i + 1..turns.len() {
                 assert_ne!(turns[i], turns[j], "turns {i} and {j} are the same");
@@ -809,38 +852,59 @@ mod tests {
     }
 
     #[test]
-    fn the_tuner_sweeps_locks_and_switches_off() {
+    fn switching_on_and_off_fades_through_the_static() {
         let sr = 48000.0;
         let mut t = Tuner::new(3, sr);
-        let mut l = vec![0.0f32; 128];
-        let mut r = vec![0.0f32; 128];
-        t.process(&mut l, &mut r);
+        let (mut l, mut r) = (vec![0.5f32; 128], vec![0.5f32; 128]);
+        t.process(&mut l, &mut r, None);
         assert!(l.iter().all(|x| *x == 0.0), "silent before a tune");
-        t.tune();
-        let mut static_rms = 0.0;
-        let mut blocks = 0;
-        while !t.station_audible() {
+        // On: from silence, through the static, to the station.
+        let out = turn(&mut t, sr, false);
+        assert!(out[..64].iter().all(|x| x.abs() < 0.02), "it starts quiet");
+        for _ in 0..20 {
             l.fill(0.5);
             r.fill(0.5);
-            t.process(&mut l, &mut r);
-            static_rms += l.iter().map(|x| (*x as f64).powi(2)).sum::<f64>();
-            blocks += 1;
-            assert!(blocks < 1000, "the sweep ends");
+            t.process(&mut l, &mut r, None);
         }
-        assert!(static_rms > 0.0, "static was heard");
-        assert!(blocks as f64 * 128.0 / sr > 0.5, "half a second at least");
-        for _ in 0..200 {
-            l.fill(0.5);
-            r.fill(0.5);
-            t.process(&mut l, &mut r);
-        }
-        assert!((l[0] - 0.5).abs() < 1e-6, "straight through once locked");
+        assert!((l[0] - 0.5).abs() < 1e-6, "straight through once tuned");
+        // Off: the station fades out into the static, then silence.
         t.off();
-        for _ in 0..200 {
-            l.fill(0.5);
-            r.fill(0.5);
-            t.process(&mut l, &mut r);
+        assert!(t.leaving());
+        let mut blocks = 0;
+        while t.turning() {
+            l.fill(0.0);
+            r.fill(0.0);
+            let s = [0.5f32; 128];
+            let lv = t.leaving().then_some((&s[..], &s[..]));
+            t.process(&mut l, &mut r, lv);
+            blocks += 1;
+            assert!(blocks < 1000);
         }
+        l.fill(0.5);
+        t.process(&mut l, &mut r, None);
         assert!(l.iter().all(|x| *x == 0.0), "silent after off");
+    }
+
+    #[test]
+    fn tuning_again_mid_turn_never_jumps() {
+        let sr = 48000.0;
+        let mut t = Tuner::new(9, sr);
+        t.on();
+        t.tune();
+        let (mut l, mut r) = (vec![0.0f32; 128], vec![0.0f32; 128]);
+        let s = [0.0f32; 128];
+        // Into the fade in, then turn again: it runs back from that point.
+        while !t.station_audible() {
+            let lv = t.leaving().then_some((&s[..], &s[..]));
+            t.process(&mut l, &mut r, lv);
+        }
+        for _ in 0..10 {
+            t.process(&mut l, &mut r, None);
+        }
+        let before = t.t;
+        t.tune();
+        let total = 2 * t.fade + t.hold;
+        assert_eq!(t.t, total - before, "mirrored");
+        assert!(t.leaving(), "the arriving station is now the one leaving");
     }
 }
