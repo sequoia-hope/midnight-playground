@@ -390,10 +390,14 @@ pub struct Settings {
     /// `mr.classicEngine` (Rust only): the player's engine on the old
     /// wavetable voice instead of the physical exhaust model (D1110).
     pub classic_engine: bool,
-    /// `mr.station` (Rust only, D1151): the radio. `auto` (the level's
+    /// `mr.station` (Rust only, D1151): what plays. `auto` (the level's
     /// station), a station key (`mp_music::radio::STATIONS`), or
-    /// `playlist` (the seven arranged songs, as the JS game plays them).
+    /// `playlist` (the seven arranged songs, as the JS game plays them):
+    /// the radio off, the default (D1160).
     pub station: String,
+    /// `mr.radioStation` (D1160): the station the radio comes back to when
+    /// switched on, `auto` or a key.
+    pub radio_station: String,
 }
 
 /// Whether a station setting is one the menu offers.
@@ -428,11 +432,15 @@ impl Settings {
             guide: store.string("guideLine", if touch_ui { "full" } else { "off" }),
             assist: store.string("steerAssist", if touch_ui { "light" } else { "off" }),
             classic_engine: store.bool("classicEngine", false),
-            station: store.string("station", "auto"),
+            station: store.string("station", "playlist"),
+            radio_station: String::new(),
         };
         if !station_ok(&s.station) {
-            s.station = "auto".into();
+            s.station = "playlist".into();
         }
+        // The radio's station: the one remembered, else the one playing.
+        let remembered = store.string("radioStation", &s.station);
+        s.radio_station = crate::play::station::radio_on_setting(&remembered);
         if !GUIDE.contains(&s.guide.as_str()) {
             s.guide = if touch_ui { "full" } else { "off" }.into();
         }
@@ -553,7 +561,8 @@ mod tests {
                 guide: "off".into(),
                 assist: "off".into(),
                 classic_engine: false,
-                station: "auto".into(),
+                station: "playlist".into(),
+                radio_station: "auto".into(),
             }
         );
         // Touch screens get lighter rendering by default, and the guide
@@ -604,6 +613,7 @@ mod tests {
                 assist: "off".into(),
                 classic_engine: true,
                 station: "ridgeline".into(),
+                radio_station: "ridgeline".into(),
             }
         );
         // A choice the menu does not offer falls back to the default.
@@ -614,7 +624,7 @@ mod tests {
         ]);
         let s = Settings::load(&store, false);
         assert_eq!((s.guide.as_str(), s.assist.as_str()), ("off", "off"));
-        assert_eq!(s.station, "auto");
+        assert_eq!(s.station, "playlist");
     }
 
     /// `store.get(k, d)` gives `d` for a value that does not parse, as the

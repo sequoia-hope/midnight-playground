@@ -120,13 +120,14 @@ pub fn select_options(sel: Sel, s: &Settings) -> (Vec<(String, String)>, String)
             ],
             s.assist.clone(),
         ),
+        // The radio's station (D1160): the level's own, or one of them. On
+        // or off is the Radio checkbox.
         Sel::Station => {
-            let mut o = vec![("auto".to_owned(), "Auto".to_owned())];
+            let mut o = vec![("auto".to_owned(), "Level's station".to_owned())];
             for st in mp_music::radio::STATIONS {
                 o.push((st.key.to_owned(), crate::play::station::label(st)));
             }
-            o.push(("playlist".into(), "Playlist".into()));
-            (o, s.station.clone())
+            (o, s.radio_station.clone())
         }
     }
 }
@@ -768,12 +769,19 @@ fn options(
         s.classic_engine,
         "Classic engine sound",
     );
-    // The driving aids (Rust only, D1083), on every device.
-    for (sel, label, value) in [
+    // The radio (D1160): off by default (the music); on, its station.
+    let radio = s.station != "playlist";
+    check(p, cx, "opt-radio", Opt::Radio, radio, "Radio");
+    // The driving aids (Rust only, D1083), on every device; the radio's
+    // station while it is on.
+    let mut sels = vec![
         (Sel::Guide, "Guide line", &s.guide),
         (Sel::Assist, "Steer assist", &s.assist),
-        (Sel::Station, "Radio", &s.station),
-    ] {
+    ];
+    if radio {
+        sels.push((Sel::Station, "Station", &s.radio_station));
+    }
+    for (sel, label, value) in sels {
         let id = super::sel_id(sel);
         let f = cx.f(id);
         p.spawn(Node {

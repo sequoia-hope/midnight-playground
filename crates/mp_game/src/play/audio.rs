@@ -400,9 +400,13 @@ pub struct Settings {
     pub sfx: f64,
     /// `'auto'` (the level's own) or a track id.
     pub track: String,
-    /// The radio (D1151): `auto` (the level's station), a station key, or
-    /// `playlist` (the arranged songs, the JS game's music).
+    /// What plays (D1151): `auto` (the level's station), a station key, or
+    /// `playlist` (the arranged songs, the JS game's music): the radio off,
+    /// the default (D1160).
     pub station: String,
+    /// The station the radio comes back to when switched on (`auto` or a
+    /// key; D1160).
+    pub radio_station: String,
 }
 
 impl Default for Settings {
@@ -411,7 +415,8 @@ impl Default for Settings {
             music: 0.7,
             sfx: 0.85,
             track: "auto".into(),
-            station: "auto".into(),
+            station: "playlist".into(),
+            radio_station: "auto".into(),
         }
     }
 }
@@ -839,10 +844,10 @@ impl RaceAudio {
         self.apply_volume();
     }
 
-    /// `nextTrack` (T): the next stop on the dial (the stations, then the
-    /// playlist, round again; D1151). The playlist is one stop, so its own
-    /// next track is the menu's picker; where the radio cannot run (no
-    /// AudioWorklet) T is the JS's next track.
+    /// `nextTrack` (T): with the radio on, the next station on the dial;
+    /// off, the radio comes on (D1160). The playlist's own next track is
+    /// the menu's picker; where the radio cannot run (no AudioWorklet) T
+    /// is the JS's next track.
     pub fn next_track(&mut self) {
         if !self.audio.ready() {
             return;
@@ -851,10 +856,50 @@ impl RaceAudio {
             self.call(Call::NextTrack);
             return;
         }
+        self.step_station(1);
+    }
+
+    /// The radio widget's ◂ ▸ (and T): the station before or after on the
+    /// dial; with the radio off, it comes on (D1160).
+    pub fn step_station(&mut self, dir: i32) {
+        if self.settings.station == "playlist" {
+            self.set_radio(true);
+            return;
+        }
         let level = self.level.clone().unwrap_or_else(|| "coast".to_owned());
-        self.settings.station = super::station::next_setting(&self.settings.station, &level);
+        let next = super::station::step_setting(&self.settings.station, &level, dir);
+        self.tune_to(next, &level);
+    }
+
+    /// The radio on (its last station) or off (the playlist; D1160).
+    pub fn set_radio(&mut self, on: bool) {
+        let level = self.level.clone().unwrap_or_else(|| "coast".to_owned());
+        let next = if on {
+            super::station::radio_on_setting(&self.settings.radio_station)
+        } else {
+            "playlist".to_owned()
+        };
+        self.tune_to(next, &level);
+    }
+
+    /// Whether the radio is on (a station, not the playlist).
+    pub fn radio_on(&self) -> bool {
+        self.settings.station != "playlist"
+    }
+
+    fn tune_to(&mut self, setting: String, level: &str) {
+        if setting == self.settings.station {
+            return;
+        }
+        if setting != "playlist" {
+            self.settings.radio_station = setting.clone();
+            store_set("radioStation", &json_str(&setting));
+        }
+        self.settings.station = setting;
         store_set("station", &json_str(&self.settings.station));
-        self.pick_music(&level);
+        if self.audio.ready() {
+            self.pick_music(level);
+        }
     }
 
     /// Whether a station is playing (the pause screen's button says
@@ -1245,15 +1290,21 @@ fn settings() -> Settings {
         .and_then(|v| serde_json::from_str::<String>(&v).ok())
         .filter(|t| t == "auto" || GameAudio::tracks().iter().any(|i| i.id == t))
         .unwrap_or(d.track);
-    let station = store_get("station")
-        .and_then(|v| serde_json::from_str::<String>(&v).ok())
-        .filter(|v| crate::ui::store::station_ok(v))
-        .unwrap_or(d.station);
+    let string = |k: &str| {
+        store_get(k)
+            .and_then(|v| serde_json::from_str::<String>(&v).ok())
+            .filter(|v| crate::ui::store::station_ok(v))
+    };
+    let station = string("station").unwrap_or(d.station);
+    let radio_station = super::station::radio_on_setting(
+        &string("radioStation").unwrap_or_else(|| station.clone()),
+    );
     Settings {
         music: number("musicVol", d.music),
         sfx: number("sfxVol", d.sfx),
         track,
         station,
+        radio_station,
     }
 }
 
