@@ -1,7 +1,8 @@
 //! The radio in the client (radio.md 7, DECISIONS D1151): which station the
 //! setting means, what is playing on it (the same schedule the node runs,
 //! computed from the wall clock for the pause screen and the HUD), the
-//! race's energy, and the DJ's director: when a DJ says something, and what.
+//! race's energy, and the DJ's director: when a DJ says something, and what
+//! (only in a race: the menus are music only).
 //!
 //! Presentation, not simulation: its random choices use their own
 //! generator, never the simulation's streams, and each player hears their
@@ -209,6 +210,12 @@ impl StationState {
         let st = &STATIONS[i];
         let Some(dj) = st.dj else { return };
         self.prefetch(audio, dj);
+        if !scene.racing {
+            // The menus are music only: a break due now is dropped, not
+            // kept for the race (the owner, 2026-10-09).
+            self.due = None;
+            return;
+        }
         if let Some(due) = self.due
             && wall >= due
         {
