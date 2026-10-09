@@ -36,6 +36,7 @@ pub mod police;
 pub mod pose;
 mod pv_stage;
 pub mod radio;
+pub mod radio_widget;
 pub mod session;
 pub mod station;
 pub mod tilt;
@@ -189,6 +190,8 @@ pub struct Play {
     /// The player's headlight spot's intensity this frame (`Race.update`:
     /// `this.headlight.intensity = lightsOn * 140`).
     headlight: f64,
+    /// The radio widget's buttons and the taps on them (D1160).
+    pub radio: radio_widget::Taps,
 }
 
 /// A car's root entity.
@@ -222,6 +225,7 @@ pub fn plugin(app: &mut App) {
         hold: false,
         stop: false,
         headlight: 0.0,
+        radio: radio_widget::Taps::default(),
     })
     .add_systems(Startup, (hud::spawn, touch_ui::spawn, nametags::spawn))
     .add_systems(
@@ -245,6 +249,7 @@ pub fn plugin(app: &mut App) {
             touch_ui::update,
             touch_ui::sizes,
             nametags::update,
+            radio_widget::update,
         )
             .after(draw)
             .run_if(in_state(AppState::Running)),
@@ -466,6 +471,7 @@ fn read_input(
     windows: Query<&Window, With<PrimaryWindow>>,
 ) {
     let play = &mut *play;
+    let radio = &mut play.radio;
     let scale = f64::from(play.touch_scale);
     let css = f64::from(play.css_scale);
     let touch_ui = play.touch_ui;
@@ -526,7 +532,23 @@ fn read_input(
         }
         false
     };
+    // The radio widget's buttons take a tap before the touch controls
+    // (D1160): the stick's zone covers the whole left side.
+    let on_radio = |radio: &mut radio_widget::Taps, p: Vec2| -> bool {
+        let (x, y) = (p.x * scale as f32, p.y * scale as f32);
+        match radio.hit(x, y) {
+            Some(b) => {
+                radio.queued.push(b);
+                true
+            }
+            None => false,
+        }
+    };
     for t in touches.read() {
+        if t.phase == TouchPhase::Started && race.mode == Mode::Race && on_radio(radio, t.position)
+        {
+            continue;
+        }
         tapped |= finger(race, t.phase, t.id, t.position);
     }
     // The mouse is a finger too while the touch controls show (pointer
@@ -542,6 +564,9 @@ fn read_input(
             continue;
         }
         let Some(p) = *last_cursor else { continue };
+        if b.state == ButtonState::Pressed && race.mode == Mode::Race && on_radio(radio, p) {
+            continue;
+        }
         if touch_ui {
             let phase = match b.state {
                 ButtonState::Pressed => TouchPhase::Started,
@@ -988,6 +1013,7 @@ pub(crate) mod tests {
             hold: false,
             stop: false,
             headlight: 0.0,
+            radio: radio_widget::Taps::default(),
         }
     }
 }

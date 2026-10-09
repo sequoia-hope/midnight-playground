@@ -9705,3 +9705,34 @@ choices:
   plan's scale of 0.5, the length of today's Coast Highway), the remix of
   each level, and road trips (Cruis'n World's jumps) for the Sierra, the
   desert and the raceway. No level changes.
+
+## D1160. The radio is a switch, with a head unit on the race screen
+
+The owner (2026-10-09): the game should play its basic music by default;
+the radio is an option in the menu, can be turned on in a race, and has
+"a little radio widget on screen that you can change channels on".
+
+- **Off by default.** `mr.station` defaults to `playlist` (the arranged
+  songs) instead of `auto`. A player who chose a station keeps it. A new
+  setting, `mr.radioStation` (`auto` or a station key), remembers the
+  station the radio comes back to: switching on tunes it, switching off
+  remembers what played. The one `station` setting still says what plays,
+  so nothing downstream changed.
+- **The menu.** A Radio checkbox (on means `station` is not the
+  playlist) and, while it is on, a Station select ("Level's station" or a
+  station). Choosing a station tunes it, and switches the radio on.
+- **T** steps to the next station with the radio on, round the stations
+  (it used to stop at the playlist on the way round), and switches the
+  radio on when it is off. Off is the widget's OFF or the menu's Radio
+  checkbox.
+- **The head unit** (`play::radio_widget`): off, one RADIO button; on, ◂,
+  the station and the song, ▸ and OFF. It sits bottom-left on a desktop
+  (above the route bar on a narrow window) and, on a touch screen, under
+  the reset, camera and pause buttons, the free space before the speed
+  box (top-centre under the route bar would collide with Hot Pursuit's
+  heat stars). It shows only while driving and where the radio can run.
+  Its buttons' boxes go into `Play::radio`; `read_input` takes a tap or
+  click on them before the touch controls, whose stick zone covers the
+  whole left side, and the widget's system applies the taps to the audio
+  (`RaceAudio::set_radio`, `step_station`), which stores the settings and
+  the menus pick them up through `sync_audio`.

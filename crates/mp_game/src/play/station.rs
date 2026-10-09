@@ -35,13 +35,26 @@ pub fn resolve(setting: &str, level: &str) -> Option<usize> {
     })
 }
 
-/// The station after `setting` on the dial: the stations in order, then
-/// the playlist, then round again.
-pub fn next_setting(setting: &str, level: &str) -> String {
+/// The station `dir` steps along the dial from `setting` (+1 the next, -1
+/// the one before), round the stations; the radio stays on (D1160). From
+/// the playlist (the radio off) it is the first station either way.
+pub fn step_setting(setting: &str, level: &str, dir: i32) -> String {
+    let n = STATIONS.len() as i32;
     match resolve(setting, level) {
         None => STATIONS[0].key.to_owned(),
-        Some(i) if i + 1 < STATIONS.len() => STATIONS[i + 1].key.to_owned(),
-        Some(_) => "playlist".to_owned(),
+        Some(i) => STATIONS[(i as i32 + dir).rem_euclid(n) as usize]
+            .key
+            .to_owned(),
+    }
+}
+
+/// What the radio plays with it switched on: `remembered` (the station last
+/// chosen, or `auto`), never the playlist.
+pub fn radio_on_setting(remembered: &str) -> String {
+    if remembered == "playlist" || !crate::ui::store::station_ok(remembered) {
+        "auto".to_owned()
+    } else {
+        remembered.to_owned()
     }
 }
 
@@ -297,10 +310,15 @@ mod tests {
         assert_eq!(resolve("auto", "sierra"), Some(1));
         assert_eq!(resolve("pacifico", "coast"), Some(2));
         assert_eq!(resolve("nope", "coast"), None);
-        assert_eq!(next_setting("playlist", "coast"), "tide");
-        assert_eq!(next_setting("tide", "coast"), "ridgeline");
-        assert_eq!(next_setting("auto", "sierra"), "pacifico");
-        assert_eq!(next_setting("pacifico", "coast"), "playlist");
+        assert_eq!(step_setting("playlist", "coast", 1), "tide");
+        assert_eq!(step_setting("tide", "coast", 1), "ridgeline");
+        assert_eq!(step_setting("auto", "sierra", 1), "pacifico");
+        // Round the stations, never off.
+        assert_eq!(step_setting("pacifico", "coast", 1), "tide");
+        assert_eq!(step_setting("tide", "coast", -1), "pacifico");
+        assert_eq!(radio_on_setting("playlist"), "auto");
+        assert_eq!(radio_on_setting("ridgeline"), "ridgeline");
+        assert_eq!(radio_on_setting("kzzz"), "auto");
     }
 
     #[test]

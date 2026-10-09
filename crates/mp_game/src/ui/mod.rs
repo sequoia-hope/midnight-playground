@@ -80,6 +80,9 @@ pub enum Opt {
     Fullscreen,
     Rumble,
     ClassicEngine,
+    /// The radio on or off (D1160): not a stored bool of its own, it moves
+    /// `station` between the radio's station and the playlist.
+    Radio,
 }
 
 /// The range sliders.
@@ -592,10 +595,14 @@ fn flow(
 /// sound (`applyVolume`, `pickMusic`), and one the sound makes (M toggles
 /// the music) reaches the menus. Then the queued clicks, a level tab's
 /// music, Next track and `toMenu`.
+/// The sound's settings as last synced: music and SFX volumes, track,
+/// station, the radio's station.
+type SyncedAudio = (f64, f64, String, String, String);
+
 fn sync_audio(
     mut ui: ResMut<UiState>,
     shared: Option<NonSend<crate::play::audio::Shared>>,
-    mut last: Local<Option<(f64, f64, String, String)>>,
+    mut last: Local<Option<SyncedAudio>>,
 ) {
     let Some(shared) = shared else { return };
     let Ok(mut a) = shared.0.try_borrow_mut() else {
@@ -606,18 +613,21 @@ fn sync_audio(
         ui.settings.sfx,
         ui.settings.track.clone(),
         ui.settings.station.clone(),
+        ui.settings.radio_station.clone(),
     );
     let theirs = (
         a.settings.music,
         a.settings.sfx,
         a.settings.track.clone(),
         a.settings.station.clone(),
+        a.settings.radio_station.clone(),
     );
     if last.as_ref().is_some_and(|l| *l != theirs) {
         ui.settings.music = theirs.0;
         ui.settings.sfx = theirs.1;
         ui.settings.track = theirs.2.clone();
         ui.settings.station = theirs.3.clone();
+        ui.settings.radio_station = theirs.4.clone();
         ui.dirty = true;
     } else if last.as_ref() != Some(&ours) || theirs != ours {
         let level = ui.settings.level.clone();
@@ -627,6 +637,7 @@ fn sync_audio(
                 sfx: ours.1,
                 track: ours.2.clone(),
                 station: ours.3.clone(),
+                radio_station: ours.4.clone(),
             },
             &level,
         );
@@ -636,6 +647,7 @@ fn sync_audio(
         a.settings.sfx,
         a.settings.track.clone(),
         a.settings.station.clone(),
+        a.settings.radio_station.clone(),
     ));
     // The engine's voice (D1110): not a call the JS makes, so not logged.
     a.audio.set_engine_model(!ui.settings.classic_engine);
@@ -1154,6 +1166,15 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
                 Starting::Free(0)
             });
         }
+        Act::Toggle(Opt::Radio) => {
+            let s = &mut ui.settings;
+            s.station = if s.station == "playlist" {
+                crate::play::station::radio_on_setting(&s.radio_station)
+            } else {
+                "playlist".into()
+            };
+            ctx.store.set_str("station", &s.station);
+        }
         Act::Toggle(o) => {
             let s = &mut ui.settings;
             let (slot, key) = match o {
@@ -1164,6 +1185,7 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
                 Opt::Fullscreen => (&mut s.fullscreen, "fullscreen"),
                 Opt::Rumble => (&mut s.rumble, "rumble"),
                 Opt::ClassicEngine => (&mut s.classic_engine, "classicEngine"),
+                Opt::Radio => unreachable!("handled above"),
             };
             *slot = !*slot;
             let v = *slot;
@@ -1213,8 +1235,12 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
                     ui.settings.assist = v.clone();
                     ctx.store.set_str("steerAssist", &v);
                 }
+                // The radio's station: remembered for when it is on, and
+                // tuned at once (choosing one switches the radio on).
                 Sel::Station => {
+                    ui.settings.radio_station = v.clone();
                     ui.settings.station = v.clone();
+                    ctx.store.set_str("radioStation", &v);
                     ctx.store.set_str("station", &v);
                 }
             }
