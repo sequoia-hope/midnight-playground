@@ -54,6 +54,8 @@ pub mod ui;
 pub mod viewer;
 pub mod warmup;
 
+#[cfg(target_arch = "wasm32")]
+pub(crate) mod bridge;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
 #[cfg(target_arch = "wasm32")]
