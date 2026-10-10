@@ -1065,3 +1065,36 @@ load 6 to 7, main thread 0.88 / 0.87 ms against 0.99 / 0.88 (Sierra), 0.75
 and `loadDuring`. The session's scripts (alternating runs, the profiler
 over a names-kept wasm, WebGPU call counts, the GPU-process trace) are in
 its scratchpad, not the repo.
+
+## A framerate pass on the phone (DECISIONS D1180 to D1182)
+
+2026-10-09, main aa815d8 against the same tree with D1180 to D1182,
+alternating build by build, two rounds each. `rust-perf.mjs --race
+--capped --phone --throttle 4 --hq 0 --trace 10` (the sports car on the
+autopilot, 30 s from race time 3 s; 844 × 390 at dpr 3, CPU 4 × slower,
+60 Hz), WebGPU, load 1.6 to 2.7. Per frame: the page's work (rAF, median
+and 95th percentile), the renderer main thread's CPU time (main), and
+frames over 33 ms in the 30 s.
+
+| Level | rAF p50 before | after | rAF p95 before | after | main before | after | >33 ms before | after |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Seaside | 15.1, 14.5 | **9.1, 9.6** | 19.3, 18.5 | 13.3, 13.8 | 8.83, 8.47 | 5.36, 5.66 | 21, 6 | 0, 1 |
+| Coast | 11.7, 11.5 | 10.6, 10.3 | 16.0, 16.1 | 15.4, 14.7 | 6.43, 6.35 | 5.95, 5.76 | 0, 0 | 1, 0 |
+| Sierra | 10.9, 10.7 | 10.0, 9.6 | 14.9, 14.9 | 14.2, 14.3 | 6.02, 5.84 | 5.56, 5.37 | 0, 0 | 0, 1 |
+
+Seaside before with `?life=0` (no people or birds): 9.5 and 9.3 ms, 0
+frames over 33 ms. The desktop at 60 Hz was not the problem (Sierra's
+race: main 1.69 ms a frame, GPU process 1.64, against 2.25 and 1.88 at
+D866); uncapped, Coast and Sierra raced at about 390 fps and Seaside at
+286 before.
+
+What each frame spent before, from a CPU profile of a names-kept build
+(wasm-bindgen `--keep-debug`, wasm-opt `-g`) attributed to Bevy systems:
+on Seaside `run_animators` 30 % (the people, D1180); on Coast and Sierra
+the opaque pass 18 to 20 %, of which `map_wgt_limits` 7 % (D1182); the
+`__mp` bridge about 3.5 % everywhere (D1181). Left as they are: Bevy UI's
+layout and text measuring (about 4 %), the audio graph's Web Audio calls
+(about 2 %), and the per-draw cost of the opaque pass itself (D866 item
+2). WebGL2, Coast's race uncapped on the desktop: 84 fps (D866: 28) with
+a 99th percentile of 38 ms; neither the main thread nor the GPU process
+is saturated, not looked into further.

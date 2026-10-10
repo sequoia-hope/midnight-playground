@@ -9796,3 +9796,21 @@ settings change (`select_options` depends on nothing else). The scalar
 keys (`state`, `frames`, `frameMs`, ...) stay plain properties: the page
 writes some of them itself. Nothing in the client reads these keys back,
 and nothing in JS assigns to them.
+
+## D1182. wgpu patched: the WebGPU device's limits and features read once
+
+2026-10-09, the owner: "patch wgpu" (D866 item 3, left open then).
+Bevy 0.19's `SetMeshBindGroup` asks `RenderDevice::limits()` on every
+draw (`skins_use_uniform_buffers`), and wgpu 29's WebGPU backend answered
+each time by reading every field of the browser's `GPUSupportedLimits`
+(`map_wgt_limits`); `features()` the same way a few times a frame. On the
+phone this was 7 % of the frame on Coast and Sierra (D866 had put it at
+0.08 ms on the desktop).
+
+`patches/wgpu/` is wgpu 29.0.4 from crates.io with `WebDevice` keeping
+both in a `OnceCell` (a device's limits and features never change), used
+through `[patch.crates-io]`; `patches/` is excluded from the workspace,
+and the crate's own unused-import warnings are allowed (a path crate's
+lints are not capped as a registry crate's are). `patches/wgpu/PATCHED.md`
+says how to carry it to a new release. Worth reporting upstream; to be
+dropped when a release caches them.
