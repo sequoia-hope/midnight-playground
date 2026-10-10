@@ -95,25 +95,29 @@ pub struct InstanceStream {
     count: u32,
     bytes: Mutex<Option<Vec<u8>>>,
     buffer: OnceLock<Buffer>,
-    /// New contents of the same size, written into the buffer in place
+    /// New contents, written into the buffer in place
     /// (`write_instance_updates`): the scenery's animators move instances
     /// every frame, and a new buffer each time would be a GPU allocation
-    /// per frame (WP 3.9, D497).
-    update: Mutex<Option<Vec<u8>>>,
+    /// per frame (WP 3.9, D497). Each is a byte offset and its bytes, in
+    /// order; a whole rewrite replaces what is pending, and the instances an
+    /// animator moved are written alone (D1180).
+    update: Mutex<Vec<(u64, Vec<u8>)>>,
+}
+
+/// The floats as the buffer holds them (wasm and every native target here
+/// are little-endian, as `f32::to_le_bytes` was): one copy.
+fn to_bytes(data: &[f32]) -> Vec<u8> {
+    bytemuck::cast_slice::<f32, u8>(data).to_vec()
 }
 
 impl InstanceStream {
     /// From [`INSTANCE_FLOATS`] floats per instance.
     pub fn new(data: &[f32]) -> InstanceStream {
-        let mut bytes = Vec::with_capacity(data.len() * 4);
-        for x in data {
-            bytes.extend_from_slice(&x.to_le_bytes());
-        }
         InstanceStream {
             count: (data.len() / INSTANCE_FLOATS) as u32,
-            bytes: Mutex::new(Some(bytes)),
+            bytes: Mutex::new(Some(to_bytes(data))),
             buffer: OnceLock::new(),
-            update: Mutex::new(None),
+            update: Mutex::new(Vec::new()),
         }
     }
 
@@ -123,10 +127,7 @@ impl InstanceStream {
         if (data.len() / INSTANCE_FLOATS) as u32 != self.count {
             return false;
         }
-        let mut bytes = Vec::with_capacity(data.len() * 4);
-        for x in data {
-            bytes.extend_from_slice(&x.to_le_bytes());
-        }
+        let bytes = to_bytes(data);
         if self.buffer.get().is_none()
             && let Ok(mut b) = self.bytes.lock()
             && b.is_some()
@@ -136,7 +137,31 @@ impl InstanceStream {
             return true;
         }
         if let Ok(mut u) = self.update.lock() {
-            *u = Some(bytes);
+            u.clear();
+            u.push((0, bytes));
+        }
+        true
+    }
+
+    /// New contents for instances `first..` (`data` holds whole instances),
+    /// written in place; false (nothing done) if they run past the end.
+    pub fn write(&self, first: usize, data: &[f32]) -> bool {
+        let n = data.len() / INSTANCE_FLOATS;
+        if !data.len().is_multiple_of(INSTANCE_FLOATS) || first + n > self.count as usize {
+            return false;
+        }
+        let at = first * INSTANCE_FLOATS * 4;
+        let bytes = bytemuck::cast_slice::<f32, u8>(data);
+        if self.buffer.get().is_none()
+            && let Ok(mut b) = self.bytes.lock()
+            && let Some(b) = b.as_mut()
+        {
+            // Not on the GPU yet: into the contents it goes up with.
+            b[at..at + bytes.len()].copy_from_slice(bytes);
+            return true;
+        }
+        if let Ok(mut u) = self.update.lock() {
+            u.push((at as u64, bytes.to_vec()));
         }
         true
     }
@@ -172,10 +197,12 @@ pub fn write_instance_updates(
         let Some(buffer) = inst.0.buffer.get() else {
             continue;
         };
-        let Some(bytes) = inst.0.update.lock().ok().and_then(|mut u| u.take()) else {
+        let Ok(mut u) = inst.0.update.lock() else {
             continue;
         };
-        queue.write_buffer(buffer, 0, &bytes);
+        for (at, bytes) in u.drain(..) {
+            queue.write_buffer(buffer, at, &bytes);
+        }
     }
 }
 

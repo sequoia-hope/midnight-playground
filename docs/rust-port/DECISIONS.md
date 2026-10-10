@@ -9736,3 +9736,41 @@ the radio is an option in the menu, can be turned on in a race, and has
   whole left side, and the widget's system applies the taps to the audio
   (`RaceAudio::set_radio`, `step_station`), which stores the settings and
   the menus pick them up through `sync_audio`.
+
+## D1180. An instance stream writes only the instances that moved
+
+2026-10-09, a framerate pass (BASELINE.md, "A framerate pass on the
+phone"). On a phone (headless Chrome, CPU 4 × slower, 844 × 390 at dpr 3,
+high quality off) Seaside Raceway's race took 14.8 ms of the 16.7 ms frame
+in the page and dropped frames (6 to 21 over 33 ms in 30 s); with
+`?life=0` it took 9.4 ms. The living world's people (vision M14, D1156)
+are 1,665 at Seaside, drawn as six instanced meshes of 1,665 instances,
+and `run_animators` rebuilt every instance of a mesh when any of them
+changed: a determinant, a 64-bit matrix product and a conversion each,
+then the floats copied into bytes one at a time (`InstanceStream::new`
+and `update`, 15 % of the frame on its own) and about 960 KB written to
+the GPU, every frame the car passes fans. Only the fans within 170 m move.
+
+- **The bytes in one copy** (`bytemuck::cast_slice`; `bytemuck` is already
+  in the tree through Bevy and wgpu, now a direct dependency of
+  `mp_game`). The same bytes: wasm and the native targets are
+  little-endian, as `f32::to_le_bytes` assumed.
+- **Each mesh keeps what its stream holds** (`Packed`: the floats, each
+  instance's place in them, and the world matrix they were packed under),
+  and the instance matrix and colour edits record which instance changed.
+  When the stream holds the packed contents and the node has not moved,
+  only the changed instances are packed again (`pack_instance`, the one
+  function the full pack uses too, so the floats are the same) and
+  written into the buffer at their place, in runs: instances closer than
+  16 apart go as one write (`InstanceStream::write`; the pending writes
+  are a list of offsets and bytes now, a whole rewrite replacing them).
+  Anything that moves the places goes back to the full pack as before: an
+  instance that collapses (determinant under 1e-12, left out) or stops
+  collapsing, a count change, the node moving, or a stream of another
+  size. A unit test checks the partial pack against a full pack of the
+  same edits.
+- Pictures: the stream's contents are the same floats either way; the
+  birds' empty and refilled meshes (D1156) take the full path as before.
+
+Seaside on the phone: 9.35 ms (two runs: 9.1, 9.6), frames over 33 ms 0
+and 1; together with D1181 and D1182.

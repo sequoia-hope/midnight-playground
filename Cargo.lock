@@ -4385,6 +4385,7 @@ name = "mp_game"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "bytemuck",
  "flate2",
  "image",
  "js-sys",
