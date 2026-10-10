@@ -307,6 +307,27 @@ fn the_plucked_string_in_tune_ringing_strummed_with_tremolo_and_a_wah() {
         early > 0.01 && late < early * 0.3,
         "decays {early} → {late}"
     );
+    // Plucked as a string (`shape` 1): the fundamental leads the partials,
+    // by more than a noise burst's lottery allows; the pickup at a quarter
+    // of the string nulls the 4th partial.
+    let partial = |x: &[f32], k: f64| band_power(x, 220.0 * k - 12.0, 220.0 * k + 12.0);
+    let mut sh = plain.clone();
+    sh.shape = Some(1.0);
+    sh.pick_pos = Some(0.15);
+    let (shaped, _) = render_inst(&sh, &[note(0.0, &[57.0], 2.0)], 1.0);
+    let shaped = &shaped[at(0.05)..at(0.05) + 16384];
+    assert!(
+        partial(shaped, 1.0) > 2.0 * partial(shaped, 2.0)
+            && partial(shaped, 1.0) > 4.0 * partial(shaped, 3.0),
+        "the fundamental leads"
+    );
+    sh.pickup = Some(0.25);
+    let (neck, _) = render_inst(&sh, &[note(0.0, &[57.0], 2.0)], 1.0);
+    let neck = &neck[at(0.05)..at(0.05) + 16384];
+    assert!(
+        partial(neck, 4.0) < partial(neck, 3.0) * 0.05,
+        "the neck pickup nulls the 4th partial"
+    );
     // Muting: the note's end damps the string within its `r`.
     let mut m = plain.clone();
     m.decay = Some(3.0);

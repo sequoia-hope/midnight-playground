@@ -24,7 +24,7 @@ pub fn all() -> &'static [(&'static str, Lab)] {
 }
 
 /// The SHA-256 of the lab's `canon(BPATCH)` (`dump-tables.mjs` prints it).
-pub const LAB_SHA256: &str = "b3e2628df1defa3a932e4edb1b7fc13e316547e6501f64c4f3f12c5b00796466";
+pub const LAB_SHA256: &str = "7ef32f66bb8cb6afbc26c643f2230ac64047ef27b356bf1e3a73a8981a263775";
 
 fn build() -> Vec<(&'static str, Lab)> {
     vec![
@@ -1101,14 +1101,16 @@ fn build() -> Vec<(&'static str, Lab)> {
             "surfGuitar",
             Lab {
                 kind: "string".into(),
+                shape: Some(1.0),
                 decay: Some(1.8),
                 damp: Some(0.3),
                 pick: Some(0.6),
-                pick_pos: Some(0.13),
+                pick_pos: Some(0.15),
+                pickup: Some(0.08),
                 body: Some(2900.0),
                 body_q: Some(1.4),
-                body_mix: Some(0.6),
-                tone: Some(5200.0),
+                body_mix: Some(0.5),
+                tone: Some(5000.0),
                 drive: Some(0.5),
                 trem: Some(0.45),
                 trem_rate: Some(5.6),
@@ -1120,13 +1122,39 @@ fn build() -> Vec<(&'static str, Lab)> {
             },
         ),
         (
+            "neckGuitar",
+            Lab {
+                kind: "string".into(),
+                shape: Some(1.0),
+                decay: Some(2.0),
+                damp: Some(0.35),
+                pick: Some(0.5),
+                pick_pos: Some(0.18),
+                pickup: Some(0.25),
+                body: Some(2200.0),
+                body_q: Some(1.0),
+                body_mix: Some(0.4),
+                tone: Some(3800.0),
+                drive: Some(0.4),
+                trem: Some(0.35),
+                trem_rate: Some(5.2),
+                glide: Some(0.04),
+                r: Some(0.5),
+                chorus: Some(0.0),
+                gain: Some(0.14),
+                ..Default::default()
+            },
+        ),
+        (
             "wahGuitar",
             Lab {
                 kind: "string".into(),
+                shape: Some(1.0),
                 decay: Some(1.8),
                 damp: Some(0.3),
                 pick: Some(0.65),
-                pick_pos: Some(0.13),
+                pick_pos: Some(0.15),
+                pickup: Some(0.1),
                 body: Some(2600.0),
                 body_q: Some(1.2),
                 body_mix: Some(0.5),
@@ -1139,7 +1167,7 @@ fn build() -> Vec<(&'static str, Lab)> {
                 glide: Some(0.04),
                 r: Some(0.4),
                 chorus: Some(0.0),
-                gain: Some(0.22),
+                gain: Some(0.15),
                 ..Default::default()
             },
         ),
@@ -1147,10 +1175,12 @@ fn build() -> Vec<(&'static str, Lab)> {
             "rhythmGuitar",
             Lab {
                 kind: "string".into(),
+                shape: Some(1.0),
                 decay: Some(0.35),
                 damp: Some(0.5),
                 pick: Some(0.45),
                 pick_pos: Some(0.2),
+                pickup: Some(0.18),
                 body: Some(2200.0),
                 body_q: Some(1.0),
                 body_mix: Some(0.4),
@@ -1159,7 +1189,27 @@ fn build() -> Vec<(&'static str, Lab)> {
                 strum: Some(0.014),
                 r: Some(0.06),
                 chorus: Some(0.0),
-                gain: Some(0.6),
+                gain: Some(0.4),
+                ..Default::default()
+            },
+        ),
+        (
+            "acousticGuitar",
+            Lab {
+                kind: "string".into(),
+                shape: Some(1.0),
+                decay: Some(2.5),
+                damp: Some(0.35),
+                pick: Some(0.5),
+                pick_pos: Some(0.2),
+                body: Some(230.0),
+                body_q: Some(2.5),
+                body_mix: Some(0.8),
+                tone: Some(5000.0),
+                strum: Some(0.015),
+                r: Some(0.3),
+                chorus: Some(0.0),
+                gain: Some(0.1),
                 ..Default::default()
             },
         ),
@@ -1167,10 +1217,12 @@ fn build() -> Vec<(&'static str, Lab)> {
             "fingerBass",
             Lab {
                 kind: "string".into(),
+                shape: Some(1.0),
                 decay: Some(1.2),
                 damp: Some(0.5),
                 pick: Some(0.25),
                 pick_pos: Some(0.3),
+                pickup: Some(0.22),
                 body: Some(320.0),
                 body_q: Some(0.8),
                 body_mix: Some(0.5),
@@ -1178,7 +1230,7 @@ fn build() -> Vec<(&'static str, Lab)> {
                 drive: Some(0.6),
                 r: Some(0.08),
                 chorus: Some(0.0),
-                gain: Some(0.5),
+                gain: Some(0.25),
                 ..Default::default()
             },
         ),

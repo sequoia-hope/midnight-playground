@@ -3648,13 +3648,19 @@ pub fn chicha(seed: u32, dejavu: Option<f64>) -> Track {
     );
 
     // The guitars. The hook is the chorus; the verse has its own melody, lower
-    // and calmer; the second guitar answers a third up, at the same time.
+    // and calmer; the second guitar answers a third up, at the same time. The
+    // costeña lead is the bright surf guitar or the same guitar on the neck
+    // pickup (a forked draw, so the melodies of a seed stay as they were); the
+    // second guitar is the same instrument.
+    let guitar = if r.fork(2).chance(0.5) {
+        "neckGuitar"
+    } else {
+        "surfGuitar"
+    };
     let lead_patch = if amazonica {
         p("wahGuitar", |l| l.wah_rate = Some(bpm as f64 / 60.0))
     } else {
-        p("surfGuitar", |l| {
-            l.trem_rate = Some(r.pick(&[5.2, 5.8, 6.4]))
-        })
+        p(guitar, |l| l.trem_rate = Some(r.pick(&[5.2, 5.8, 6.4])))
     };
     let pent: &[i32] = &[1, 5];
     let mc = motif(
@@ -3744,10 +3750,10 @@ pub fn chicha(seed: u32, dejavu: Option<f64>) -> Track {
                 ..Default::default()
             },
             pat: sp(&[("third", &hc.answer)]),
-            lab: p("surfGuitar", |l| {
+            lab: p(guitar, |l| {
                 l.trem = Some(0.3);
                 l.trem_rate = Some(5.2);
-                l.gain = Some(0.26);
+                l.gain = Some(if guitar == "neckGuitar" { 0.12 } else { 0.26 });
             }),
             ..Default::default()
         },

@@ -134,6 +134,14 @@ test('the plucked string: in tune, ringing for its decay time, strummed, with tr
   assert.ok(bandPower(seg, 210, 230) > 3 * bandPower(seg, 250, 420), 'in tune at 220 Hz');
   const early = rms(L.subarray(0.05 * RATE, 0.15 * RATE)), late = rms(L.subarray(0.55 * RATE, 0.65 * RATE));
   assert.ok(early > 0.01 && late < early * 0.3, `decays ${early} → ${late}`);
+  // Plucked as a string (`shape` 1): the fundamental leads the partials, by
+  // more than a noise burst's lottery allows; the pickup at a quarter of
+  // the string nulls the 4th partial.
+  const partial = (x, k) => bandPower(x, 220 * k - 12, 220 * k + 12);
+  const shaped = renderInst({ ...plain, shape: 1, pickPos: 0.15 }, [{ t: 0, midis: [57], dur: 2 }], 1).L.subarray(0.05 * RATE, 0.05 * RATE + 16384);
+  assert.ok(partial(shaped, 1) > 2 * partial(shaped, 2) && partial(shaped, 1) > 4 * partial(shaped, 3), 'the fundamental leads');
+  const neck = renderInst({ ...plain, shape: 1, pickPos: 0.15, pickup: 0.25 }, [{ t: 0, midis: [57], dur: 2 }], 1).L.subarray(0.05 * RATE, 0.05 * RATE + 16384);
+  assert.ok(partial(neck, 4) < partial(neck, 3) * 0.05, 'the neck pickup nulls the 4th partial');
   // Muting: the note's end damps the string within its `r`.
   const muted = renderInst({ ...plain, decay: 3, r: 0.05 }, [{ t: 0, midis: [57], dur: 0.3 }], 1).L;
   assert.ok(rms(muted.subarray(0.5 * RATE, 0.6 * RATE)) < rms(muted.subarray(0.1 * RATE, 0.2 * RATE)) * 0.1, 'muted after the gate');

@@ -619,15 +619,19 @@ export function chicha(seed, { dejavu = 0.75 } = {}) {
   T.parts.organ = { type: 'chord', lo: 60, ch: { rev: 0.3, pan: -0.25, level: sub === 'amazonica' ? 0.7 : 0.45 }, pat: { pad: 'x---------------', stab: '....x---....x---' }, lab: P('comboOrgan') };
 
   // The guitars. The hook is the chorus; the verse has its own melody, lower
-  // and calmer; the second guitar answers a third up, at the same time.
-  const leadPatch = sub === 'amazonica' ? P('wahGuitar', { wahRate: bpm / 60 }) : P('surfGuitar', { tremRate: r.pick([5.2, 5.8, 6.4]) });
+  // and calmer; the second guitar answers a third up, at the same time. The
+  // costeña lead is the bright surf guitar or the same guitar on the neck
+  // pickup (a forked draw, so the melodies of a seed stay as they were); the
+  // second guitar is the same instrument.
+  const guitar = r.fork(2).chance(0.5) ? 'neckGuitar' : 'surfGuitar';
+  const leadPatch = sub === 'amazonica' ? P('wahGuitar', { wahRate: bpm / 60 }) : P(guitar, { tremRate: r.pick([5.2, 5.8, 6.4]) });
   const pent = [1, 5];
   const mc = motif(r, { bars: 2, density: 'medium', figure: 0.5 });
   const mv = motif(r, { bars: 2, density: r.pick(['sparse', 'medium']), figure: 0.4 });
   const HC = hooks(r, mc, { scale, tonic: 60 + tonic, prog: progC, lo: -3, hi: 9, gate: 5, avoid: pent });
   const HV = hooks(r, mv, { scale, tonic: 60 + tonic, prog: progV, lo: -5, hi: 6, gate: 6, avoid: pent });
   T.parts.lead = { type: 'mel', res: 1, legato: true, ch: { rev: 0.4, dly: 0.2, pan: 0.1, level: 1.4 }, pat: { hook: HC.hook, sparse: HC.sparse, answer: HC.answer, verse: HV.hook, verse2: HV.answer }, lab: leadPatch };
-  T.parts.lead2 = { type: 'mel', res: 1, legato: true, ch: { rev: 0.4, dly: 0.15, pan: -0.3, level: 0.8 }, pat: { third: HC.answer }, lab: P('surfGuitar', { trem: 0.3, tremRate: 5.2, gain: 0.26 }) };
+  T.parts.lead2 = { type: 'mel', res: 1, legato: true, ch: { rev: 0.4, dly: 0.15, pan: -0.3, level: 0.8 }, pat: { third: HC.answer }, lab: P(guitar, { trem: 0.3, tremRate: 5.2, gain: guitar === 'neckGuitar' ? 0.12 : 0.26 }) };
   // The organ solo: its own figure over the verse chords, pentatonic too,
   // in the organ's middle register (the top octave of a combo organ cuts).
   const mo = motif(r, { bars: 2, density: 'dense', figure: 0.6 });

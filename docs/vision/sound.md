@@ -432,12 +432,17 @@ Andes in them. Two sub-styles, picked per seed:
 - **Amazónica** (Juaneco y su Combo): the lead through a wah pedal rocked
   once a beat, the organ up front, 90–98 bpm.
 
-**Instruments** (`instruments.js`): the plucked string of 3.5.4 as
-`surfGuitar` (a clean single coil, the pickup's peak near 3 kHz, light
-drive, Fender-style tremolo at 5–6.5 Hz, a quarter-tone slide up into each
-note), `wahGuitar` (the same through a wah of two octaves from 380 Hz,
-rocked at the beat's rate), `rhythmGuitar` (muted strums, damped in
-60 ms), `fingerBass` (a round string with a soft top), and `comboOrgan`
+**Instruments** (`instruments.js`): the plucked string of 3.5.4, plucked
+as a string (`shape` 1) and read at a pickup, as `surfGuitar` (a clean
+single coil at the bridge, `pickup` 0.08, the pickup's peak near 3 kHz,
+light drive, Fender-style tremolo at 5–6.5 Hz), `neckGuitar` (the same
+guitar on the neck pickup, `pickup` 0.25: the 4th partial nulled, the top
+rolled off, a Gibson-ish warmth; the costeña lead is one or the other per
+seed, from a forked draw, and the second guitar matches it), `wahGuitar`
+(the surf guitar through a wah of two octaves from 380 Hz, rocked at the
+beat's rate), `rhythmGuitar` (muted strums on the middle pickup, damped in
+60 ms), `fingerBass` (a round string with a soft top, the pickup where a
+P-bass has it), and `comboOrgan`
 (a Farfisa-like: four drawbars on the FM organ algorithm through the
 chorus's vibrato mode). The **latin kit** (`KITS.latin`): congas (open
 tone, slap, the low tumba) and bongos on a new `conga` hit (a head tone
@@ -497,21 +502,35 @@ by 6, the strums by 12). The owner's ear decides the rest, as always.
 
 One model behind every guitar, bass, banjo and harpsichord above
 (`instruments.js` `StringVoice`, after Karplus and Strong as Jaffe and
-Smith extended it): a noise burst one period long (`pick` sets how bright,
-and harder notes are brighter) enters a delay loop whose length is the
-period, read fractionally for tuning; a one-zero average in the loop damps
-the upper partials faster than the lower (`damp`); a loss per period sets
-the ring time (`decay`, RT60) and a second loss the muting when the note
-ends (`r`); the string is heard through a resonance (`body`, `bodyQ`,
-`bodyMix`: the pickup's peak or the top) and a tone control. Per note:
-`bend` / `bendT` slide up into the note, `glide` slides from the last when
-legato, `strum` spaces a chord's strings. The amp is the instrument's:
+Smith extended it): an excitation one period long enters a delay loop
+whose length is the period, read fractionally for tuning; a one-zero
+average in the loop damps the upper partials faster than the lower
+(`damp`); a loss per period sets the ring time (`decay`, RT60) and a second
+loss the muting when the note ends (`r`); the string is read where the
+pickup sits (`pickup`, a fraction of the length from the bridge: the comb
+of a real pickup, which near the bridge thins the fundamental and
+brightens, and at a quarter nulls the 4th partial and warms; 0 for none),
+then heard through a resonance (`body`, `bodyQ`, `bodyMix`: the pickup's
+peak or the top) and a tone control. The excitation is what `shape` says:
+at 1 the string's own shape under the pick, a triangle peaked at `pickPos`
+with its corner rounded by the pick's low-pass (`pick`: harder is
+brighter), so the partials fall as sin(kπ·pickPos)/k² and the fundamental
+leads, as on a guitar; at 0 a noise burst with flat partials, combed at
+`pickPos`, which is the Karplus-Strong twang (a banjo, a harpsichord; the
+guitars had this until D1161, and sounded higher and twangier than a
+guitar because the 2nd to 4th partials beat the fundamental by up to
+14 dB); between the two a mix. Per note: `bend` / `bendT` slide up into
+the note, `glide` slides from the last when legato, `strum` spaces a
+chord's strings. The amp is the instrument's:
 `drive` (a soft clip), the wah (`wah` octaves from `wahHz`, rocked at
 `wahRate`), the tremolo (`trem`, `tremRate`), and the chorus. Voices are
 polyphonic through `Poly` like the Juno's.
 
-What the specs above add to it, when they are built: `swell` (the volume
-pedal), `body2` (a second resonance for acoustic bodies), `decayKey`
+An `acousticGuitar` (plucked over the sound hole, no pickup, the top's
+resonance near 230 Hz as its body) is in the patch list for the ear, not
+yet in a grammar. What the specs above add to it, when they are built:
+`swell` (the volume pedal), `body2` (a second resonance for acoustic
+bodies), `decayKey`
 (decay falling with pitch, for the piano), the hammer and the jack click
 as alternative excitations, two or three strings per note (`strings`,
 cents apart), and the `bowed` excitation as its own kind sharing the body

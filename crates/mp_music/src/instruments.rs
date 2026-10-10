@@ -833,18 +833,26 @@ impl FmVoice {
 }
 
 // ── Plucked string ───────────────────────────────────────────────
-/// A noise burst one period long goes into a delay loop whose length is the
+/// An excitation one period long goes into a delay loop whose length is the
 /// period; a one-zero average in the loop damps the upper partials faster
 /// than the lower (`damp`), and a loss per period sets the decay time. The
-/// string is read through a resonance (`body`: the pickup's peak on an
+/// string is read where the pickup sits (`pickup`: a fraction of the length
+/// from the bridge, the comb of a real pickup: near the bridge it thins the
+/// fundamental and brightens, at a quarter it nulls the 4th partial and
+/// warms; 0 for none), through a resonance (`body`: the pickup's peak on an
 /// electric, the top on an acoustic) and a tone control. What a note does:
-/// `pick` is how hard the pick is (brighter burst), `decay` the ring time
-/// in seconds, `r` how fast it is muted when the note ends, `bend` /
-/// `bendT` a slide up into the note, `glide` a slide from the last note
-/// when legato, `strum` seconds between the notes of a chord; `pickPos`
-/// where along the string it is plucked (a fraction of the length from the
-/// bridge: the comb that gives a pluck its twang, 0 for none). The amp
-/// (drive, wah, tremolo) is the instrument's, in [`Poly`].
+/// `shape` is what the pluck is: 1 the string's own shape under the pick
+/// (a triangle peaked at `pickPos`, its corner rounded by the pick, so the
+/// partials fall as sin(kπ·pickPos)/k², a fundamental-led guitar), 0 a
+/// noise burst (flat partials: the Karplus-Strong twang of a banjo or
+/// harpsichord), between the two a mix; `pick` is how hard the pick is
+/// (brighter), `pickPos` where along the string it is plucked (a fraction
+/// of the length from the bridge; with a noise burst it is the comb that
+/// gives the pluck its twang, 0 for none), `decay` the ring time in
+/// seconds, `r` how fast it is muted when the note ends, `bend` / `bendT`
+/// a slide up into the note, `glide` a slide from the last note when
+/// legato, `strum` seconds between the notes of a chord. The amp (drive,
+/// wah, tremolo) is the instrument's, in [`Poly`].
 #[derive(Clone, Debug)]
 struct StringVoice {
     r: Rng,
@@ -852,12 +860,16 @@ struct StringVoice {
     buf: Vec<f32>,
     /// The pluck, made at the note's start (a `Float32Array` too).
     burst: Vec<f32>,
+    /// The string's shape under the pick, mixed into the pluck by `shape`.
+    tri: Vec<f32>,
     w: usize,
     d: f64,
     g: f64,
     g_rel: f64,
     damp: f64,
     lp: f64,
+    /// The pickup's comb: the loop read this many samples back.
+    pu_d: usize,
     on: bool,
     left: i32,
     age: u64,
@@ -885,12 +897,14 @@ impl StringVoice {
             r: Rng::new(seed),
             buf: vec![0.0; (sr / 20.0).ceil() as usize + 8], // down to 20 Hz
             burst: vec![0.0; (sr / 20.0).ceil() as usize + 8],
+            tri: vec![0.0; (sr / 20.0).ceil() as usize + 8],
             w: 0,
             d: 2.0,
             g: 1.0,
             g_rel: 1.0,
             damp: 0.4,
             lp: 0.0,
+            pu_d: 0,
             on: false,
             left: 0,
             age: 0,
@@ -956,9 +970,37 @@ impl StringVoice {
             let w = self.r.next() * 2.0 - 1.0;
             self.burst[i] = self.exc_lp.lp(w) as f32;
         }
+        // The string's shape under the pick: a triangle peaked at the pick,
+        // its mean taken out (the loop has no DC blocker), rounded by the
+        // same low-pass, at the noise burst's level so velocity and gain
+        // keep their meaning; mixed in by `shape`. Its partials already
+        // carry the pick position, so the comb below is for the noise burst
+        // alone.
+        let shape = clamp(p.shape.unwrap_or(0.0), 0.0, 1.0);
+        if shape > 0.0 {
+            let pos = tru(p.pick_pos).unwrap_or(0.2);
+            let (mut sn, mut st) = (0.0, 0.0);
+            self.exc_lp.reset();
+            for i in 0..n as usize {
+                let u = i as f64 / n as f64;
+                let t = if u < pos {
+                    u / pos
+                } else {
+                    (1.0 - u) / (1.0 - pos)
+                } - 0.5;
+                self.tri[i] = self.exc_lp.lp(t) as f32;
+                sn += self.burst[i] as f64 * self.burst[i] as f64;
+                st += self.tri[i] as f64 * self.tri[i] as f64;
+            }
+            let k = (sn / st.max(1e-12)).sqrt() * shape;
+            for i in 0..n as usize {
+                self.burst[i] =
+                    (self.burst[i] as f64 * (1.0 - shape) + self.tri[i] as f64 * k) as f32;
+            }
+        }
         self.exc_d = match tru(p.pick_pos) {
-            Some(pos) => (js_round(pos * n as f64) as i64).max(1),
-            None => 0,
+            Some(pos) if shape == 0.0 => (js_round(pos * n as f64) as i64).max(1),
+            _ => 0,
         };
         self.exc_n = n + self.exc_d;
         self.exc = self.exc_n;
@@ -985,6 +1027,11 @@ impl StringVoice {
         self.d = (sr / self.cur - self.damp).max(2.0);
         self.g = 10f64.powf(-3.0 / (p.decay.unwrap_or(1.5).max(0.02) * self.cur));
         self.g_rel = 10f64.powf(-3.0 / (p.r.unwrap_or(0.3).max(0.01) * self.cur));
+        // The pickup's comb: the loop read a fraction of the period back.
+        self.pu_d = match tru(p.pickup) {
+            Some(pu) => (js_round(clamp(pu, 0.0, 0.5) * sr / self.cur) as usize).max(1),
+            None => 0,
+        };
     }
 
     fn done(&self) -> bool {
@@ -1042,6 +1089,9 @@ impl StringVoice {
         }
         self.buf[self.w] = x as f32;
         self.w = (self.w + 1) % n;
+        if self.pu_d > 0 {
+            x -= self.buf[(self.w + n - 1 - self.pu_d) % n] as f64;
+        }
         self.body.run(x);
         let out = self.tone.lp(x + self.body.bp * p.body_mix.unwrap_or(0.6));
         // Quiet for a while after the pluck: the voice is free.

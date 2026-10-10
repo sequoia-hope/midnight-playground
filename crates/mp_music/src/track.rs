@@ -145,7 +145,7 @@ lab_nums! {
     unison: "unison", detune: "detune", hpf: "hpf", chorus: "chorus",
     lfo_rate: "lfoRate", vowel_mix: "vowelMix", vowel_q: "vowelQ",
     env: "env", decay: "decay", accent: "accent", fbk: "fbk",
-    damp: "damp", pick: "pick", pick_pos: "pickPos", body: "body", body_q: "bodyQ", body_mix: "bodyMix",
+    damp: "damp", shape: "shape", pick: "pick", pick_pos: "pickPos", pickup: "pickup", body: "body", body_q: "bodyQ", body_mix: "bodyMix",
     tone: "tone", trem: "trem", trem_rate: "tremRate", wah: "wah", wah_hz: "wahHz",
     wah_q: "wahQ", wah_rate: "wahRate", strum: "strum",
 }

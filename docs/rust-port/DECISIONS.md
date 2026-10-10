@@ -9736,3 +9736,56 @@ the radio is an option in the menu, can be turned on in a race, and has
   whole left side, and the widget's system applies the taps to the audio
   (`RaceAudio::set_radio`, `step_station`), which stores the settings and
   the menus pick them up through `sync_audio`.
+
+## D1161. The guitars are plucked as strings and read at a pickup
+
+2026-10-10. The owner: the chicha guitar sounds "a little higher
+frequency, twangier, not your standard acoustic guitar", and several kinds
+of guitar would be reasonable. Measured (offline renders of `surfGuitar`
+alone and of the chicha lead soloed, `cargo run --release -p mp_music
+--example render`): on every note of the lead's register the fundamental
+was not the strongest partial. At A3 the peak sat near 2.6 kHz; at C4, A4
+and C5 the 2nd partial led, at E4 the 4th; the 2nd to 4th partials beat the
+fundamental by up to 14 dB and the spectral centroid of a note was 1.8 kHz.
+The cause is the excitation: a Karplus-Strong noise burst has flat
+partials, and the pick-position comb then lifts partials 2 to 4 by 5 to
+8 dB over the fundamental, with the 2.9 kHz pickup resonance on top. That
+is a banjo's or a harpsichord's spectrum; a plucked guitar string's falls
+as sin(kπp)/k², fundamental first. Besides, one period of noise gives each
+partial a random level, so the same patch was ±6 dB different in colour
+from note to note.
+
+Two parameters on the string, in the lab and the port alike:
+
+- **`shape`** (0..1): what the pluck is. 1 is the string's own shape under
+  the pick, a triangle peaked at `pickPos` with its mean taken out (the
+  loop has no DC blocker) and its corner rounded by the pick's low-pass,
+  scaled to the noise burst's RMS so velocity and `gain` keep their
+  meaning; 0 the noise burst as before; between the two a mix. With the
+  triangle the pick position is in the shape itself, so the burst's comb is
+  off. Plucked strings and noise bursts both remain: the twang is a sound
+  (banjo, harpsichord, the 3.5.1 country patches to come), not a bug.
+- **`pickup`** (0..0.5): the pickup's position along the string from the
+  bridge; the output is the loop less itself read that fraction of a
+  period back, the comb a real pickup is. At 0.08 (a bridge single coil)
+  it thins the fundamental and brightens partials 3 to 6; at 0.25 (a neck
+  pickup) it nulls the 4th partial and warms. This is what distinguishes
+  guitar types physically, and the one knob the new patches differ by.
+
+The patches: `surfGuitar` (`shape` 1, `pickPos` 0.15, `pickup` 0.08)
+now reads 0 / −2 / −4 / −9 dB over its first partials on every note,
+centroid 730 Hz, at the level it had; `wahGuitar` and `rhythmGuitar` the
+same treatment (`pickup` 0.1 and 0.18), `fingerBass` too (`pickup` 0.22, a
+P-bass), their gains brought back to the old soloed RMS within a dB. New:
+`neckGuitar` (the surf guitar on the neck pickup, `pickup` 0.25, tone
+3.8 kHz: 0 / −5 / −16 dB, the 4th partial −33) and `acousticGuitar` (no
+pickup, the top's resonance at 230 Hz; in the list for the ear, in no
+grammar yet). The chicha costeña lead is `surfGuitar` or `neckGuitar` per
+seed from `r.fork(2)`, so no seed's melodies moved (the favourite 1043
+among them), and the second guitar matches the lead. The string tests in
+both suites check that a `shape` 1 pluck's fundamental carries more than
+twice the 2nd partial and four times the 3rd, and that `pickup` 0.25 nulls
+the 4th. `renders.json` and `tracks.json` are regenerated; the render
+tests pass at their tolerance. The example `crates/mp_music/examples/
+render.rs` (a patch over a scale, or a song from a bar with one part
+soloed, to a wav) is how this was measured and stays for the next ear.

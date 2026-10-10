@@ -57,6 +57,7 @@ and carry on with the option that best preserves parity.
 | A headless race (results, `--trace`, `--state-at`, `bench`) | `cargo run --release -p mp_sim --bin mp-sim -- race --level sierra` |
 | Native client | `cargo run -p mp_game` |
 | The open world's plan, measured (`resolve` rewrites what the planner draws) | `cargo run --release -p mp_atlas -- report` |
+| A patch over a scale, or a song from a bar with one part soloed, to a wav | `cargo run --release -p mp_music --example render -- patch surfGuitar out.wav` / `-- song chicha 3 out.wav 24 20 lead` |
 | Rebuild the atlas from real data (python3 with numpy, Pillow, shapely, pyarrow) | `python3 tools/atlas/build.py` |
 | JS unit tests | `npm run test:unit` (and `npm run test:unit:kernel`, with the parity kernel) |
 | Rebuild and check the parity kernel | `cargo xtask kernel` (CI: `cargo xtask kernel --check`) |
