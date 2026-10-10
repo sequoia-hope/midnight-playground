@@ -7,6 +7,7 @@
 use super::Play;
 use super::flow::Mode;
 use super::touch::{Hold, Insets};
+use crate::bridge::{Obj, V};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use js_sys::{Object, Reflect};
@@ -37,10 +38,6 @@ fn get(o: &JsValue, k: &str) -> Option<JsValue> {
 
 fn num(o: &JsValue, k: &str) -> f64 {
     get(o, k).and_then(|v| v.as_f64()).unwrap_or(0.0)
-}
-
-fn set(o: &Object, k: &str, v: impl Into<JsValue>) {
-    let _ = Reflect::set(o, &JsValue::from_str(k), &v.into());
 }
 
 /// At start: the touch controls on a touch device (unless `?touch=` said),
@@ -105,8 +102,8 @@ fn frame(
     drawn: Option<Res<super::police::PoliceDrawn>>,
 ) {
     let Some(mr) = mr() else { return };
-    bridge_page(&mr, hud.as_deref());
-    bridge_pursuit(&mr, play.race.as_ref(), drawn.as_deref());
+    bridge_page(hud.as_deref());
+    bridge_pursuit(play.race.as_ref(), drawn.as_deref());
     if let Some(ins) = get(mr.as_ref(), "insets") {
         let i = Insets {
             top: num(&ins, "top"),
@@ -151,10 +148,9 @@ fn frame(
     let st = &race.session.curr;
     let p = &st.players[0];
     let s = race.input.state;
-    let o = Object::new();
-    set(&o, "state", format!("{:?}", st.race.state).to_lowercase());
-    set(
-        &o,
+    let mut o = Obj::new();
+    o.set("state", format!("{:?}", st.race.state).to_lowercase());
+    o.set(
         "mode",
         match race.mode {
             Mode::Race => "race",
@@ -162,57 +158,56 @@ fn frame(
             Mode::Results => "results",
         },
     );
-    set(&o, "tick", st.tick);
-    set(&o, "time", st.race.time);
-    set(&o, "countdown", st.race.countdown);
-    set(&o, "s", p.v.s);
-    set(&o, "lat", p.v.lat);
-    set(&o, "speed", mp_math::kernel::hypot(p.v.vx, p.v.vz));
-    set(&o, "gear", p.phys.gear);
-    set(&o, "finished", p.rules.finished);
-    set(&o, "locked", p.phys.locked);
-    let inp = Object::new();
-    set(&inp, "steer", s.steer);
-    set(&inp, "throttle", s.throttle);
-    set(&inp, "brake", s.brake);
-    set(&inp, "handbrake", s.handbrake);
-    set(&inp, "nitro", s.nitro);
-    set(&inp, "analog", s.analog);
-    set(&o, "input", inp);
+    o.set("tick", st.tick);
+    o.set("time", st.race.time);
+    o.set("countdown", st.race.countdown);
+    o.set("s", p.v.s);
+    o.set("lat", p.v.lat);
+    o.set("speed", mp_math::kernel::hypot(p.v.vx, p.v.vz));
+    o.set("gear", p.phys.gear);
+    o.set("finished", p.rules.finished);
+    o.set("locked", p.phys.locked);
+    let mut inp = Obj::new();
+    inp.set("steer", s.steer);
+    inp.set("throttle", s.throttle);
+    inp.set("brake", s.brake);
+    inp.set("handbrake", s.handbrake);
+    inp.set("nitro", s.nitro);
+    inp.set("analog", s.analog);
+    o.set("input", inp);
     // What the controls suites read off `__race`: the car, the camera's
     // right (`__camera.matrixWorld`'s x axis) and `input.touch`.
-    set(&o, "yaw", p.v.yaw);
-    set(&o, "steerAngle", p.v.steer_angle);
+    o.set("yaw", p.v.yaw);
+    o.set("steerAngle", p.v.steer_angle);
     // The road there: its half width, and the heading off it (`yawToRoad`).
     let f = race.session.lr.track.frame(p.v.s);
     let ang = mp_math::kernel::atan2(f.fz, f.fx) - p.v.yaw;
-    set(&o, "hw", f.hw);
-    set(
-        &o,
+    o.set("hw", f.hw);
+    o.set(
         "yawToRoad",
         mp_math::kernel::atan2(mp_math::kernel::sin(ang), mp_math::kernel::cos(ang)),
     );
-    set(&o, "vx", p.v.vx);
-    set(&o, "vz", p.v.vz);
-    set(&o, "nitro", p.phys.nitro);
-    set(&o, "nitroActive", p.phys.nitro_active);
-    set(&o, "camMode", race.rig.mode as f64);
+    o.set("vx", p.v.vx);
+    o.set("vz", p.v.vz);
+    o.set("nitro", p.phys.nitro);
+    o.set("nitroActive", p.phys.nitro_active);
+    o.set("camMode", race.rig.mode as f64);
     if let Some(c) = cams.iter().next() {
         let r = c.right();
-        let cr = Object::new();
-        set(&cr, "x", r.x);
-        set(&cr, "z", r.z);
-        set(&o, "camRight", cr);
+        let mut cr = Obj::new();
+        cr.set("x", r.x);
+        cr.set("z", r.z);
+        o.set("camRight", cr);
     }
     let t = &race.touch;
-    let to = Object::new();
-    set(&to, "visible", t.visible);
-    set(&to, "mode", t.mode.name());
-    set(&to, "steering", t.steering.map_or("", |s| s.name()));
-    set(&to, "pedals", t.pedals.name());
-    set(&to, "autoGas", t.auto_gas);
-    set(&to, "stickR", t.layout.stick_r);
-    let held = Object::new();
+    let mut to = Obj::new();
+    to.set("visible", t.visible);
+    to.set("mode", t.mode.name());
+    to.set("steering", t.steering.map_or("", |s| s.name()));
+    to.set("pedals", t.pedals.name());
+    to.set("autoGas", t.auto_gas);
+    to.set("stickR", t.layout.stick_r);
+    let mut held = Obj::new();
     for h in [
         Hold::Throttle,
         Hold::Brake,
@@ -221,66 +216,62 @@ fn frame(
         Hold::Handbrake,
         Hold::Nitro,
     ] {
-        set(&held, h.name(), t.held.get(h));
+        held.set(h.name(), t.held.get(h));
     }
-    set(&to, "held", held);
+    to.set("held", held);
     if let Some(st) = t.stick {
-        let so = Object::new();
-        set(&so, "id", st.id as f64);
-        set(&so, "x0", st.x0);
-        set(&so, "y0", st.y0);
-        set(&so, "x", st.x);
-        set(&to, "stick", so);
+        let mut so = Obj::new();
+        so.set("id", st.id as f64);
+        so.set("x0", st.x0);
+        so.set("y0", st.y0);
+        so.set("x", st.x);
+        to.set("stick", so);
     } else {
-        set(&to, "stick", JsValue::NULL);
+        to.set("stick", V::Null);
     }
-    set(
-        &to,
-        "lock",
-        t.stick_offset().abs() >= t.layout.stick_r - 0.5,
-    );
-    set(&to, "knob", t.stick_offset());
-    let panel = js_sys::Array::new();
+    to.set("lock", t.stick_offset().abs() >= t.layout.stick_r - 0.5);
+    to.set("knob", t.stick_offset());
+    let mut panel = Vec::<V>::new();
     for c in t.panel_classes() {
-        panel.push(&JsValue::from_str(c));
+        panel.push(c.into());
     }
-    set(&to, "panel", panel);
-    set(&to, "wheel", t.wheel);
+    to.set("panel", panel);
+    to.set("wheel", t.wheel);
     if let Some(tl) = &t.tilt {
         let tl = tl.lock().unwrap_or_else(|e| e.into_inner());
-        let tt = Object::new();
-        set(&tt, "state", tl.state.name());
-        set(&tt, "live", tl.live());
-        set(&tt, "roll", tl.roll);
-        set(&tt, "steer", tl.steer);
-        set(&tt, "fullLock", tl.full_lock);
-        set(&to, "tilt", tt);
+        let mut tt = Obj::new();
+        tt.set("state", tl.state.name());
+        tt.set("live", tl.live());
+        tt.set("roll", tl.roll);
+        tt.set("steer", tl.steer);
+        tt.set("fullLock", tl.full_lock);
+        to.set("tilt", tt);
     }
-    set(
-        &to,
+    to.set(
         "u",
         t.slide
             .as_ref()
             .and_then(|s| s.u)
-            .map_or(JsValue::NULL, JsValue::from_f64),
+            .map(V::from)
+            .unwrap_or(V::Null),
     );
-    set(&o, "touch", to);
-    set(&o, "touchUi", touch_ui);
-    bridge_race(&o, race, &cams, hud.as_deref());
+    o.set("touch", to);
+    o.set("touchUi", touch_ui);
+    bridge_race(&mut o, race, &cams, hud.as_deref());
     if let Some(rows) = &race.results {
-        let arr = js_sys::Array::new();
+        let mut arr = Vec::<V>::new();
         for r in rows {
-            let row = Object::new();
-            set(&row, "place", r.place as f64);
-            set(&row, "name", r.name);
-            set(&row, "player", r.player);
-            set(&row, "time", r.time);
-            set(&row, "estimated", r.estimated);
-            arr.push(&row);
+            let mut row = Obj::new();
+            row.set("place", r.place as f64);
+            row.set("name", r.name);
+            row.set("player", r.player);
+            row.set("time", r.time);
+            row.set("estimated", r.estimated);
+            arr.push(row.into());
         }
-        set(&o, "results", arr);
+        o.set("results", arr);
     }
-    set(&mr, "race", o);
+    crate::bridge::publish("race", Some(o.into()));
 }
 
 // ── The test bridge (SPEC 8.5, WP 6.7) ─────────────────────────────────
@@ -308,18 +299,18 @@ pub fn track_wrap(s: f64) -> f64 {
     track().map_or(s, |t| t.wrap(s))
 }
 
-fn opt(v: Option<f64>) -> JsValue {
-    v.map_or(JsValue::NULL, JsValue::from_f64)
+fn opt(v: Option<f64>) -> V {
+    V::from(v)
 }
 
 /// What the page shows outside the race's own state: the HUD
 /// (`__mp.hud`) and the countdown's lamps (`__mp.lamps`).
-fn bridge_page(mr: &Object, hud: Option<&super::hud::HudState>) {
-    let h = Object::new();
+fn bridge_page(hud: Option<&super::hud::HudState>) {
+    let mut h = Obj::new();
     let (shown, laps, texts) = hud.map_or((false, false, None), |h| h.bridge());
-    set(&h, "shown", shown);
-    set(&h, "laps", laps);
-    let t = Object::new();
+    h.set("shown", shown);
+    h.set("laps", laps);
+    let mut t = Obj::new();
     if let Some(x) = texts {
         for (k, v) in [
             ("pos", &x.pos),
@@ -335,49 +326,44 @@ fn bridge_page(mr: &Object, hud: Option<&super::hud::HudState>) {
             ("best", &x.best),
             ("pen", &x.pen),
         ] {
-            set(&t, k, v.as_str());
+            t.set(k, v.as_str());
         }
     }
-    set(&h, "texts", t);
+    h.set("texts", t);
     // Hot Pursuit's furniture: what shows, the stars' fills and the lines.
     let pz = hud.map(|h| h.bridge_pz()).unwrap_or_default();
-    set(&h, "pz", pz.pz);
-    set(&h, "pzBar", pz.bar);
-    set(&h, "dmg", pz.dmg);
-    set(&h, "hold", pz.hold);
-    set(&h, "pen", pz.pen);
-    set(&h, "radio", pz.radio);
-    set(&h, "radioText", pz.radio_text.as_str());
-    set(&h, "pzLabel", pz.label.as_str());
-    let stars = js_sys::Array::new();
+    h.set("pz", pz.pz);
+    h.set("pzBar", pz.bar);
+    h.set("dmg", pz.dmg);
+    h.set("hold", pz.hold);
+    h.set("pen", pz.pen);
+    h.set("radio", pz.radio);
+    h.set("radioText", pz.radio_text.as_str());
+    h.set("pzLabel", pz.label.as_str());
+    let mut stars = Vec::<V>::new();
     for f in pz.stars {
-        stars.push(&JsValue::from_f64(f));
+        stars.push(f.into());
     }
-    set(&h, "stars", stars);
-    set(mr, "hud", h);
-    let l = Object::new();
-    set(&l, "n", crate::animate::LAMPS.load(Ordering::Relaxed));
-    set(&l, "lit", crate::animate::LAMPS_LIT.load(Ordering::Relaxed));
-    set(mr, "lamps", l);
+    h.set("stars", stars);
+    crate::bridge::publish("hud", Some(h.into()));
+    let mut l = Obj::new();
+    l.set("n", crate::animate::LAMPS.load(Ordering::Relaxed));
+    l.set("lit", crate::animate::LAMPS_LIT.load(Ordering::Relaxed));
+    crate::bridge::publish("lamps", Some(l.into()));
 }
 
 /// `window.__pursuit` (the race's `Pursuit`) and `race.pv`'s fields, for
 /// the pursuit suite: null without a pursuit, as the JS clears it.
-fn bridge_pursuit(
-    mr: &Object,
-    race: Option<&super::flow::Race>,
-    drawn: Option<&super::police::PoliceDrawn>,
-) {
+fn bridge_pursuit(race: Option<&super::flow::Race>, drawn: Option<&super::police::PoliceDrawn>) {
     use mp_sim::pursuit::{HoldReason, State};
     let Some(pv) = race.and_then(|r| r.session.curr.pv.as_ref()) else {
-        set(mr, "pursuit", JsValue::NULL);
+        crate::bridge::publish("pursuit", Some(V::Null));
         return;
     };
     let pu = &pv.pursuit;
-    let o = Object::new();
-    set(&o, "available", true);
-    set(
-        &o,
+    let mut o = Obj::new();
+    o.set("available", true);
+    o.set(
         "state",
         match pu.state {
             State::Patrol => "patrol",
@@ -385,22 +371,21 @@ fn bridge_pursuit(
             State::Cooldown => "cooldown",
         },
     );
-    set(&o, "heat", pu.heat);
-    set(&o, "maxHeat", pu.max_heat);
-    set(&o, "heatMeter", pu.heat_meter);
-    set(&o, "bust", pu.bust);
-    set(&o, "evade", pu.evade);
-    set(&o, "busts", pu.busts);
-    set(&o, "takedowns", pu.takedowns);
-    set(&o, "flash", pu.flash);
-    set(&o, "maxUnits", pu.max_units as f64);
-    let units = js_sys::Array::new();
+    o.set("heat", pu.heat);
+    o.set("maxHeat", pu.max_heat);
+    o.set("heatMeter", pu.heat_meter);
+    o.set("bust", pu.bust);
+    o.set("evade", pu.evade);
+    o.set("busts", pu.busts);
+    o.set("takedowns", pu.takedowns);
+    o.set("flash", pu.flash);
+    o.set("maxUnits", pu.max_units as f64);
+    let mut units = Vec::<V>::new();
     for (i, u) in pu.units.iter().enumerate() {
-        let uo = Object::new();
-        set(&uo, "active", u.active);
-        set(&uo, "mode", mode_name(u.mode));
-        set(
-            &uo,
+        let mut uo = Obj::new();
+        uo.set("active", u.active);
+        uo.set("mode", mode_name(u.mode));
+        uo.set(
             "siren",
             match u.siren {
                 mp_sim::police::Siren::Off => "off",
@@ -408,53 +393,46 @@ fn bridge_pursuit(
                 mp_sim::police::Siren::Disabled => "disabled",
             },
         );
-        set(&uo, "s", u.k.s);
-        set(&uo, "lat", u.k.lat);
-        set(&uo, "speed", u.k.speed);
-        set(&uo, "callsign", u.callsign);
-        set(&uo, "type", format!("{:?}", u.unit_type).to_lowercase());
-        set(&uo, "x", u.k.v.x);
-        set(&uo, "z", u.k.v.z);
-        set(&uo, "health", u.health);
-        set(
-            &uo,
-            "target",
-            u.target
-                .map_or(JsValue::NULL, |t| JsValue::from_f64(t as f64)),
-        );
+        uo.set("s", u.k.s);
+        uo.set("lat", u.k.lat);
+        uo.set("speed", u.k.speed);
+        uo.set("callsign", u.callsign);
+        uo.set("type", format!("{:?}", u.unit_type).to_lowercase());
+        uo.set("x", u.k.v.x);
+        uo.set("z", u.k.v.z);
+        uo.set("health", u.health);
+        uo.set("target", u.target.map_or(V::Null, |t| V::from(t as f64)));
         // `u.v.model.root.visible`: whether the police draw shows this
         // unit's model this frame (`play::police::PoliceDrawn`, D923).
-        set(
-            &uo,
+        uo.set(
             "visible",
             drawn.and_then(|d| d.0.get(i).copied()).unwrap_or(false),
         );
-        units.push(&uo);
+        units.push(uo.into());
     }
-    set(&o, "units", units);
+    o.set("units", units);
     if let Some(p) = pu.player.map(|i| &pu.racers[i]) {
-        let po = Object::new();
-        set(&po, "hold", p.hold);
-        set(
-            &po,
+        let mut po = Obj::new();
+        po.set("hold", p.hold);
+        po.set(
             "holdReason",
             match p.hold_reason {
-                Some(HoldReason::Busted) => JsValue::from_str("busted"),
-                Some(HoldReason::Wrecked) => JsValue::from_str("wrecked"),
-                None => JsValue::UNDEFINED,
+                Some(HoldReason::Busted) => V::from("busted"),
+                Some(HoldReason::Wrecked) => V::from("wrecked"),
+                None => V::Undefined,
             },
         );
-        set(&po, "holdTotal", p.hold_total);
-        set(&po, "grace", p.grace);
-        set(&po, "bust", p.bust);
-        set(&o, "player", po);
+        po.set("holdTotal", p.hold_total);
+        po.set("grace", p.grace);
+        po.set("bust", p.bust);
+        o.set("player", po);
     }
-    let v = Object::new();
-    set(&v, "damage", pv.damage);
-    set(&v, "wrecks", pv.wrecks);
-    set(&v, "penalty", pv.penalty);
-    set(&o, "pv", v);
-    set(mr, "pursuit", o);
+    let mut v = Obj::new();
+    v.set("damage", pv.damage);
+    v.set("wrecks", pv.wrecks);
+    v.set("penalty", pv.penalty);
+    o.set("pv", v);
+    crate::bridge::publish("pursuit", Some(o.into()));
 }
 
 /// A unit's mode as the JS names it.
@@ -490,7 +468,7 @@ fn mode_of(name: &str) -> Option<mp_sim::police::Mode> {
 /// The rest of `__mp.race`: what the JS suites read off `window.__race`
 /// (the car, its physics and rules, the rivals, the road, the camera).
 fn bridge_race(
-    o: &Object,
+    o: &mut Obj,
     race: &super::flow::Race,
     cams: &Query<&GlobalTransform, With<Camera3d>>,
     _hud: Option<&super::hud::HudState>,
@@ -504,72 +482,70 @@ fn bridge_race(
             *slot = Some(t.clone());
         }
     }
-    set(o, "x", p.v.x);
-    set(o, "y", p.v.y);
-    set(o, "z", p.v.z);
-    set(o, "along", p.v.speed);
-    set(o, "prog", opt(p.v.prog));
-    set(o, "skid", p.phys.skid);
-    set(o, "damage", p.phys.damage);
-    set(o, "lap", p.rules.lap);
-    let laps = js_sys::Array::new();
+    o.set("x", p.v.x);
+    o.set("y", p.v.y);
+    o.set("z", p.v.z);
+    o.set("along", p.v.speed);
+    o.set("prog", opt(p.v.prog));
+    o.set("skid", p.phys.skid);
+    o.set("damage", p.phys.damage);
+    o.set("lap", p.rules.lap);
+    let mut laps = Vec::<V>::new();
     for l in &p.rules.lap_times {
-        laps.push(&JsValue::from_f64(*l));
+        laps.push((*l).into());
     }
-    set(o, "lapTimes", laps);
-    set(o, "playerFinished", p.rules.finished);
-    set(o, "playerTime", opt(p.rules.finish_time));
-    set(o, "dist", p.rules.dist);
-    set(o, "lastS", opt(p.rules.last_s));
-    set(o, "odo", opt(p.rules.odo));
-    set(o, "cruise", st.race.cruise);
-    set(o, "score", p.rules.score);
-    set(o, "nearMisses", p.rules.near_misses);
-    set(o, "pursuitOn", st.race.pursuit_on);
-    set(o, "traffic", true);
+    o.set("lapTimes", laps);
+    o.set("playerFinished", p.rules.finished);
+    o.set("playerTime", opt(p.rules.finish_time));
+    o.set("dist", p.rules.dist);
+    o.set("lastS", opt(p.rules.last_s));
+    o.set("odo", opt(p.rules.odo));
+    o.set("cruise", st.race.cruise);
+    o.set("score", p.rules.score);
+    o.set("nearMisses", p.rules.near_misses);
+    o.set("pursuitOn", st.race.pursuit_on);
+    o.set("traffic", true);
     let standings = mp_sim::race::standings(st);
     let place = standings.iter().position(|s| s.player).map_or(1, |i| i + 1);
-    set(o, "place", place as f64);
-    set(o, "racers", standings.len() as f64);
-    let ais = js_sys::Array::new();
+    o.set("place", place as f64);
+    o.set("racers", standings.len() as f64);
+    let mut ais = Vec::<V>::new();
     for a in &st.rivals {
-        let ao = Object::new();
+        let mut ao = Obj::new();
         let v = &a.k.v;
-        set(&ao, "s", a.k.s);
-        set(&ao, "lat", a.k.lat);
-        set(&ao, "speed", a.k.speed);
-        set(&ao, "prog", opt(a.prog));
-        set(&ao, "finished", a.finished);
-        set(&ao, "finishTime", opt(a.finish_time));
-        set(&ao, "x", v.x);
-        set(&ao, "y", v.y);
-        set(&ao, "z", v.z);
-        set(&ao, "vx", v.vx);
-        set(&ao, "vz", v.vz);
-        set(&ao, "yaw", v.yaw);
-        ais.push(&ao);
+        ao.set("s", a.k.s);
+        ao.set("lat", a.k.lat);
+        ao.set("speed", a.k.speed);
+        ao.set("prog", opt(a.prog));
+        ao.set("finished", a.finished);
+        ao.set("finishTime", opt(a.finish_time));
+        ao.set("x", v.x);
+        ao.set("y", v.y);
+        ao.set("z", v.z);
+        ao.set("vx", v.vx);
+        ao.set("vz", v.vz);
+        ao.set("yaw", v.yaw);
+        ais.push(ao.into());
     }
-    set(o, "ais", ais);
-    let tr = Object::new();
-    set(&tr, "startS", t.start_s);
-    set(&tr, "finishS", t.finish_s);
-    set(&tr, "n", t.n as f64);
-    set(&tr, "length", t.length);
-    set(&tr, "loop", t.is_loop);
-    set(&tr, "roadEnd", t.road_end());
-    set(o, "track", tr);
+    o.set("ais", ais);
+    let mut tr = Obj::new();
+    tr.set("startS", t.start_s);
+    tr.set("finishS", t.finish_s);
+    tr.set("n", t.n as f64);
+    tr.set("length", t.length);
+    tr.set("loop", t.is_loop);
+    tr.set("roadEnd", t.road_end());
+    o.set("track", tr);
     if let Some(c) = cams.iter().next() {
         let pos = c.translation();
-        let cp = Object::new();
-        set(&cp, "x", pos.x);
-        set(&cp, "y", pos.y);
-        set(&cp, "z", pos.z);
-        set(o, "camPos", cp);
+        let mut cp = Obj::new();
+        cp.set("x", pos.x);
+        cp.set("y", pos.y);
+        cp.set("z", pos.z);
+        o.set("camPos", cp);
     }
-    if let Ok(inp) = Reflect::get(o, &JsValue::from_str("input"))
-        && let Some(inp) = inp.dyn_ref::<Object>()
-    {
-        set(inp, "lookBack", race.input.state.look_back);
+    if let Some(inp) = o.get_mut("input") {
+        inp.set("lookBack", race.input.state.look_back);
     }
 }
 

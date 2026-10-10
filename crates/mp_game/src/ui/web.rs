@@ -391,11 +391,10 @@ fn publish(
     play: Res<Play>,
     status: Res<Status>,
     controls: super::ControlQuery,
-    mut last: Local<String>,
 ) {
     let Some(mr) = mr() else { return };
     set(&mr, "staged", STAGED.load(Ordering::Relaxed));
-    publish_settings(&mr, &ui.settings);
+    publish_settings(&ui.settings);
     set(&mr, "screen", ui.screen.name());
     set(&mr, "mode", mode_name(&ui, &play, &status));
     set(&mr, "races", ui.races);
@@ -406,7 +405,7 @@ fn publish(
         ui.focus.as_deref().map_or(JsValue::NULL, JsValue::from_str),
     );
     if play.race.is_none() {
-        let _ = Reflect::delete_property(&mr, &JsValue::from_str("race"));
+        crate::bridge::publish("race", None);
     }
     // The safe-area inset at the top (the rotate hint keeps under it).
     if let Ok(ins) = Reflect::get(&mr, &JsValue::from_str("insets"))
@@ -491,22 +490,22 @@ fn publish(
     *FULLSCREEN.lock().unwrap_or_else(|e| e.into_inner()) =
         (play.touch_ui && ui.settings.fullscreen, full);
     *TILT_OPTION.lock().unwrap_or_else(|e| e.into_inner()) = tilt_option;
-    let json = serde_json::Value::Object(nodes).to_string();
-    if *last != json {
-        if let Ok(v) = js_sys::JSON::parse(&json) {
-            set(&mr, "uiNodes", v);
-        }
-        *last = json;
-    }
+    crate::bridge::publish(
+        "uiNodes",
+        Some(crate::bridge::V::Json(serde_json::Value::Object(nodes))),
+    );
 }
 
 /// `__mp.settings` (the options as the menu holds them, for a control not
 /// on screen) and `__mp.selects` (each drop-down's choices, a `<select>`'s
 /// `options`), when they change.
-fn publish_settings(mr: &Object, s: &super::store::Settings) {
+fn publish_settings(s: &super::store::Settings) {
     use super::Sel;
     thread_local! {
-        static LAST: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+        static LAST: std::cell::RefCell<Option<super::store::Settings>> = const { std::cell::RefCell::new(None) };
+    }
+    if LAST.with(|last| last.borrow().as_ref() == Some(s)) {
+        return;
     }
     let mut selects = serde_json::Map::new();
     for (sel, id) in [
@@ -523,30 +522,19 @@ fn publish_settings(mr: &Object, s: &super::store::Settings) {
             serde_json::Value::Array(opts.into_iter().map(|(k, _)| k.into()).collect()),
         );
     }
-    let json = serde_json::json!({
-        "settings": {
-            "music": s.music, "sfx": s.sfx, "mph": s.mph, "hq": s.hq, "autogas": s.autogas,
-            "steering": s.steering, "tiltSens": s.tilt_sens, "pedals": s.pedals,
-            "fullscreen": s.fullscreen, "car": s.car, "level": s.level, "track": s.track,
-            "flash": s.flash, "rumble": s.rumble,
-            "guide": s.guide, "assist": s.assist,
-        },
-        "selects": selects,
-    })
-    .to_string();
-    LAST.with(|last| {
-        let mut last = last.borrow_mut();
-        if *last != json
-            && let Ok(v) = js_sys::JSON::parse(&json)
-        {
-            for k in ["settings", "selects"] {
-                if let Ok(x) = Reflect::get(&v, &JsValue::from_str(k)) {
-                    set(mr, k, x);
-                }
-            }
-            *last = json;
-        }
+    let settings = serde_json::json!({
+        "music": s.music, "sfx": s.sfx, "mph": s.mph, "hq": s.hq, "autogas": s.autogas,
+        "steering": s.steering, "tiltSens": s.tilt_sens, "pedals": s.pedals,
+        "fullscreen": s.fullscreen, "car": s.car, "level": s.level, "track": s.track,
+        "flash": s.flash, "rumble": s.rumble,
+        "guide": s.guide, "assist": s.assist,
     });
+    crate::bridge::publish("settings", Some(crate::bridge::V::Json(settings)));
+    crate::bridge::publish(
+        "selects",
+        Some(crate::bridge::V::Json(serde_json::Value::Object(selects))),
+    );
+    LAST.with(|last| *last.borrow_mut() = Some(s.clone()));
 }
 
 pub fn plugin(app: &mut App) {

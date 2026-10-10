@@ -9774,3 +9774,25 @@ the GPU, every frame the car passes fans. Only the fans within 170 m move.
 
 Seaside on the phone: 9.35 ms (two runs: 9.1, 9.6), frames over 33 ms 0
 and 1; together with D1181 and D1182.
+
+## D1181. `__mp`'s per-frame trees are built when read
+
+2026-10-09, the same pass. The test bridge built `__mp.race` (and
+`hud`, `lamps`, `pursuit`) as JS objects every frame, about 80
+`Reflect.set` calls each decoding its key, and `__mp.uiNodes`,
+`settings` and `selects` as JSON text compared with the last frame's:
+about 3.5 % of the phone's frame, for readers (the e2e bridge, the
+parity tools, `rust-perf.mjs`) that look a few times a second at most.
+
+Now each frame keeps the same fields as a plain Rust tree
+(`crate::bridge::V`, `Obj`: insertion order kept, numbers, BigInts,
+strings, null and undefined as before; the UI's JSON trees as they are),
+and each of those keys is an accessor on `__mp` whose getter turns the
+latest tree into JS objects once per frame, however often it is read.
+What a reader sees is unchanged: the last frame's values, the same
+object for every read within a frame, a key deleted while it has nothing
+(`race` with no race). `settings` and `selects` are rebuilt only when the
+settings change (`select_options` depends on nothing else). The scalar
+keys (`state`, `frames`, `frameMs`, ...) stay plain properties: the page
+writes some of them itself. Nothing in the client reads these keys back,
+and nothing in JS assigns to them.
