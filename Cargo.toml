@@ -5,6 +5,8 @@
 resolver = "3"
 members = ["crates/*", "xtask", "tools/parity/kernel"]
 default-members = ["crates/*"]
+# Patched dependencies (below), not ours to build, lint or format.
+exclude = ["patches"]
 
 [workspace.package]
 version = "0.1.0"
@@ -67,3 +69,8 @@ opt-level = 3
 # xtask's image metrics run over hundreds of screenshots.
 [profile.dev.package.xtask]
 opt-level = 3
+
+# wgpu with the WebGPU device's limits and features read once (DECISIONS
+# D1182; patches/wgpu/PATCHED.md). Bevy asks for the limits on every draw.
+[patch.crates-io]
+wgpu = { path = "patches/wgpu" }
