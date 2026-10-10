@@ -441,6 +441,127 @@ struct InstInfo {
     /// Hidden because it had no instances to draw: shown again (as its
     /// node's visibility says) once it has some.
     emptied: bool,
+    /// The instances whose matrix or colour changed since the stream was
+    /// last written; they alone are packed and written again while nothing
+    /// else changed (D1180).
+    changed: Vec<u32>,
+    /// What the stream holds, once this client packed it.
+    packed: Option<Packed>,
+}
+
+/// An instance stream's contents as last packed: Seaside's 1,665 people
+/// are six streams of 1,665 instances, of which the fans by the car move
+/// each frame, so the rest are not packed and sent again (D1180).
+struct Packed {
+    /// [`instancing::INSTANCE_FLOATS`] per drawn instance.
+    data: Vec<f32>,
+    /// Per instance, its place in `data`; [`NOT_DRAWN`] for one whose
+    /// matrix collapses it (left out, as three draws nothing for it).
+    slot: Vec<u32>,
+    /// The world matrix (with the grid offset) it was packed under.
+    world: DMat4,
+}
+
+const NOT_DRAWN: u32 = u32::MAX;
+
+/// Instances closer than this in the stream are written as one run.
+const RUN_GAP: usize = 16;
+
+/// What [`repack`] did to an InstancedMesh's stream.
+#[derive(Debug, PartialEq)]
+enum Repack {
+    /// New contents in full ([`InstInfo::packed`]'s `data`).
+    Full,
+    /// Only these runs of instances (first, count) changed.
+    Runs(Vec<(usize, usize)>),
+}
+
+/// Instance `j`'s floats under `world` into `out`, or false (nothing added)
+/// for one that collapses to nothing.
+fn pack_instance(inst: &InstInfo, j: usize, world: &DMat4, out: &mut Vec<f32>) -> bool {
+    let cols = &inst.matrices[j];
+    if Mat4::from_cols_slice(cols).determinant().abs() < 1e-12 {
+        return false;
+    }
+    let local = DMat4::from_cols_array(&std::array::from_fn(|q| f64::from(cols[q])));
+    let tint = inst
+        .colors
+        .as_ref()
+        .and_then(|c| c.get(j).copied())
+        .unwrap_or([1.0; 3]);
+    instancing::push_instance(out, &(*world * local), tint, inst.receive);
+    if let Some(x) = &inst.extras {
+        instancing::set_instance_extra(out, x.get(j).copied().unwrap_or([0.0; 4]));
+    }
+    true
+}
+
+/// Packs what changed: only the changed instances when the stream (of
+/// `stream_count` instances, None for no stream) holds the rest as packed
+/// under the same world matrix and none of them changed whether it is
+/// drawn; else everything, as the stream's new contents.
+fn repack(inst: &mut InstInfo, world: DMat4, stream_count: Option<u32>) -> Repack {
+    let n = (inst.count as usize).min(inst.matrices.len());
+    let changed = std::mem::take(&mut inst.changed);
+    if let Some(pk) = inst.packed.take() {
+        let same = pk.world == world
+            && pk.slot.len() == n
+            && stream_count == Some((pk.data.len() / instancing::INSTANCE_FLOATS) as u32);
+        let mut pk = pk;
+        if same && let Some(runs) = repack_changed(inst, &mut pk, &changed) {
+            inst.packed = Some(pk);
+            return Repack::Runs(runs);
+        }
+    }
+    let mut data = Vec::with_capacity(n * instancing::INSTANCE_FLOATS);
+    let mut slot = Vec::with_capacity(n);
+    for j in 0..n {
+        let at = (data.len() / instancing::INSTANCE_FLOATS) as u32;
+        slot.push(if pack_instance(inst, j, &world, &mut data) {
+            at
+        } else {
+            NOT_DRAWN
+        });
+    }
+    inst.packed = Some(Packed { data, slot, world });
+    Repack::Full
+}
+
+/// The changed instances packed again in place, and the runs they make;
+/// None when one of them starts or stops being drawn (the slots move).
+fn repack_changed(
+    inst: &InstInfo,
+    pk: &mut Packed,
+    changed: &[u32],
+) -> Option<Vec<(usize, usize)>> {
+    const F: usize = instancing::INSTANCE_FLOATS;
+    let mut one = Vec::with_capacity(F);
+    let mut slots = Vec::with_capacity(changed.len());
+    for &j in changed.iter() {
+        let j = j as usize;
+        let at = *pk.slot.get(j)?;
+        one.clear();
+        let drawn = pack_instance(inst, j, &pk.world, &mut one);
+        match (at, drawn) {
+            (NOT_DRAWN, false) => {}
+            (NOT_DRAWN, true) | (_, false) => return None,
+            (at, true) => {
+                let at = at as usize;
+                pk.data[at * F..(at + 1) * F].copy_from_slice(&one);
+                slots.push(at);
+            }
+        }
+    }
+    slots.sort_unstable();
+    slots.dedup();
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    for at in slots {
+        match runs.last_mut() {
+            Some((first, n)) if at <= *first + *n + RUN_GAP => *n = at + 1 - *first,
+            _ => runs.push((at, 1)),
+        }
+    }
+    Some(runs)
 }
 
 struct NodeInfo {
@@ -595,6 +716,8 @@ impl SceneIndex {
                         dirty: false,
                         // Built with nothing to draw: the loader hid it.
                         emptied: d.count == 0,
+                        changed: Vec::new(),
+                        packed: None,
                     })
                 }),
             })
@@ -963,6 +1086,7 @@ pub fn run_animators(
                 {
                     *m = matrix;
                     inst.dirty = true;
+                    inst.changed.push(k);
                 }
             }
             (SceneRef::Node(n), Change::InstanceColor { index: k, rgb }) => {
@@ -978,6 +1102,7 @@ pub fn run_animators(
                     {
                         *c = rgb;
                         inst.dirty = true;
+                        inst.changed.push(k);
                     }
                 }
             }
@@ -1145,23 +1270,26 @@ pub fn run_animators(
             continue;
         }
         inst.dirty = false;
-        let mut data = Vec::with_capacity(inst.count as usize * instancing::INSTANCE_FLOATS);
-        for j in 0..(inst.count as usize).min(inst.matrices.len()) {
-            let cols = &inst.matrices[j];
-            if Mat4::from_cols_slice(cols).determinant().abs() < 1e-12 {
+        let first = entities.get(k).and_then(|v| v.first()).copied();
+        let cur = first.and_then(|e| streams.get(e).ok());
+        if let Repack::Runs(runs) = repack(inst, world, cur.map(|c| c.0.count()))
+            && let (Some(pk), Some(cur)) = (&inst.packed, cur)
+        {
+            // Only the instances that moved (D1180).
+            let f = instancing::INSTANCE_FLOATS;
+            if runs
+                .iter()
+                .all(|&(a, n)| cur.0.write(a, &pk.data[a * f..(a + n) * f]))
+            {
                 continue;
             }
-            let local = DMat4::from_cols_array(&std::array::from_fn(|q| f64::from(cols[q])));
-            let tint = inst
-                .colors
-                .as_ref()
-                .and_then(|c| c.get(j).copied())
-                .unwrap_or([1.0; 3]);
-            instancing::push_instance(&mut data, &(world * local), tint, inst.receive);
-            if let Some(x) = &inst.extras {
-                instancing::set_instance_extra(&mut data, x.get(j).copied().unwrap_or([0.0; 4]));
-            }
+            // Not the stream it was packed for: in full after all.
+            inst.packed = None;
+            repack(inst, world, None);
         }
+        let Some(Packed { data, .. }) = &inst.packed else {
+            continue;
+        };
         // Emptied before (the birds when no flock was near, or at night)
         // and filled again: shown again below, whichever way the data goes.
         if data.is_empty() {
@@ -1172,14 +1300,13 @@ pub fn run_animators(
         }
         // The same count: written into the stream's buffer in place (no GPU
         // allocation per frame, D497); else a new stream.
-        let first = entities.get(k).and_then(|v| v.first()).copied();
         if !data.is_empty()
-            && let Some(cur) = first.and_then(|e| streams.get(e).ok())
-            && cur.0.update(&data)
+            && let Some(cur) = cur
+            && cur.0.update(data)
         {
             continue;
         }
-        let stream = (!data.is_empty()).then(|| Instances(Arc::new(InstanceStream::new(&data))));
+        let stream = (!data.is_empty()).then(|| Instances(Arc::new(InstanceStream::new(data))));
         for &e in entities.get(k).map_or(&[][..], |v| v.as_slice()) {
             match &stream {
                 Some(s) => {
@@ -1489,6 +1616,80 @@ mod tests {
         assert!(wgsl.contains(&format!("const G_BLOCKS: i32 = {G_BLOCKS};")));
         // WebGL2's smallest maximum texture size.
         const { assert!(G_BLOCKS + MAX_BLOCKS * BLOCK_TEXELS <= 2048) };
+    }
+
+    fn instances(n: usize) -> InstInfo {
+        InstInfo {
+            matrices: (0..n)
+                .map(|j| Mat4::from_translation(Vec3::new(j as f32, 0.5, -2.0)).to_cols_array())
+                .collect(),
+            colors: None,
+            count: n as u32,
+            receive: true,
+            extras: Some(vec![[0.25; 4]; n]),
+            dirty: false,
+            emptied: false,
+            changed: Vec::new(),
+            packed: None,
+        }
+    }
+
+    /// The same moves, colours and collapses applied to two copies.
+    fn edit(inst: &mut InstInfo, j: usize, m: Option<Mat4>, rgb: Option<[f32; 3]>) {
+        if let Some(m) = m {
+            inst.matrices[j] = m.to_cols_array();
+        }
+        if let Some(rgb) = rgb {
+            let n = inst.matrices.len();
+            inst.colors.get_or_insert_with(|| vec![[1.0; 3]; n])[j] = rgb;
+        }
+        inst.changed.push(j as u32);
+    }
+
+    fn data(inst: &InstInfo) -> &[f32] {
+        &inst.packed.as_ref().unwrap().data
+    }
+
+    #[test]
+    fn moved_instances_are_packed_alone_as_a_full_pack_packs_them() {
+        let world = DMat4::from_translation(DVec3::new(10.0, 0.0, 5.0));
+        let spin = Mat4::from_rotation_y(0.7) * Mat4::from_translation(Vec3::new(3.0, 1.0, 0.0));
+        let mut a = instances(100);
+        assert_eq!(repack(&mut a, world, None), Repack::Full);
+        edit(&mut a, 4, Some(spin), None);
+        edit(&mut a, 3, Some(spin), None);
+        edit(&mut a, 61, None, Some([0.5, 0.2, 0.1]));
+        edit(&mut a, 60, Some(spin), None);
+        edit(&mut a, 60, Some(spin * spin), None);
+        assert_eq!(
+            repack(&mut a, world, Some(100)),
+            Repack::Runs(vec![(3, 2), (60, 2)]),
+            "neighbours in one run, a far one in its own"
+        );
+        let mut b = instances(100);
+        edit(&mut b, 4, Some(spin), None);
+        edit(&mut b, 3, Some(spin), None);
+        edit(&mut b, 61, None, Some([0.5, 0.2, 0.1]));
+        edit(&mut b, 60, Some(spin * spin), None);
+        assert_eq!(repack(&mut b, world, None), Repack::Full);
+        assert_eq!(data(&a), data(&b));
+
+        // One that collapses moves the slots after it: everything again.
+        edit(&mut a, 10, Some(Mat4::ZERO), None);
+        assert_eq!(repack(&mut a, world, Some(100)), Repack::Full);
+        assert_eq!(data(&a).len(), 99 * instancing::INSTANCE_FLOATS);
+        // A collapsed one that stays collapsed changes nothing drawn.
+        edit(&mut a, 10, Some(Mat4::ZERO * 2.0), None);
+        assert_eq!(repack(&mut a, world, Some(99)), Repack::Runs(vec![]));
+        // Another stream size, or the node moved: everything again.
+        edit(&mut a, 20, Some(spin), None);
+        assert_eq!(repack(&mut a, world, Some(100)), Repack::Full);
+        edit(&mut a, 20, Some(spin * spin), None);
+        let moved = DMat4::from_translation(DVec3::new(11.0, 0.0, 5.0));
+        assert_eq!(repack(&mut a, moved, Some(99)), Repack::Full);
+        a.count = 50;
+        assert_eq!(repack(&mut a, moved, Some(99)), Repack::Full);
+        assert_eq!(data(&a).len(), 49 * instancing::INSTANCE_FLOATS);
     }
 
     #[test]

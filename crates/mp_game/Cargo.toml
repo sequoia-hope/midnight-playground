@@ -31,6 +31,9 @@ mp_canvas.workspace = true
 # The material test scenes' definitions (parity/golden/materials/scenes.json)
 # and the scene export's material parameters.
 serde_json = "1"
+# The instance streams' floats as bytes, in one copy (already in the tree
+# through Bevy and wgpu; D1180).
+bytemuck = "1"
 # Bevy 0.19.1, pinned (SPEC 2's version policy; DECISIONS D100). Default
 # features off: the 3D renderer, windowing, states and input only. No UI,
 # text, audio, glTF, gizmos or picking yet; the packages that need them add
