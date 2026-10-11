@@ -9876,11 +9876,43 @@ is the spec; what was built and what was not:
   instrument within 6 cents (the fiddle's and steel's vibrato aside).
 - **The station** The Roadhouse 101.7 (key `roadhouse`, seed 1017):
   country 0.85, chicha 0.15; Desert Run's default (the old highway, the
-  freight train). No DJ: `dj: None` is handled everywhere (the director,
-  the Radio page); a voice and lines are the owner's call, as the clips
-  are (`explicit-delivery-choices`).
+  freight train). It went on air without a DJ (`dj: None` is handled by
+  the director and the Radio page); Tess arrived the same day (D1184).
 - **Goldens**: `events.json` gains three country runs, `renders.json`
   five (one per sub-style and a verse); `tracks.json` hashes every seed.
   The Rust port matches events and hashes exactly and the renders within
   the tolerance on the first run.
+
+## D1184. Tess, The Roadhouse's DJ
+
+2026-10-10, the owner: "add a DJ for The Roadhouse. a woman. 32, never
+married. lesbian. likes the outdoors. doesnt like people that second guess
+her. we keep it pg but she is dating and poly and likes to get out and be
+with people. really in to plants and cares for a garden and small personal
+farm. likes the farmer's market and met one of her partners there. does a
+lot of home maintenance. also likes late night fast drives."
+
+Tess (`tools/dj-voice/lines.json`, 73 lines over the fifteen topics, the
+same shape as the other three DJs) broadcasts seven to midnight from the
+back room of the roadhouse on the old highway, then drives home fast on
+the empty road, which is the one thing she won't explain on a licensed
+station (the night and scene lines circle it; the player lines nod at the
+driver without cheering). Two girlfriends, Maggie (honey at the farmers'
+market, met over a jar she was told she didn't need) and Dani (a welder),
+spoken of plainly and kept PG; five acres with chickens, two goats (Pearl
+and Dot), an orchard, a greenhouse, a well pump rebuilt twice, a dog
+(Boone); fixes everything herself and says so. The dislike of being
+second-guessed is her edge: dry, never cruel ("the somebody's not invited
+back"). Her ads are the roadhouse, the feed store, Maggie's honey and
+Dani's welding; her banter places her on the dial as "the bar" beside the
+pirate, the harbour and the farm.
+
+Voice: three VoiceDesign candidates (`tess-plain`, `tess-husky`,
+`tess-sunny`), `tess-plain` chosen (a clear, warm, low-mid, unhurried
+voice, rural Northern California, nothing twangy) since nobody here can
+listen; the owner picks on `tools/dj-voice.html` and `render.py` re-records
+on a change of `chosen`. Clips rendered with `render.py --only tess --takes
+1` (one take per line, as the committed clips are) and checked by Whisper
+transcription against the script. `STATIONS[roadhouse].dj = Some("tess")`;
+the director already handles her like the others.
 

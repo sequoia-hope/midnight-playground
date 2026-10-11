@@ -1099,11 +1099,377 @@
    "takes": 1,
    "text": "Sunrise in ten minutes, and from the field road you can watch it come over the ridge and hit the water. Pull over. I'm serious. Pull over.",
    "voice": "teo-warm"
+  },
+  "tess-ads-1": {
+   "takes": 1,
+   "text": "The Roadhouse is brought to you by The Roadhouse. The actual one. Pie till midnight, eggs from my chickens on weekends, and the jukebox is me.",
+   "voice": "tess-plain"
+  },
+  "tess-ads-2": {
+   "takes": 1,
+   "text": "Hollis Feed and Hardware on Main. Pump parts, fence wire, chick starter, and a man who will not tell you you're doing it wrong unless you really are.",
+   "voice": "tess-plain"
+  },
+  "tess-ads-3": {
+   "takes": 1,
+   "text": "Maggie's Honey, Saturdays at the market. The wildflower's the good one. She'll tell you you don't need it. Buy it anyway. It worked on me.",
+   "voice": "tess-plain"
+  },
+  "tess-ads-4": {
+   "takes": 1,
+   "text": "Dani's Welding, by the tracks. Trailers, gates, radio tower brackets, and she'll do it right the first time, which I can tell you is not a given.",
+   "voice": "tess-plain"
+  },
+  "tess-banter-1": {
+   "takes": 1,
+   "text": "Marisol on eighty-eight one plays the slow stuff for the harbour. We play the slow stuff for the highway. Same fog. Different pedals.",
+   "voice": "tess-plain"
+  },
+  "tess-banter-2": {
+   "takes": 1,
+   "text": "Kit's up on the ridge going a hundred and seventy a minute. Kit, honey, come down to the roadhouse. There's pie. There's chairs. Nobody has to dance.",
+   "voice": "tess-plain"
+  },
+  "tess-banter-3": {
+   "takes": 1,
+   "text": "Teo on one-oh-four three is asleep. It's nine p.m. He's asleep. I respect that. I don't understand it, but I respect it.",
+   "voice": "tess-plain"
+  },
+  "tess-banter-4": {
+   "takes": 1,
+   "text": "The pirate, the harbour, the farm, and the bar. Four stations, one highway. Pick your hour. Mine's the late one.",
+   "voice": "tess-plain"
+  },
+  "tess-callers-1": {
+   "takes": 1,
+   "text": "This one's for Dani, who's still at the shop with the door up and the radio on. Finish the weld. Come get pie.",
+   "voice": "tess-plain"
+  },
+  "tess-callers-2": {
+   "takes": 1,
+   "text": "Somebody called asking if the goats are okay. The goats are fine. The goats are always fine. Thank you for asking. Nobody asks about me.",
+   "voice": "tess-plain"
+  },
+  "tess-callers-3": {
+   "takes": 1,
+   "text": "A caller says: Tess, you sound like you don't take advice. I take advice. I asked for it twice this year. Both times I asked Dani. Here's a song.",
+   "voice": "tess-plain"
+  },
+  "tess-callers-4": {
+   "takes": 1,
+   "text": "Shout-out to the kid who fixed my tail light at the gas station with a roll of tape and didn't lecture me. That's how you do it. This one's yours.",
+   "voice": "tess-plain"
+  },
+  "tess-callers-5": {
+   "takes": 1,
+   "text": "For Maggie, closing up the honey stand in the rain: I've got the fire going and the kettle on. Drive slow. That's me saying it, so you know it's serious.",
+   "voice": "tess-plain"
+  },
+  "tess-camping-1": {
+   "takes": 1,
+   "text": "Camping spot of the week: the gravel bar on the river above the bridge. You can hear the water all night and nothing else. Pack it out.",
+   "voice": "tess-plain"
+  },
+  "tess-camping-2": {
+   "takes": 1,
+   "text": "If you camp on my side of the highway you'll hear my goats at five. That's not wildlife. That's Pearl and Dot. They're fine. Go back to sleep.",
+   "voice": "tess-plain"
+  },
+  "tess-camping-3": {
+   "takes": 1,
+   "text": "Camping advice: a tarp over the tent, not just the fly. Stakes in at an angle. Fire down to coals before you sleep. I'm not asking.",
+   "voice": "tess-plain"
+  },
+  "tess-ident-1": {
+   "takes": 1,
+   "text": "The Roadhouse, one-oh-one point seven. Country for the old highway. I'm Tess. The kitchen's closed, the bar's open, the music's on.",
+   "voice": "tess-plain"
+  },
+  "tess-ident-2": {
+   "takes": 1,
+   "text": "One-oh-one seven, The Roadhouse, broadcasting from the back room of an actual roadhouse. If you can hear the dishwasher, that's not a drum machine.",
+   "voice": "tess-plain"
+  },
+  "tess-ident-3": {
+   "takes": 1,
+   "text": "This is Tess at The Roadhouse. Seven to midnight, then I drive home. The driving home is not part of the show. Don't ask about the driving home.",
+   "voice": "tess-plain"
+  },
+  "tess-ident-4": {
+   "takes": 1,
+   "text": "The Roadhouse, one-oh-one point seven. Honky-tonk, bluegrass, the slow ones and the fast ones. The dial's got a pirate, a harbour and a farm. We're the bar.",
+   "voice": "tess-plain"
+  },
+  "tess-ident-5": {
+   "takes": 1,
+   "text": "One-oh-one point seven. If you're on the old highway tonight, you're already here. If you're on the freeway, exit. Trust me. It's a better road.",
+   "voice": "tess-plain"
+  },
+  "tess-morning-1": {
+   "takes": 1,
+   "text": "Good morning. It's six, the chickens are out, the goats have opinions, and the coffee's not ready yet. This is a recording. I'm in the garden.",
+   "voice": "tess-plain"
+  },
+  "tess-morning-2": {
+   "takes": 1,
+   "text": "Morning. The Roadhouse is a night show, but the recording works at dawn too. If you're up this early, you've either got animals or a reason. Both are fine.",
+   "voice": "tess-plain"
+  },
+  "tess-morning-3": {
+   "takes": 1,
+   "text": "Good morning from the five acres. Greenhouse is thirty degrees warmer than the yard, the tomatoes know it, and so do I.\n\nTonight I'm on from seven. Right now I'm pulling weeds. Here's something to pull weeds to.",
+   "voice": "tess-plain"
+  },
+  "tess-morning-4": {
+   "takes": 1,
+   "text": "Morning. Frost on the fence line. Chickens unbothered. Me, bothered. Coffee, then the pump, then the show tonight.",
+   "voice": "tess-plain"
+  },
+  "tess-music-1": {
+   "takes": 1,
+   "text": "That one's a train beat. Snare on every eighth, kick on one and three. You could set a fence post to it. I have.",
+   "voice": "tess-plain"
+  },
+  "tess-music-2": {
+   "takes": 1,
+   "text": "A shuffle now, for the people who've already pulled over. Brushes on the snare, steel guitar. Roll the windows down and don't say anything.",
+   "voice": "tess-plain"
+  },
+  "tess-music-3": {
+   "takes": 1,
+   "text": "Bluegrass next. No drums, nobody needs them. The mandolin's keeping time, the banjo's doing everything else.",
+   "voice": "tess-plain"
+  },
+  "tess-music-4": {
+   "takes": 1,
+   "text": "That was a telecaster through a slapback. One echo, a hundred milliseconds. Any more than that and you're in a different genre.",
+   "voice": "tess-plain"
+  },
+  "tess-music-5": {
+   "takes": 1,
+   "text": "Outlaw cut coming up. It's in mixolydian, which means the seventh's flat, which means it sounds like somebody who's not sorry.",
+   "voice": "tess-plain"
+  },
+  "tess-music-6": {
+   "takes": 1,
+   "text": "Here's a slow one. The steel's going to swell up under the chorus and I'm going to stop talking. Those two things are related.",
+   "voice": "tess-plain"
+  },
+  "tess-night-1": {
+   "takes": 1,
+   "text": "An empty highway at midnight is the most honest thing I know. It doesn't care what you drive. It just asks if you can see.",
+   "voice": "tess-plain"
+  },
+  "tess-night-2": {
+   "takes": 1,
+   "text": "There's an hour after the bar closes when the road's mine. I don't share it. I'm telling you about it. That's not the same thing.",
+   "voice": "tess-plain"
+  },
+  "tess-night-3": {
+   "takes": 1,
+   "text": "You don't need a reason to be out this late. You need headlights that work and the sense to stop before the deer do it for you.",
+   "voice": "tess-plain"
+  },
+  "tess-night-4": {
+   "takes": 1,
+   "text": "The garden doesn't need me at night. The chickens are in. The goats are quiet. That's when I drive. Everything's handled. That's the point.",
+   "voice": "tess-plain"
+  },
+  "tess-night-5": {
+   "takes": 1,
+   "text": "Whatever somebody told you tonight about how you should've done it: they weren't driving. You were. Go home easy.",
+   "voice": "tess-plain"
+  },
+  "tess-night-6": {
+   "takes": 1,
+   "text": "It's two in the morning and this is a recording. I'm home, the truck's cooling in the yard, and the dog's asleep. Night. Mind the deer.",
+   "voice": "tess-plain"
+  },
+  "tess-offair-1": {
+   "takes": 1,
+   "text": "Spent the morning in the greenhouse with the tomatoes. Thirty-one varieties this year. Maggie says that's too many. Maggie's wrong, and she knows it, and she brought bread anyway.",
+   "voice": "tess-plain"
+  },
+  "tess-offair-2": {
+   "takes": 1,
+   "text": "I rebuilt the well pump for the second time this week. The first time was right. The second time was also right, and the pump just wanted attention.",
+   "voice": "tess-plain"
+  },
+  "tess-offair-3": {
+   "takes": 1,
+   "text": "Met Maggie at the farmers' market four years ago. I asked about a jar of honey. She said I didn't need it. I bought three. We've been together since. Dani came later, and that's a different story, and it's a good one.",
+   "voice": "tess-plain"
+  },
+  "tess-offair-4": {
+   "takes": 1,
+   "text": "Fixed the roof, the fence, the truck's starter and the tower in one weekend. Dani welded the bracket. I did the rest. We don't argue about who did what. We're too tired.",
+   "voice": "tess-plain"
+  },
+  "tess-offair-5": {
+   "takes": 1,
+   "text": "Never married. Never going to be. Two women I love, a garden, a dog, chickens, two goats. Nobody's missing anything out here, and I'd thank you not to count.",
+   "voice": "tess-plain"
+  },
+  "tess-offair-6": {
+   "takes": 1,
+   "text": "Somebody told me I was pruning the apple trees wrong. I've pruned them every February for eight years. The apples are fine. The somebody's not invited back.",
+   "voice": "tess-plain"
+  },
+  "tess-offair-7": {
+   "takes": 1,
+   "text": "After the show I drive home on the old highway with nobody on it. I'm not going to tell you how fast. I'm going to tell you it's the best eleven minutes of my day. You can do the math.",
+   "voice": "tess-plain"
+  },
+  "tess-offair-8": {
+   "takes": 1,
+   "text": "The dog's name is Boone. He rides in the truck, he's been on every trail in the county, and he's the only one who never has a note about how I do things.",
+   "voice": "tess-plain"
+  },
+  "tess-places-1": {
+   "takes": 1,
+   "text": "The farmers' market, Saturday mornings in the lot by the feed store. Honey stand at the far end. Say hi to Maggie. Tell her I sent you. She'll charge you anyway.",
+   "voice": "tess-plain"
+  },
+  "tess-places-2": {
+   "takes": 1,
+   "text": "The old highway between the river and the dunes: eleven miles, two curves that matter, no lights. That's all I'm going to say about it on a licensed station.",
+   "voice": "tess-plain"
+  },
+  "tess-places-3": {
+   "takes": 1,
+   "text": "The feed store on Main closes at five and opens at seven, and the guy knows more about well pumps than the well pump guy. Go in with a question.",
+   "voice": "tess-plain"
+  },
+  "tess-places-4": {
+   "takes": 1,
+   "text": "The river at the swimming hole by the bridge: cold till July, perfect in August. Leave it cleaner than you found it or don't come back.",
+   "voice": "tess-plain"
+  },
+  "tess-places-5": {
+   "takes": 1,
+   "text": "The ridge trail from the water tank: two hours up, forty minutes down, and the view's the whole valley. Bring water. Bring more than that.",
+   "voice": "tess-plain"
+  },
+  "tess-player-1": {
+   "takes": 1,
+   "text": "Somebody in a silver Supra just took the old highway record, right past the roadhouse. The whole bar looked up. Nobody said anything. That's a compliment here.",
+   "voice": "tess-plain"
+  },
+  "tess-player-2": {
+   "takes": 1,
+   "text": "A blue Skyline just went by like it had somewhere to be. Fine. This one's for you. Don't hit a deer.",
+   "voice": "tess-plain"
+  },
+  "tess-player-3": {
+   "takes": 1,
+   "text": "Lost the cops on the dunes road, huh? I'm not going to say nice. I'm going to play a song, and you can take it how you want.",
+   "voice": "tess-plain"
+  },
+  "tess-player-4": {
+   "takes": 1,
+   "text": "Still out there at this hour? Me too, in a minute. Different reasons. Same road. Here's one for the drive.",
+   "voice": "tess-plain"
+  },
+  "tess-player-5": {
+   "takes": 1,
+   "text": "Last week the orange rally car had you. Tonight you had them. Nobody second-guessed you into that. You just drove. Good.",
+   "voice": "tess-plain"
+  },
+  "tess-raves-1": {
+   "takes": 1,
+   "text": "Forest party Saturday. I'll go. I'll stand at the back with Dani and the people who brought chairs. We're the chairs people now. It's great.",
+   "voice": "tess-plain"
+  },
+  "tess-raves-2": {
+   "takes": 1,
+   "text": "Went to the rave in the redwoods, danced till two, slept in the truck bed, and was home in time to let the chickens out. That's the whole weekend. Ten out of ten.",
+   "voice": "tess-plain"
+  },
+  "tess-raves-3": {
+   "takes": 1,
+   "text": "Kit says I don't dance. I dance. I dance like someone who has to be up at six. Efficiently.",
+   "voice": "tess-plain"
+  },
+  "tess-raves-4": {
+   "takes": 1,
+   "text": "Best thing at the rave last time was the woman with the camp stove making pancakes at sunrise. Marguerite. Maggie. Yes, I know her. Yes, that's how I know her.",
+   "voice": "tess-plain"
+  },
+  "tess-scene-1": {
+   "takes": 1,
+   "text": "Somebody ran the old highway at one this morning, fast, and did it clean. I was behind them. Not racing. Driving. There's a difference, and I know what it is.",
+   "voice": "tess-plain"
+  },
+  "tess-scene-2": {
+   "takes": 1,
+   "text": "The racing crowd comes in the roadhouse after midnight for pie. They're polite, they tip, they don't talk about it. I like them. I'm not saying more.",
+   "voice": "tess-plain"
+  },
+  "tess-scene-3": {
+   "takes": 1,
+   "text": "Word is the record on the dunes road went last week. I don't keep records. I keep chickens. But I noticed.",
+   "voice": "tess-plain"
+  },
+  "tess-scene-4": {
+   "takes": 1,
+   "text": "The meet's at the summit lot, apparently. Up Kit's way. If you're going, go easy on the way up. The way down's your business.",
+   "voice": "tess-plain"
+  },
+  "tess-scene-5": {
+   "takes": 1,
+   "text": "Someone asked if I'd ever been in a street race. I said I drive home every night at midnight on an empty road. They said that's not an answer. It's not. Next song.",
+   "voice": "tess-plain"
+  },
+  "tess-tired-1": {
+   "takes": 1,
+   "text": "I'm tired. I rebuilt the pump this morning, split wood this afternoon, and I'm here. Earned tired. The best kind.",
+   "voice": "tess-plain"
+  },
+  "tess-tired-2": {
+   "takes": 1,
+   "text": "If I'm slow tonight, it's because I spent four hours on a roof. Not mine. Dani's shop. She owes me a weld.",
+   "voice": "tess-plain"
+  },
+  "tess-tired-3": {
+   "takes": 1,
+   "text": "Harvest week. Everything ripened at once, like it does. There's thirty pounds of tomatoes in my kitchen and no plan. The music will be fine. I'm the problem.",
+   "voice": "tess-plain"
+  },
+  "tess-tired-4": {
+   "takes": 1,
+   "text": "I'm not tired. I'm quiet. There's a difference. Here's a slow one so you can hear it.",
+   "voice": "tess-plain"
+  },
+  "tess-weather-1": {
+   "takes": 1,
+   "text": "Fog on the highway from the river crossing out to the dunes. Low beams. If you can't see the centre line, you're going too fast for it. I know. I've checked.",
+   "voice": "tess-plain"
+  },
+  "tess-weather-2": {
+   "takes": 1,
+   "text": "Clear and cold tonight. Stars all the way down to the ridge. Good night for a drive, if you're careful, which you will be, because I said so.",
+   "voice": "tess-plain"
+  },
+  "tess-weather-3": {
+   "takes": 1,
+   "text": "Rain's coming through around eleven. The field roads turn to soup. The highway's fine. The highway's always fine.",
+   "voice": "tess-plain"
+  },
+  "tess-weather-4": {
+   "takes": 1,
+   "text": "Hot one today. I watered at six and again at eight. The goats sat in the one shady spot and judged me the whole time.",
+   "voice": "tess-plain"
+  },
+  "tess-weather-5": {
+   "takes": 1,
+   "text": "Wind off the hills tonight. The tower's swaying, the signal's fine, and if it isn't, I'll climb up there Saturday. I built it. I'll fix it.",
+   "voice": "tess-plain"
   }
  },
  "voices": {
   "kit": "kit-bright",
   "marisol": "marisol-warm",
-  "teo": "teo-warm"
+  "teo": "teo-warm",
+  "tess": "tess-plain"
  }
 }

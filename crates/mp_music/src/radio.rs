@@ -87,12 +87,12 @@ pub const STATIONS: &[Station] = &[
     },
     // The coast country station (radio.md 7, sound.md 3.5.1): honky-tonk,
     // the shuffle, bluegrass and outlaw, with a little chicha from down the
-    // highway. No DJ yet: the clips are the owner's call (D1183).
+    // highway. Tess is its DJ (D1184).
     Station {
         key: "roadhouse",
         name: "The Roadhouse",
         freq: "101.7",
-        dj: None,
+        dj: Some("tess"),
         genres: &[("country", 0.85), ("chicha", 0.15)],
         seed: 1017,
     },
