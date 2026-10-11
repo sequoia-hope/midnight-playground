@@ -137,7 +137,7 @@ fn check(run: &Value) -> Worst {
 fn every_render_matches_the_lab() {
     let doc: Value = serde_json::from_str(&std::fs::read_to_string(file()).unwrap()).unwrap();
     let runs = doc.as_array().unwrap();
-    assert_eq!(runs.len(), 14, "the lab's render runs");
+    assert_eq!(runs.len(), 19, "the lab's render runs");
     let mut worst_rms = (0.0, String::new());
     let mut worst_win = (0.0, String::new());
     let mut fails = Vec::new();

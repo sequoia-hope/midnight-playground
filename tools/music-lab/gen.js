@@ -19,7 +19,8 @@
 //
 // Genres: house (deep, anthem), techno (acid, melodic), trance, eurobeat
 // (the touge: Initial D's mountain roads), psytrance, drum & bass (liquid,
-// roller) and UK garage.
+// roller), UK garage, chicha and country (honky-tonk, the shuffle,
+// bluegrass, outlaw).
 
 import { R, NOTE, SCALES, PROGS, noDim, progression, lane, bars, loop, euclid, cells, FIGURES, mutate, motif, thin, realise, bassBar, changesAfter, variants, expand } from './compose.js';
 import { BPATCH } from './instruments.js';
@@ -43,12 +44,11 @@ function hold(s, max) {
 const barChords = (prog) => prog.trim().split(/\s+/).map((b) => b.split(',')[0]);
 
 // The hook: one motif realised three ways over eight bars of a progression
-// (two statements of a four-bar loop): full, thinned, and answered (the
-// same figure a third higher). `prog2` realises the full hook in another
-// key (eurobeat's final chorus).
-function hooks(r, m, { scale, tonic, prog, lo, hi, gate, phrase = 4, avoid = [] }) {
+// (two statements of a four-bar loop; `nbars` for a longer one, the
+// 12-bar): full, thinned, and answered (the same figure a third higher).
+function hooks(r, m, { scale, tonic, prog, lo, hi, gate, phrase = 4, avoid = [], nbars = 8 }) {
   const c = barChords(prog);
-  const chords = c.length >= 8 ? c.slice(0, 8) : [...c, ...c].slice(0, 8);
+  const chords = c.length >= nbars ? c.slice(0, nbars) : [...c, ...c, ...c].slice(0, nbars);
   const over = (mm, opts = {}) => realise(mm, { scale, tonic, chords, lo, hi, gate, phrase, avoid, ...opts });
   return { hook: over(m), sparse: over(thin(m), { gate: null }), answer: over(m, { start: 2 }) };
 }
@@ -647,5 +647,186 @@ export function chicha(seed, { dejavu = 0.75 } = {}) {
   return T;
 }
 
-export const GENRES = { house, techno, trance, eurobeat, psytrance, dnb, garage, chicha };
-export const GENRE_NAMES = { house: 'House', techno: 'Techno', trance: 'Trance', eurobeat: 'Eurobeat', psytrance: 'Psytrance', dnb: 'Drum & bass', garage: 'UK garage', chicha: 'Chicha' };
+// ── Country ──────────────────────────────────────────────────────
+// Four sub-styles (sound.md 3.5.1), picked per seed. Honky-tonk and
+// Bakersfield: the train beat, a two-beat bass that walks into every
+// change, the telecaster's hook with slapback, the steel's swells under the
+// chorus, the fiddle on the verse, a honky-tonk piano, now and then the
+// 12-bar. The shuffle: a triplet feel at a ballad's tempo (`swing8`),
+// brushes and the sidestick, the steel carries the hook, the fiddle's long
+// lines. Bluegrass: no drums; banjo rolls, the mandolin's chop on 2 and 4,
+// the upright bass in two, the fiddle's hook, and everybody takes a break
+// in turn (banjo, mandolin, fiddle). Outlaw: straight 8ths, a baritone
+// guitar riff, a Hammond, the bVII of mixolydian, the tele's hook. Major
+// keys and the major pentatonic (`avoid` [3, 6]); the last chorus a whole
+// step up (the shuffle a half). Déjà vu as in every genre.
+export function country(seed, { dejavu = 0.75 } = {}) {
+  const r = R(seed, 9);
+  const sub = r.fork(1).weighted([['honkytonk', 4], ['shuffle', 2], ['bluegrass', 2], ['outlaw', 2]]);
+  const tonic = r.int(0, 11);
+  const bpm = sub === 'honkytonk' ? r.int(120, 136) : sub === 'shuffle' ? r.int(72, 92) : sub === 'bluegrass' ? r.int(140, 170) : r.int(116, 130);
+  const scale = sub === 'outlaw' ? SCALES.mixolydian : SCALES.major;
+  const twelve = sub === 'honkytonk' && r.chance(0.4);
+  const degsV = sub === 'outlaw' ? r.pick(PROGS.outlaw) : twelve ? r.pick(PROGS.twelve) : r.pick(PROGS.countryVerse);
+  const degsC = sub === 'outlaw' ? r.pick(PROGS.outlaw) : r.pick(PROGS.country);
+  const progV = progression(scale, tonic, degsV), progC = progression(scale, tonic, degsC);
+  const up = (tonic + (sub === 'shuffle' ? 1 : 2)) % 12;
+  const progC2 = progression(scale, up, degsC);
+  const names = { honkytonk: 'Honky-tonk', shuffle: 'Country shuffle', bluegrass: 'Bluegrass', outlaw: 'Outlaw country' };
+  const T = skeleton(`country-${seed}`, {
+    title: `Country ${seed}`, style: `${names[sub]} · ${NOTE[tonic]} ${scaleName(scale)} · ${progC} → ${NOTE[up]}`,
+    bpm, gain: 1.05, delay: 0.25, delayFb: 0.12, pump: { depth: 0.05, release: 0.12 },
+    kitName: 'country',
+    prog: { v: progV, c: progC, c2: progC2 },
+    // The band thins instead of a filter closing: the steel, the fiddle and
+    // the piano go first, the snare gives way to the brushes.
+    lay: { steel: 0.4, fiddle: 0.35, piano: 0.3, snare: 0.45, hat: 0.25, ride: 0.55, mandolin: 0.3, mandoLead: 0.5, organ: 0.15, tele: 0.3 },
+  });
+  if (sub === 'shuffle') T.swing8 = 0.6;
+
+  // Drums.
+  let nd = 0, vb = 0;
+  if (sub === 'honkytonk') {
+    // The train beat: snare 8ths accented on 2 and 4 over the brushes, the
+    // kick on 1 and 3 with a push.
+    const train = { kick: r.pick(['x.......x.....x.', 'x...x...x.....x.', 'x.......x.......']), snare: r.pick(['o.o.X.o.o.o.X.o.', 'o.o.X.o.o.o.X.oo', 'x.o.X.o.x.o.X.o.']), brush: 'x.x.x.x.x.x.x.x.', hat: '..x...x...x...x.' };
+    nd = setDrums(T, 'd', [train, { ...train, ride: 'x.x.x.x.x.x.x.x.' }, { ...train, snare: mutate(r, train.snare, 0.1, ['o', 'x', '.']), hat: 'x.x.x.x.x.x.x.x.' }]);
+    T.drums.intro = { kick: train.kick, brush: '..x...x...x...x.', hat: '..x...x...x...x.' };
+    T.drums.v = { kick: train.kick, brush: 'x.x.x.x.x.x.x.x.', sidestick: '....x.......x...', hat: '..x...x...x...x.' };
+    T.drums.brk = { ...train, ride: 'x.x.x.x.x.x.x.x.' };
+  } else if (sub === 'shuffle') {
+    // Brushes on the 8ths (swung by swing8), the sidestick on 2 and 4, the
+    // ride; the snare proper only in the chorus.
+    const kick = r.pick(['x.......x.......', 'x.......x.....x.', 'x.........x.....']);
+    const sh = { kick, sidestick: '....x.......x...', brush: 'x.x.x.x.x.x.x.x.', ride: 'x.x.x.x.x.x.x.x.' };
+    T.drums.v = sh;
+    nd = setDrums(T, 'd', [{ ...sh, snare: '....x.......x...' }, { ...sh, snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' }]);
+    T.drums.intro = { brush: 'x.x.x.x.x.x.x.x.' };
+    T.drums.brk = { ...sh, ride: 'x.x.x.x.x.x.x.x.' };
+  } else if (sub === 'bluegrass') {
+    T.drums.none = {};
+  } else {
+    // Straight 8ths on the hat, a rock kick, the snare on 2 and 4.
+    const kick = r.pick(['x......x..x.....', 'x.....x.x.......', 'x...x...x...x...']);
+    const o = { kick, snare: '....X.......X...', hat: 'x.x.x.x.x.x.x.x.' };
+    nd = setDrums(T, 'd', [o, { ...o, hat: mutate(r, o.hat, 0.12, ['x', 'o', '.']) }, { ...o, ride: 'x.x.x.x.x.x.x.x.', hat: '....x.......x...' }]);
+    T.drums.intro = { kick, hat: 'x.x.x.x.x.x.x.x.' };
+    T.drums.v = { kick, sidestick: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+    T.drums.brk = { ...o, ride: 'x.x.x.x.x.x.x.x.' };
+  }
+
+  // The bass in two: root on 1, fifth on 3, and the walk (1-3-5-approach)
+  // into the next chord. Outlaw walks less and plays 8ths now and then.
+  const lo = bassLo(tonic);
+  const two = sub === 'outlaw'
+    ? [['r.......f.......', 4], ['r.r.r.r.r.r.r.r.', 2], ['r.......f...r...', 1], ['r.r.r.r.f.f.f.f.', 1]]
+    : [['r.......f.......', 6], ['r.......t.......', 1], ['r...t...f.......', 1.5], ['r.......f...o...', 0.5]];
+  const walk = [['r.......f...p...', 4], ['r...t...f...p...', 3], ['r.......t...p...', 1], ['r...f...o...p...', 0.5]];
+  const vBars = barChords(progV).length;
+  const bassOver = (prog) => bars(barChords(prog).length, (b) => r.weighted(changesAfter(prog, b) ? walk : two));
+  const bassPatch = sub === 'bluegrass' || sub === 'shuffle' ? P('uprightBass') : P('fingerBass', { tone: 2200, name: 'country bass' });
+  T.parts.bass = { type: 'bass', lo, gate: sub === 'bluegrass' ? 0.6 : 0.85, ch: { pump: true, level: sub === 'shuffle' ? 1 : sub === 'bluegrass' ? 1.5 : 0.75 }, pat: {}, lab: bassPatch };
+  vb = setPats(T.parts.bass, 'b', [bassOver(progV), bassOver(progV), bassOver(progC)]);
+
+  // The acoustic's boom-chick: the strum on the off-beats (the bass has the
+  // boom), 8th strums under the chorus.
+  const chick = sub === 'outlaw' ? r.pick(['..x...x...x...x.', '..x...x...x.x.x.']) : r.pick(['....x.......x...', '....x.......x..x', '....x.....x.x...']);
+  const strum8 = '..x...x...x...x.';
+  T.parts.acoustic = { type: 'chord', lo: 50, gate: sub === 'bluegrass' ? 0.35 : 0.5, ch: { rev: 0.2, pan: 0.3, level: sub === 'bluegrass' ? 1 : 0.55 }, pat: {}, lab: P('acousticGuitar') };
+  const na = setPats(T.parts.acoustic, 'a', variants(r, loop(4, chick, chick), 2, 0.08, ['x', '.']));
+  T.parts.acoustic.pat.c = loop(4, strum8, strum8.slice(0, 12) + 'x.xx');
+
+  // The hook and the verse melody, major pentatonic; `nbars` follows the
+  // 12-bar. The lead instrument is the sub-style's: the tele (honky-tonk,
+  // outlaw), the steel (the shuffle), the fiddle (bluegrass).
+  const avoid = scale === SCALES.major ? [3, 6] : [3];
+  const mc = motif(r, { bars: 2, density: sub === 'shuffle' ? 'sparse' : 'medium', figure: 0.6 });
+  const mv = motif(r, { bars: 2, density: r.pick(['sparse', 'medium']), figure: 0.5 });
+  const gate = sub === 'shuffle' ? 10 : sub === 'bluegrass' ? 3 : 5;
+  const HC = hooks(r, mc, { scale, tonic: 60 + tonic, prog: progC, lo: -3, hi: 9, gate, avoid });
+  const HC2 = hooks(r, mc, { scale, tonic: 60 + up, prog: progC2, lo: -3, hi: 9, gate, avoid });
+  const HV = hooks(r, mv, { scale, tonic: 60 + tonic, prog: progV, lo: -5, hi: 7, gate: sub === 'shuffle' ? 12 : 6, avoid, nbars: vBars > 8 ? vBars : 8 });
+  const leadLab = sub === 'shuffle' ? P('pedalSteel', { swell: 0.12, bend: 1, bendT: 0.12, strum: 0, gain: 0.6, name: 'steel lead' }) : sub === 'bluegrass' ? P('fiddle') : P('telecaster');
+  T.parts.lead = { type: 'mel', res: 1, legato: true, ch: { rev: 0.3, dly: sub === 'shuffle' ? 0.2 : 0.4, pan: 0.1, level: sub === 'shuffle' ? 1 : sub === 'bluegrass' ? 1.1 : 0.7 }, pat: { hook: HC.hook, sparse: HC.sparse, answer: HC.answer, hook2: HC2.hook, sparse2: HC2.sparse }, lab: leadLab };
+  // The pedal steel under the chorus: a chord a bar, swelling and sliding in.
+  if (sub !== 'bluegrass') T.parts.steel = { type: 'chord', lo: 62, ch: { rev: 0.4, dly: 0.25, pan: -0.3, level: 1.2 }, pat: { hold: 'x---------------' }, lab: P('pedalSteel') };
+
+  const S = T.sections;
+  const V = twelve ? 12 : 16;
+  if (sub === 'honkytonk' || sub === 'outlaw') {
+    // The fiddle sings the verse (honky-tonk); the tele plays it low on the
+    // outlaw side. The honky-tonk piano comps; the Hammond holds.
+    if (sub === 'honkytonk') {
+      T.parts.fiddle = { type: 'mel', res: 1, legato: true, ch: { rev: 0.35, pan: -0.15, level: 0.9 }, pat: { verse: HV.hook, verse2: HV.answer }, lab: P('fiddle') };
+      T.parts.piano = { type: 'chord', lo: 55, gate: 0.6, ch: { rev: 0.25, pan: 0.2, level: 0.5 }, pat: { comp: r.pick(['..x...x...x...x.', 'x.....x...x.....', '..x...x.x...x...']) }, lab: P('honkyPiano') };
+    } else {
+      T.parts.tele2 = { type: 'mel', res: 1, legato: true, ch: { rev: 0.3, dly: 0.3, pan: -0.2, level: 0.8 }, pat: { verse: HV.hook, verse2: HV.answer }, lab: P('telecaster', { gain: 0.24 }) };
+      T.parts.bari = { type: 'bass', lo: lo + 12, gate: 0.7, ch: { rev: 0.2, pan: -0.25, level: 0.45 }, pat: {}, lab: P('baritoneGuitar') };
+      const riff = bars(4, (b) => bassBar(r, [['r.r.', 4], ['r...', 2], ['r.rr', 1], ['..r.', 1], ['r.f.', 1]], 0.5, changesAfter(progV, b)));
+      setPats(T.parts.bari, 'g', variants(r, riff, 2, 0.1, ['r', '.', 'f']));
+      T.parts.organ = { type: 'chord', lo: 60, ch: { rev: 0.4, hp: 150, pan: 0.15, level: 0.6 }, pat: { hold: 'x---------------' }, lab: P('organ', { chorus: 2, gain: 0.12, name: 'hammond' }) };
+    }
+    // The break: the tele's solo over the verse chords, short notes.
+    const mb = motif(r, { bars: 2, density: 'dense', figure: 0.6 });
+    const HB = hooks(r, mb, { scale, tonic: 72 + tonic, prog: progV, lo: -5, hi: 6, gate: 3, avoid, nbars: vBars > 8 ? vBars : 8 });
+    T.parts.tele = { type: 'mel', res: 1, ch: { rev: 0.3, dly: 0.4, pan: 0.25, level: 0.9 }, pat: { brk: HB.hook, answer2: HC2.answer }, lab: P('telecaster', { pick: 0.95, decay: 1.2, gain: 0.28, name: 'tele break' }) };
+    const keys = sub === 'honkytonk' ? { fiddle: 'verse', piano: 'comp' } : { tele2: 'verse', bari: 'g', organ: 'hold' };
+    const keys2 = sub === 'honkytonk' ? { fiddle: 'verse2', piano: 'comp' } : { tele2: 'verse2', bari: 'g', organ: 'hold' };
+    const ch = sub === 'honkytonk' ? { piano: 'comp' } : { bari: 'g0', organ: 'hold' };
+    const brk = sub === 'honkytonk' ? { piano: 'comp' } : { bari: 'g', organ: 'hold' };
+    const vv = sub === 'honkytonk' ? { bass: vb, acoustic: na } : { bass: vb, acoustic: na, bari: 3 };
+    const fill = sub === 'honkytonk' ? 'train' : 'snare';
+    S.push({ bars: 8, prog: 'c', drums: 'intro', lp: [800, 16000], p: { steel: 'hold', lead: 'sparse' } });
+    S.push({ bars: V, prog: 'v', drums: 'v', fill, p: { bass: 'b', acoustic: 'a', ...keys }, v: vv });
+    S.push({ bars: 16, prog: 'c', drums: 'd', vd: nd, crash: true, drop: true, fill, p: { bass: 'b2', acoustic: 'c', steel: 'hold', lead: 'hook', ...ch } });
+    S.push({ bars: V, prog: 'v', drums: 'v', fill, p: { bass: 'b', acoustic: 'a', ...keys2 }, v: vv });
+    S.push({ bars: 16, prog: 'c', drums: 'd', vd: nd, crash: true, drop: true, fill, p: { bass: 'b2', acoustic: 'c', steel: 'hold', lead: 'answer', ...ch } });
+    S.push({ bars: V, prog: 'v', drums: 'brk', fill, p: { bass: 'b', acoustic: 'a', tele: 'brk', ...brk }, v: vv });
+    S.push({ bars: 16, prog: 'c2', drums: 'd', vd: nd, crash: true, drop: true, fill, p: { bass: 'b2', acoustic: 'c', steel: 'hold', lead: 'hook2', tele: 'answer2', ...ch } });
+    S.push({ bars: 8, prog: 'c2', drums: 'intro', lp: [16000, 1500], p: { bass: 'b0', steel: 'hold', lead: 'sparse2' } });
+  } else if (sub === 'shuffle') {
+    // The fiddle's long lines on the verse and its solo on the break; the
+    // piano comps the chorus.
+    T.parts.fiddle = { type: 'mel', res: 1, legato: true, ch: { rev: 0.4, pan: -0.15, level: 0.9 }, pat: { verse: HV.hook, verse2: HV.answer }, lab: P('fiddle', { a: 0.14, vib: 26 }) };
+    T.parts.piano = { type: 'chord', lo: 55, gate: 0.7, ch: { rev: 0.3, pan: 0.2, level: 0.45 }, pat: { comp: r.pick(['..x...x...x...x.', 'x.....x.........', '..x.....x.x.....']) }, lab: P('honkyPiano') };
+    T.parts.tele = { type: 'mel', res: 1, legato: true, ch: { rev: 0.3, dly: 0.4, pan: 0.25, level: 0.8 }, pat: { answer2: HC2.answer }, lab: P('telecaster', { gain: 0.24 }) };
+    const vv = { bass: vb, acoustic: na };
+    S.push({ bars: 8, prog: 'c', drums: 'intro', lp: [800, 16000], p: { steel: 'hold', lead: 'sparse' } });
+    S.push({ bars: 16, prog: 'v', drums: 'v', fill: 'tom', p: { bass: 'b', acoustic: 'a', steel: 'hold', fiddle: 'verse' }, v: vv });
+    S.push({ bars: 8, prog: 'c', drums: 'd', vd: nd, crash: true, drop: true, p: { bass: 'b2', acoustic: 'c', steel: 'hold', lead: 'hook', piano: 'comp' } });
+    S.push({ bars: 16, prog: 'v', drums: 'v', fill: 'tom', p: { bass: 'b', acoustic: 'a', steel: 'hold', fiddle: 'verse2' }, v: vv });
+    S.push({ bars: 8, prog: 'v', drums: 'brk', fill: 'tom', p: { bass: 'b0', acoustic: 'a0', fiddle: 'verse', piano: 'comp' } });
+    S.push({ bars: 8, prog: 'c', drums: 'd', vd: nd, crash: true, drop: true, fill: 'tom', p: { bass: 'b2', acoustic: 'c', steel: 'hold', lead: 'answer', piano: 'comp' } });
+    S.push({ bars: 8, prog: 'c2', drums: 'd', vd: nd, crash: true, p: { bass: 'b2', acoustic: 'c', steel: 'hold', lead: 'hook2', tele: 'answer2', piano: 'comp' } });
+    S.push({ bars: 8, prog: 'c2', drums: 'intro', lp: [16000, 1500], p: { bass: 'b0', steel: 'hold', lead: 'sparse2' } });
+  } else {
+    // Bluegrass: the banjo's rolls (forward, alternating thumb, backward) as
+    // arpeggios over the chord tones, the mandolin's chop on 2 and 4, and
+    // the breaks in turn: banjo, mandolin, fiddle.
+    const rolls = ['0 1 2 0 1 2 0 1 2 0 1 2 0 1 2 0', '0 2 1 2 0 2 3 2 0 2 1 2 0 2 3 2', '2 1 0 2 1 0 2 1 2 1 0 2 1 0 2 1', '0 1 2 3 0 1 2 3 0 1 2 0 1 2 0 1'];
+    const swapRoll = (s) => s.split(' ').map((t) => (r.chance(0.12) ? String(r.int(0, 3)) : t)).join(' ');
+    T.parts.banjo = { type: 'arp', lo: 55, res: 1, gate: 0.9, ch: { rev: 0.2, pan: -0.3, level: 0.42 }, pat: {}, lab: P('banjo') };
+    const nr = setPats(T.parts.banjo, 'r', variants(r, r.pick(rolls), 2, 0, null, swapRoll));
+    T.parts.banjo.pat.solo = variants(r, r.pick(rolls.slice(1)), 1, 0, null, swapRoll)[1];
+    T.parts.mandolin = { type: 'chord', lo: 67, gate: 0.25, ch: { rev: 0.25, pan: 0.35, level: 1.6 }, pat: { chop: '....x.......x...' }, lab: P('mandolin') };
+    const mm = motif(r, { bars: 2, density: 'dense', figure: 0.6 });
+    const HM = hooks(r, mm, { scale, tonic: 72 + tonic, prog: progV, lo: -5, hi: 6, gate: 2, avoid });
+    T.parts.mandoLead = { type: 'mel', res: 1, ch: { rev: 0.3, pan: 0.3, level: 0.9 }, pat: { brk: HM.hook }, lab: P('mandolin', { strum: 0, gain: 0.26, name: 'mandolin lead' }) };
+    T.parts.fiddle = { type: 'mel', res: 1, legato: true, ch: { rev: 0.35, pan: -0.15, level: 0.9 }, pat: { verse: HV.hook, verse2: HV.answer }, lab: P('fiddle') };
+    const vv = { bass: vb, acoustic: na, banjo: nr };
+    S.push({ bars: 8, prog: 'c', drums: 'none', lp: [800, 16000], p: { banjo: 'r0', lead: 'sparse' } });
+    S.push({ bars: 16, prog: 'v', drums: 'none', p: { bass: 'b', acoustic: 'a', banjo: 'r', fiddle: 'verse' }, v: vv });
+    S.push({ bars: 16, prog: 'c', drums: 'none', drop: true, p: { bass: 'b2', acoustic: 'c', banjo: 'r', mandolin: 'chop', lead: 'hook' }, v: { banjo: nr } });
+    S.push({ bars: 16, prog: 'v', drums: 'none', p: { bass: 'b', acoustic: 'a', mandolin: 'chop', banjo: 'solo' }, v: { bass: vb, acoustic: na } });
+    S.push({ bars: 16, prog: 'c', drums: 'none', drop: true, p: { bass: 'b2', acoustic: 'c', banjo: 'r', mandolin: 'chop', lead: 'answer' }, v: { banjo: nr } });
+    S.push({ bars: 16, prog: 'v', drums: 'none', p: { bass: 'b', acoustic: 'a', banjo: 'r0', mandoLead: 'brk' }, v: { bass: vb, acoustic: na } });
+    S.push({ bars: 16, prog: 'v', drums: 'none', p: { bass: 'b', acoustic: 'a', banjo: 'r', mandolin: 'chop', fiddle: 'verse2' }, v: vv });
+    S.push({ bars: 16, prog: 'c2', drums: 'none', drop: true, p: { bass: 'b2', acoustic: 'c', banjo: 'r', mandolin: 'chop', lead: 'hook2' }, v: { banjo: nr } });
+    S.push({ bars: 8, prog: 'c2', drums: 'none', lp: [16000, 1500], p: { banjo: 'r0', lead: 'sparse2' } });
+  }
+  T.sections = expand(S, r, dejavu);
+  return T;
+}
+
+export const GENRES = { house, techno, trance, eurobeat, psytrance, dnb, garage, chicha, country };
+export const GENRE_NAMES = { house: 'House', techno: 'Techno', trance: 'Trance', eurobeat: 'Eurobeat', psytrance: 'Psytrance', dnb: 'Drum & bass', garage: 'UK garage', chicha: 'Chicha', country: 'Country' };

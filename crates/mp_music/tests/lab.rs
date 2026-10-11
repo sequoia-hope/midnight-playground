@@ -7,7 +7,7 @@ use mp_music::compose::{
     MINOR, Motif, MotifOpts, R, Realise, SCALES, chord_on, chord_pcs, euclid, expand, motif,
     progression, realise, thin,
 };
-use mp_music::genres::{GENRES, chicha, genre, house, trance};
+use mp_music::genres::{GENRES, chicha, country, genre, house, trance};
 use mp_music::seq::{DRUM_LANES, Event, Seq, compile_track, is_drum_lane, note_to_midi};
 use mp_music::track::{Part, Section, Track, lookup};
 
@@ -479,4 +479,187 @@ fn expand_splits_long_sections_into_8_bar_blocks_and_keeps_the_seams_where_they_
     assert_eq!(lookup(&out[1].p, "bass").map(String::as_str), Some("b0"));
     assert_eq!(out[0].drums.as_deref(), Some("g0"));
     assert!(out[0].v.is_none() && out[0].vd.is_none());
+}
+
+#[test]
+fn country_the_bass_in_two_walks_into_every_change_the_train_beat_the_shuffle_bluegrass_without_drums()
+ {
+    let mut subs: Vec<String> = Vec::new();
+    for seed in 1..=16 {
+        let t = country(seed, None);
+        let style = t.style.clone().expect("style");
+        let sub = style.split(" ·").next().expect("sub").to_owned();
+        if !subs.contains(&sub) {
+            subs.push(sub.clone());
+        }
+        assert_eq!(t.kit_name.as_deref(), Some("country"));
+        // The bass: the root on 1, the fifth (third, root, octave) on 3, and
+        // the approach note 'p' before every chord change.
+        for (k, pat) in &t.part("bass").expect("bass").pat {
+            for bar in pat.as_bytes().chunks(16) {
+                let bar = std::str::from_utf8(bar).expect("ascii");
+                assert_eq!(&bar[..1], "r", "{} {k} starts on the root: {bar}", t.id);
+                assert!(
+                    "rtfo".contains(&bar[8..9]),
+                    "{} {k} the two-beat on 3: {bar}",
+                    t.id
+                );
+            }
+            assert!(pat.contains('p'), "{} {k} walks into a change", t.id);
+        }
+        let lead = t.part("lead").expect("lead");
+        match sub.as_str() {
+            "Honky-tonk" => {
+                let d0 = t.drum("d0").expect("d0");
+                let snare = lookup(d0, "snare").expect("snare");
+                assert_eq!(&snare[4..5], "X");
+                assert_eq!(&snare[12..13], "X");
+                assert!(
+                    lookup(d0, "brush").is_some()
+                        && lookup(t.drum("v").expect("v"), "sidestick").is_some(),
+                    "brushes and the sidestick"
+                );
+                assert!(t.part("fiddle").is_some() && t.part("piano").is_some());
+                assert_eq!(lead.lab.name.as_deref(), Some("telecaster"));
+                assert!(
+                    t.sections
+                        .iter()
+                        .any(|s| s.fill.as_deref() == Some("train"))
+                );
+            }
+            "Country shuffle" => {
+                assert_eq!(t.swing8, Some(0.6));
+                assert!((72.0..=92.0).contains(&t.bpm));
+                assert_eq!(lead.lab.kind, "string");
+                assert!(
+                    lead.lab.swell.is_some_and(|s| s > 0.0),
+                    "the steel carries the hook"
+                );
+            }
+            "Bluegrass" => {
+                assert!(t.drum("none").expect("none").is_empty());
+                assert!(
+                    t.sections
+                        .iter()
+                        .all(|s| s.drums.as_deref() == Some("none"))
+                );
+                assert_eq!(t.part("banjo").expect("banjo").kind, "arp");
+                assert_eq!(lead.lab.kind, "bowed");
+                assert_eq!(
+                    t.part("bass").expect("bass").lab.name.as_deref(),
+                    Some("uprightBass")
+                );
+            }
+            other => {
+                assert_eq!(other, "Outlaw country");
+                assert!(style.contains("mixolydian"));
+                assert!(t.part("bari").is_some() && t.part("organ").is_some());
+            }
+        }
+        // The last chorus is a step up.
+        assert_ne!(lookup(&t.prog, "c"), lookup(&t.prog, "c2"));
+        assert!(t.sections.iter().any(|s| {
+            s.prog.as_deref() == Some("c2")
+                && lookup(&s.p, "lead").map(String::as_str) == Some("hook2")
+        }));
+        // The lead is major pentatonic off the chord tones: no 4th or 7th of
+        // the key except as a chord tone; the outlaw side keeps its b7.
+        let key_name = style
+            .split(" · ")
+            .nth(1)
+            .expect("key")
+            .split(' ')
+            .next()
+            .expect("note");
+        let tonic = [
+            "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B",
+        ]
+        .iter()
+        .position(|n| *n == key_name)
+        .expect("a tonic") as i32;
+        let chords: Vec<&str> = lookup(&t.prog, "c").expect("c").split(' ').collect();
+        let bad: &[i32] = if sub == "Outlaw country" {
+            &[5]
+        } else {
+            &[5, 11]
+        };
+        let hook = lookup(&lead.pat, "hook").expect("hook");
+        let mut off = 0;
+        let mut n = 0;
+        for (i, tok) in hook.split(' ').enumerate() {
+            if !is_note(tok) {
+                continue;
+            }
+            n += 1;
+            let pc = (note_to_midi(tok.trim_end_matches('!')).expect("a note") as i32 - tonic
+                + 12 * 10)
+                % 12;
+            let tones: Vec<i32> = chord_pcs(chords[(i / 16) % chords.len()])
+                .pcs
+                .iter()
+                .map(|p| (p - tonic + 12) % 12)
+                .collect();
+            if bad.contains(&pc) && !tones.contains(&pc) {
+                off += 1;
+            }
+        }
+        assert!(
+            n >= 6 && off == 0,
+            "{}: {off} of {n} lead notes off the pentatonic",
+            t.id
+        );
+    }
+    assert_eq!(subs.len(), 4, "all four sub-styles over 16 seeds: {subs:?}");
+    // The approach note: 'p' is a half step below the next chord's root.
+    let mut t = Track::skeleton("approach");
+    t.bpm = 120.0;
+    t.prog = vec![("a".to_owned(), "C F".to_owned())];
+    t.parts = vec![(
+        "bass".to_owned(),
+        Part {
+            kind: "bass".into(),
+            lo: Some(33.0),
+            pat: vec![("a".to_owned(), "r...........p...".to_owned())],
+            ..Default::default()
+        },
+    )];
+    t.sections = vec![Section {
+        bars: 2,
+        drums: None,
+        p: vec![("bass".to_owned(), "a".to_owned())],
+        ..Default::default()
+    }];
+    let mut s = Seq::new(t);
+    let mut notes = Vec::new();
+    for _ in 0..32 {
+        for e in s.step() {
+            if let Event::Note { midis, .. } = e {
+                notes.push(midis[0]);
+            }
+        }
+    }
+    assert_eq!(notes, vec![36.0, 40.0, 41.0, 35.0]);
+    // swing8: the second 8th of every beat late by swing8 16ths, the 16ths
+    // either side by half.
+    let mut t = Track::skeleton("shuffle");
+    t.bpm = 120.0;
+    t.swing8 = Some(0.6);
+    t.prog = vec![("a".to_owned(), "C".to_owned())];
+    t.drums = vec![("d".to_owned(), vec![("hat".to_owned(), "xxxx".to_owned())])];
+    t.sections = vec![Section {
+        bars: 1,
+        drums: Some("d".into()),
+        ..Default::default()
+    }];
+    let mut q = Seq::new(t);
+    let step = 60.0 / 120.0 / 4.0;
+    let mut dts = Vec::new();
+    for _ in 0..4 {
+        for e in q.step() {
+            if let Event::Drum { dt, .. } = e {
+                dts.push((dt / step * 100.0).round() / 100.0);
+            }
+        }
+    }
+    assert_eq!(dts, vec![0.0, 0.3, 0.6, 0.3]);
 }

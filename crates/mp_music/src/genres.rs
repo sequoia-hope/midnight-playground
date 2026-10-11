@@ -20,7 +20,8 @@
 //!
 //! Genres: house (deep, anthem), techno (acid, melodic), trance, eurobeat
 //! (the touge: Initial D's mountain roads), psytrance, drum & bass (liquid,
-//! roller), UK garage and chicha.
+//! roller), UK garage, chicha and country (honky-tonk, the shuffle,
+//! bluegrass, outlaw).
 //!
 //! Every draw is in the JS's order, including the ones inside object
 //! literals (a part's `pat` before its `lab`), so the goldens hash the same.
@@ -31,9 +32,9 @@
 
 use crate::compose::Item::{Deg as D, Ext as X};
 use crate::compose::{
-    DORIAN, Density, FIGURES, Item, MINOR, Motif, MotifOpts, NOTE, PHRYGIAN, PROGS, R, Realise,
-    Scale, bars, bass_bar, cells, changes_after, euclid, expand, lane, loop_, motif, mutate,
-    no_dim, progression, realise, thin, variants,
+    DORIAN, Density, FIGURES, Item, MAJOR, MINOR, MIXOLYDIAN, Motif, MotifOpts, NOTE, PHRYGIAN,
+    PROGS, R, Realise, Scale, bars, bass_bar, cells, changes_after, euclid, expand, lane, loop_,
+    motif, mutate, no_dim, progression, realise, thin, variants,
 };
 use crate::patches::bpatch;
 use crate::track::{Ch, KitTweak, Lab, Pairs, Part, Pump, Section, Track, lookup, put};
@@ -84,7 +85,8 @@ fn bar_chords(prog: &str) -> Vec<String> {
         .collect()
 }
 
-/// `hooks`' options; `phrase` defaults to 4 and `avoid` to none.
+/// `hooks`' options; `phrase` defaults to 4, `avoid` to none and `nbars`
+/// (the bars the hook is realised over) to 8.
 struct HookOpts<'a> {
     scale: &'static Scale,
     tonic: i32,
@@ -94,6 +96,7 @@ struct HookOpts<'a> {
     gate: Option<usize>,
     phrase: usize,
     avoid: &'a [i32],
+    nbars: usize,
 }
 
 impl Default for HookOpts<'_> {
@@ -107,6 +110,7 @@ impl Default for HookOpts<'_> {
             gate: None,
             phrase: 4,
             avoid: &[],
+            nbars: 8,
         }
     }
 }
@@ -130,14 +134,20 @@ impl Hooks {
 }
 
 /// The hook: one motif realised three ways over eight bars of a progression
-/// (two statements of a four-bar loop): full, thinned, and answered (the
-/// same figure a third higher). The stream is unused here, as in the JS.
+/// (two statements of a four-bar loop; `nbars` for a longer one, the
+/// 12-bar): full, thinned, and answered (the same figure a third higher).
+/// The stream is unused here, as in the JS.
 fn hooks(_r: &mut R, m: &Motif, o: HookOpts) -> Hooks {
     let c = bar_chords(o.prog);
-    let chords: Vec<String> = if c.len() >= 8 {
-        c[..8].to_vec()
+    let chords: Vec<String> = if c.len() >= o.nbars {
+        c[..o.nbars].to_vec()
     } else {
-        c.iter().chain(c.iter()).take(8).cloned().collect()
+        c.iter()
+            .chain(c.iter())
+            .chain(c.iter())
+            .take(o.nbars)
+            .cloned()
+            .collect()
     };
     let over = |mm: &Motif, gate: Option<usize>, start: i32| {
         realise(
@@ -3916,6 +3926,1203 @@ pub fn chicha(seed: u32, dejavu: Option<f64>) -> Track {
     t
 }
 
+// ── Country ──────────────────────────────────────────────────────
+// Four sub-styles (sound.md 3.5.1), picked per seed. Honky-tonk and
+// Bakersfield: the train beat, a two-beat bass that walks into every
+// change, the telecaster's hook with slapback, the steel's swells under the
+// chorus, the fiddle on the verse, a honky-tonk piano, now and then the
+// 12-bar. The shuffle: a triplet feel at a ballad's tempo (`swing8`),
+// brushes and the sidestick, the steel carries the hook, the fiddle's long
+// lines. Bluegrass: no drums; banjo rolls, the mandolin's chop on 2 and 4,
+// the upright bass in two, the fiddle's hook, and everybody takes a break
+// in turn (banjo, mandolin, fiddle). Outlaw: straight 8ths, a baritone
+// guitar riff, a Hammond, the bVII of mixolydian, the tele's hook. Major
+// keys and the major pentatonic (`avoid` [3, 6]); the last chorus a whole
+// step up (the shuffle a half). Déjà vu as in every genre.
+pub fn country(seed: u32, dejavu: Option<f64>) -> Track {
+    let dejavu = dejavu.unwrap_or(0.75);
+    let mut r = R::new(seed, 9);
+    let r = &mut r;
+    let sub = r.fork(1).weighted(&[
+        ("honkytonk", 4.0),
+        ("shuffle", 2.0),
+        ("bluegrass", 2.0),
+        ("outlaw", 2.0),
+    ]);
+    let honkytonk = sub == "honkytonk";
+    let shuffle = sub == "shuffle";
+    let bluegrass = sub == "bluegrass";
+    let outlaw = sub == "outlaw";
+    let tonic = r.int(0, 11);
+    let bpm = if honkytonk {
+        r.int(120, 136)
+    } else if shuffle {
+        r.int(72, 92)
+    } else if bluegrass {
+        r.int(140, 170)
+    } else {
+        r.int(116, 130)
+    };
+    let scale = if outlaw { MIXOLYDIAN } else { MAJOR };
+    let twelve = honkytonk && r.chance(0.4);
+    let degs_v = if outlaw {
+        r.pick(PROGS.outlaw)
+    } else if twelve {
+        r.pick(PROGS.twelve)
+    } else {
+        r.pick(PROGS.country_verse)
+    };
+    let degs_c = if outlaw {
+        r.pick(PROGS.outlaw)
+    } else {
+        r.pick(PROGS.country)
+    };
+    let prog_v = progression(scale, tonic, degs_v, "");
+    let prog_c = progression(scale, tonic, degs_c, "");
+    let up = (tonic + if shuffle { 1 } else { 2 }) % 12;
+    let prog_c2 = progression(scale, up, degs_c, "");
+    let name = if honkytonk {
+        "Honky-tonk"
+    } else if shuffle {
+        "Country shuffle"
+    } else if bluegrass {
+        "Bluegrass"
+    } else {
+        "Outlaw country"
+    };
+    let mut t = Track::skeleton(&format!("country-{seed}"));
+    t.title = Some(format!("Country {seed}"));
+    t.style = Some(format!(
+        "{} · {} {} · {} → {}",
+        name,
+        NOTE[tonic as usize],
+        scale_name(scale),
+        prog_c,
+        NOTE[up as usize]
+    ));
+    t.bpm = bpm as f64;
+    t.gain = 1.05;
+    t.delay = 0.25;
+    t.delay_fb = 0.12;
+    t.pump = Pump {
+        depth: 0.05,
+        release: 0.12,
+    };
+    t.kit_name = s("country");
+    t.prog = sp(&[("v", &prog_v), ("c", &prog_c), ("c2", &prog_c2)]);
+    // The band thins instead of a filter closing: the steel, the fiddle and
+    // the piano go first, the snare gives way to the brushes.
+    t.lay = lay(&[
+        ("steel", 0.4),
+        ("fiddle", 0.35),
+        ("piano", 0.3),
+        ("snare", 0.45),
+        ("hat", 0.25),
+        ("ride", 0.55),
+        ("mandolin", 0.3),
+        ("mandoLead", 0.5),
+        ("organ", 0.15),
+        ("tele", 0.3),
+    ]);
+    if shuffle {
+        t.swing8 = Some(0.6);
+    }
+
+    // Drums.
+    let mut nd = 0;
+    if honkytonk {
+        // The train beat: snare 8ths accented on 2 and 4 over the brushes, the
+        // kick on 1 and 3 with a push.
+        let train = sp(&[
+            (
+                "kick",
+                r.pick(&["x.......x.....x.", "x...x...x.....x.", "x.......x......."]),
+            ),
+            (
+                "snare",
+                r.pick(&["o.o.X.o.o.o.X.o.", "o.o.X.o.o.o.X.oo", "x.o.X.o.x.o.X.o."]),
+            ),
+            ("brush", "x.x.x.x.x.x.x.x."),
+            ("hat", "..x...x...x...x."),
+        ]);
+        let d2 = with(
+            &train,
+            &[
+                (
+                    "snare",
+                    &mutate(r, get(&train, "snare"), 0.1, &['o', 'x', '.']),
+                ),
+                ("hat", "x.x.x.x.x.x.x.x."),
+            ],
+        );
+        nd = set_drums(
+            &mut t,
+            "d",
+            vec![
+                train.clone(),
+                with(&train, &[("ride", "x.x.x.x.x.x.x.x.")]),
+                d2,
+            ],
+        );
+        put(
+            &mut t.drums,
+            "intro",
+            sp(&[
+                ("kick", get(&train, "kick")),
+                ("brush", "..x...x...x...x."),
+                ("hat", "..x...x...x...x."),
+            ]),
+        );
+        put(
+            &mut t.drums,
+            "v",
+            sp(&[
+                ("kick", get(&train, "kick")),
+                ("brush", "x.x.x.x.x.x.x.x."),
+                ("sidestick", "....x.......x..."),
+                ("hat", "..x...x...x...x."),
+            ]),
+        );
+        put(
+            &mut t.drums,
+            "brk",
+            with(&train, &[("ride", "x.x.x.x.x.x.x.x.")]),
+        );
+    } else if shuffle {
+        // Brushes on the 8ths (swung by swing8), the sidestick on 2 and 4, the
+        // ride; the snare proper only in the chorus.
+        let kick = r.pick(&["x.......x.......", "x.......x.....x.", "x.........x....."]);
+        let sh = sp(&[
+            ("kick", kick),
+            ("sidestick", "....x.......x..."),
+            ("brush", "x.x.x.x.x.x.x.x."),
+            ("ride", "x.x.x.x.x.x.x.x."),
+        ]);
+        put(&mut t.drums, "v", sh.clone());
+        nd = set_drums(
+            &mut t,
+            "d",
+            vec![
+                with(&sh, &[("snare", "....x.......x...")]),
+                with(
+                    &sh,
+                    &[("snare", "....x.......x..."), ("hat", "x.x.x.x.x.x.x.x.")],
+                ),
+            ],
+        );
+        put(&mut t.drums, "intro", sp(&[("brush", "x.x.x.x.x.x.x.x.")]));
+        put(
+            &mut t.drums,
+            "brk",
+            with(&sh, &[("ride", "x.x.x.x.x.x.x.x.")]),
+        );
+    } else if bluegrass {
+        put(&mut t.drums, "none", vec![]);
+    } else {
+        // Straight 8ths on the hat, a rock kick, the snare on 2 and 4.
+        let kick = r.pick(&["x......x..x.....", "x.....x.x.......", "x...x...x...x..."]);
+        let o = sp(&[
+            ("kick", kick),
+            ("snare", "....X.......X..."),
+            ("hat", "x.x.x.x.x.x.x.x."),
+        ]);
+        let d1 = with(
+            &o,
+            &[("hat", &mutate(r, get(&o, "hat"), 0.12, &['x', 'o', '.']))],
+        );
+        nd = set_drums(
+            &mut t,
+            "d",
+            vec![
+                o.clone(),
+                d1,
+                with(
+                    &o,
+                    &[("ride", "x.x.x.x.x.x.x.x."), ("hat", "....x.......x...")],
+                ),
+            ],
+        );
+        put(
+            &mut t.drums,
+            "intro",
+            sp(&[("kick", kick), ("hat", "x.x.x.x.x.x.x.x.")]),
+        );
+        put(
+            &mut t.drums,
+            "v",
+            sp(&[
+                ("kick", kick),
+                ("sidestick", "....x.......x..."),
+                ("hat", "x.x.x.x.x.x.x.x."),
+            ]),
+        );
+        put(
+            &mut t.drums,
+            "brk",
+            with(&o, &[("ride", "x.x.x.x.x.x.x.x.")]),
+        );
+    }
+
+    // The bass in two: root on 1, fifth on 3, and the walk (1-3-5-approach)
+    // into the next chord. Outlaw walks less and plays 8ths now and then.
+    let lo = bass_lo(tonic);
+    let two: &[(&str, f64)] = if outlaw {
+        &[
+            ("r.......f.......", 4.0),
+            ("r.r.r.r.r.r.r.r.", 2.0),
+            ("r.......f...r...", 1.0),
+            ("r.r.r.r.f.f.f.f.", 1.0),
+        ]
+    } else {
+        &[
+            ("r.......f.......", 6.0),
+            ("r.......t.......", 1.0),
+            ("r...t...f.......", 1.5),
+            ("r.......f...o...", 0.5),
+        ]
+    };
+    let walk: &[(&str, f64)] = &[
+        ("r.......f...p...", 4.0),
+        ("r...t...f...p...", 3.0),
+        ("r.......t...p...", 1.0),
+        ("r...f...o...p...", 0.5),
+    ];
+    let v_bars = bar_chords(&prog_v).len();
+    let bass_over = |r: &mut R, prog: &str| {
+        bars(bar_chords(prog).len(), |b| {
+            r.weighted(if changes_after(prog, b) { walk } else { two })
+        })
+    };
+    let bass_patch = if bluegrass || shuffle {
+        p0("uprightBass")
+    } else {
+        p("fingerBass", |l| {
+            l.tone = Some(2200.0);
+            l.name = s("country bass");
+        })
+    };
+    let mut bass = Part {
+        kind: "bass".into(),
+        lo: Some(lo),
+        gate: Some(if bluegrass { 0.6 } else { 0.85 }),
+        ch: Ch {
+            pump: Some(true),
+            level: Some(if shuffle {
+                1.0
+            } else if bluegrass {
+                1.5
+            } else {
+                0.75
+            }),
+            ..Default::default()
+        },
+        pat: vec![],
+        lab: bass_patch,
+        ..Default::default()
+    };
+    let b0 = bass_over(r, &prog_v);
+    let b1 = bass_over(r, &prog_v);
+    let b2 = bass_over(r, &prog_c);
+    let vb = set_pats(&mut bass, "b", vec![b0, b1, b2]);
+    put(&mut t.parts, "bass", bass);
+
+    // The acoustic's boom-chick: the strum on the off-beats (the bass has the
+    // boom), 8th strums under the chorus.
+    let chick = if outlaw {
+        r.pick(&["..x...x...x...x.", "..x...x...x.x.x."])
+    } else {
+        r.pick(&["....x.......x...", "....x.......x..x", "....x.....x.x..."])
+    };
+    let strum8 = "..x...x...x...x.";
+    let mut acoustic = Part {
+        kind: "chord".into(),
+        lo: Some(50.0),
+        gate: Some(if bluegrass { 0.35 } else { 0.5 }),
+        ch: Ch {
+            rev: Some(0.2),
+            pan: Some(0.3),
+            level: Some(if bluegrass { 1.0 } else { 0.55 }),
+            ..Default::default()
+        },
+        pat: vec![],
+        lab: p0("acousticGuitar"),
+        ..Default::default()
+    };
+    let na = set_pats(
+        &mut acoustic,
+        "a",
+        variants(r, &loop_(4, chick, chick), 2, 0.08, &['x', '.'], None),
+    );
+    put(
+        &mut acoustic.pat,
+        "c",
+        loop_(4, strum8, &format!("{}x.xx", &strum8[..12])),
+    );
+    put(&mut t.parts, "acoustic", acoustic);
+
+    // The hook and the verse melody, major pentatonic; `nbars` follows the
+    // 12-bar. The lead instrument is the sub-style's: the tele (honky-tonk,
+    // outlaw), the steel (the shuffle), the fiddle (bluegrass).
+    let avoid: &[i32] = if scale == MAJOR { &[3, 6] } else { &[3] };
+    let mc = motif(
+        r,
+        MotifOpts {
+            bars: 2,
+            density: if shuffle {
+                Density::Sparse
+            } else {
+                Density::Medium
+            },
+            figure: 0.6,
+            ..Default::default()
+        },
+    );
+    let mv_density = r.pick(&[Density::Sparse, Density::Medium]);
+    let mv = motif(
+        r,
+        MotifOpts {
+            bars: 2,
+            density: mv_density,
+            figure: 0.5,
+            ..Default::default()
+        },
+    );
+    let gate = if shuffle {
+        10
+    } else if bluegrass {
+        3
+    } else {
+        5
+    };
+    let hc = hooks(
+        r,
+        &mc,
+        HookOpts {
+            scale,
+            tonic: 60 + tonic,
+            prog: &prog_c,
+            lo: -3,
+            hi: 9,
+            gate: Some(gate),
+            avoid,
+            ..Default::default()
+        },
+    );
+    let hc2 = hooks(
+        r,
+        &mc,
+        HookOpts {
+            scale,
+            tonic: 60 + up,
+            prog: &prog_c2,
+            lo: -3,
+            hi: 9,
+            gate: Some(gate),
+            avoid,
+            ..Default::default()
+        },
+    );
+    let nbars_v = if v_bars > 8 { v_bars } else { 8 };
+    let hv = hooks(
+        r,
+        &mv,
+        HookOpts {
+            scale,
+            tonic: 60 + tonic,
+            prog: &prog_v,
+            lo: -5,
+            hi: 7,
+            gate: Some(if shuffle { 12 } else { 6 }),
+            avoid,
+            nbars: nbars_v,
+            ..Default::default()
+        },
+    );
+    let lead_lab = if shuffle {
+        p("pedalSteel", |l| {
+            l.swell = Some(0.12);
+            l.bend = Some(1.0);
+            l.bend_t = Some(0.12);
+            l.strum = Some(0.0);
+            l.gain = Some(0.6);
+            l.name = s("steel lead");
+        })
+    } else if bluegrass {
+        p0("fiddle")
+    } else {
+        p0("telecaster")
+    };
+    put(
+        &mut t.parts,
+        "lead",
+        Part {
+            kind: "mel".into(),
+            res: Some(1.0),
+            legato: Some(true),
+            ch: Ch {
+                rev: Some(0.3),
+                dly: Some(if shuffle { 0.2 } else { 0.4 }),
+                pan: Some(0.1),
+                level: Some(if shuffle {
+                    1.0
+                } else if bluegrass {
+                    1.1
+                } else {
+                    0.7
+                }),
+                ..Default::default()
+            },
+            pat: sp(&[
+                ("hook", &hc.hook),
+                ("sparse", &hc.sparse),
+                ("answer", &hc.answer),
+                ("hook2", &hc2.hook),
+                ("sparse2", &hc2.sparse),
+            ]),
+            lab: lead_lab,
+            ..Default::default()
+        },
+    );
+    // The pedal steel under the chorus: a chord a bar, swelling and sliding in.
+    if !bluegrass {
+        put(
+            &mut t.parts,
+            "steel",
+            Part {
+                kind: "chord".into(),
+                lo: Some(62.0),
+                ch: Ch {
+                    rev: Some(0.4),
+                    dly: Some(0.25),
+                    pan: Some(-0.3),
+                    level: Some(1.2),
+                    ..Default::default()
+                },
+                pat: sp(&[("hold", HOLD)]),
+                lab: p0("pedalSteel"),
+                ..Default::default()
+            },
+        );
+    }
+
+    let mut sx: Vec<Section> = Vec::new();
+    let v_len = if twelve { 12 } else { 16 };
+    if honkytonk || outlaw {
+        // The fiddle sings the verse (honky-tonk); the tele plays it low on the
+        // outlaw side. The honky-tonk piano comps; the Hammond holds.
+        if honkytonk {
+            put(
+                &mut t.parts,
+                "fiddle",
+                Part {
+                    kind: "mel".into(),
+                    res: Some(1.0),
+                    legato: Some(true),
+                    ch: Ch {
+                        rev: Some(0.35),
+                        pan: Some(-0.15),
+                        level: Some(0.9),
+                        ..Default::default()
+                    },
+                    pat: sp(&[("verse", &hv.hook), ("verse2", &hv.answer)]),
+                    lab: p0("fiddle"),
+                    ..Default::default()
+                },
+            );
+            let comp = r.pick(&["..x...x...x...x.", "x.....x...x.....", "..x...x.x...x..."]);
+            put(
+                &mut t.parts,
+                "piano",
+                Part {
+                    kind: "chord".into(),
+                    lo: Some(55.0),
+                    gate: Some(0.6),
+                    ch: Ch {
+                        rev: Some(0.25),
+                        pan: Some(0.2),
+                        level: Some(0.5),
+                        ..Default::default()
+                    },
+                    pat: sp(&[("comp", comp)]),
+                    lab: p0("honkyPiano"),
+                    ..Default::default()
+                },
+            );
+        } else {
+            put(
+                &mut t.parts,
+                "tele2",
+                Part {
+                    kind: "mel".into(),
+                    res: Some(1.0),
+                    legato: Some(true),
+                    ch: Ch {
+                        rev: Some(0.3),
+                        dly: Some(0.3),
+                        pan: Some(-0.2),
+                        level: Some(0.8),
+                        ..Default::default()
+                    },
+                    pat: sp(&[("verse", &hv.hook), ("verse2", &hv.answer)]),
+                    lab: p("telecaster", |l| l.gain = Some(0.24)),
+                    ..Default::default()
+                },
+            );
+            let mut bari = Part {
+                kind: "bass".into(),
+                lo: Some(lo + 12.0),
+                gate: Some(0.7),
+                ch: Ch {
+                    rev: Some(0.2),
+                    pan: Some(-0.25),
+                    level: Some(0.45),
+                    ..Default::default()
+                },
+                pat: vec![],
+                lab: p0("baritoneGuitar"),
+                ..Default::default()
+            };
+            let riff_table: &[(&str, f64)] = &[
+                ("r.r.", 4.0),
+                ("r...", 2.0),
+                ("r.rr", 1.0),
+                ("..r.", 1.0),
+                ("r.f.", 1.0),
+            ];
+            let riff = bars(4, |b| {
+                bass_bar(r, riff_table, 0.5, changes_after(&prog_v, b))
+            });
+            set_pats(
+                &mut bari,
+                "g",
+                variants(r, &riff, 2, 0.1, &['r', '.', 'f'], None),
+            );
+            put(&mut t.parts, "bari", bari);
+            put(
+                &mut t.parts,
+                "organ",
+                Part {
+                    kind: "chord".into(),
+                    lo: Some(60.0),
+                    ch: Ch {
+                        rev: Some(0.4),
+                        hp: Some(150.0),
+                        pan: Some(0.15),
+                        level: Some(0.6),
+                        ..Default::default()
+                    },
+                    pat: sp(&[("hold", HOLD)]),
+                    lab: p("organ", |l| {
+                        l.chorus = Some(2.0);
+                        l.gain = Some(0.12);
+                        l.name = s("hammond");
+                    }),
+                    ..Default::default()
+                },
+            );
+        }
+        // The break: the tele's solo over the verse chords, short notes.
+        let mb = motif(
+            r,
+            MotifOpts {
+                bars: 2,
+                density: Density::Dense,
+                figure: 0.6,
+                ..Default::default()
+            },
+        );
+        let hb = hooks(
+            r,
+            &mb,
+            HookOpts {
+                scale,
+                tonic: 72 + tonic,
+                prog: &prog_v,
+                lo: -5,
+                hi: 6,
+                gate: Some(3),
+                avoid,
+                nbars: nbars_v,
+                ..Default::default()
+            },
+        );
+        put(
+            &mut t.parts,
+            "tele",
+            Part {
+                kind: "mel".into(),
+                res: Some(1.0),
+                ch: Ch {
+                    rev: Some(0.3),
+                    dly: Some(0.4),
+                    pan: Some(0.25),
+                    level: Some(0.9),
+                    ..Default::default()
+                },
+                pat: sp(&[("brk", &hb.hook), ("answer2", &hc2.answer)]),
+                lab: p("telecaster", |l| {
+                    l.pick = Some(0.95);
+                    l.decay = Some(1.2);
+                    l.gain = Some(0.28);
+                    l.name = s("tele break");
+                }),
+                ..Default::default()
+            },
+        );
+        let keys: &[(&str, &str)] = if honkytonk {
+            &[("fiddle", "verse"), ("piano", "comp")]
+        } else {
+            &[("tele2", "verse"), ("bari", "g"), ("organ", "hold")]
+        };
+        let keys2: &[(&str, &str)] = if honkytonk {
+            &[("fiddle", "verse2"), ("piano", "comp")]
+        } else {
+            &[("tele2", "verse2"), ("bari", "g"), ("organ", "hold")]
+        };
+        let ch: &[(&str, &str)] = if honkytonk {
+            &[("piano", "comp")]
+        } else {
+            &[("bari", "g0"), ("organ", "hold")]
+        };
+        let brk: &[(&str, &str)] = if honkytonk {
+            &[("piano", "comp")]
+        } else {
+            &[("bari", "g"), ("organ", "hold")]
+        };
+        let vv_ = if honkytonk {
+            vv(&[("bass", vb), ("acoustic", na)])
+        } else {
+            vv(&[("bass", vb), ("acoustic", na), ("bari", 3)])
+        };
+        let fill = if honkytonk { "train" } else { "snare" };
+        let cat = |a: &[(&str, &str)], b: &[(&str, &str)]| {
+            let mut out = sp(a);
+            for (k, v) in b {
+                put(&mut out, k, (*v).to_owned());
+            }
+            out
+        };
+        sx.push(Section {
+            bars: 8,
+            prog: s("c"),
+            drums: s("intro"),
+            lp: Some([800.0, 16000.0]),
+            p: sp(&[("steel", "hold"), ("lead", "sparse")]),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: v_len,
+            prog: s("v"),
+            drums: s("v"),
+            fill: s(fill),
+            p: cat(&[("bass", "b"), ("acoustic", "a")], keys),
+            v: vv_.clone(),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 16,
+            prog: s("c"),
+            drums: s("d"),
+            vd: Some(nd),
+            crash: Some(true),
+            drop: Some(true),
+            fill: s(fill),
+            p: cat(
+                &[
+                    ("bass", "b2"),
+                    ("acoustic", "c"),
+                    ("steel", "hold"),
+                    ("lead", "hook"),
+                ],
+                ch,
+            ),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: v_len,
+            prog: s("v"),
+            drums: s("v"),
+            fill: s(fill),
+            p: cat(&[("bass", "b"), ("acoustic", "a")], keys2),
+            v: vv_.clone(),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 16,
+            prog: s("c"),
+            drums: s("d"),
+            vd: Some(nd),
+            crash: Some(true),
+            drop: Some(true),
+            fill: s(fill),
+            p: cat(
+                &[
+                    ("bass", "b2"),
+                    ("acoustic", "c"),
+                    ("steel", "hold"),
+                    ("lead", "answer"),
+                ],
+                ch,
+            ),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: v_len,
+            prog: s("v"),
+            drums: s("brk"),
+            fill: s(fill),
+            p: cat(&[("bass", "b"), ("acoustic", "a"), ("tele", "brk")], brk),
+            v: vv_.clone(),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 16,
+            prog: s("c2"),
+            drums: s("d"),
+            vd: Some(nd),
+            crash: Some(true),
+            drop: Some(true),
+            fill: s(fill),
+            p: cat(
+                &[
+                    ("bass", "b2"),
+                    ("acoustic", "c"),
+                    ("steel", "hold"),
+                    ("lead", "hook2"),
+                    ("tele", "answer2"),
+                ],
+                ch,
+            ),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 8,
+            prog: s("c2"),
+            drums: s("intro"),
+            lp: Some([16000.0, 1500.0]),
+            p: sp(&[("bass", "b0"), ("steel", "hold"), ("lead", "sparse2")]),
+            ..Default::default()
+        });
+    } else if shuffle {
+        // The fiddle's long lines on the verse and its solo on the break; the
+        // piano comps the chorus.
+        put(
+            &mut t.parts,
+            "fiddle",
+            Part {
+                kind: "mel".into(),
+                res: Some(1.0),
+                legato: Some(true),
+                ch: Ch {
+                    rev: Some(0.4),
+                    pan: Some(-0.15),
+                    level: Some(0.9),
+                    ..Default::default()
+                },
+                pat: sp(&[("verse", &hv.hook), ("verse2", &hv.answer)]),
+                lab: p("fiddle", |l| {
+                    l.a = Some(0.14);
+                    l.vib = Some(26.0);
+                }),
+                ..Default::default()
+            },
+        );
+        let comp = r.pick(&["..x...x...x...x.", "x.....x.........", "..x.....x.x....."]);
+        put(
+            &mut t.parts,
+            "piano",
+            Part {
+                kind: "chord".into(),
+                lo: Some(55.0),
+                gate: Some(0.7),
+                ch: Ch {
+                    rev: Some(0.3),
+                    pan: Some(0.2),
+                    level: Some(0.45),
+                    ..Default::default()
+                },
+                pat: sp(&[("comp", comp)]),
+                lab: p0("honkyPiano"),
+                ..Default::default()
+            },
+        );
+        put(
+            &mut t.parts,
+            "tele",
+            Part {
+                kind: "mel".into(),
+                res: Some(1.0),
+                legato: Some(true),
+                ch: Ch {
+                    rev: Some(0.3),
+                    dly: Some(0.4),
+                    pan: Some(0.25),
+                    level: Some(0.8),
+                    ..Default::default()
+                },
+                pat: sp(&[("answer2", &hc2.answer)]),
+                lab: p("telecaster", |l| l.gain = Some(0.24)),
+                ..Default::default()
+            },
+        );
+        let vv_ = vv(&[("bass", vb), ("acoustic", na)]);
+        sx.push(Section {
+            bars: 8,
+            prog: s("c"),
+            drums: s("intro"),
+            lp: Some([800.0, 16000.0]),
+            p: sp(&[("steel", "hold"), ("lead", "sparse")]),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 16,
+            prog: s("v"),
+            drums: s("v"),
+            fill: s("tom"),
+            p: sp(&[
+                ("bass", "b"),
+                ("acoustic", "a"),
+                ("steel", "hold"),
+                ("fiddle", "verse"),
+            ]),
+            v: vv_.clone(),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 8,
+            prog: s("c"),
+            drums: s("d"),
+            vd: Some(nd),
+            crash: Some(true),
+            drop: Some(true),
+            p: sp(&[
+                ("bass", "b2"),
+                ("acoustic", "c"),
+                ("steel", "hold"),
+                ("lead", "hook"),
+                ("piano", "comp"),
+            ]),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 16,
+            prog: s("v"),
+            drums: s("v"),
+            fill: s("tom"),
+            p: sp(&[
+                ("bass", "b"),
+                ("acoustic", "a"),
+                ("steel", "hold"),
+                ("fiddle", "verse2"),
+            ]),
+            v: vv_.clone(),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 8,
+            prog: s("v"),
+            drums: s("brk"),
+            fill: s("tom"),
+            p: sp(&[
+                ("bass", "b0"),
+                ("acoustic", "a0"),
+                ("fiddle", "verse"),
+                ("piano", "comp"),
+            ]),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 8,
+            prog: s("c"),
+            drums: s("d"),
+            vd: Some(nd),
+            crash: Some(true),
+            drop: Some(true),
+            fill: s("tom"),
+            p: sp(&[
+                ("bass", "b2"),
+                ("acoustic", "c"),
+                ("steel", "hold"),
+                ("lead", "answer"),
+                ("piano", "comp"),
+            ]),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 8,
+            prog: s("c2"),
+            drums: s("d"),
+            vd: Some(nd),
+            crash: Some(true),
+            p: sp(&[
+                ("bass", "b2"),
+                ("acoustic", "c"),
+                ("steel", "hold"),
+                ("lead", "hook2"),
+                ("tele", "answer2"),
+                ("piano", "comp"),
+            ]),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 8,
+            prog: s("c2"),
+            drums: s("intro"),
+            lp: Some([16000.0, 1500.0]),
+            p: sp(&[("bass", "b0"), ("steel", "hold"), ("lead", "sparse2")]),
+            ..Default::default()
+        });
+    } else {
+        // Bluegrass: the banjo's rolls (forward, alternating thumb, backward) as
+        // arpeggios over the chord tones, the mandolin's chop on 2 and 4, and
+        // the breaks in turn: banjo, mandolin, fiddle.
+        const ROLLS: &[&str] = &[
+            "0 1 2 0 1 2 0 1 2 0 1 2 0 1 2 0",
+            "0 2 1 2 0 2 3 2 0 2 1 2 0 2 3 2",
+            "2 1 0 2 1 0 2 1 2 1 0 2 1 0 2 1",
+            "0 1 2 3 0 1 2 3 0 1 2 0 1 2 0 1",
+        ];
+        let swap_roll = |r: &mut R, s: &str, _i: usize| {
+            s.split(' ')
+                .map(|t| {
+                    if r.chance(0.12) {
+                        r.int(0, 3).to_string()
+                    } else {
+                        t.to_owned()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        let mut banjo = Part {
+            kind: "arp".into(),
+            lo: Some(55.0),
+            res: Some(1.0),
+            gate: Some(0.9),
+            ch: Ch {
+                rev: Some(0.2),
+                pan: Some(-0.3),
+                level: Some(0.42),
+                ..Default::default()
+            },
+            pat: vec![],
+            lab: p0("banjo"),
+            ..Default::default()
+        };
+        let roll = r.pick(ROLLS);
+        let nr = set_pats(
+            &mut banjo,
+            "r",
+            variants(r, roll, 2, 0.0, &[], Some(&swap_roll)),
+        );
+        let solo_core = r.pick(&ROLLS[1..]);
+        let solo = variants(r, solo_core, 1, 0.0, &[], Some(&swap_roll))
+            .pop()
+            .expect("a variant");
+        put(&mut banjo.pat, "solo", solo);
+        put(&mut t.parts, "banjo", banjo);
+        put(
+            &mut t.parts,
+            "mandolin",
+            Part {
+                kind: "chord".into(),
+                lo: Some(67.0),
+                gate: Some(0.25),
+                ch: Ch {
+                    rev: Some(0.25),
+                    pan: Some(0.35),
+                    level: Some(1.6),
+                    ..Default::default()
+                },
+                pat: sp(&[("chop", "....x.......x...")]),
+                lab: p0("mandolin"),
+                ..Default::default()
+            },
+        );
+        let mm = motif(
+            r,
+            MotifOpts {
+                bars: 2,
+                density: Density::Dense,
+                figure: 0.6,
+                ..Default::default()
+            },
+        );
+        let hm = hooks(
+            r,
+            &mm,
+            HookOpts {
+                scale,
+                tonic: 72 + tonic,
+                prog: &prog_v,
+                lo: -5,
+                hi: 6,
+                gate: Some(2),
+                avoid,
+                ..Default::default()
+            },
+        );
+        put(
+            &mut t.parts,
+            "mandoLead",
+            Part {
+                kind: "mel".into(),
+                res: Some(1.0),
+                ch: Ch {
+                    rev: Some(0.3),
+                    pan: Some(0.3),
+                    level: Some(0.9),
+                    ..Default::default()
+                },
+                pat: sp(&[("brk", &hm.hook)]),
+                lab: p("mandolin", |l| {
+                    l.strum = Some(0.0);
+                    l.gain = Some(0.26);
+                    l.name = s("mandolin lead");
+                }),
+                ..Default::default()
+            },
+        );
+        put(
+            &mut t.parts,
+            "fiddle",
+            Part {
+                kind: "mel".into(),
+                res: Some(1.0),
+                legato: Some(true),
+                ch: Ch {
+                    rev: Some(0.35),
+                    pan: Some(-0.15),
+                    level: Some(0.9),
+                    ..Default::default()
+                },
+                pat: sp(&[("verse", &hv.hook), ("verse2", &hv.answer)]),
+                lab: p0("fiddle"),
+                ..Default::default()
+            },
+        );
+        let vv_ = vv(&[("bass", vb), ("acoustic", na), ("banjo", nr)]);
+        let vv_c = vv(&[("banjo", nr)]);
+        let vv_b = vv(&[("bass", vb), ("acoustic", na)]);
+        sx.push(Section {
+            bars: 8,
+            prog: s("c"),
+            drums: s("none"),
+            lp: Some([800.0, 16000.0]),
+            p: sp(&[("banjo", "r0"), ("lead", "sparse")]),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 16,
+            prog: s("v"),
+            drums: s("none"),
+            p: sp(&[
+                ("bass", "b"),
+                ("acoustic", "a"),
+                ("banjo", "r"),
+                ("fiddle", "verse"),
+            ]),
+            v: vv_.clone(),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 16,
+            prog: s("c"),
+            drums: s("none"),
+            drop: Some(true),
+            p: sp(&[
+                ("bass", "b2"),
+                ("acoustic", "c"),
+                ("banjo", "r"),
+                ("mandolin", "chop"),
+                ("lead", "hook"),
+            ]),
+            v: vv_c.clone(),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 16,
+            prog: s("v"),
+            drums: s("none"),
+            p: sp(&[
+                ("bass", "b"),
+                ("acoustic", "a"),
+                ("mandolin", "chop"),
+                ("banjo", "solo"),
+            ]),
+            v: vv_b.clone(),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 16,
+            prog: s("c"),
+            drums: s("none"),
+            drop: Some(true),
+            p: sp(&[
+                ("bass", "b2"),
+                ("acoustic", "c"),
+                ("banjo", "r"),
+                ("mandolin", "chop"),
+                ("lead", "answer"),
+            ]),
+            v: vv_c.clone(),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 16,
+            prog: s("v"),
+            drums: s("none"),
+            p: sp(&[
+                ("bass", "b"),
+                ("acoustic", "a"),
+                ("banjo", "r0"),
+                ("mandoLead", "brk"),
+            ]),
+            v: vv_b.clone(),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 16,
+            prog: s("v"),
+            drums: s("none"),
+            p: sp(&[
+                ("bass", "b"),
+                ("acoustic", "a"),
+                ("banjo", "r"),
+                ("mandolin", "chop"),
+                ("fiddle", "verse2"),
+            ]),
+            v: vv_.clone(),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 16,
+            prog: s("c2"),
+            drums: s("none"),
+            drop: Some(true),
+            p: sp(&[
+                ("bass", "b2"),
+                ("acoustic", "c"),
+                ("banjo", "r"),
+                ("mandolin", "chop"),
+                ("lead", "hook2"),
+            ]),
+            v: vv_c.clone(),
+            ..Default::default()
+        });
+        sx.push(Section {
+            bars: 8,
+            prog: s("c2"),
+            drums: s("none"),
+            lp: Some([16000.0, 1500.0]),
+            p: sp(&[("banjo", "r0"), ("lead", "sparse2")]),
+            ..Default::default()
+        });
+    }
+    t.sections = expand(&sx, r, dejavu);
+    t
+}
+
 /// A genre: its key (`GENRES[key]`), display name (`GENRE_NAMES`) and
 /// grammar (`make(seed, dejavu)`; `None` is the genre's default déjà vu).
 pub struct Genre {
@@ -3965,6 +5172,11 @@ pub const GENRES: &[Genre] = &[
         key: "chicha",
         name: "Chicha",
         make: chicha,
+    },
+    Genre {
+        key: "country",
+        name: "Country",
+        make: country,
     },
 ];
 

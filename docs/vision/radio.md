@@ -152,7 +152,7 @@ in a row, a long night drive in the cruise mode.
 | **R1.5. Favourites** | Each station's rotation (section 8): curated `(genre, seed)` songs woven into the schedule; the DJ's lines about them, pre-rendered per song; "keep" and "skip" on the Radio page to build the lists | Most of what a station plays has been heard by someone; a DJ names a song and means it |
 | **R2. Context** | Tags; lines chosen by level, mode and event; cooldowns and history; reception (Ridgeline's static on the far side of the ridge, tunnels) | Lines feel like they belong where they're heard |
 | **R3. Memory** | Player templates pre-rendered for every combination; records and rivals feed them | The owner hears a line about their own run and it lands |
-| **R4. More stations** | Country and classical stations when their grammars exist (sound.md 3.5), each with its own DJ | vision ROADMAP M16's gate |
+| **R4. More stations** | Country (The Roadhouse, 2026-10-10, no DJ yet) and classical stations when their grammars exist (sound.md 3.5), each with its own DJ | vision ROADMAP M16's gate |
 
 R1 was first planned over the seven arranged songs; the owner
 (2026-10-08) made the generated music the foundation instead, so R1 and
@@ -202,16 +202,19 @@ so that tuning to a station catches its song wherever it happens to be.
 - **The DJ** talks from clips on the main thread's graph (as the police
   radio does), ducking the station: idents and song intros at the seams the
   schedule gives, chosen by the director in `mp_game` (section 2's rules).
-- **Stations**, the first three (`mp_music::radio::STATIONS`):
+- **Stations** (`mp_music::radio::STATIONS`):
 
   | Station | DJ | Music |
   |---|---|---|
   | The Tide, 88.1 | Marisol | house, UK garage, liquid drum & bass |
   | Ridgeline Radio | Kit | techno, psytrance, trance, eurobeat, roller drum & bass |
   | Radio Pacífico, 104.3 | Teo | chicha, with some house and garage |
+  | The Roadhouse, 101.7 | none yet | country (honky-tonk, the shuffle, bluegrass, outlaw), a little chicha |
 
-  Country and classical get stations when their grammars exist (sound.md
-  3.5.1, 3.5.2); a KPIG-like coast country station and a classical one.
+  The Roadhouse (2026-10-10, D1183) is the coast country station; it is
+  Desert Run's default. Its DJ waits on the owner's call (a voice and
+  lines in `tools/dj-voice`, clips in `audio/dj/`). Classical gets a
+  station when its grammar exists (sound.md 3.5.2).
 - **Controls.** T and the pause screen's button ("Next station") step
   round the dial: the stations in order, then the Playlist (the old music,
   one stop on the dial; its own next track is the menu's picker), then

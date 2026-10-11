@@ -107,6 +107,14 @@ export const PROGS = {
   // Cumbia and chicha, in minor: i, iv and the dominant V7 ([4, 'dom']),
   // the VII and VI of the Andean side; two-chord vamps mostly.
   cumbia: [[0, 0, 3, 3], [0, 3, [4, 'dom'], 0], [0, 6, 0, 6], [0, 0, [4, 'dom'], [4, 'dom']], [0, 3, 0, [4, 'dom']], [3, [4, 'dom'], 0, 0], [0, [4, 'dom'], 0, [4, 'dom']], [5, 6, 0, 0]],
+  // Country, in major (sound.md 3.5.1): I, IV and the dominant V7, the
+  // fifties' I–vi–IV–V, the modern I–V–vi–IV, a ii–V turnaround; the
+  // verses are two-chord. `twelve` is the 12-bar of honky-tonk.
+  country: [[0, 0, 3, [4, 'dom']], [0, 3, [4, 'dom'], 0], [0, 3, 0, [4, 'dom']], [0, 5, 3, [4, 'dom']], [0, [4, 'dom'], 5, 3], [0, 1, [4, 'dom'], 0], [3, 0, [4, 'dom'], 0]],
+  countryVerse: [[0, 0, [4, 'dom'], [4, 'dom']], [0, 0, 0, [4, 'dom']], [0, [4, 'dom'], 0, [4, 'dom']], [0, 0, 3, 3], [0, 3, 0, 0]],
+  twelve: [[0, 0, 0, 0, 3, 3, 0, 0, [4, 'dom'], 3, 0, 0], [0, 3, 0, 0, 3, 3, 0, 0, [4, 'dom'], [4, 'dom'], 0, 0]],
+  // The outlaw side, in mixolydian: the bVII (degree 6) against I and IV.
+  outlaw: [[0, 0, 6, 3], [0, 6, 3, 0], [0, 6, 0, 6], [0, 0, 6, 6], [0, 3, 6, 0], [0, 6, 3, [4, 'dom']]],
 };
 
 // Whether the diatonic chord on degree d of a scale is diminished (a

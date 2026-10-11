@@ -410,6 +410,81 @@ test('chicha: the cumbia bass, the güiro\'s stroke, a pentatonic lead, twin gui
 });
 const NOTE_PC = (name) => ({ C: 0, 'C#': 1, D: 2, Eb: 3, E: 4, F: 5, 'F#': 6, G: 7, Ab: 8, A: 9, Bb: 10, B: 11 })[name];
 
+test('country: the bass in two that walks into every change, the train beat, the shuffle, bluegrass without drums, a major pentatonic lead', () => {
+  const subs = new Set();
+  for (let seed = 1; seed <= 16; seed++) {
+    const T = GENRES.country(seed);
+    const sub = T.style.split(' ·')[0];
+    subs.add(sub);
+    assert.equal(T.kitName, 'country');
+    // The bass: the root on 1, the fifth (third, root, octave) on 3, and the
+    // approach note 'p' before every chord change.
+    for (const [k, pat] of Object.entries(T.parts.bass.pat)) {
+      for (let b = 0; b < pat.length; b += 16) {
+        const bar = pat.slice(b, b + 16);
+        assert.equal(bar[0], 'r', `${T.id} ${k} bar ${b / 16} starts on the root: ${bar}`);
+        assert.ok('rtfo'.includes(bar[8]), `${T.id} ${k} the two-beat on 3: ${bar}`);
+      }
+      assert.ok(pat.includes('p'), `${T.id} ${k} walks into a change`);
+    }
+    if (sub === 'Honky-tonk') {
+      assert.equal(T.drums.d0.snare[4], 'X'); assert.equal(T.drums.d0.snare[12], 'X');
+      assert.ok(T.drums.d0.brush && T.drums.v.sidestick, 'brushes and the sidestick');
+      assert.ok(T.parts.fiddle && T.parts.piano && T.parts.steel && T.parts.lead.lab.name === 'telecaster');
+      assert.ok(T.sections.some((s) => s.fill === 'train'));
+    } else if (sub === 'Country shuffle') {
+      assert.equal(T.swing8, 0.6);
+      assert.ok(T.bpm >= 72 && T.bpm <= 92);
+      assert.equal(T.parts.lead.lab.kind, 'string'); assert.ok(T.parts.lead.lab.swell > 0, 'the steel carries the hook');
+    } else if (sub === 'Bluegrass') {
+      assert.deepEqual(T.drums.none, {});
+      assert.ok(T.sections.every((s) => s.drums === 'none'), 'no drums');
+      assert.equal(T.parts.banjo.type, 'arp'); assert.equal(T.parts.mandolin.pat.chop, '....x.......x...');
+      assert.equal(T.parts.lead.lab.kind, 'bowed');
+      assert.ok(T.parts.bass.lab.name === 'uprightBass');
+    } else {
+      assert.equal(sub, 'Outlaw country');
+      assert.ok(T.style.includes('mixolydian'));
+      assert.ok(T.parts.bari && T.parts.organ);
+    }
+    // The last chorus is a step up: a c2 progression in another key.
+    assert.notEqual(T.prog.c, T.prog.c2);
+    assert.ok(T.sections.some((s) => s.prog === 'c2' && s.p.lead === 'hook2'));
+    // The lead is major pentatonic off the chord tones: no 4th or 7th of the
+    // key except as a chord tone (the V7's 7th and 3rd); the outlaw side keeps
+    // its b7, so only the 4th is checked there.
+    const tonic = NOTE_PC(T.style.split(' · ')[1].split(' ')[0]);
+    const chords = T.prog.c.split(' ');
+    const bad = sub === 'Outlaw country' ? [5] : [5, 11];
+    let off = 0, n = 0;
+    T.parts.lead.pat.hook.split(' ').forEach((t, i) => {
+      if (!/^[A-G]/.test(t)) return;
+      n++;
+      const pc = (noteToMidi(t.replace('!', '')) - tonic + 12 * 10) % 12;
+      const tones = chordPcs(chords[Math.floor(i / 16) % chords.length]).pcs.map((p) => (p - tonic + 12) % 12);
+      if (bad.includes(pc) && !tones.includes(pc)) off++;
+    });
+    assert.ok(n >= 6 && off === 0, `${T.id}: ${off} of ${n} lead notes off the pentatonic`);
+    compileTrack(T);
+  }
+  assert.equal(subs.size, 4, 'all four sub-styles over 16 seeds');
+  // The approach note: 'p' is a half step below the next chord's root.
+  const T = { bpm: 120, prog: { a: 'C F' }, drums: {}, parts: { bass: { type: 'bass', lo: 33, pat: { a: 'r...........p...' } } }, sections: [{ bars: 2, drums: null, p: { bass: 'a' } }] };
+  const s = new Seq(T);
+  const notes = [];
+  for (let i = 0; i < 32; i++) for (const e of s.step()) if (e.k === 'note') notes.push(e.midis[0]);
+  assert.deepEqual(notes, [36, 40, 41, 35]);
+  // swing8: the second 8th of every beat late by swing8 16ths, the 16ths either side by half.
+  const S8 = { bpm: 120, swing8: 0.6, prog: { a: 'C' }, drums: { d: { hat: 'xxxx' } }, parts: {}, sections: [{ bars: 1, drums: 'd', p: {} }] };
+  const q = new Seq(S8), step = 60 / 120 / 4, dts = [];
+  for (let i = 0; i < 4; i++) for (const e of q.step()) if (e.k === 'drum') dts.push(e.dt / step);
+  assert.deepEqual(dts.map((d) => Math.round(d * 100) / 100), [0, 0.3, 0.6, 0.3]);
+  assert.ok(DRUM_LANES.includes('brush') && DRUM_LANES.includes('sidestick'));
+  // The country progressions: the dominant is the V7 in major, the bVII in mixolydian.
+  assert.equal(progression(SCALES.major, 7, [0, 3, [4, 'dom'], 0]), 'G C D7 G');
+  assert.equal(progression(SCALES.mixolydian, 9, [0, 6, 3, 0]), 'A G D A');
+});
+
 test('every genre renders: the drop is louder and brighter than the intro, over 25 seeds', () => {
   for (const [name, g] of Object.entries(GENRES)) {
     for (let seed = 1; seed <= 25; seed++) {

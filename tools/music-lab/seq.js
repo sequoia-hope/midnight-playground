@@ -11,7 +11,12 @@
 //   T.lay         { lane or part: energy } mutes that lane or part while the
 //                 live energy (0..1) is below the value;
 //   bass 'n'      the next chord's root (a pickup into the change), 'N'
-//                 accented; the same note as 'r' when the chord stays.
+//                 accented; the same note as 'r' when the chord stays;
+//   bass 'p'      the approach: a half step below the next chord's root
+//                 (the walking bass of country and swing), 'P' accented;
+//   T.swing8      the shuffle (a triplet feel): the second 8th of every beat
+//                 delayed by this many 16ths (2/3 is the triplet), the 16ths
+//                 either side of it by half as much. Replaces `swing`.
 
 const PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 function pcOf(s) {
@@ -126,12 +131,17 @@ export const FILLS = {
   // Chicha: the timbalero's abanico (a roll on the high drum opening onto
   // the low one and the bell) into the chorus; the congas and güiro play on.
   abanico: { from: 8, lanes: { timbaleH: '........xxxxxxx.', timbaleL: '...............X', cowbell: '...............x' } },
+  // Country: the snare's roll into the chorus over the train beat's kick,
+  // the floor tom on the last 8th.
+  train: { from: 8, lanes: { snare: '........x.x.xxXX', tomL: '..............x.', kick: 'x.......x.......' } },
 };
-const FILL_REPLACES = new Set(['snare', 'clap', 'hat', 'ohat', 'ride', 'shaker', 'rim', 'snap', 'tomL', 'tomM', 'tomH', 'timbaleH', 'timbaleL', 'cascara']);
+const FILL_REPLACES = new Set(['snare', 'clap', 'hat', 'ohat', 'ride', 'shaker', 'rim', 'snap', 'tomL', 'tomM', 'tomH', 'timbaleH', 'timbaleL', 'cascara', 'brush', 'sidestick']);
 for (const f of Object.values(FILLS)) f.c = Object.entries(f.lanes).map(([v, str]) => ({ voice: v, steps: str.split('') }));
 export const DRUM_LANES = ['kick', 'snare', 'clap', 'hat', 'ohat', 'ride', 'crash', 'revCrash', 'shaker', 'rim', 'snap', 'tomL', 'tomM', 'tomH', 'boom', 'cowbell',
   // The latin kit's (instruments.js KITS.latin).
-  'congaO', 'congaS', 'tumba', 'bongoH', 'bongoL', 'timbaleH', 'timbaleL', 'cascara', 'guiroL', 'guiroS', 'clave'];
+  'congaO', 'congaS', 'tumba', 'bongoH', 'bongoL', 'timbaleH', 'timbaleL', 'cascara', 'guiroL', 'guiroS', 'clave',
+  // The country kit's (KITS.country): the brushes' swish and the rim click.
+  'brush', 'sidestick'];
 
 export class Seq {
   constructor(T) {
@@ -177,7 +187,7 @@ export class Seq {
     const T = this.T, c = this.c, p = this.pos;
     const sec = T.sections[p.sec];
     const st = p.step, bar = p.bar;
-    const dt = st % 2 ? (T.swing || 0) * this.stepDur : 0;
+    const dt = T.swing8 ? T.swing8 * this.stepDur * [0, 0.5, 1, 0.5][st % 4] : st % 2 ? (T.swing || 0) * this.stepDur : 0;
     this._clock = this.n++ * this.stepDur + dt;
     const barDur = this.stepDur * 16;
     const lastBar = bar === sec.bars - 1;
@@ -258,7 +268,8 @@ export class Seq {
       const d = e.deg;
       // 'f' is the chord's own fifth (a diminished or augmented one too).
       const iv = d === 't' ? chord.iv[1] : d === 's' ? (chord.iv[3] ?? 10) : d === 'f' ? (chord.iv.find((x) => x >= 6 && x <= 8) ?? 7) : BASS_DEG[d] ?? 0;
-      const midi = d === 'n' ? lo + ((nextChord.bass - lo) % 12 + 12) % 12 : root + iv;
+      const nextRoot = lo + ((nextChord.bass - lo) % 12 + 12) % 12;
+      const midi = d === 'n' ? nextRoot : d === 'p' ? nextRoot - 1 : root + iv;
       const prev = this.last[name];
       const glideFrom = prev && prev.slide ? prev.midi : null;
       this.last[name] = { midi, slide: e.slide };

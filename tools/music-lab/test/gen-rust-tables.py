@@ -14,7 +14,7 @@ import sys
 d = json.load(sys.stdin)
 KITS, TWEAK, SHA = d["KITS"], d["SAMPLE_TWEAK"], d["sha"]["KITS"]
 
-NUMS = {"a":"a","d":"d","s":"s","r":"r","fa":"fa","fd":"fd","fs":"fs","fr":"fr","gain":"gain","oct":"oct","cutoff":"cutoff","res":"res","fenv":"fenv","keytrack":"keytrack","drive":"drive","sub":"sub","noise":"noise","glide":"glide","bend":"bend","bendT":"bend_t","vib":"vib","vibRate":"vib_rate","vibDelay":"vib_delay","saw":"saw","pulse":"pulse","pw":"pw","pwm":"pwm","unison":"unison","detune":"detune","hpf":"hpf","chorus":"chorus","lfoRate":"lfo_rate","vowelMix":"vowel_mix","vowelQ":"vowel_q","env":"env","decay":"decay","accent":"accent","fbk":"fbk","damp":"damp","pick":"pick","pickPos":"pick_pos","body":"body","bodyQ":"body_q","bodyMix":"body_mix","tone":"tone","trem":"trem","tremRate":"trem_rate","wah":"wah","wahHz":"wah_hz","wahQ":"wah_q","wahRate":"wah_rate","strum":"strum"}
+NUMS = {"a":"a","d":"d","s":"s","r":"r","fa":"fa","fd":"fd","fs":"fs","fr":"fr","gain":"gain","oct":"oct","cutoff":"cutoff","res":"res","fenv":"fenv","keytrack":"keytrack","drive":"drive","sub":"sub","noise":"noise","glide":"glide","bend":"bend","bendT":"bend_t","vib":"vib","vibRate":"vib_rate","vibDelay":"vib_delay","saw":"saw","pulse":"pulse","pw":"pw","pwm":"pwm","unison":"unison","detune":"detune","hpf":"hpf","chorus":"chorus","lfoRate":"lfo_rate","vowelMix":"vowel_mix","vowelQ":"vowel_q","env":"env","decay":"decay","accent":"accent","fbk":"fbk","damp":"damp","pick":"pick","pickPos":"pick_pos","body":"body","bodyQ":"body_q","bodyMix":"body_mix","tone":"tone","trem":"trem","tremRate":"trem_rate","wah":"wah","wahHz":"wah_hz","wahQ":"wah_q","wahRate":"wah_rate","strum":"strum","swell":"swell","body2":"body2","body2Q":"body2_q","body2Mix":"body2_mix","strings":"strings","spread":"spread","dry":"dry"}
 
 
 def gen_patches(d):
@@ -92,7 +92,7 @@ TYPES = {
     "kick808": "Kick808", "kick909": "Kick909", "tom": "Tom", "boom": "Boom",
     "snare808": "Snare808", "snare909": "Snare909", "clap": "Clap", "metal": "Metal",
     "cymbal": "Cymbal", "cowbell": "Cowbell", "rim": "Rim", "shaker": "Shaker",
-    "snap": "Snap", "swell": "Swell", "conga": "Conga", "guiro": "Guiro",
+    "snap": "Snap", "swell": "Swell", "conga": "Conga", "guiro": "Guiro", "brush": "Brush",
 }
 
 

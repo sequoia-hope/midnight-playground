@@ -21,13 +21,18 @@
 //   string a plucked string (Karplus-Strong as Jaffe and Smith extended it):
 //          a pick burst into a tuned delay loop with damping, a pickup or
 //          body resonance, then the amp: drive, a pedal wah, tremolo. Chicha's
-//          surf guitars first; country's telecaster, acoustic, banjo and
-//          upright bass and the harpsichord are parameter sets of the same
-//          model (sound.md 3.5).
+//          surf guitars first; country's telecaster, acoustic (a second body
+//          resonance), pedal steel (the volume pedal's swell, the bar's
+//          vibrato), banjo, mandolin (two strings a few cents apart) and
+//          upright bass are parameter sets of the same model (sound.md 3.5).
+//   bowed  the fiddle: a saw as the bow with bow noise, a slow attack,
+//          vibrato after a delay, glide between legato notes, through the
+//          instrument's body resonances. Polyphonic for double stops.
 //   drums  TR-808 and TR-909 kits synthesised per hit (kick, snare, clap,
 //          hats, ride, crash, rim, cowbell, toms, shaker, snap, boom, swell),
-//          and a latin kit (congas, bongos, timbales and their cáscara,
-//          campana, güiro, maracas, clave) for chicha.
+//          a latin kit (congas, bongos, timbales and their cáscara,
+//          campana, güiro, maracas, clave) for chicha, and a country kit (a
+//          soft kick, a snare with wires, the brushes' swish, the sidestick).
 //
 // Every voice adds into a stereo pair; instruments own their voices and gate
 // timing (a note knows its length in samples), so the sequencer only fires.
@@ -297,7 +302,10 @@ class FMVoice {
 // comb that gives a pluck its twang, 0 for none), `decay` the ring time
 // in seconds, `r` how fast it is muted when the note ends, `bend` / `bendT`
 // a slide up into the note, `glide` a slide from the last note when legato,
-// `strum` seconds between the notes of a chord. The amp (drive, wah,
+// `strum` seconds between the notes of a chord, `swell` the volume pedal
+// (seconds from silence to full after the pluck: the pedal steel), `body2`
+// a second resonance (an acoustic's air mode under its top), `vib` /
+// `vibRate` / `vibDelay` the bar's vibrato in cents. The amp (drive, wah,
 // tremolo) is the instrument's, in Poly.
 class StringVoice {
   constructor(seed) {
@@ -307,8 +315,9 @@ class StringVoice {
     this.w = 0; this.d = 2; this.g = 1; this.gRel = 1; this.damp = 0.4; this.lp = 0;
     this.on = false; this.left = 0; this.age = 0; this.wait = 0; this.rel = false;
     this.exc = 0; this.excN = 0; this.excD = 0; this.excLp = new OnePole(4000);
-    this.body = new SVF(); this.tone = new OnePole(6000);
+    this.body = new SVF(); this.body2 = new SVF(); this.tone = new OnePole(6000);
     this.midi = -1; this.cur = 110; this.hz = 110; this.glideK = 0; this.k = 0; this.amp = 0;
+    this.sw = 1; this.swK = 0; this.vibT = 0; this.vibC = 0;
   }
   start(p, midi, vel, durS, glideFrom, t, wait = 0) {
     this.midi = midi; this.vel = vel; this.left = Math.max(1, durS | 0); this.on = true; this.age = t; this.wait = wait | 0;
@@ -330,8 +339,13 @@ class StringVoice {
     this.excN = n + this.excD;
     this.exc = this.excN;
     this.body.set(p.body ?? 2500, p.bodyQ ?? 1.2);
+    if (p.body2) this.body2.set(p.body2, p.body2Q ?? 1.5);
     this.tone.setHz(p.tone ?? 6000);
     this.rel = false; this.k = 0; this.amp = 1; this.lp = 0;
+    // The swell: from silence to full over `swell` seconds, a linear ramp
+    // per sample (0 or missing: at once).
+    this.sw = p.swell ? 0 : 1; this.swK = p.swell ? 1 / (p.swell * SR) : 0;
+    this.vibT = 0; this.vibC = 0;
     this.buf.fill(0);
     this._tune(p);
   }
@@ -342,19 +356,31 @@ class StringVoice {
   // the most damping (the plain average), and past it the filter only
   // lengthens the loop, so it stops there.
   _tune(p) {
+    const hz = this.vibC ? this.cur * cents(this.vibC) : this.cur;
     this.damp = clamp(p.damp ?? 0.4, 0, 0.5);
-    this.d = Math.max(2, SR / this.cur - this.damp);
-    this.g = Math.pow(10, -3 / (Math.max(0.02, p.decay ?? 1.5) * this.cur));
-    this.gRel = Math.pow(10, -3 / (Math.max(0.01, p.r ?? 0.3) * this.cur));
+    this.d = Math.max(2, SR / hz - this.damp);
+    this.g = Math.pow(10, -3 / (Math.max(0.02, p.decay ?? 1.5) * hz));
+    this.gRel = Math.pow(10, -3 / (Math.max(0.01, p.r ?? 0.3) * hz));
   }
   get done() { return !this.on; }
   run(p) {
     if (this.wait > 0) { this.wait--; return 0; }
     if (this.left > 0 && --this.left === 0) this.rel = true;
-    if ((this.k = (this.k + 1) & 15) === 1 && this.cur !== this.hz) {
-      this.cur += (this.hz - this.cur) * (1 - Math.pow(1 - this.glideK, 16));
-      if (Math.abs(this.cur - this.hz) < 1e-3) this.cur = this.hz;
-      this._tune(p);
+    if ((this.k = (this.k + 1) & 15) === 1) {
+      let retune = false;
+      if (this.cur !== this.hz) {
+        this.cur += (this.hz - this.cur) * (1 - Math.pow(1 - this.glideK, 16));
+        if (Math.abs(this.cur - this.hz) < 1e-3) this.cur = this.hz;
+        retune = true;
+      }
+      // The bar's vibrato, after a delay, fading in over a quarter second.
+      if (p.vib) {
+        this.vibT += 16 / SR;
+        const vd = p.vibDelay ?? 0.3;
+        this.vibC = this.vibT > vd ? Math.min(1, (this.vibT - vd) / 0.25) * p.vib * Math.sin(TAU * (p.vibRate ?? 4.5) * this.vibT) : 0;
+        retune = true;
+      }
+      if (retune) this._tune(p);
     }
     const n = this.buf.length;
     let rp = this.w - this.d;
@@ -373,12 +399,70 @@ class StringVoice {
     this.buf[this.w] = x;
     this.w = (this.w + 1) % n;
     this.body.run(x);
-    const out = this.tone.lp(x + this.body.bp * (p.bodyMix ?? 0.6));
+    let out = x + this.body.bp * (p.bodyMix ?? 0.6);
+    if (p.body2) { this.body2.run(x); out += this.body2.bp * (p.body2Mix ?? 0.4); }
+    out = this.tone.lp(out);
+    if (this.sw < 1) { this.sw = Math.min(1, this.sw + this.swK); out *= this.sw; }
     // Quiet for a while after the pluck: the voice is free.
     const a = Math.abs(out);
     this.amp = a > this.amp ? a : this.amp * 0.9995;
     if (this.exc === 0 && this.amp < 2e-4) this.on = false;
     return out;
+  }
+}
+
+// ── Bowed string ─────────────────────────────────────────────────
+// The fiddle (sound.md 3.5.1): a saw is the bow (its spectrum is a bowed
+// string's, every partial falling 6 dB an octave), with bow noise under it
+// (`noise`, low-passed), a slow attack and release (`a`, `d`, `s`, `r`),
+// vibrato after a delay (`vib` cents at `vibRate`, from `vibDelay`), and a
+// glide from the last note when legato (`glide`) or a slide up into the
+// note (`bend`, `bendT`). The tone is a ladder (`cutoff`, `res`, `drive`)
+// and then the body: two resonances (`body`, `body2`: a violin's air mode
+// near 280 Hz and its top near 450) mixed over the dry string. Poly holds
+// several for double stops.
+class BowedVoice {
+  constructor(seed) {
+    this.r = rng(seed);
+    this.osc = new Osc(this.r());
+    this.drift = new Drift(this.r, 3);
+    this.f = new Ladder(); this.env = new ADSR();
+    this.breath = new OnePole(3000);
+    this.body = new SVF(); this.body2 = new SVF(); this.hp = new OnePole(180);
+    this.on = false; this.left = 0; this.age = 0; this.cur = 0; this.hz = 0; this.vibT = 0; this.k = 0; this.inc = 0;
+    this.midi = -1; this.vel = 0; this.glideK = 0;
+  }
+  start(p, midi, vel, durS, glideFrom, t) {
+    this.midi = midi; this.vel = vel; this.left = Math.max(1, durS | 0); this.on = true; this.age = t;
+    this.hz = mtof(midi + 12 * (p.oct ?? 0));
+    const legato = glideFrom != null;
+    this.cur = legato ? mtof(glideFrom + 12 * (p.oct ?? 0)) : p.bend ? this.hz * Math.pow(2, -p.bend / 12) : this.hz;
+    this.glideK = 1 - Math.exp(-1 / (((legato ? p.glide : p.bendT) ?? 0.06) * SR / 3));
+    this.env.setAll(p.a ?? 0.08, p.d ?? 0.3, p.s ?? 0.85, p.r ?? 0.15); this.env.on();
+    this.body.set(p.body ?? 280, p.bodyQ ?? 3); this.body2.set(p.body2 ?? 450, p.body2Q ?? 2.5);
+    this.hp.setHz(p.hpf ?? 180);
+    this.vibT = 0; this.k = 0; this.inc = this.cur;
+  }
+  get done() { return !this.on; }
+  run(p) {
+    if (this.left > 0 && --this.left === 0) this.env.off();
+    const a = this.env.run();
+    if (this.env.done) { this.on = false; return 0; }
+    if ((this.k = (this.k + 1) & 15) === 1) {
+      this.cur += (this.hz - this.cur) * (1 - Math.pow(1 - this.glideK, 16));
+      this.vibT += 16 / SR;
+      const vd = p.vibDelay ?? 0.25;
+      const vib = p.vib && this.vibT > vd ? Math.min(1, (this.vibT - vd) / 0.3) * p.vib * Math.sin(TAU * (p.vibRate ?? 5.5) * this.vibT) : 0;
+      this.inc = this.cur * cents(this.drift.run(16) + vib);
+      const kt = Math.pow(2, ((this.midi - 60) / 12) * (p.keytrack ?? 0.5));
+      this.f.set(Math.min((p.cutoff ?? 2500) * kt * (0.7 + 0.3 * this.vel), 18000), p.res ?? 0.1);
+    }
+    let x = this.osc.run(this.inc);
+    // The bow's noise rides the envelope: loud in the attack, under the tone after.
+    if (p.noise) x += this.breath.lp(this.r() * 2 - 1) * p.noise * (0.5 + a);
+    x = this.f.run(x * 0.5, 1 + (p.drive ?? 0.5)) * a * this.vel;
+    this.body.run(x); this.body2.run(x);
+    return this.hp.hp(x * (p.dry ?? 0.5) + this.body.bp * (p.bodyMix ?? 0.6) + this.body2.bp * (p.body2Mix ?? 0.5));
   }
 }
 
@@ -397,7 +481,7 @@ const VOWELS = {
 export class Poly {
   constructor(kind, patch, seed = 1, nVoices = 8) {
     this.p = patch; this.kind = kind;
-    const V = kind === 'fm' ? FMVoice : kind === 'mono' ? MonoVoice : kind === 'string' ? StringVoice : JunoVoice;
+    const V = kind === 'fm' ? FMVoice : kind === 'mono' ? MonoVoice : kind === 'string' ? StringVoice : kind === 'bowed' ? BowedVoice : JunoVoice;
     this.voices = Array.from({ length: kind === 'mono' ? 1 : nVoices }, (_, i) => new V(seed * 101 + i * 7919));
     this.ch = new Chorus(); this.ch.set(patch.chorus ?? 0);
     this.lfoPh = 0; this.vibPh = 0; this.t = 0;
@@ -442,14 +526,19 @@ export class Poly {
   trigger(midis, vel, durS, opt = {}) {
     this.t++;
     if (this.kind === 'mono') { this.voices[0].start(this.p, midis[midis.length - 1], vel, durS, opt.glideFrom); return; }
-    const gain = 1 / Math.sqrt(midis.length);
+    // A course of `strings` per note a few cents apart (`spread`, in all):
+    // the mandolin's pairs, the twelve-string.
+    const nS = this.kind === 'string' ? Math.max(1, this.p.strings | 0) : 1;
+    const gain = 1 / Math.sqrt(midis.length * nS);
     // A strummed chord: each string a little after the one below it.
     const strum = this.kind === 'string' ? Math.round((this.p.strum ?? 0) * SR) : 0;
     for (let i = 0; i < midis.length; i++) {
-      const m = midis[i];
-      let v = this.voices.find((x) => x.done) || this.voices.reduce((a, b) => (a.age <= b.age ? a : b));
-      v.start(this.p, m, vel * gain, durS, opt.glideFrom ?? null, this.t, strum * i);
-      v.age = this.t;
+      for (let j = 0; j < nS; j++) {
+        const m = midis[i] + (nS > 1 ? ((j / (nS - 1)) - 0.5) * (this.p.spread ?? 6) / 100 : 0);
+        let v = this.voices.find((x) => x.done) || this.voices.reduce((a, b) => (a.age <= b.age ? a : b));
+        v.start(this.p, m, vel * gain, durS, opt.glideFrom ?? null, this.t, strum * i);
+        v.age = this.t;
+      }
     }
   }
   get active() { return this.voices.some((v) => !v.done); }
@@ -467,6 +556,9 @@ export class Poly {
       for (const v of this.voices) if (!v.done) x += v.run(p);
       this.t++;
       x = this._amp(x);
+    } else if (this.kind === 'bowed') {
+      for (const v of this.voices) if (!v.done) x += v.run(p);
+      this.t++;
     } else {
       for (const v of this.voices) if (!v.done) x += v.run(p);
     }
@@ -512,6 +604,10 @@ class Hit {
         // Scraped ridges: band-passed noise, a rasp per ridge as the stick
         // passes it, the stroke speeding up over its length.
         this.len = Math.max(1, Math.round((k.len ?? 0.15) * SR)); this.bp = new SVF().set(k.bp ?? 3000, k.q ?? 1.5); this.ph = 0; break;
+      case 'brush':
+        // The brushes' swish on a snare head: band-passed noise swelling
+        // over the stroke and dying with it.
+        this.len = Math.max(1, Math.round((k.len ?? 0.1) * SR)); this.bp = new SVF().set(k.bp ?? 3500, k.q ?? 0.7); break;
       default: break;
     }
     this.ex = this.k.gate ? (this.k.gate * SR) | 0 : 0;
@@ -619,6 +715,15 @@ class Hit {
         this.amp.v = 1;
         break;
       }
+      case 'brush': {
+        const u = this.t / this.len;
+        if (u >= 1) { this.done = true; return 0; }
+        const env = u < 0.6 ? (u / 0.6) * (u / 0.6) : (1 - u) / 0.4;
+        this.bp.run(noise);
+        y = this.bp.bp * env * 2.6;
+        this.amp.v = 1;
+        break;
+      }
       default: break;
     }
     if (this.amp.v < 1e-4 && this.t > 64) this.done = true;
@@ -685,6 +790,24 @@ export const KITS = {
     clave: { t: 'rim', f1: 2500, f2: 3300, decay: 0.035, lvl: 0.22, pan: 0.1 },
     crash: { t: 'cymbal', tune: 1.15, decay: 1.4, bp: 8000, hp: 4500, bp2: 3800, decay2: 0.2, noise: 0.4, lvl: 0.3 },
     revCrash: { t: 'swell', lvl: 0.28 },
+  },
+  // The country band's drums (sound.md 3.5.1): a soft acoustic kick (longer,
+  // lower, less click), a snare with wires, the brushes' swish, the
+  // sidestick of the ballads, hat, ride, the toms, a crash. No boom: a
+  // section's `drop` only marks the chorus, as on the latin kit.
+  country: {
+    kick: { t: 'kick808', tune: 55, pitch: 1.4, pt: 0.02, decay: 0.35, click: 0.08, clickHz: 1800, drive: 1, lvl: 0.8 },
+    snare: { t: 'snare808', tune: 190, tone: 0.6, snappy: 0.18, decay: 0.12, nhp: 1500, nlp: 9000, lvl: 0.7 },
+    sidestick: { t: 'rim', f1: 700, f2: 2300, decay: 0.04, lvl: 0.4, pan: 0.1 },
+    brush: { t: 'brush', len: 0.11, bp: 3500, q: 0.7, lvl: 0.4, pan: 0.1 },
+    hat: { t: 'metal', tune: 0.9, decay: 0.06, bp: 9000, hp: 6500, noise: 0.4, lvl: 0.32, pan: 0.2 },
+    ride: { t: 'metal', tune: 1.2, decay: 1.2, bp: 7000, hp: 4500, noise: 0.3, lvl: 0.22, pan: 0.25 },
+    tomL: { t: 'tom', tune: 75, pitch: 1.3, pt: 0.04, decay: 0.5, noise: 0.05, lvl: 0.7, pan: -0.3 },
+    tomM: { t: 'tom', tune: 110, pitch: 1.3, pt: 0.04, decay: 0.4, noise: 0.05, lvl: 0.65 },
+    tomH: { t: 'tom', tune: 160, pitch: 1.3, pt: 0.04, decay: 0.32, noise: 0.05, lvl: 0.6, pan: 0.3 },
+    shaker: { t: 'shaker', bp: 6000, decay: 0.07, attack: 0.008, lvl: 0.3 },
+    crash: { t: 'cymbal', tune: 1.05, decay: 1.8, bp: 7500, hp: 4200, bp2: 3500, decay2: 0.25, noise: 0.4, lvl: 0.3 },
+    revCrash: { t: 'swell', lvl: 0.26 },
   },
 };
 
@@ -804,7 +927,30 @@ export const BPATCH = {
   // drawbar sines. A square and a saw with the octave below, open filter,
   // no envelope to speak of, and the fast shallow vibrato those organs had.
   comboOrgan: { kind: 'juno', saw: 0.5, pulse: 0.8, pw: 0.5, sub: 0.3, cutoff: 7000, res: 0.05, fenv: 0, keytrack: 0.3, a: 0.004, d: 0.1, s: 1, r: 0.04, hpf: 70, vib: 8, vibRate: 6.4, vibDelay: 0, chorus: 0, gain: 0.33 },
+  // Country (sound.md 3.5.1). The telecaster: a hard pick, the bridge
+  // pickup's peak at 3.2 kHz, a little drive; the slapback is the song's
+  // delay (one 16th, nearly no feedback).
+  telecaster: { kind: 'string', decay: 2.2, damp: 0.25, pick: 0.85, pickPos: 0.1, body: 3200, bodyQ: 2, bodyMix: 0.7, tone: 7000, drive: 0.35, glide: 0.03, r: 0.3, chorus: 0, gain: 0.3 },
+  // The acoustic: six strings strummed, the top near 220 Hz over the air
+  // mode near 100.
+  acousticGuitar: { kind: 'string', decay: 2.5, damp: 0.4, pick: 0.5, pickPos: 0.18, body: 220, bodyQ: 1.5, bodyMix: 0.5, body2: 100, body2Q: 2, body2Mix: 0.35, tone: 5000, strum: 0.016, r: 0.25, chorus: 0, gain: 0.42 },
+  // The pedal steel: a long-ringing bright string, the volume pedal's swell
+  // into every chord, a slide up a whole step into it, the bar's vibrato.
+  pedalSteel: { kind: 'string', decay: 8, damp: 0.2, pick: 0.7, pickPos: 0.08, body: 2400, bodyQ: 1.2, bodyMix: 0.5, tone: 6500, swell: 0.3, bend: 2, bendT: 0.28, vib: 20, vibRate: 4.5, vibDelay: 0.5, strum: 0.01, glide: 0.12, r: 0.6, chorus: 0, gain: 0.6 },
+  // The fiddle: see BowedVoice.
+  fiddle: { kind: 'bowed', cutoff: 2600, res: 0.1, drive: 0.6, noise: 0.08, a: 0.09, d: 0.3, s: 0.85, r: 0.18, vib: 22, vibRate: 5.6, vibDelay: 0.22, glide: 0.06, body: 280, bodyQ: 3, bodyMix: 0.6, body2: 450, body2Q: 2.5, body2Mix: 0.5, dry: 0.5, hpf: 180, gain: 0.09 },
+  // The banjo: very short and bright, the head's resonance at 1.5 kHz.
+  banjo: { kind: 'string', decay: 0.45, damp: 0.15, pick: 0.9, pickPos: 0.12, body: 1500, bodyQ: 2.5, bodyMix: 0.8, tone: 8000, r: 0.15, chorus: 0, gain: 0.36 },
+  // The mandolin: two strings a course, six cents apart, short; the chop.
+  mandolin: { kind: 'string', decay: 1, damp: 0.3, pick: 0.8, pickPos: 0.15, body: 900, bodyQ: 1.4, bodyMix: 0.5, tone: 7000, strings: 2, spread: 6, strum: 0.008, r: 0.12, chorus: 0, gain: 0.3 },
+  // The upright bass: damped, short, the body at 110 Hz.
+  uprightBass: { kind: 'string', decay: 0.8, damp: 0.5, pick: 0.3, pickPos: 0.25, body: 110, bodyQ: 1.2, bodyMix: 0.6, tone: 1400, r: 0.1, chorus: 0, gain: 0.55 },
+  // The baritone guitar of the outlaw side: the telecaster an octave down,
+  // driven a little more.
+  baritoneGuitar: { kind: 'string', oct: -1, decay: 1.6, damp: 0.35, pick: 0.7, pickPos: 0.14, body: 1800, bodyQ: 1.6, bodyMix: 0.6, tone: 4500, drive: 0.8, r: 0.2, chorus: 0, gain: 0.34 },
 };
+// The honky-tonk piano: the FM piano through chorus mode 3 (the detune).
+BPATCH.honkyPiano = { ...BPATCH.piano, chorus: 3, gain: 0.17 };
 
 // The game's patch for a part: by identity, else the closest by fields
 // (parts like `{ ...P.flute, oct: 1 }` are copies with an override).
@@ -846,7 +992,8 @@ export const KNOBS = {
   juno: [['saw', 'Saw', 0, 1, 0.01], ['pulse', 'Pulse', 0, 1, 0.01], ['pw', 'Pulse width', 0.05, 0.95, 0.01], ['pwm', 'PWM (LFO)', 0, 1, 0.01], ['sub', 'Sub', 0, 1, 0.01], ['noise', 'Noise', 0, 0.5, 0.01], ['unison', 'Unison', 1, 7, 1], ['detune', 'Detune (c)', 0, 40, 0.5], ['hpf', 'HPF (Hz)', 20, 1000, 1], ['cutoff', 'Cutoff (Hz)', 80, 12000, 1], ['res', 'Resonance', 0, 1, 0.01], ['fenv', 'Env (oct)', 0, 5, 0.01], ['keytrack', 'Keytrack', 0, 1, 0.01], ['fa', 'F attack', 0.001, 3, 0.001], ['fd', 'F decay', 0.01, 3, 0.01], ['fs', 'F sustain', 0, 1, 0.01], ['a', 'Attack', 0.001, 3, 0.001], ['d', 'Decay', 0.01, 3, 0.01], ['s', 'Sustain', 0, 1, 0.01], ['r', 'Release', 0.01, 4, 0.01], ['lfoRate', 'LFO (Hz)', 0.05, 8, 0.01], ['chorus', 'Chorus (0, I, II, I+II)', 0, 3, 1], ['drive', 'Drive', 0, 3, 0.01], ['gain', 'Level', 0, 1.5, 0.01]],
   mono: [['cutoff', 'Cutoff (Hz)', 40, 12000, 1], ['res', 'Resonance', 0, 1, 0.01], ['fenv', 'Env (oct)', 0, 5, 0.01], ['keytrack', 'Keytrack', 0, 1, 0.01], ['drive', 'Drive', 0, 4, 0.01], ['sub', 'Sub', 0, 1, 0.01], ['noise', 'Noise', 0, 0.5, 0.01], ['fa', 'F attack', 0.001, 2, 0.001], ['fd', 'F decay', 0.01, 2, 0.01], ['fs', 'F sustain', 0, 1, 0.01], ['a', 'Attack', 0.001, 2, 0.001], ['d', 'Decay', 0.01, 2, 0.01], ['s', 'Sustain', 0, 1, 0.01], ['r', 'Release', 0.01, 3, 0.01], ['glide', 'Glide (s)', 0, 0.4, 0.001], ['vib', 'Vibrato (c)', 0, 40, 0.5], ['gain', 'Level', 0, 1.5, 0.01]],
   fm: [['fbk', 'Feedback', 0, 1.5, 0.01], ['r', 'Release', 0.01, 3, 0.01], ['chorus', 'Chorus (0, I, II, I+II)', 0, 3, 1], ['gain', 'Level', 0, 1.5, 0.01]],
-  string: [['decay', 'Ring (s)', 0.05, 6, 0.01], ['damp', 'Damping', 0, 0.5, 0.01], ['pick', 'Pick', 0, 1, 0.01], ['pickPos', 'Pick position', 0, 0.5, 0.01], ['body', 'Body (Hz)', 100, 6000, 1], ['bodyQ', 'Body Q', 0.3, 6, 0.01], ['bodyMix', 'Body mix', 0, 1.5, 0.01], ['tone', 'Tone (Hz)', 500, 12000, 1], ['drive', 'Drive', 0, 3, 0.01], ['wah', 'Wah (oct)', 0, 4, 0.01], ['wahHz', 'Wah from (Hz)', 100, 1500, 1], ['wahRate', 'Wah rate (Hz)', 0.1, 8, 0.01], ['trem', 'Tremolo', 0, 1, 0.01], ['tremRate', 'Tremolo rate (Hz)', 1, 12, 0.01], ['bend', 'Slide in (semi)', 0, 3, 0.01], ['bendT', 'Slide time (s)', 0.01, 0.3, 0.001], ['glide', 'Glide (s)', 0, 0.4, 0.001], ['strum', 'Strum (s)', 0, 0.06, 0.001], ['r', 'Mute (s)', 0.01, 3, 0.01], ['chorus', 'Chorus (0, I, II, I+II)', 0, 3, 1], ['gain', 'Level', 0, 1.5, 0.01]],
+  bowed: [['cutoff', 'Cutoff (Hz)', 200, 12000, 1], ['res', 'Resonance', 0, 1, 0.01], ['drive', 'Drive', 0, 3, 0.01], ['noise', 'Bow noise', 0, 0.5, 0.01], ['a', 'Attack', 0.001, 1, 0.001], ['d', 'Decay', 0.01, 3, 0.01], ['s', 'Sustain', 0, 1, 0.01], ['r', 'Release', 0.01, 3, 0.01], ['vib', 'Vibrato (c)', 0, 60, 0.5], ['vibRate', 'Vibrato rate (Hz)', 2, 9, 0.01], ['vibDelay', 'Vibrato delay (s)', 0, 1, 0.01], ['glide', 'Glide (s)', 0, 0.4, 0.001], ['body', 'Body (Hz)', 60, 1200, 1], ['bodyQ', 'Body Q', 0.3, 8, 0.01], ['bodyMix', 'Body mix', 0, 1.5, 0.01], ['body2', 'Body 2 (Hz)', 60, 2000, 1], ['body2Mix', 'Body 2 mix', 0, 1.5, 0.01], ['dry', 'Dry', 0, 1, 0.01], ['gain', 'Level', 0, 1.5, 0.01]],
+  string: [['decay', 'Ring (s)', 0.05, 8, 0.01], ['damp', 'Damping', 0, 0.5, 0.01], ['pick', 'Pick', 0, 1, 0.01], ['pickPos', 'Pick position', 0, 0.5, 0.01], ['body', 'Body (Hz)', 100, 6000, 1], ['bodyQ', 'Body Q', 0.3, 6, 0.01], ['bodyMix', 'Body mix', 0, 1.5, 0.01], ['tone', 'Tone (Hz)', 500, 12000, 1], ['drive', 'Drive', 0, 3, 0.01], ['wah', 'Wah (oct)', 0, 4, 0.01], ['wahHz', 'Wah from (Hz)', 100, 1500, 1], ['wahRate', 'Wah rate (Hz)', 0.1, 8, 0.01], ['trem', 'Tremolo', 0, 1, 0.01], ['tremRate', 'Tremolo rate (Hz)', 1, 12, 0.01], ['bend', 'Slide in (semi)', 0, 3, 0.01], ['bendT', 'Slide time (s)', 0.01, 0.3, 0.001], ['glide', 'Glide (s)', 0, 0.4, 0.001], ['strum', 'Strum (s)', 0, 0.06, 0.001], ['swell', 'Swell (s)', 0, 1, 0.01], ['vib', 'Vibrato (c)', 0, 60, 0.5], ['body2', 'Body 2 (Hz)', 0, 2000, 1], ['body2Mix', 'Body 2 mix', 0, 1.5, 0.01], ['strings', 'Strings a note', 1, 3, 1], ['r', 'Mute (s)', 0.01, 3, 0.01], ['chorus', 'Chorus (0, I, II, I+II)', 0, 3, 1], ['gain', 'Level', 0, 1.5, 0.01]],
 };
 // FM operators get their own knobs: index/level, ratio and decay per op.
 export const FM_OP_KNOBS = [['l', 'level', 0, 4, 0.01], ['r', 'ratio', 0.5, 16, 0.01], ['d', 'decay', 0.01, 4, 0.01], ['s', 'sustain', 0, 1, 0.01]];
@@ -864,4 +1011,5 @@ DRUM_KNOBS.kick909 = DRUM_KNOBS.kick808;
 DRUM_KNOBS.snare909 = DRUM_KNOBS.snare808;
 DRUM_KNOBS.boom = DRUM_KNOBS.tom;
 DRUM_KNOBS.conga = [['tune', 'Tune (Hz)', 100, 600, 1], ['decay', 'Decay', 0.05, 1, 0.01], ['slap', 'Slap', 0, 1, 1], ['lvl', 'Level', 0, 2, 0.01]];
+DRUM_KNOBS.brush = [['len', 'Stroke (s)', 0.02, 0.4, 0.005], ['bp', 'Tone (Hz)', 1000, 8000, 10], ['lvl', 'Level', 0, 2, 0.01]];
 DRUM_KNOBS.guiro = [['len', 'Stroke (s)', 0.02, 0.4, 0.005], ['rate0', 'Ridges from (Hz)', 20, 300, 1], ['rate1', 'Ridges to (Hz)', 20, 400, 1], ['bp', 'Tone (Hz)', 1000, 6000, 10], ['lvl', 'Level', 0, 2, 0.01]];

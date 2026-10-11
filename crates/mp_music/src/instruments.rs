@@ -868,6 +868,7 @@ struct StringVoice {
     exc_d: i64,
     exc_lp: OnePole,
     body: Svf,
+    body2: Svf,
     tone: OnePole,
     midi: f64,
     cur: f64,
@@ -876,6 +877,12 @@ struct StringVoice {
     k: u32,
     amp: f64,
     vel: f64,
+    /// The swell (the volume pedal): the level and its rise per sample.
+    sw: f64,
+    sw_k: f64,
+    /// The bar's vibrato: seconds since the pluck, the offset in cents.
+    vib_t: f64,
+    vib_c: f64,
     sr: f64,
 }
 
@@ -901,6 +908,7 @@ impl StringVoice {
             exc_d: 0,
             exc_lp: OnePole::new(4000.0, sr),
             body: Svf::new(),
+            body2: Svf::new(),
             tone: OnePole::new(6000.0, sr),
             midi: -1.0,
             cur: 110.0,
@@ -909,6 +917,10 @@ impl StringVoice {
             k: 0,
             amp: 0.0,
             vel: 0.0,
+            sw: 1.0,
+            sw_k: 0.0,
+            vib_t: 0.0,
+            vib_c: 0.0,
             sr,
         }
     }
@@ -964,11 +976,28 @@ impl StringVoice {
         self.exc = self.exc_n;
         self.body
             .set(p.body.unwrap_or(2500.0), p.body_q.unwrap_or(1.2), sr);
+        if let Some(b2) = tru(p.body2) {
+            self.body2.set(b2, p.body2_q.unwrap_or(1.5), sr);
+        }
         self.tone.set_hz(p.tone.unwrap_or(6000.0));
         self.rel = false;
         self.k = 0;
         self.amp = 1.0;
         self.lp = 0.0;
+        // The swell: from silence to full over `swell` seconds, a linear
+        // ramp per sample (0 or missing: at once).
+        match tru(p.swell) {
+            Some(sw) => {
+                self.sw = 0.0;
+                self.sw_k = 1.0 / (sw * sr);
+            }
+            None => {
+                self.sw = 1.0;
+                self.sw_k = 0.0;
+            }
+        }
+        self.vib_t = 0.0;
+        self.vib_c = 0.0;
         self.buf.fill(0.0);
         self.tune(p);
     }
@@ -981,10 +1010,15 @@ impl StringVoice {
     /// filter only lengthens the loop, so it stops there.
     fn tune(&mut self, p: &Lab) {
         let sr = self.sr;
+        let hz = if self.vib_c != 0.0 {
+            self.cur * cents(self.vib_c)
+        } else {
+            self.cur
+        };
         self.damp = clamp(p.damp.unwrap_or(0.4), 0.0, 0.5);
-        self.d = (sr / self.cur - self.damp).max(2.0);
-        self.g = 10f64.powf(-3.0 / (p.decay.unwrap_or(1.5).max(0.02) * self.cur));
-        self.g_rel = 10f64.powf(-3.0 / (p.r.unwrap_or(0.3).max(0.01) * self.cur));
+        self.d = (sr / hz - self.damp).max(2.0);
+        self.g = 10f64.powf(-3.0 / (p.decay.unwrap_or(1.5).max(0.02) * hz));
+        self.g_rel = 10f64.powf(-3.0 / (p.r.unwrap_or(0.3).max(0.01) * hz));
     }
 
     fn done(&self) -> bool {
@@ -1003,12 +1037,33 @@ impl StringVoice {
             }
         }
         self.k = (self.k + 1) & 15;
-        if self.k == 1 && self.cur != self.hz {
-            self.cur += (self.hz - self.cur) * (1.0 - (1.0 - self.glide_k).powf(16.0));
-            if (self.cur - self.hz).abs() < 1e-3 {
-                self.cur = self.hz;
+        if self.k == 1 {
+            let mut retune = false;
+            if self.cur != self.hz {
+                self.cur += (self.hz - self.cur) * (1.0 - (1.0 - self.glide_k).powf(16.0));
+                if (self.cur - self.hz).abs() < 1e-3 {
+                    self.cur = self.hz;
+                }
+                retune = true;
             }
-            self.tune(p);
+            // The bar's vibrato, after a delay, fading in over a quarter
+            // second.
+            if let Some(vib) = tru(p.vib) {
+                let sr = self.sr;
+                self.vib_t += 16.0 / sr;
+                let vd = p.vib_delay.unwrap_or(0.3);
+                self.vib_c = if self.vib_t > vd {
+                    ((self.vib_t - vd) / 0.25).min(1.0)
+                        * vib
+                        * (TAU * p.vib_rate.unwrap_or(4.5) * self.vib_t).sin()
+                } else {
+                    0.0
+                };
+                retune = true;
+            }
+            if retune {
+                self.tune(p);
+            }
         }
         let n = self.buf.len();
         let mut rp = self.w as f64 - self.d;
@@ -1043,7 +1098,16 @@ impl StringVoice {
         self.buf[self.w] = x as f32;
         self.w = (self.w + 1) % n;
         self.body.run(x);
-        let out = self.tone.lp(x + self.body.bp * p.body_mix.unwrap_or(0.6));
+        let mut out = x + self.body.bp * p.body_mix.unwrap_or(0.6);
+        if truthy(p.body2) {
+            self.body2.run(x);
+            out += self.body2.bp * p.body2_mix.unwrap_or(0.4);
+        }
+        out = self.tone.lp(out);
+        if self.sw < 1.0 {
+            self.sw = (self.sw + self.sw_k).min(1.0);
+            out *= self.sw;
+        }
         // Quiet for a while after the pluck: the voice is free.
         let a = out.abs();
         self.amp = if a > self.amp { a } else { self.amp * 0.9995 };
@@ -1051,6 +1115,160 @@ impl StringVoice {
             self.on = false;
         }
         out
+    }
+}
+
+// ── Bowed string ─────────────────────────────────────────────────
+/// The fiddle (sound.md 3.5.1): a saw is the bow (its spectrum is a bowed
+/// string's, every partial falling 6 dB an octave), with bow noise under
+/// it (`noise`, low-passed), a slow attack and release (`a`, `d`, `s`,
+/// `r`), vibrato after a delay (`vib` cents at `vibRate`, from
+/// `vibDelay`), and a glide from the last note when legato (`glide`) or a
+/// slide up into the note (`bend`, `bendT`). The tone is a ladder
+/// (`cutoff`, `res`, `drive`) and then the body: two resonances (`body`,
+/// `body2`: a violin's air mode near 280 Hz and its top near 450) mixed
+/// over the dry string. [`Poly`] holds several for double stops.
+#[derive(Clone, Debug)]
+struct BowedVoice {
+    r: Rng,
+    osc: Osc,
+    drift: Drift,
+    f: Ladder,
+    env: Adsr,
+    breath: OnePole,
+    body: Svf,
+    body2: Svf,
+    hp: OnePole,
+    on: bool,
+    left: i32,
+    age: u64,
+    cur: f64,
+    hz: f64,
+    vib_t: f64,
+    k: u32,
+    inc: f64,
+    midi: f64,
+    vel: f64,
+    glide_k: f64,
+    sr: f64,
+}
+
+impl BowedVoice {
+    fn new(seed: u32, sr: f64) -> BowedVoice {
+        let mut r = Rng::new(seed);
+        let osc = Osc::new(r.next());
+        let drift = Drift::new(&mut r, 3.0, 0.6, sr);
+        BowedVoice {
+            r,
+            osc,
+            drift,
+            f: Ladder::new(),
+            env: Adsr::new(sr),
+            breath: OnePole::new(3000.0, sr),
+            body: Svf::new(),
+            body2: Svf::new(),
+            hp: OnePole::new(180.0, sr),
+            on: false,
+            left: 0,
+            age: 0,
+            cur: 0.0,
+            hz: 0.0,
+            vib_t: 0.0,
+            k: 0,
+            inc: 0.0,
+            midi: -1.0,
+            vel: 0.0,
+            glide_k: 0.0,
+            sr,
+        }
+    }
+
+    fn start(&mut self, p: &Lab, midi: f64, vel: f64, dur_s: f64, glide_from: Option<f64>, t: u64) {
+        let sr = self.sr;
+        self.midi = midi;
+        self.vel = vel;
+        self.left = to_i32(dur_s).max(1);
+        self.on = true;
+        self.age = t;
+        self.hz = mtof(midi + 12.0 * p.oct.unwrap_or(0.0));
+        let legato = glide_from.is_some();
+        self.cur = if let Some(g) = glide_from {
+            mtof(g + 12.0 * p.oct.unwrap_or(0.0))
+        } else if let Some(b) = tru(p.bend) {
+            self.hz * 2f64.powf(-b / 12.0)
+        } else {
+            self.hz
+        };
+        let gt = if legato { p.glide } else { p.bend_t };
+        self.glide_k = 1.0 - (-1.0 / (gt.unwrap_or(0.06) * sr / 3.0)).exp();
+        self.env.set_all(
+            p.a.unwrap_or(0.08),
+            p.d.unwrap_or(0.3),
+            p.s.unwrap_or(0.85),
+            p.r.unwrap_or(0.15),
+        );
+        self.env.on();
+        self.body
+            .set(p.body.unwrap_or(280.0), p.body_q.unwrap_or(3.0), sr);
+        self.body2
+            .set(p.body2.unwrap_or(450.0), p.body2_q.unwrap_or(2.5), sr);
+        self.hp.set_hz(p.hpf.unwrap_or(180.0));
+        self.vib_t = 0.0;
+        self.k = 0;
+        self.inc = self.cur;
+    }
+
+    fn done(&self) -> bool {
+        !self.on
+    }
+
+    fn run(&mut self, p: &Lab) -> f64 {
+        let sr = self.sr;
+        if self.left > 0 {
+            self.left -= 1;
+            if self.left == 0 {
+                self.env.off();
+            }
+        }
+        let a = self.env.run();
+        if self.env.done() {
+            self.on = false;
+            return 0.0;
+        }
+        self.k = (self.k + 1) & 15;
+        if self.k == 1 {
+            self.cur += (self.hz - self.cur) * (1.0 - (1.0 - self.glide_k).powf(16.0));
+            self.vib_t += 16.0 / sr;
+            let vd = p.vib_delay.unwrap_or(0.25);
+            let vib = match tru(p.vib) {
+                Some(v) if self.vib_t > vd => {
+                    ((self.vib_t - vd) / 0.3).min(1.0)
+                        * v
+                        * (TAU * p.vib_rate.unwrap_or(5.5) * self.vib_t).sin()
+                }
+                _ => 0.0,
+            };
+            self.inc = self.cur * cents(self.drift.run(&mut self.r, 16) + vib);
+            let kt = 2f64.powf(((self.midi - 60.0) / 12.0) * p.keytrack.unwrap_or(0.5));
+            self.f.set(
+                (p.cutoff.unwrap_or(2500.0) * kt * (0.7 + 0.3 * self.vel)).min(18000.0),
+                p.res.unwrap_or(0.1),
+                sr,
+            );
+        }
+        let mut x = self.osc.run(self.inc, 0.5, OSC_SAW, sr);
+        // The bow's noise rides the envelope: loud in the attack, under the
+        // tone after.
+        if let Some(nz) = tru(p.noise) {
+            let w = self.r.next() * 2.0 - 1.0;
+            x += self.breath.lp(w) * nz * (0.5 + a);
+        }
+        x = self.f.run(x * 0.5, 1.0 + p.drive.unwrap_or(0.5), 0) * a * self.vel;
+        self.body.run(x);
+        self.body2.run(x);
+        self.hp.hp(x * p.dry.unwrap_or(0.5)
+            + self.body.bp * p.body_mix.unwrap_or(0.6)
+            + self.body2.bp * p.body2_mix.unwrap_or(0.5))
     }
 }
 
@@ -1083,6 +1301,7 @@ enum Voice {
     Mono(MonoVoice),
     Fm(FmVoice),
     Str(StringVoice),
+    Bowed(BowedVoice),
 }
 
 impl Voice {
@@ -1092,6 +1311,7 @@ impl Voice {
             Voice::Mono(v) => v.done(),
             Voice::Fm(v) => v.done(),
             Voice::Str(v) => v.done(),
+            Voice::Bowed(v) => v.done(),
         }
     }
 
@@ -1101,6 +1321,7 @@ impl Voice {
             Voice::Mono(v) => v.age,
             Voice::Fm(v) => v.age,
             Voice::Str(v) => v.age,
+            Voice::Bowed(v) => v.age,
         }
     }
 
@@ -1110,6 +1331,7 @@ impl Voice {
             Voice::Mono(v) => v.age = t,
             Voice::Fm(v) => v.age = t,
             Voice::Str(v) => v.age = t,
+            Voice::Bowed(v) => v.age = t,
         }
     }
 
@@ -1131,6 +1353,7 @@ impl Voice {
             Voice::Mono(v) => v.start(p, midi, vel, dur_s, glide_from),
             Voice::Fm(v) => v.start(p, midi, vel, dur_s, glide_from),
             Voice::Str(v) => v.start(p, midi, vel, dur_s, glide_from, t, wait),
+            Voice::Bowed(v) => v.start(p, midi, vel, dur_s, glide_from, t),
         }
     }
 }
@@ -1143,6 +1366,7 @@ enum Kind {
     Mono,
     Fm,
     Str,
+    Bowed,
 }
 
 /// A polyphonic instrument around any of the poly voices, with an LFO, the
@@ -1172,6 +1396,7 @@ impl Poly {
             "fm" => Kind::Fm,
             "mono" => Kind::Mono,
             "string" => Kind::Str,
+            "bowed" => Kind::Bowed,
             _ => Kind::Juno,
         };
         let n = if k == Kind::Mono { 1 } else { n_voices };
@@ -1182,6 +1407,7 @@ impl Poly {
                     Kind::Fm => Voice::Fm(FmVoice::new(s, sr)),
                     Kind::Mono => Voice::Mono(MonoVoice::new(s, sr)),
                     Kind::Str => Voice::Str(StringVoice::new(s, sr)),
+                    Kind::Bowed => Voice::Bowed(BowedVoice::new(s, sr)),
                     Kind::Juno => Voice::Juno(JunoVoice::new(s, sr)),
                 }
             })
@@ -1275,38 +1501,52 @@ impl Poly {
             self.voices[0].start(&self.p, m, vel, dur_s, opt.glide_from, 0, 0);
             return;
         }
-        let gain = 1.0 / (midis.len() as f64).sqrt();
+        // A course of `strings` per note a few cents apart (`spread`, in
+        // all): the mandolin's pairs, the twelve-string.
+        let n_s = if self.kind == Kind::Str {
+            to_i32(self.p.strings.unwrap_or(0.0)).max(1) as usize
+        } else {
+            1
+        };
+        let gain = 1.0 / ((midis.len() * n_s) as f64).sqrt();
         // A strummed chord: each string a little after the one below it.
         let strum = if self.kind == Kind::Str {
             js_round(self.p.strum.unwrap_or(0.0) * self.sr) as i64
         } else {
             0
         };
-        for (i, &m) in midis.iter().enumerate() {
-            // A free voice, else the oldest (the first of the oldest).
-            let vi = match self.voices.iter().position(|x| x.done()) {
-                Some(vi) => vi,
-                None => {
-                    let mut best = 0;
-                    for j in 1..self.voices.len() {
-                        if self.voices[best].age() > self.voices[j].age() {
-                            best = j;
+        for (i, &m0) in midis.iter().enumerate() {
+            for j in 0..n_s {
+                let m = if n_s > 1 {
+                    m0 + (j as f64 / (n_s - 1) as f64 - 0.5) * self.p.spread.unwrap_or(6.0) / 100.0
+                } else {
+                    m0
+                };
+                // A free voice, else the oldest (the first of the oldest).
+                let vi = match self.voices.iter().position(|x| x.done()) {
+                    Some(vi) => vi,
+                    None => {
+                        let mut best = 0;
+                        for j in 1..self.voices.len() {
+                            if self.voices[best].age() > self.voices[j].age() {
+                                best = j;
+                            }
                         }
+                        best
                     }
-                    best
-                }
-            };
-            let v = &mut self.voices[vi];
-            v.start(
-                &self.p,
-                m,
-                vel * gain,
-                dur_s,
-                opt.glide_from,
-                self.t,
-                strum * i as i64,
-            );
-            v.set_age(self.t);
+                };
+                let v = &mut self.voices[vi];
+                v.start(
+                    &self.p,
+                    m,
+                    vel * gain,
+                    dur_s,
+                    opt.glide_from,
+                    self.t,
+                    strum * i as i64,
+                );
+                v.set_age(self.t);
+            }
         }
     }
 
@@ -1360,6 +1600,16 @@ impl Poly {
                 self.t += 1;
                 x = self.amp(x);
             }
+            Kind::Bowed => {
+                for v in &mut self.voices {
+                    if let Voice::Bowed(b) = v
+                        && !b.done()
+                    {
+                        x += b.run(&self.p);
+                    }
+                }
+                self.t += 1;
+            }
             Kind::Mono | Kind::Fm => {
                 for v in &mut self.voices {
                     match v {
@@ -1399,6 +1649,7 @@ pub enum HitType {
     Swell,
     Conga,
     Guiro,
+    Brush,
 }
 
 impl HitType {
@@ -1421,6 +1672,7 @@ impl HitType {
             HitType::Swell => "swell",
             HitType::Conga => "conga",
             HitType::Guiro => "guiro",
+            HitType::Brush => "brush",
         }
     }
 
@@ -1442,6 +1694,7 @@ impl HitType {
             "swell" => HitType::Swell,
             "conga" => HitType::Conga,
             "guiro" => HitType::Guiro,
+            "brush" => HitType::Brush,
             _ => return None,
         })
     }
@@ -1684,6 +1937,12 @@ impl Hit {
                 h.bp = Svf::with(k.bp.unwrap_or(3000.0), k.q.unwrap_or(1.5), sr);
                 h.ph1 = 0.0;
             }
+            HitType::Brush => {
+                // The brushes' swish on a snare head: band-passed noise
+                // swelling over the stroke and dying with it.
+                h.len = js_round(k.len.unwrap_or(0.1) * sr).max(1.0);
+                h.bp = Svf::with(k.bp.unwrap_or(3500.0), k.q.unwrap_or(0.7), sr);
+            }
         }
         h.ex = match tru(k.gate) {
             Some(g) => to_i32(g * sr) as i64,
@@ -1853,6 +2112,21 @@ impl Hit {
                 let env = (self.t as f64 / (0.003 * sr)).min(1.0)
                     * (if u > 0.85 { (1.0 - u) / 0.15 } else { 1.0 });
                 y = self.bp.bp * ridge * env * 2.4;
+                self.amp.v = 1.0;
+            }
+            HitType::Brush => {
+                let u = self.t as f64 / self.len;
+                if u >= 1.0 {
+                    self.done = true;
+                    return 0.0;
+                }
+                let env = if u < 0.6 {
+                    (u / 0.6) * (u / 0.6)
+                } else {
+                    (1.0 - u) / 0.4
+                };
+                self.bp.run(noise);
+                y = self.bp.bp * env * 2.6;
                 self.amp.v = 1.0;
             }
         }

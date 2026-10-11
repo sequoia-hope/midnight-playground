@@ -64,6 +64,8 @@ fn lane_rev(name: &str) -> Option<f64> {
         "guiroL" => 0.1,
         "guiroS" => 0.1,
         "clave" => 0.25,
+        "brush" => 0.2,
+        "sidestick" => 0.2,
         _ => return None,
     })
 }
