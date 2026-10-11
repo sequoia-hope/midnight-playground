@@ -1098,3 +1098,70 @@ layout and text measuring (about 4 %), the audio graph's Web Audio calls
 2). WebGL2, Coast's race uncapped on the desktop: 84 fps (D866: 28) with
 a 99th percentile of 38 ms; neither the main thread nor the GPU process
 is saturated, not looked into further.
+
+## A 2017 laptop, and the WebGL2 build against the JS game (DECISIONS D1190)
+
+2026-10-11, the owner: the Rust game does not play smoothly on a 2017
+ThinkPad X1 Carbon where the JS game does. Measured here in its stead
+(the laptop's own numbers are still to come: `dist/next/?level=sierra&perf=1`
+and the JS game's `?stats=1` on it): Sierra's race (the sports car on the
+autopilot, seed 1, no pursuit), 1920 × 1080 at dpr 1, high quality, and
+the CPU throttled 4 × as a stand-in for its two 2017 cores. The tools are
+new or formalised in this pass: `tools/parity/rust-perf.mjs` (frame and
+CPU times, `--trace` for thread CPU time), `cargo xtask prof` with
+`tools/parity/rust-prof.mjs` (the CPU profile by Bevy system), and
+`tools/parity/gl-calls.mjs` (WebGL2 calls a frame, and the GPU's own time
+a frame by pass and by shader program, from `EXT_disjoint_timer_query_webgl2`).
+
+**CPU a frame, throttled 4 ×** (the page's requestAnimationFrame work,
+p50 / p95; load 0.5 to 1.4): JS 6.9 / 11.1 ms; Rust WebGPU 10.0 / 13.5;
+Rust WebGL2 15.2 / 20.1. The WebGL2 profile by system: the opaque pass
+10 %, the queue's submit (wgpu-hal's GL backend replaying its commands as
+WebGL calls) 19 %, `CommandEncoder::finish` (wgpu-core's validation and
+encoding) 9 %, the shadow pass 4 %, Bevy UI's layout and text 4.5 %, the
+audio graph 3 %. Three layers of per-draw work for 685 draws.
+
+**WebGL2 calls a frame**: Rust 24,600 for 685 draws, three.js 4,400 for
+780. Per draw, wgpu-hal's GL backend pointed every vertex attribute again
+(`bindBuffer`, `enableVertexAttribArray`, `vertexAttribPointer`,
+`vertexAttribDivisor`, 2,700 of each), rebound every texture and sampler
+of each bind group (2,000 `bindTexture`, `activeTexture` and
+`bindSampler`), and set `TEXTURE_BASE_LEVEL` and `TEXTURE_MAX_LEVEL` on
+every bind (3,900 `texParameteri`). `patches/wgpu-hal/` (D1190) skips what
+is already bound: 15,400 calls a frame, the rest being the instance
+streams' attributes (a different buffer each draw) and 142 program
+changes. Renders identical pixel for pixel on Sierra, Coast, Seaside and
+Streets (WebGL2 canvases do appear in Chrome's own screenshots). The
+main thread's CPU time a frame fell about 5 % (traced, unthrottled: 2.80
+and 2.53 ms before, 2.63 and 2.40 after); a WebGL call from wasm costs
+this desktop tens of nanoseconds. Not a win on its own; the laptop may
+weigh it differently.
+
+**GPU time a frame, 1920 × 1080, by pass** (`gl-calls.mjs`, ANGLE on
+Vulkan as every measurement here has been, then ANGLE on the native
+driver, which is what Chrome on Linux uses for Intel graphics):
+
+| | Rust WebGL2, Vulkan | JS, Vulkan | Rust WebGL2, native GL | JS, native GL |
+|---|---:|---:|---:|---:|
+| whole frame, p50 | 9.4 ms | 3.1 ms | 4.5 ms | 3.3 ms |
+| main pass | 7.9 | 2.4 (two targets) | | |
+| shadow map, 2048² | 0.8 | 0.2 | | |
+| triangles a frame | 3.74 M | 3.48 M | | |
+| vertices submitted | 11.2 M | 10.4 M | | |
+
+At 3840 × 2160 both grow by the same 4 ms, so the pixel work is the same
+and the gap is before rasterisation; with every vertex clipped away
+(`--sub-vert`, no fragments at all) the Rust frame still costs 8.0 of its
+10 ms under Vulkan. Neither the vertex shaders' texel fetches of the
+globals nor the dynamically indexed mesh uniform array matter (`--sub`
+experiments: no change). Under the native driver the gap is 1.35 ×, so
+most of the 3 × is ANGLE's Vulkan backend paying per draw for what the
+Rust side binds; the patch above did not change GPU time on either. The
+heaviest programs under native GL: the scenery material with the `extra`
+attribute, 109 draws, 926 k triangles, 1.05 ms (three's equivalent 46
+draws, 805 k, 0.60); the instanced scenery, 40 draws, 27,000 instances,
+0.98 ms (three's 17 draws, 11,800 instances, 0.50).
+
+Not done: a vertex-array-object cache in the GL backend (the remaining
+10,000 calls), fewer draws, and the laptop's own numbers, which decide
+whether its frame is the CPU's or the GPU's.

@@ -54,6 +54,9 @@ and carry on with the option that best preserves parity.
 | Crate dependency rules (SPEC 3.2) | `cargo xtask check-deps` |
 | Web build into `dist/next/` | `cargo xtask web` (add `--release` for the optimised build) |
 | Wasm size report | `cargo xtask size` (after a release web build) |
+| Frame times, JS or Rust, desktop, phone or throttled (BASELINE) | `node tools/parity/rust-perf.mjs --level sierra --race [--backend webgl2] [--phone] [--throttle 4] [--game js]` |
+| CPU profile by Bevy system (needs the names-kept build: `cargo xtask prof`) | `node tools/parity/rust-prof.mjs --level sierra --backend webgl2 --throttle 4` (`--from <.cpuprofile> --callers <regex>` to dig) |
+| WebGL2 calls a frame, Rust against the JS game | `node tools/parity/gl-calls.mjs --game rust` and `--game js` |
 | A headless race (results, `--trace`, `--state-at`, `bench`) | `cargo run --release -p mp_sim --bin mp-sim -- race --level sierra` |
 | Native client | `cargo run -p mp_game` |
 | The open world's plan, measured (`resolve` rewrites what the planner draws) | `cargo run --release -p mp_atlas -- report` |

@@ -3,6 +3,7 @@
 //! Commands:
 //!   check-deps        enforce the crate dependency rules (SPEC 3.2)
 //!   web [--release]   build the web client into dist/next/
+//!   prof              dist/prof/: the web build with function names kept, for CPU profiles
 //!   size              report the size of the built wasm (raw, gzip, brotli)
 //!   kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits
 //!   parity shots      compare two sets of screenshots (CIEDE2000), write a report
@@ -14,6 +15,7 @@ mod deps;
 mod kernel;
 mod materials;
 mod parity_scene;
+mod prof;
 mod shots;
 mod size;
 mod stations;
@@ -35,6 +37,7 @@ fn main() -> ExitCode {
     let result = match cmd.as_str() {
         "check-deps" => deps::run(rest),
         "web" => web::run(rest),
+        "prof" => prof::run(rest),
         "size" => size::run(rest),
         "kernel" => kernel::run(rest),
         "parity" => match rest.first().map(String::as_str) {
@@ -65,6 +68,7 @@ fn usage() -> &'static str {
      commands:\n\
      \x20 check-deps        enforce the crate dependency rules (SPEC 3.2)\n\
      \x20 web [--release]   build the web client into dist/next/\n\
+     \x20 prof [--only webgpu|webgl2]  dist/prof/: the web build with names kept, for CPU profiles\n\
      \x20 size [--budget]   report the built wasm's size; --budget fails over 16 MB gzip\n\
      \x20 kernel [--check]  build the math kernel's wasm for the JS oracle; check its bits\n\
      \x20 parity shots --a <dir> --b <dir> [--label name]\n\
