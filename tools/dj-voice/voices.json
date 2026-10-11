@@ -1,32 +1,41 @@
 {
-  "about": "Three candidate voices per DJ, each a plain-English description for Qwen3-TTS VoiceDesign. design.py speaks the DJ's ref_text in each and saves voices/<candidate>.flac; render.py clones the DJ's 'chosen' candidate for every line. To switch, change 'chosen' and run render.py again (it re-records that DJ).",
-  "djs": {
-    "marisol": {
-      "chosen": "marisol-warm",
-      "ref_text": "You're on The Tide, eighty-eight point one. It's a little after two, the fog's sitting on the harbour, and the coast road is all yours. I'm Marisol. Here's something slow. Let it take its time.",
-      "candidates": {
-        "marisol-warm": "A woman in her mid-forties, a low, warm alto voice, a late-night radio DJ on a coastal station. Unhurried and intimate, close to the microphone, relaxed pauses, dry understated humour, a calm American West Coast accent.",
-        "marisol-smoky": "A late-night female radio host around forty-five with a deep, slightly smoky, velvety voice. Slow, confident and wry, speaking softly into a studio microphone at two in the morning, amused but never loud.",
-        "marisol-clear": "A Californian woman in her forties, a rich, clear mid-low voice, speaking as a seasoned FM radio DJ: warm, composed and quietly witty, measured pacing, the voice of someone who has seen everything and is not impressed."
-      }
-    },
-    "kit": {
-      "chosen": "kit-bright",
-      "ref_text": "Ridgeline Radio! Live from a van on Skyline, in the fog, on a coat hanger antenna. I'm Kit, I have not slept, and the scanner says the ridge is wide open tonight. Okay. Here comes the drop. Hold on.",
-      "candidates": {
-        "kit-bright": "A woman in her late twenties with a bright, energetic mid-range voice and a little rasp, a pirate radio DJ broadcasting from a van. Fast, animated and playful, slightly conspiratorial, laughs easily, a casual American West Coast accent.",
-        "kit-rasp": "A young woman, about twenty-eight, with a husky, slightly hoarse voice after a long night out, hosting an underground radio show. Quick, excitable and funny, running sentences together, tired but buzzing.",
-        "kit-punk": "An upbeat American woman in her late twenties with a sharp, clear voice and attitude, a scrappy pirate radio host: rapid-fire, cheeky, enthusiastic, breaking into a grin mid-sentence."
-      }
-    },
-    "teo": {
-      "chosen": "teo-warm",
-      "ref_text": "Buenos días, coastside. Radio Pacífico, ciento cuatro punto tres. It's six in the morning, the fog's on the fields, and the surf was good, I checked. I'm Teo. Aquí vamos. Here's a cumbia.",
-      "candidates": {
-        "teo-warm": "A young man in his early twenties with a warm, bright, friendly tenor voice, a morning radio DJ on a small community station. Relaxed and cheerful, laughs easily, speaks Californian English with a light Peruvian Spanish accent and switches naturally into Spanish mid-sentence.",
-        "teo-easy": "A bilingual Peruvian-American man, about twenty-two, a mellow mid-range voice, sunny and unhurried, like someone who has already been surfing this morning. Clear and kind, Spanish words pronounced natively, English with a soft West Coast lilt.",
-        "teo-bright": "An upbeat young Latino man in his early twenties with a clear, bright voice and an easy grin in it, hosting a morning show from a farm town on the coast. Quick but gentle, earnest, breaking into Spanish and back without effort."
-      }
-    }
+ "about": "Three candidate voices per DJ, each a plain-English description for Qwen3-TTS VoiceDesign. design.py speaks the DJ's ref_text in each and saves voices/<candidate>.flac; render.py clones the DJ's 'chosen' candidate for every line. To switch, change 'chosen' and run render.py again (it re-records that DJ).",
+ "djs": {
+  "marisol": {
+   "chosen": "marisol-warm",
+   "ref_text": "You're on The Tide, eighty-eight point one. It's a little after two, the fog's sitting on the harbour, and the coast road is all yours. I'm Marisol. Here's something slow. Let it take its time.",
+   "candidates": {
+    "marisol-warm": "A woman in her mid-forties, a low, warm alto voice, a late-night radio DJ on a coastal station. Unhurried and intimate, close to the microphone, relaxed pauses, dry understated humour, a calm American West Coast accent.",
+    "marisol-smoky": "A late-night female radio host around forty-five with a deep, slightly smoky, velvety voice. Slow, confident and wry, speaking softly into a studio microphone at two in the morning, amused but never loud.",
+    "marisol-clear": "A Californian woman in her forties, a rich, clear mid-low voice, speaking as a seasoned FM radio DJ: warm, composed and quietly witty, measured pacing, the voice of someone who has seen everything and is not impressed."
+   }
+  },
+  "kit": {
+   "chosen": "kit-bright",
+   "ref_text": "Ridgeline Radio! Live from a van on Skyline, in the fog, on a coat hanger antenna. I'm Kit, I have not slept, and the scanner says the ridge is wide open tonight. Okay. Here comes the drop. Hold on.",
+   "candidates": {
+    "kit-bright": "A woman in her late twenties with a bright, energetic mid-range voice and a little rasp, a pirate radio DJ broadcasting from a van. Fast, animated and playful, slightly conspiratorial, laughs easily, a casual American West Coast accent.",
+    "kit-rasp": "A young woman, about twenty-eight, with a husky, slightly hoarse voice after a long night out, hosting an underground radio show. Quick, excitable and funny, running sentences together, tired but buzzing.",
+    "kit-punk": "An upbeat American woman in her late twenties with a sharp, clear voice and attitude, a scrappy pirate radio host: rapid-fire, cheeky, enthusiastic, breaking into a grin mid-sentence."
+   }
+  },
+  "teo": {
+   "chosen": "teo-warm",
+   "ref_text": "Buenos días, coastside. Radio Pacífico, ciento cuatro punto tres. It's six in the morning, the fog's on the fields, and the surf was good, I checked. I'm Teo. Aquí vamos. Here's a cumbia.",
+   "candidates": {
+    "teo-warm": "A young man in his early twenties with a warm, bright, friendly tenor voice, a morning radio DJ on a small community station. Relaxed and cheerful, laughs easily, speaks Californian English with a light Peruvian Spanish accent and switches naturally into Spanish mid-sentence.",
+    "teo-easy": "A bilingual Peruvian-American man, about twenty-two, a mellow mid-range voice, sunny and unhurried, like someone who has already been surfing this morning. Clear and kind, Spanish words pronounced natively, English with a soft West Coast lilt.",
+    "teo-bright": "An upbeat young Latino man in his early twenties with a clear, bright voice and an easy grin in it, hosting a morning show from a farm town on the coast. Quick but gentle, earnest, breaking into Spanish and back without effort."
+   }
+  },
+  "tess": {
+   "chosen": "tess-plain",
+   "ref_text": "The Roadhouse, one-oh-one point seven. Country for the old highway. It's a little after nine, the kitchen's closed, the bar's open, and I've got dirt under my nails from the garden. I'm Tess. Here's a train beat. Roll the windows down.",
+   "candidates": {
+    "tess-plain": "A woman in her early thirties with a clear, warm, low-mid voice and a plain, unhurried way of speaking, an evening DJ on a small-town country station. Dry, direct, a little amused, grounded; a rural Northern California accent, nothing twangy, relaxed pauses, the voice of someone who works outdoors and says what she means.",
+    "tess-husky": "A thirty-two-year-old woman with a slightly husky, warm alto, speaking close to the microphone in a quiet back room at night. Calm and sure of herself, wry, kind, a faint rural American lilt, no drawl, never rushed.",
+    "tess-sunny": "A warm, friendly woman around thirty with a bright mid-range voice and an easy laugh in it, hosting an evening country show from a roadhouse. Plain-spoken and confident, quick to tease, a light West Coast rural accent, clear diction."
+   }
   }
+ }
 }

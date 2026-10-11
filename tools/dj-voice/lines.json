@@ -1,398 +1,523 @@
 {
-  "about": "Sample DJ chatter for three stations, to hear whether radio talk lands before any of it goes in the game. Each DJ's lines are grouped by topic; a clip's id is <dj>-<topic>-<n> (n from 1, in the order below). A blank line inside a text (\\n\\n) splits it into parts that are recorded separately and joined with a short pause, for the long ones. Lines under 'player' are templates: the bracketed slots in 'template' are what the game would fill from what this player actually did; the text is one filled-in example.",
-  "topics": {
-    "ident": "Station IDs",
-    "music": "Song intros and back-announces",
-    "morning": "Good morning",
-    "weather": "Weather, fog and time of night",
-    "places": "Places on the map",
-    "scene": "The street racing scene",
-    "player": "Reacting to the player",
-    "raves": "Raves in the forest",
-    "tired": "Tired",
-    "camping": "Camping spots",
-    "offair": "Off the air: bikes and photographs",
-    "callers": "Callers and dedications",
-    "ads": "Local ads",
-    "banter": "Across the dial",
-    "night": "Night thoughts"
+ "about": "Sample DJ chatter for three stations, to hear whether radio talk lands before any of it goes in the game. Each DJ's lines are grouped by topic; a clip's id is <dj>-<topic>-<n> (n from 1, in the order below). A blank line inside a text (\\n\\n) splits it into parts that are recorded separately and joined with a short pause, for the long ones. Lines under 'player' are templates: the bracketed slots in 'template' are what the game would fill from what this player actually did; the text is one filled-in example.",
+ "topics": {
+  "ident": "Station IDs",
+  "music": "Song intros and back-announces",
+  "morning": "Good morning",
+  "weather": "Weather, fog and time of night",
+  "places": "Places on the map",
+  "scene": "The street racing scene",
+  "player": "Reacting to the player",
+  "raves": "Raves in the forest",
+  "tired": "Tired",
+  "camping": "Camping spots",
+  "offair": "Off the air: bikes and photographs",
+  "callers": "Callers and dedications",
+  "ads": "Local ads",
+  "banter": "Across the dial",
+  "night": "Night thoughts"
+ },
+ "djs": {
+  "marisol": {
+   "name": "Marisol",
+   "station": "The Tide, 88.1 FM",
+   "about": "A licensed coastal station broadcasting from the harbour town: deep house, disco edits, slow-burning sets. Mid-forties, a low, warm, unhurried late-night voice, dry humour. Has driven these roads for twenty years and notices small things. Off the air she rides a road bike up the climbs everyone else drives, and photographs the coast: fog, light, old cars. Plugged into the street racing scene, but would never say so on air. Goes to the rave and stays to the end, naps in the car, then wakes up for strike and helps with the load-out, because someone responsible has to. A leader who never says she is one, and never brags. Gets in at eleven; ten if she has to. When she's tired, it's from other people's nonsense. Kind in a quiet, practical way.",
+   "lines": {
+    "ident": [
+     "You're on The Tide. Eighty-eight point one. Coastside, after dark.",
+     "Eighty-eight one, The Tide. I'm Marisol. Keep it between the lines. Mostly.",
+     "This is The Tide. We don't do hits. We do the long version.",
+     "Eighty-eight point one. If you can hear me, you're west of the ridge, and you're up too late. Same.",
+     "The Tide. Deep house for the coast road, and for whoever's still awake on it."
+    ],
+    "music": [
+     "That was eleven minutes long, and I'm not apologising. Here's another one.",
+     "Something slow to start. Let the kick come in on its own time.",
+     "Back to back, two records that have no business working together. They do.",
+     "That one's from a basement in Oakland, nineteen ninety-four. Still the best thing to come out of that side of the bay.",
+     "If your windows are down, turn this up. If they're up, roll them down first.",
+     "Coming up, a little disco. Don't make that face."
+    ],
+    "morning": [
+     "Good morning, coastside.\n\nIt is five fifty-two. The fog is sitting on the harbour like it pays rent there, the pelicans are already at work, and somebody parked a very loud car outside the bakery. You know who you are.\n\nIf you're just waking up, welcome. If you never went to bed, I see you, and I'm not telling anyone.\n\nThis is The Tide, eighty-eight point one. Coffee's on. Let's go to work.",
+     "Good morning. It's Monday. If you need me today, I'm in at eleven. If you really need me, ten. Let's not make it ten.",
+     "Morning, everyone. The sun is up somewhere behind the hill. We'll take its word for it.",
+     "Six a.m. on The Tide. The night shift is driving home, the day shift is driving in, and for about ten minutes on Highway 1, everyone's equally tired."
+    ],
+    "weather": [
+     "The marine layer is in. Visibility on the coast road is about a song and a half. Drive accordingly.",
+     "Up on Skyline the fog is so thick the redwoods are dripping. It isn't raining. It just feels like it, which is honestly worse.",
+     "Clear tonight on the bay side. Fog on the coast. Pick your weather by picking your road.",
+     "Wind's coming up off the water. If you've got a soft top, now's the time to have opinions about it.",
+     "Full moon over the reservoir tonight. Worth pulling over for. Just pull over properly.",
+     "Sunrise in twenty minutes. If you're on 92, you're about to get the good view. You're welcome.",
+     "Fog's lifting off the beach right now in long, slow sheets. If I weren't on the air I'd be out there with a camera. Somebody go take the picture for me."
+    ],
+    "places": [
+     "Pelicans off Highway 1 this evening, flying right alongside the cars. They're not racing you. They're just better at it.",
+     "If you're heading north to Pacifica, the tunnel's empty tonight. Enjoy the echo. I know you will.",
+     "The reservoir is like glass tonight. The only thing moving on it is the moon.",
+     "Harbour lights are on, and the fishing boats are heading out. Somebody out there gets up earlier than me. Respect.",
+     "The redwoods on the way down to the coast don't care how fast you're going. That's their whole thing. Learn from them.",
+     "Rode my bike up to Alice's this morning. I was the slowest thing in the parking lot, and the only one who earned the pancakes."
+    ],
+    "scene": [
+     "Word is there's a meet at the summit lot tonight. I didn't say that. I'm a licensed broadcaster.",
+     "Highway Patrol has two units sitting at the bottom of 92. I mention this purely as a traffic report.",
+     "To whoever keeps running the coast road at two in the morning in something very loud: the farmers have asked me to say hello. Loudly.",
+     "I hear the Skyline record changed hands last night. I don't follow these things. It was a red Firebird. I don't follow these things.",
+     "Some of you treat the lights on Main Street as a starting signal. I'm not your mother. But I have met her.",
+     "Sunday morning at Alice's Restaurant, up at Skyline and 84. Two hundred motorcycles, forty Porsches, one very patient waitress. You can get anything you want there. Except a parking space.",
+     "People ask where the scene really starts. Not the summit lot. Alice's, at seven on a Sunday, coffee in one hand, somebody else's engine in your ears."
+    ],
+    "player": [
+     {
+      "template": "Somebody in a [colour] [car] just took the [road] record. Whoever you are, that was rude to the previous holder. Good.",
+      "text": "Somebody in a black three thousand G T just took the Skyline record. Whoever you are, that was rude to the previous holder. Good."
+     },
+     {
+      "template": "Someone just did the [road] faster than the pelicans. I saw. Everyone saw.",
+      "text": "Someone just did the coast road faster than the pelicans. I saw. Everyone saw."
+     },
+     {
+      "template": "Quiet night, and then a [colour] [car] came through town like it owed somebody money. That one's for you.",
+      "text": "Quiet night, and then a silver Audi came through town like it owed somebody money. That one's for you."
+     },
+     {
+      "template": "Last week you were losing to [rival]. This week [rival] is losing to you. Funny how that works.",
+      "text": "Last week you were losing to the orange rally car. This week the orange rally car is losing to you. Funny how that works."
+     },
+     {
+      "template": "You've been driving for [hours]. Nobody's keeping score but you. And me. A little.",
+      "text": "You've been driving all night. Nobody's keeping score but you. And me. A little."
+     }
+    ],
+    "raves": [
+     "Went to the thing in the redwoods on Saturday. Good sound system. Danced until the sun came up, slept in the car for an hour, and woke up in time to help with the load-out. Honestly, the best part. Quiet forest, coffee, a crew that knows what it's doing.",
+     "There's a gathering out past the state park this weekend. I'm not giving directions on air. If you need directions, you're not ready.",
+     "People ask if I still go out. Of course I go out. Where do you think I find the records?",
+     "Best set I heard all year was at sunrise, in a clearing, off a generator that kept cutting out. Every time it came back, the whole forest cheered."
+    ],
+    "tired": [
+     "I'm tired, coastside. Not from dancing. From a meeting that could have been an email, about an email that could have been nothing.",
+     "Somebody at work said, let's circle back. We circled. We came back. Nothing had changed. Here's a record.",
+     "I'm not tired of the night. I'm tired of people who talk through it.",
+     "Long day. Other people's emergencies. Other people's nonsense. Other people's bullshit, if we're being precise. Anyway. Music."
+    ],
+    "camping": [
+     "If you need somewhere quiet this weekend, there's a campground above the reservoir with one spot where you can hear the whole valley wake up. I won't say which spot. Find it.",
+     "Camping advice from a grown woman: bring the good blanket. The cold comes off the ocean at three in the morning, and it does not care about your plans."
+    ],
+    "offair": [
+     "Rode up 92 this morning before the show. Three cars passed me. Two of them waved. The third one is why I'm doing a traffic report about you.",
+     "Somebody asked how I stay sane doing nights. I ride up Skyline at dawn and come back down before the world wakes up. It's cheaper than therapy, and the hills don't interrupt.",
+     "Cyclists on the ridge this weekend. Give them the lane. One of them might be me, and I know where the transmitter is.",
+     "I took a photograph of the fog coming over the ridge this morning. It looked like the whole mountain was breathing out. I'll put it on the station wall with the others.",
+     "Best light on the coast is the ten minutes after the sun drops. Everything goes blue and the harbour lights come on. If you've got a camera, that's your window. If you've got a car, slow down and look.",
+     "I shoot on film, mostly. You get thirty-six chances and you have to mean every one. Same as a good set. Same as a good corner.",
+     "I've been photographing old cars parked along the coast for years. Rust, salt, sun-bleached paint. If yours is on the wall, you'll know. Come say hi."
+    ],
+    "callers": [
+     "This one's for Rosa, on the night shift at the hospital, driving home over 92. You did good tonight.",
+     "Going out to the baker on Main Street, who starts at four and leaves the back door open so the whole block smells like bread. Hero.",
+     "A caller says, Marisol, my car makes a noise. Darling, they all make a noise. That's how you know they're alive.",
+     "For the truck driver who flashes his lights at me every morning by the pumpkin farm. I see you, Hector.",
+     "A request from someone who signed it, still figuring it out. Aren't we all. This is for you."
+    ],
+    "ads": [
+     "This hour of The Tide is brought to you by Half Moon Fuel and Snacks. Open twenty-four hours. The coffee is bad. The coffee is always there.",
+     "Coastside Car Wash. We get the salt off. We get the fog off. We cannot get the bad decisions off. Exit right after the harbour.",
+     "Abuela's Tacos, on the coast road by the farms. Open late, cash only, and yes, they know who you are.",
+     "Pumpkin season at Fernandez Farms. Pick your own. Please do not drift in the parking lot. They have asked twice."
+    ],
+    "banter": [
+     "Kit's on the pirate frequency again, up on Skyline. If you can hear her through the static, tell her to drink some water.",
+     "Somebody up on the ridge is playing drum and bass at a hundred and seventy-four beats per minute. At this hour. That's Kit. That's always Kit.",
+     "Kit said on air that I play music for people who own linen. I do. It breathes."
+    ],
+    "night": [
+     "There's a version of you that only exists on this road, at this hour. Be kind to that one.",
+     "Nobody knows where you're going tonight. Maybe including you. That's allowed.",
+     "Twenty years I've driven this coast, and I'm still not who I'm going to be. I find that comforting.",
+     "Some nights the drive is the whole point. You don't have to arrive anywhere.",
+     "Whoever you were when you got in the car, you're a little different by the bottom of the hill. That's the job of a good road."
+    ]
+   }
   },
-  "djs": {
-    "marisol": {
-      "name": "Marisol",
-      "station": "The Tide, 88.1 FM",
-      "about": "A licensed coastal station broadcasting from the harbour town: deep house, disco edits, slow-burning sets. Mid-forties, a low, warm, unhurried late-night voice, dry humour. Has driven these roads for twenty years and notices small things. Off the air she rides a road bike up the climbs everyone else drives, and photographs the coast: fog, light, old cars. Plugged into the street racing scene, but would never say so on air. Goes to the rave and stays to the end, naps in the car, then wakes up for strike and helps with the load-out, because someone responsible has to. A leader who never says she is one, and never brags. Gets in at eleven; ten if she has to. When she's tired, it's from other people's nonsense. Kind in a quiet, practical way.",
-      "lines": {
-        "ident": [
-          "You're on The Tide. Eighty-eight point one. Coastside, after dark.",
-          "Eighty-eight one, The Tide. I'm Marisol. Keep it between the lines. Mostly.",
-          "This is The Tide. We don't do hits. We do the long version.",
-          "Eighty-eight point one. If you can hear me, you're west of the ridge, and you're up too late. Same.",
-          "The Tide. Deep house for the coast road, and for whoever's still awake on it."
-        ],
-        "music": [
-          "That was eleven minutes long, and I'm not apologising. Here's another one.",
-          "Something slow to start. Let the kick come in on its own time.",
-          "Back to back, two records that have no business working together. They do.",
-          "That one's from a basement in Oakland, nineteen ninety-four. Still the best thing to come out of that side of the bay.",
-          "If your windows are down, turn this up. If they're up, roll them down first.",
-          "Coming up, a little disco. Don't make that face."
-        ],
-        "morning": [
-          "Good morning, coastside.\n\nIt is five fifty-two. The fog is sitting on the harbour like it pays rent there, the pelicans are already at work, and somebody parked a very loud car outside the bakery. You know who you are.\n\nIf you're just waking up, welcome. If you never went to bed, I see you, and I'm not telling anyone.\n\nThis is The Tide, eighty-eight point one. Coffee's on. Let's go to work.",
-          "Good morning. It's Monday. If you need me today, I'm in at eleven. If you really need me, ten. Let's not make it ten.",
-          "Morning, everyone. The sun is up somewhere behind the hill. We'll take its word for it.",
-          "Six a.m. on The Tide. The night shift is driving home, the day shift is driving in, and for about ten minutes on Highway 1, everyone's equally tired."
-        ],
-        "weather": [
-          "The marine layer is in. Visibility on the coast road is about a song and a half. Drive accordingly.",
-          "Up on Skyline the fog is so thick the redwoods are dripping. It isn't raining. It just feels like it, which is honestly worse.",
-          "Clear tonight on the bay side. Fog on the coast. Pick your weather by picking your road.",
-          "Wind's coming up off the water. If you've got a soft top, now's the time to have opinions about it.",
-          "Full moon over the reservoir tonight. Worth pulling over for. Just pull over properly.",
-          "Sunrise in twenty minutes. If you're on 92, you're about to get the good view. You're welcome.",
-          "Fog's lifting off the beach right now in long, slow sheets. If I weren't on the air I'd be out there with a camera. Somebody go take the picture for me."
-        ],
-        "places": [
-          "Pelicans off Highway 1 this evening, flying right alongside the cars. They're not racing you. They're just better at it.",
-          "If you're heading north to Pacifica, the tunnel's empty tonight. Enjoy the echo. I know you will.",
-          "The reservoir is like glass tonight. The only thing moving on it is the moon.",
-          "Harbour lights are on, and the fishing boats are heading out. Somebody out there gets up earlier than me. Respect.",
-          "The redwoods on the way down to the coast don't care how fast you're going. That's their whole thing. Learn from them.",
-          "Rode my bike up to Alice's this morning. I was the slowest thing in the parking lot, and the only one who earned the pancakes."
-        ],
-        "scene": [
-          "Word is there's a meet at the summit lot tonight. I didn't say that. I'm a licensed broadcaster.",
-          "Highway Patrol has two units sitting at the bottom of 92. I mention this purely as a traffic report.",
-          "To whoever keeps running the coast road at two in the morning in something very loud: the farmers have asked me to say hello. Loudly.",
-          "I hear the Skyline record changed hands last night. I don't follow these things. It was a red Firebird. I don't follow these things.",
-          "Some of you treat the lights on Main Street as a starting signal. I'm not your mother. But I have met her.",
-          "Sunday morning at Alice's Restaurant, up at Skyline and 84. Two hundred motorcycles, forty Porsches, one very patient waitress. You can get anything you want there. Except a parking space.",
-          "People ask where the scene really starts. Not the summit lot. Alice's, at seven on a Sunday, coffee in one hand, somebody else's engine in your ears."
-        ],
-        "player": [
-          {
-            "template": "Somebody in a [colour] [car] just took the [road] record. Whoever you are, that was rude to the previous holder. Good.",
-            "text": "Somebody in a black three thousand G T just took the Skyline record. Whoever you are, that was rude to the previous holder. Good."
-          },
-          {
-            "template": "Someone just did the [road] faster than the pelicans. I saw. Everyone saw.",
-            "text": "Someone just did the coast road faster than the pelicans. I saw. Everyone saw."
-          },
-          {
-            "template": "Quiet night, and then a [colour] [car] came through town like it owed somebody money. That one's for you.",
-            "text": "Quiet night, and then a silver Audi came through town like it owed somebody money. That one's for you."
-          },
-          {
-            "template": "Last week you were losing to [rival]. This week [rival] is losing to you. Funny how that works.",
-            "text": "Last week you were losing to the orange rally car. This week the orange rally car is losing to you. Funny how that works."
-          },
-          {
-            "template": "You've been driving for [hours]. Nobody's keeping score but you. And me. A little.",
-            "text": "You've been driving all night. Nobody's keeping score but you. And me. A little."
-          }
-        ],
-        "raves": [
-          "Went to the thing in the redwoods on Saturday. Good sound system. Danced until the sun came up, slept in the car for an hour, and woke up in time to help with the load-out. Honestly, the best part. Quiet forest, coffee, a crew that knows what it's doing.",
-          "There's a gathering out past the state park this weekend. I'm not giving directions on air. If you need directions, you're not ready.",
-          "People ask if I still go out. Of course I go out. Where do you think I find the records?",
-          "Best set I heard all year was at sunrise, in a clearing, off a generator that kept cutting out. Every time it came back, the whole forest cheered."
-        ],
-        "tired": [
-          "I'm tired, coastside. Not from dancing. From a meeting that could have been an email, about an email that could have been nothing.",
-          "Somebody at work said, let's circle back. We circled. We came back. Nothing had changed. Here's a record.",
-          "I'm not tired of the night. I'm tired of people who talk through it.",
-          "Long day. Other people's emergencies. Other people's nonsense. Other people's bullshit, if we're being precise. Anyway. Music."
-        ],
-        "camping": [
-          "If you need somewhere quiet this weekend, there's a campground above the reservoir with one spot where you can hear the whole valley wake up. I won't say which spot. Find it.",
-          "Camping advice from a grown woman: bring the good blanket. The cold comes off the ocean at three in the morning, and it does not care about your plans."
-        ],
-        "offair": [
-          "Rode up 92 this morning before the show. Three cars passed me. Two of them waved. The third one is why I'm doing a traffic report about you.",
-          "Somebody asked how I stay sane doing nights. I ride up Skyline at dawn and come back down before the world wakes up. It's cheaper than therapy, and the hills don't interrupt.",
-          "Cyclists on the ridge this weekend. Give them the lane. One of them might be me, and I know where the transmitter is.",
-          "I took a photograph of the fog coming over the ridge this morning. It looked like the whole mountain was breathing out. I'll put it on the station wall with the others.",
-          "Best light on the coast is the ten minutes after the sun drops. Everything goes blue and the harbour lights come on. If you've got a camera, that's your window. If you've got a car, slow down and look.",
-          "I shoot on film, mostly. You get thirty-six chances and you have to mean every one. Same as a good set. Same as a good corner.",
-          "I've been photographing old cars parked along the coast for years. Rust, salt, sun-bleached paint. If yours is on the wall, you'll know. Come say hi."
-        ],
-        "callers": [
-          "This one's for Rosa, on the night shift at the hospital, driving home over 92. You did good tonight.",
-          "Going out to the baker on Main Street, who starts at four and leaves the back door open so the whole block smells like bread. Hero.",
-          "A caller says, Marisol, my car makes a noise. Darling, they all make a noise. That's how you know they're alive.",
-          "For the truck driver who flashes his lights at me every morning by the pumpkin farm. I see you, Hector.",
-          "A request from someone who signed it, still figuring it out. Aren't we all. This is for you."
-        ],
-        "ads": [
-          "This hour of The Tide is brought to you by Half Moon Fuel and Snacks. Open twenty-four hours. The coffee is bad. The coffee is always there.",
-          "Coastside Car Wash. We get the salt off. We get the fog off. We cannot get the bad decisions off. Exit right after the harbour.",
-          "Abuela's Tacos, on the coast road by the farms. Open late, cash only, and yes, they know who you are.",
-          "Pumpkin season at Fernandez Farms. Pick your own. Please do not drift in the parking lot. They have asked twice."
-        ],
-        "banter": [
-          "Kit's on the pirate frequency again, up on Skyline. If you can hear her through the static, tell her to drink some water.",
-          "Somebody up on the ridge is playing drum and bass at a hundred and seventy-four beats per minute. At this hour. That's Kit. That's always Kit.",
-          "Kit said on air that I play music for people who own linen. I do. It breathes."
-        ],
-        "night": [
-          "There's a version of you that only exists on this road, at this hour. Be kind to that one.",
-          "Nobody knows where you're going tonight. Maybe including you. That's allowed.",
-          "Twenty years I've driven this coast, and I'm still not who I'm going to be. I find that comforting.",
-          "Some nights the drive is the whole point. You don't have to arrive anywhere.",
-          "Whoever you were when you got in the car, you're a little different by the bottom of the hill. That's the job of a good road."
-        ]
-      }
-    },
-    "kit": {
-      "name": "Kit",
-      "station": "Ridgeline Radio",
-      "about": "A pirate station broadcasting from a van parked somewhere up on Skyline: techno, breakbeat, drum and bass. Late twenties, quick and sharp, playful and a bit conspiratorial. Listens to the police scanner and is plugged into the street racing scene, the forest raves and every good camping spot on the ridge. Off the air she hikes everything, knows every plant on the mountain, is vegan, and is always making something: tracks, stickers, an antenna out of a coat hanger. Kind at heart and wants to be, but young and brash: she doesn't always read people right, picks the odd fight, and then tries, clumsily, to make it right. Goes to the rave and is wrecked for two days afterwards.",
-      "lines": {
-        "ident": [
-          "Ridgeline Radio! Broadcasting from a van, on a hill, in the fog, on a frequency the government would prefer we didn't.",
-          "You've found Ridgeline. Don't tell anyone. Actually, tell everyone. Actually, I don't know, use your judgment.",
-          "Ridgeline Radio, live from Skyline, somewhere between a redwood and a bad idea.",
-          "If this sounds crunchy, that's not your speakers, that's my antenna, which is a coat hanger. Ridgeline Radio!",
-          "This is Kit. This is Ridgeline. This is a hundred and seventy-four beats per minute. Hold on."
-        ],
-        "music": [
-          "This next one's techno. Not the nice kind. The kind that looks at you.",
-          "Okay, okay, okay, here comes the drop. Are you on a straight? Get on a straight. Okay. Now.",
-          "That track was made by a teenager in a bedroom in Fremont, and it's better than everything on the actual radio. Respect the bedroom.",
-          "Breakbeat, for the twisty bits. You'll thank me on the way down.",
-          "I've played this one four times tonight. I'll play it four more. It's my van."
-        ],
-        "morning": [
-          "Gooooooood MORNING, Ridgeline!\n\nIt is six a.m., I have not been to sleep, the fog is so thick I can't see the end of my own van, and I have never been more alive. Or less alive. One of those.\n\nIf you're driving to work right now, I salute you. If you're driving home from the forest right now, I am you. We are the same. Drink some water.\n\nThis is Ridgeline Radio, and we are still going. Somehow.",
-          "Good morning? Is it morning? The birds say it's morning. The birds are being very loud about it.",
-          "Morning, everybody. I'm running on gas station coffee and the memory of a bassline. That's a full breakfast.",
-          "It's Monday. I know it's Monday because my body filed a formal complaint."
-        ],
-        "weather": [
-          "The fog on Skyline is absolutely biblical right now. I put my hand out the window and lost it. Found it. It's fine.",
-          "The trees are dripping so hard up here it sounds like rain on the van roof. It's not raining. The forest is just sweaty.",
-          "Wind's coming over the ridge and my antenna is doing a little dance. If I cut out, that's why. If I come back, that's also why.",
-          "Clear skies down on the bay side, fog up top. Basically the mountain's wearing a hat.",
-          "The sun is coming up over the reservoir, it's pink, it's gold, it's too much, I'm emotional, here's a banger."
-        ],
-        "places": [
-          "If you're coming down the redwood road tonight, hug the inside on the hairpins. The road. Not the trees. Don't hug the trees, they're wet.",
-          "Shout-out to whoever keeps leaving their headlights on in the summit lot. Your battery says hi. Your battery says goodbye.",
-          "The view from the vista point at three in the morning is the whole bay just glittering. Go look. Then drive away from it carefully.",
-          "There's a dirt road behind the old fire station that nobody uses. I'm not saying use it. I'm saying it exists."
-        ],
-        "scene": [
-          "Scanner says two Highway Patrol units are parked at the bottom of 92 doing their little stakeout. Love that for them. Take the long way.",
-          "Meet tonight at the summit lot. Bring your car, bring your friends, bring snacks, do not bring drama.",
-          "Somebody just went past my van so fast my coffee rippled. Was that you? That was you. Respect.",
-          "Okay, the scanner's getting chatty. Lots of units heading for the coast road. Which means the ridge is wide open. I'm just reading the news.",
-          "Rumour on the ridge: there's a crew from the city coming down this weekend to take the Skyline record. Defend your mountain.",
-          "To the guy who called me a menace on the forum: I read it. I was mad. I'm less mad now. I'm still a menace. But I'm a menace who hopes your week gets better.",
-          "Okay. Alice's Restaurant, Skyline and 84, this Sunday, everybody's going. You can get anything you want at Alice's Restaurant. Except a hearty vegan meal. I've checked. I've checked many times. I'm bringing a sandwich.",
-          "Overheard at Alice's this morning: two guys arguing about tyre pressure for forty-five minutes. I said, have you tried just driving? They did not appreciate that. I apologised. Mostly.",
-          "Rumour from Alice's: somebody parked a black three thousand G T out front last night, left the engine ticking, and vanished up Skyline before anyone could ask. Mysterious. Love it."
-        ],
-        "player": [
-          {
-            "template": "Who is in the [colour] [car]? Because you just took the [road] record, and the whole comment section of my brain is screaming.",
-            "text": "Who is in the black three thousand G T? Because you just took the Skyline record, and the whole comment section of my brain is screaming."
-          },
-          {
-            "template": "That [colour] [car] is back! [detail]! In this fog! Absolute legend, absolute menace.",
-            "text": "That red Firebird is back! T-tops off! In this fog! Absolute legend, absolute menace."
-          },
-          {
-            "template": "Somebody just lost the cops on the [road], and the scanner went completely silent. That's the sound of respect.",
-            "text": "Somebody just lost the cops on the redwood road, and the scanner went completely silent. That's the sound of respect."
-          },
-          {
-            "template": "You again! You're on my frequency every night. At this point you're basically my co-host. Say something. Oh, right, you can't. That's fine.",
-            "text": "You again! You're on my frequency every night. At this point you're basically my co-host. Say something. Oh, right, you can't. That's fine."
-          },
-          {
-            "template": "New record on the [road]. [margin] faster. [margin]! What are you running on? Don't tell me. Tell me.",
-            "text": "New record on the coast road. Ten seconds faster. Ten! What are you running on? Don't tell me. Tell me."
-          }
-        ],
-        "raves": [
-          "Forest party this Saturday, out past the state park. Follow the bass. If you get lost, you're doing it right.",
-          "Just got back from the thing in the redwoods. The sound system was in a tree. I don't know how. Nobody knows how.",
-          "Reminder for the weekend: the party's in the forest, the forest is dry, so no fire. Glow sticks only. Be cool.",
-          "Last night I danced until the sun came up, then I danced at the sun for a bit, then I fell asleep in a hammock that wasn't mine. Thank you to the hammock owner."
-        ],
-        "tired": [
-          "I'm so tired I just introduced the same song twice. You know what? It deserved it.",
-          "Haven't slept since Friday. Not a flex. A medical concern. Here's some ambient.",
-          "My legs are still at the party. The rest of me is in the van. We're working on a reunion.",
-          "If I sound rough, it's because I am rough. I'm a rough draft of a person right now. Play the hits."
-        ],
-        "camping": [
-          "Camping spot of the week: the clearing above the creek, off the old logging road. Flat ground, no cell signal, owls. Perfect.",
-          "If you sleep in your car at the summit, crack a window. The fog gets in either way, but at least it's invited.",
-          "Best camping hack: park facing east. Wake up to the sunrise through the windshield. Feel like you're in a movie. Feel cold. Mostly cold.",
-          "There's a beach north of town where you can camp right by the water, and the sea lions bark all night. Bring earplugs. Or don't. Join the choir."
-        ],
-        "offair": [
-          "Hiked the ridge trail at sunrise. Found a patch of redwood sorrel the size of a parking lot. Little clover hearts everywhere. I lay down in it. I'm not sorry.",
-          "Plant fact for the drive: the redwoods drink the fog. Straight through their needles. That's why it drips up here. The trees are sipping and spilling. Same.",
-          "If you're hiking this weekend, stay on the trail. The moss took a hundred years. You took four minutes. Show some respect.",
-          "Made a new antenna today out of a coat hanger, a cake tin and pure spite. You're hearing it right now. You're welcome, science.",
-          "I've been printing stickers in the van. Little mushrooms. Little pelicans. If you see one on a road sign, that wasn't me. It was me.",
-          "Someone left a fern on my windshield with a note that said, for the van. Whoever you are, she's thriving. Her name is Gerald.",
-          "Wildflowers are coming up along the fire road. Purple ones, orange ones, the ones that smell like honey. Do not pick them. I will find you. Kindly. But I will.",
-          "Vegan tip for the ridge: the taco truck at the bottom of 84 does a mushroom thing on Thursdays that will change your life. Don't tell them I sent you. Actually, do."
-        ],
-        "callers": [
-          "Got a text: Kit, play something for the delivery drivers. Every song tonight is for the delivery drivers. You're the real night crew.",
-          "This one's for Danny, whose car broke down on the ridge and who now, apparently, lives here. Welcome, neighbour.",
-          "Shout-out to the tow truck guy who keeps rescuing people off Skyline. Absolute angel. Wears a terrible hat.",
-          "Somebody wants a dedication to, quote, whoever I'm going to be. I love that. Turn it up for them.",
-          "A caller just told me my station is just noise. Okay, first of all, it's curated noise. Second, wow, rude. Third, actually, are you okay? You sound like you're having a night. This one's for you. Even though you're wrong.",
-          "Earlier I yelled at a guy in the summit lot for revving his engine at the owls. He's here now. He brought me a coffee. We're friends. The owls remain unimpressed."
-        ],
-        "ads": [
-          "Ridgeline Radio is brought to you by nobody, because we are illegal. But if we had a sponsor, it would be Summit Gas and Bait. Gas. Bait. Do not mix them up.",
-          "Skyline Garage. They'll fix your car at two in the morning. They'll ask no questions. They'll charge you for not asking.",
-          "The Redwood Coffee Cart, at the vista point from five a.m. Fuel for people who made poor decisions in the forest. Which is all of us.",
-          "Need new tyres? Need them now? Need them without a receipt? Tony's. Behind the fire station. Knock twice."
-        ],
-        "banter": [
-          "Marisol's on eighty-eight one playing a nine-minute disco edit for the third time tonight. Babe. Respectfully. Pick a tempo.",
-          "Marisol says I should drink more water. Marisol is correct. I hate it here.",
-          "Love you, Marisol. Your station is the smoothest thing on the coast, and I mean that as an insult and a compliment.",
-          "Okay, earlier I said Marisol plays music for people who've never been tired. That was mean, and also wrong, because she's always tired, mostly of people like me. Sorry, Marisol. Here's a slow one. For you. Don't get used to it."
-        ],
-        "night": [
-          "Sometimes I just sit up here and listen to the cars go by on the ridge, and think, everybody's going somewhere. Even me. Eventually.",
-          "Nobody up here has it figured out. That's why we're up here.",
-          "Drive like you're figuring something out. Because you probably are.",
-          "The fog makes everything feel like a secret. Even you. Especially you."
-        ]
-      }
-    },
-    "teo": {
-      "name": "Teo",
-      "station": "Radio Pacífico, 104.3 FM",
-      "about": "A licensed low-power community station in a converted packing shed by the farms south of town: chicha, cumbia, and whatever Teo brought in that morning, some house, some of his father's old salsa. Early twenties, the son of Peruvian farmers who grow Brussels sprouts and artichokes on the coast. He has done every job on the farm, respects all of them, and isn't going to do them; his dad says that's fine, every day. Bilingual, slides between English and Spanish mid-sentence without noticing, Peruvian slang (oe, ya pues, chévere). A morning person: the show is five to nine, he surfs before it at first light and mountain bikes the fire roads after. Makes the rave about one time in three, leaves at midnight apologising, or turns up at sunrise with bread and a thermos for the ones still standing. Kind in an open, easy, slightly earnest way: remembers names, feeds people, waves at every tractor. Has never been in a street race and doesn't need to be; he knows the drivers because they buy strawberries from his mother.",
-      "lines": {
-        "ident": [
-          "Radio Pacífico, ciento cuatro punto tres. Buenos días, coastside. The fog's here, the coffee's here, I'm here. Vamos.",
-          "One-oh-four three, Radio Pacífico. Chicha for the coast road. If there's a tractor in front of you, you're on the right station.",
-          "This is Teo, Radio Pacífico, broadcasting from a packing shed that still smells like artichokes. Mi casa es su casa. Well. My parents' casa.",
-          "Radio Pacífico. We're on the dial between the pirate and the fancy one. Perfectly placed. Like a good taco.",
-          "Ciento cuatro punto tres. Si me escuchas, you're awake, and that's already a win."
-        ],
-        "music": [
-          "That was Los Mirlos, from the jungle, nineteen seventy-something. My dad has it on cassette. The cassette is older than me.",
-          "Chicha is cumbia that moved to Lima, plugged in a guitar and never looked back. Ese guitarrista. Listen to him. Okay. Listen.",
-          "A little house now, because a friend keeps sending me tracks and he's right about half of them. This is the half.",
-          "That one's Chacalón. If you don't know Chacalón, ask anyone over fifty at the farmers' market. Bring a chair.",
-          "Back to back: a cumbia from Peru and a house track from Oakland, same bassline. I checked. Nobody believes me. Listen."
-        ],
-        "morning": [
-          "Buenos días, coastside.\n\nIt's five fifty-eight, the fog is in, and the tractors are already on the field road, so if you're stuck behind one, that's not traffic, that's breakfast being made.\n\nSurf was head-high and clean at first light. I know because I was in it. Lo siento to everyone who wasn't.\n\nIf you just woke up, welcome, this is the good part. If you never went to bed, hola, there's coffee at the shed, come by.\n\nRadio Pacífico, one-oh-four point three. Vamos.",
-          "Good morning. The sun's coming up over the ridge, the sprouts are frosty, and I am unreasonably happy about both of those things.",
-          "Morning! I've already surfed, so whatever you do today, you're not the first thing I did. No offence. Mucho cariño.",
-          "Six a.m., and my mother just texted to say the fog looks heavy. Mamá. I'm on the radio. I know about the fog. Te quiero."
-        ],
-        "weather": [
-          "Hay neblina, fog, from the harbour down to the pumpkin farms. Headlights on. Not the brights. Nobody likes the brights.",
-          "Offshore wind this morning, which means the surf is good and the kale is happy. Those are my two metrics.",
-          "Rained overnight, so the fire roads are mud for two days. Mountain bikers: patience. Farmers: finally.",
-          "First frost on the fields this morning. Beautiful. Terrible. Depends who you ask. Ask a farmer.",
-          "Sunrise in ten minutes, and from the field road you can watch it come over the ridge and hit the water. Pull over. I'm serious. Pull over."
-        ],
-        "places": [
-          "Coast road south of town: the big fields on your left are Brussels sprouts. On your right, artichokes. De nada. Tour's over.",
-          "The strawberry stand by the bridge opens at seven, honour box before that. Don't be the person who tests the honour box.",
-          "Pumpkins are coming in along the highway. Every car in the state will be here in two weeks. Enjoy the quiet while you've got it.",
-          "The ridge trail above the reservoir is open again. The first mile is all climb. Es una paliza. Then it's the best view in the county.",
-          "Alice's, top of 84: the motorcycle guys, the Porsche guys, and me on a mountain bike, covered in mud, eating their pancakes."
-        ],
-        "scene": [
-          "The street racers buy strawberries from my mother. That's all I'm saying. Pero all of them. Every Saturday.",
-          "Somebody ran the coast road very fast at five this morning, past the field crews. The crews asked me to say: we saw you, and the lettuce doesn't care.",
-          "There's a meet at the summit lot tonight, apparently. I'll be asleep. Say hi to Kit.",
-          "Word is the coast record changed hands. Un carro rojo, a red something. I don't know cars. I know tractors. A John Deere could not have done that time.",
-          "A couple of the racing crowd helped my dad move irrigation pipe last weekend. Nobody asked them. Son buena gente. Loud, but good."
-        ],
-        "player": [
-          {
-            "template": "Somebody in a [colour] [car] just took the [road] record before six a.m., past my parents' farm. Oe. That's the rooster's job. Respect, though.",
-            "text": "Somebody in a black three thousand G T just took the coast road record before six a.m., past my parents' farm. Oe. That's the rooster's job. Respect, though."
-          },
-          {
-            "template": "A [colour] [car] just came through the fields like dawn patrol with an engine. Buena. That one's for you.",
-            "text": "A red Firebird just came through the fields like dawn patrol with an engine. Buena. That one's for you."
-          },
-          {
-            "template": "Lost the cops on the [road], huh? My cousin saw the whole thing from the tractor. He was impressed. He is never impressed.",
-            "text": "Lost the cops on the Skyline road, huh? My cousin saw the whole thing from the tractor. He was impressed. He is never impressed."
-          },
-          {
-            "template": "Been out all night and you're still driving at sunrise? Okay. You and me, opposite shifts, same road. Toma, this one's yours.",
-            "text": "Been out all night and you're still driving at sunrise? Okay. You and me, opposite shifts, same road. Toma, this one's yours."
-          },
-          {
-            "template": "Last week [rival] was beating you. This week, no. My mother would say: see, you grew. I'd just say: nice.",
-            "text": "Last week the orange rally car was beating you. This week, no. My mother would say: see, you grew. I'd just say: nice."
-          }
-        ],
-        "raves": [
-          "Forest party Saturday. I'll be there till midnight, then I'll be gone, and nobody will notice, and that's the plan.",
-          "Danced three hours, and at twelve-thirty I was in my sleeping bag in the car feeling great about myself. The bass was a lullaby. Eso es madurez.",
-          "Best rave trick: show up at six a.m. with bread and a thermos. Everyone still standing thinks you're an angel. You just slept.",
-          "Marisol stays till the load-out. Kit stays till Tuesday. I stay till I yawn. We all contribute."
-        ],
-        "tired": [
-          "I'm tired, pero good tired. Surfed, biked, radio. Not screen tired. The earned one.",
-          "If I sound slow, it's because I was in cold water at six and my face hasn't come back yet.",
-          "Harvest week. Everyone in my family is tired and everyone in my family is still up, so I'm not allowed to complain. Here's a cumbia.",
-          "Tried to stay up for the sunrise set in the forest. Fell asleep in a camp chair. Woke up with a glow stick on my head. Gracias a quien fue."
-        ],
-        "camping": [
-          "Camping spot of the week: the state beach south of town, early, before the day people. Fog, sea lions, nobody. Bring a thermos.",
-          "If you camp on the ridge you'll hear the farm trucks start at four-thirty. That's not noise. That's probably my family. Wave.",
-          "Camping advice: get up for the sunrise. You can sleep in the city. Out here, you get up."
-        ],
-        "offair": [
-          "Dawn patrol this morning: four of us, glassy, head-high, and a seal that kept looking at me like I owed it money. Perfect.",
-          "Rode the fire road down from the ridge last night with one light. Don't do that. I'm going to do that again.",
-          "I grew up on a farm and I'm not a farmer. My dad says that's fine. He says it every day, so it's not totally fine. But it's fine.",
-          "If you see a kid on a mountain bike covered in mud eating a burrito by the harbour, say hi. It's me. Or my cousin. Say hi anyway.",
-          "The water out here is cold enough to reset your whole personality. Try it. You'll be nicer.",
-          "I can drive a tractor, prune an artichoke, pack sprouts and fix a sprinkler head in the dark. None of that is on my radio résumé. All of it is why I'm here at five a.m.",
-          "Planted tomatoes behind the shed. My mother looked at them and said nothing, which in my family is a review."
-        ],
-        "callers": [
-          "This one's for the crew on the sprout harvester by the highway. I know it's cold. Ya casi. Almost there.",
-          "Shout-out to Doña Carmen at the strawberry stand, who's been feeding me since I was six and says I still look skinny.",
-          "A caller says, Teo, play something for my dad, he's on the tractor and can't hear this. Okay. Then this one's for you, listening for him.",
-          "Somebody texted: how are you this happy at six a.m.? Cold water, mi amigo. And a sandwich. That's the whole secret.",
-          "For the surfers at the cliffs who let me have that wave: gracias. For the one who didn't: I remember your wetsuit."
-        ],
-        "ads": [
-          "This hour's brought to you by Quispe Family Farms, on the coast road. Sprouts, artichokes, pumpkins in October. I'm not allowed to say the sprouts are the best. They're the best.",
-          "The wetsuit place by the harbour will fix a tear for the price of a coffee, if you bring them the coffee. That's the whole deal.",
-          "La Panadería on Main: Peruvian bread on Sundays if you're there by seven. By eight, lo siento, nothing.",
-          "Coastside Bike Shop. They've fixed my chain four times. They've said something about it four times. Go anyway."
-        ],
-        "banter": [
-          "Marisol on eighty-eight one gets in at eleven. I'm done at nine. We've never been in the same room. I'm told she's lovely.",
-          "Kit's up on the ridge doing a hundred and seventy beats a minute at, let me check, six in the morning. Kit. Querida. Did you sleep? No. Okay.",
-          "The Tide plays the long version. Ridgeline plays the fast version. We play the version your tía dances to. Everybody wins.",
-          "Kit says my station is for people who go to bed early. Correct. ¿Y qué? Also, Kit: water."
-        ],
-        "night": [
-          "Driving at dawn is the opposite of driving at night. Nobody's hiding anything. Not even the road.",
-          "There's a moment just before the sun hits the water when the whole coast holds its breath. If you're on the road right now, you're in it.",
-          "My dad gets up at four and has never once said it was hard. I get up at five and tell everyone. We're different. We both get up.",
-          "You don't have to be going anywhere this early. Some of us just like the first hour, before it's anyone's.",
-          "Todo con calma. The day's long. The road's longer. Enjoy it.",
-          "It's two in the morning and this is a recording. I'm asleep. Buenas noches. Be nice to each other out there."
-        ]
-      }
-    }
+  "kit": {
+   "name": "Kit",
+   "station": "Ridgeline Radio",
+   "about": "A pirate station broadcasting from a van parked somewhere up on Skyline: techno, breakbeat, drum and bass. Late twenties, quick and sharp, playful and a bit conspiratorial. Listens to the police scanner and is plugged into the street racing scene, the forest raves and every good camping spot on the ridge. Off the air she hikes everything, knows every plant on the mountain, is vegan, and is always making something: tracks, stickers, an antenna out of a coat hanger. Kind at heart and wants to be, but young and brash: she doesn't always read people right, picks the odd fight, and then tries, clumsily, to make it right. Goes to the rave and is wrecked for two days afterwards.",
+   "lines": {
+    "ident": [
+     "Ridgeline Radio! Broadcasting from a van, on a hill, in the fog, on a frequency the government would prefer we didn't.",
+     "You've found Ridgeline. Don't tell anyone. Actually, tell everyone. Actually, I don't know, use your judgment.",
+     "Ridgeline Radio, live from Skyline, somewhere between a redwood and a bad idea.",
+     "If this sounds crunchy, that's not your speakers, that's my antenna, which is a coat hanger. Ridgeline Radio!",
+     "This is Kit. This is Ridgeline. This is a hundred and seventy-four beats per minute. Hold on."
+    ],
+    "music": [
+     "This next one's techno. Not the nice kind. The kind that looks at you.",
+     "Okay, okay, okay, here comes the drop. Are you on a straight? Get on a straight. Okay. Now.",
+     "That track was made by a teenager in a bedroom in Fremont, and it's better than everything on the actual radio. Respect the bedroom.",
+     "Breakbeat, for the twisty bits. You'll thank me on the way down.",
+     "I've played this one four times tonight. I'll play it four more. It's my van."
+    ],
+    "morning": [
+     "Gooooooood MORNING, Ridgeline!\n\nIt is six a.m., I have not been to sleep, the fog is so thick I can't see the end of my own van, and I have never been more alive. Or less alive. One of those.\n\nIf you're driving to work right now, I salute you. If you're driving home from the forest right now, I am you. We are the same. Drink some water.\n\nThis is Ridgeline Radio, and we are still going. Somehow.",
+     "Good morning? Is it morning? The birds say it's morning. The birds are being very loud about it.",
+     "Morning, everybody. I'm running on gas station coffee and the memory of a bassline. That's a full breakfast.",
+     "It's Monday. I know it's Monday because my body filed a formal complaint."
+    ],
+    "weather": [
+     "The fog on Skyline is absolutely biblical right now. I put my hand out the window and lost it. Found it. It's fine.",
+     "The trees are dripping so hard up here it sounds like rain on the van roof. It's not raining. The forest is just sweaty.",
+     "Wind's coming over the ridge and my antenna is doing a little dance. If I cut out, that's why. If I come back, that's also why.",
+     "Clear skies down on the bay side, fog up top. Basically the mountain's wearing a hat.",
+     "The sun is coming up over the reservoir, it's pink, it's gold, it's too much, I'm emotional, here's a banger."
+    ],
+    "places": [
+     "If you're coming down the redwood road tonight, hug the inside on the hairpins. The road. Not the trees. Don't hug the trees, they're wet.",
+     "Shout-out to whoever keeps leaving their headlights on in the summit lot. Your battery says hi. Your battery says goodbye.",
+     "The view from the vista point at three in the morning is the whole bay just glittering. Go look. Then drive away from it carefully.",
+     "There's a dirt road behind the old fire station that nobody uses. I'm not saying use it. I'm saying it exists."
+    ],
+    "scene": [
+     "Scanner says two Highway Patrol units are parked at the bottom of 92 doing their little stakeout. Love that for them. Take the long way.",
+     "Meet tonight at the summit lot. Bring your car, bring your friends, bring snacks, do not bring drama.",
+     "Somebody just went past my van so fast my coffee rippled. Was that you? That was you. Respect.",
+     "Okay, the scanner's getting chatty. Lots of units heading for the coast road. Which means the ridge is wide open. I'm just reading the news.",
+     "Rumour on the ridge: there's a crew from the city coming down this weekend to take the Skyline record. Defend your mountain.",
+     "To the guy who called me a menace on the forum: I read it. I was mad. I'm less mad now. I'm still a menace. But I'm a menace who hopes your week gets better.",
+     "Okay. Alice's Restaurant, Skyline and 84, this Sunday, everybody's going. You can get anything you want at Alice's Restaurant. Except a hearty vegan meal. I've checked. I've checked many times. I'm bringing a sandwich.",
+     "Overheard at Alice's this morning: two guys arguing about tyre pressure for forty-five minutes. I said, have you tried just driving? They did not appreciate that. I apologised. Mostly.",
+     "Rumour from Alice's: somebody parked a black three thousand G T out front last night, left the engine ticking, and vanished up Skyline before anyone could ask. Mysterious. Love it."
+    ],
+    "player": [
+     {
+      "template": "Who is in the [colour] [car]? Because you just took the [road] record, and the whole comment section of my brain is screaming.",
+      "text": "Who is in the black three thousand G T? Because you just took the Skyline record, and the whole comment section of my brain is screaming."
+     },
+     {
+      "template": "That [colour] [car] is back! [detail]! In this fog! Absolute legend, absolute menace.",
+      "text": "That red Firebird is back! T-tops off! In this fog! Absolute legend, absolute menace."
+     },
+     {
+      "template": "Somebody just lost the cops on the [road], and the scanner went completely silent. That's the sound of respect.",
+      "text": "Somebody just lost the cops on the redwood road, and the scanner went completely silent. That's the sound of respect."
+     },
+     {
+      "template": "You again! You're on my frequency every night. At this point you're basically my co-host. Say something. Oh, right, you can't. That's fine.",
+      "text": "You again! You're on my frequency every night. At this point you're basically my co-host. Say something. Oh, right, you can't. That's fine."
+     },
+     {
+      "template": "New record on the [road]. [margin] faster. [margin]! What are you running on? Don't tell me. Tell me.",
+      "text": "New record on the coast road. Ten seconds faster. Ten! What are you running on? Don't tell me. Tell me."
+     }
+    ],
+    "raves": [
+     "Forest party this Saturday, out past the state park. Follow the bass. If you get lost, you're doing it right.",
+     "Just got back from the thing in the redwoods. The sound system was in a tree. I don't know how. Nobody knows how.",
+     "Reminder for the weekend: the party's in the forest, the forest is dry, so no fire. Glow sticks only. Be cool.",
+     "Last night I danced until the sun came up, then I danced at the sun for a bit, then I fell asleep in a hammock that wasn't mine. Thank you to the hammock owner."
+    ],
+    "tired": [
+     "I'm so tired I just introduced the same song twice. You know what? It deserved it.",
+     "Haven't slept since Friday. Not a flex. A medical concern. Here's some ambient.",
+     "My legs are still at the party. The rest of me is in the van. We're working on a reunion.",
+     "If I sound rough, it's because I am rough. I'm a rough draft of a person right now. Play the hits."
+    ],
+    "camping": [
+     "Camping spot of the week: the clearing above the creek, off the old logging road. Flat ground, no cell signal, owls. Perfect.",
+     "If you sleep in your car at the summit, crack a window. The fog gets in either way, but at least it's invited.",
+     "Best camping hack: park facing east. Wake up to the sunrise through the windshield. Feel like you're in a movie. Feel cold. Mostly cold.",
+     "There's a beach north of town where you can camp right by the water, and the sea lions bark all night. Bring earplugs. Or don't. Join the choir."
+    ],
+    "offair": [
+     "Hiked the ridge trail at sunrise. Found a patch of redwood sorrel the size of a parking lot. Little clover hearts everywhere. I lay down in it. I'm not sorry.",
+     "Plant fact for the drive: the redwoods drink the fog. Straight through their needles. That's why it drips up here. The trees are sipping and spilling. Same.",
+     "If you're hiking this weekend, stay on the trail. The moss took a hundred years. You took four minutes. Show some respect.",
+     "Made a new antenna today out of a coat hanger, a cake tin and pure spite. You're hearing it right now. You're welcome, science.",
+     "I've been printing stickers in the van. Little mushrooms. Little pelicans. If you see one on a road sign, that wasn't me. It was me.",
+     "Someone left a fern on my windshield with a note that said, for the van. Whoever you are, she's thriving. Her name is Gerald.",
+     "Wildflowers are coming up along the fire road. Purple ones, orange ones, the ones that smell like honey. Do not pick them. I will find you. Kindly. But I will.",
+     "Vegan tip for the ridge: the taco truck at the bottom of 84 does a mushroom thing on Thursdays that will change your life. Don't tell them I sent you. Actually, do."
+    ],
+    "callers": [
+     "Got a text: Kit, play something for the delivery drivers. Every song tonight is for the delivery drivers. You're the real night crew.",
+     "This one's for Danny, whose car broke down on the ridge and who now, apparently, lives here. Welcome, neighbour.",
+     "Shout-out to the tow truck guy who keeps rescuing people off Skyline. Absolute angel. Wears a terrible hat.",
+     "Somebody wants a dedication to, quote, whoever I'm going to be. I love that. Turn it up for them.",
+     "A caller just told me my station is just noise. Okay, first of all, it's curated noise. Second, wow, rude. Third, actually, are you okay? You sound like you're having a night. This one's for you. Even though you're wrong.",
+     "Earlier I yelled at a guy in the summit lot for revving his engine at the owls. He's here now. He brought me a coffee. We're friends. The owls remain unimpressed."
+    ],
+    "ads": [
+     "Ridgeline Radio is brought to you by nobody, because we are illegal. But if we had a sponsor, it would be Summit Gas and Bait. Gas. Bait. Do not mix them up.",
+     "Skyline Garage. They'll fix your car at two in the morning. They'll ask no questions. They'll charge you for not asking.",
+     "The Redwood Coffee Cart, at the vista point from five a.m. Fuel for people who made poor decisions in the forest. Which is all of us.",
+     "Need new tyres? Need them now? Need them without a receipt? Tony's. Behind the fire station. Knock twice."
+    ],
+    "banter": [
+     "Marisol's on eighty-eight one playing a nine-minute disco edit for the third time tonight. Babe. Respectfully. Pick a tempo.",
+     "Marisol says I should drink more water. Marisol is correct. I hate it here.",
+     "Love you, Marisol. Your station is the smoothest thing on the coast, and I mean that as an insult and a compliment.",
+     "Okay, earlier I said Marisol plays music for people who've never been tired. That was mean, and also wrong, because she's always tired, mostly of people like me. Sorry, Marisol. Here's a slow one. For you. Don't get used to it."
+    ],
+    "night": [
+     "Sometimes I just sit up here and listen to the cars go by on the ridge, and think, everybody's going somewhere. Even me. Eventually.",
+     "Nobody up here has it figured out. That's why we're up here.",
+     "Drive like you're figuring something out. Because you probably are.",
+     "The fog makes everything feel like a secret. Even you. Especially you."
+    ]
+   }
+  },
+  "teo": {
+   "name": "Teo",
+   "station": "Radio Pacífico, 104.3 FM",
+   "about": "A licensed low-power community station in a converted packing shed by the farms south of town: chicha, cumbia, and whatever Teo brought in that morning, some house, some of his father's old salsa. Early twenties, the son of Peruvian farmers who grow Brussels sprouts and artichokes on the coast. He has done every job on the farm, respects all of them, and isn't going to do them; his dad says that's fine, every day. Bilingual, slides between English and Spanish mid-sentence without noticing, Peruvian slang (oe, ya pues, chévere). A morning person: the show is five to nine, he surfs before it at first light and mountain bikes the fire roads after. Makes the rave about one time in three, leaves at midnight apologising, or turns up at sunrise with bread and a thermos for the ones still standing. Kind in an open, easy, slightly earnest way: remembers names, feeds people, waves at every tractor. Has never been in a street race and doesn't need to be; he knows the drivers because they buy strawberries from his mother.",
+   "lines": {
+    "ident": [
+     "Radio Pacífico, ciento cuatro punto tres. Buenos días, coastside. The fog's here, the coffee's here, I'm here. Vamos.",
+     "One-oh-four three, Radio Pacífico. Chicha for the coast road. If there's a tractor in front of you, you're on the right station.",
+     "This is Teo, Radio Pacífico, broadcasting from a packing shed that still smells like artichokes. Mi casa es su casa. Well. My parents' casa.",
+     "Radio Pacífico. We're on the dial between the pirate and the fancy one. Perfectly placed. Like a good taco.",
+     "Ciento cuatro punto tres. Si me escuchas, you're awake, and that's already a win."
+    ],
+    "music": [
+     "That was Los Mirlos, from the jungle, nineteen seventy-something. My dad has it on cassette. The cassette is older than me.",
+     "Chicha is cumbia that moved to Lima, plugged in a guitar and never looked back. Ese guitarrista. Listen to him. Okay. Listen.",
+     "A little house now, because a friend keeps sending me tracks and he's right about half of them. This is the half.",
+     "That one's Chacalón. If you don't know Chacalón, ask anyone over fifty at the farmers' market. Bring a chair.",
+     "Back to back: a cumbia from Peru and a house track from Oakland, same bassline. I checked. Nobody believes me. Listen."
+    ],
+    "morning": [
+     "Buenos días, coastside.\n\nIt's five fifty-eight, the fog is in, and the tractors are already on the field road, so if you're stuck behind one, that's not traffic, that's breakfast being made.\n\nSurf was head-high and clean at first light. I know because I was in it. Lo siento to everyone who wasn't.\n\nIf you just woke up, welcome, this is the good part. If you never went to bed, hola, there's coffee at the shed, come by.\n\nRadio Pacífico, one-oh-four point three. Vamos.",
+     "Good morning. The sun's coming up over the ridge, the sprouts are frosty, and I am unreasonably happy about both of those things.",
+     "Morning! I've already surfed, so whatever you do today, you're not the first thing I did. No offence. Mucho cariño.",
+     "Six a.m., and my mother just texted to say the fog looks heavy. Mamá. I'm on the radio. I know about the fog. Te quiero."
+    ],
+    "weather": [
+     "Hay neblina, fog, from the harbour down to the pumpkin farms. Headlights on. Not the brights. Nobody likes the brights.",
+     "Offshore wind this morning, which means the surf is good and the kale is happy. Those are my two metrics.",
+     "Rained overnight, so the fire roads are mud for two days. Mountain bikers: patience. Farmers: finally.",
+     "First frost on the fields this morning. Beautiful. Terrible. Depends who you ask. Ask a farmer.",
+     "Sunrise in ten minutes, and from the field road you can watch it come over the ridge and hit the water. Pull over. I'm serious. Pull over."
+    ],
+    "places": [
+     "Coast road south of town: the big fields on your left are Brussels sprouts. On your right, artichokes. De nada. Tour's over.",
+     "The strawberry stand by the bridge opens at seven, honour box before that. Don't be the person who tests the honour box.",
+     "Pumpkins are coming in along the highway. Every car in the state will be here in two weeks. Enjoy the quiet while you've got it.",
+     "The ridge trail above the reservoir is open again. The first mile is all climb. Es una paliza. Then it's the best view in the county.",
+     "Alice's, top of 84: the motorcycle guys, the Porsche guys, and me on a mountain bike, covered in mud, eating their pancakes."
+    ],
+    "scene": [
+     "The street racers buy strawberries from my mother. That's all I'm saying. Pero all of them. Every Saturday.",
+     "Somebody ran the coast road very fast at five this morning, past the field crews. The crews asked me to say: we saw you, and the lettuce doesn't care.",
+     "There's a meet at the summit lot tonight, apparently. I'll be asleep. Say hi to Kit.",
+     "Word is the coast record changed hands. Un carro rojo, a red something. I don't know cars. I know tractors. A John Deere could not have done that time.",
+     "A couple of the racing crowd helped my dad move irrigation pipe last weekend. Nobody asked them. Son buena gente. Loud, but good."
+    ],
+    "player": [
+     {
+      "template": "Somebody in a [colour] [car] just took the [road] record before six a.m., past my parents' farm. Oe. That's the rooster's job. Respect, though.",
+      "text": "Somebody in a black three thousand G T just took the coast road record before six a.m., past my parents' farm. Oe. That's the rooster's job. Respect, though."
+     },
+     {
+      "template": "A [colour] [car] just came through the fields like dawn patrol with an engine. Buena. That one's for you.",
+      "text": "A red Firebird just came through the fields like dawn patrol with an engine. Buena. That one's for you."
+     },
+     {
+      "template": "Lost the cops on the [road], huh? My cousin saw the whole thing from the tractor. He was impressed. He is never impressed.",
+      "text": "Lost the cops on the Skyline road, huh? My cousin saw the whole thing from the tractor. He was impressed. He is never impressed."
+     },
+     {
+      "template": "Been out all night and you're still driving at sunrise? Okay. You and me, opposite shifts, same road. Toma, this one's yours.",
+      "text": "Been out all night and you're still driving at sunrise? Okay. You and me, opposite shifts, same road. Toma, this one's yours."
+     },
+     {
+      "template": "Last week [rival] was beating you. This week, no. My mother would say: see, you grew. I'd just say: nice.",
+      "text": "Last week the orange rally car was beating you. This week, no. My mother would say: see, you grew. I'd just say: nice."
+     }
+    ],
+    "raves": [
+     "Forest party Saturday. I'll be there till midnight, then I'll be gone, and nobody will notice, and that's the plan.",
+     "Danced three hours, and at twelve-thirty I was in my sleeping bag in the car feeling great about myself. The bass was a lullaby. Eso es madurez.",
+     "Best rave trick: show up at six a.m. with bread and a thermos. Everyone still standing thinks you're an angel. You just slept.",
+     "Marisol stays till the load-out. Kit stays till Tuesday. I stay till I yawn. We all contribute."
+    ],
+    "tired": [
+     "I'm tired, pero good tired. Surfed, biked, radio. Not screen tired. The earned one.",
+     "If I sound slow, it's because I was in cold water at six and my face hasn't come back yet.",
+     "Harvest week. Everyone in my family is tired and everyone in my family is still up, so I'm not allowed to complain. Here's a cumbia.",
+     "Tried to stay up for the sunrise set in the forest. Fell asleep in a camp chair. Woke up with a glow stick on my head. Gracias a quien fue."
+    ],
+    "camping": [
+     "Camping spot of the week: the state beach south of town, early, before the day people. Fog, sea lions, nobody. Bring a thermos.",
+     "If you camp on the ridge you'll hear the farm trucks start at four-thirty. That's not noise. That's probably my family. Wave.",
+     "Camping advice: get up for the sunrise. You can sleep in the city. Out here, you get up."
+    ],
+    "offair": [
+     "Dawn patrol this morning: four of us, glassy, head-high, and a seal that kept looking at me like I owed it money. Perfect.",
+     "Rode the fire road down from the ridge last night with one light. Don't do that. I'm going to do that again.",
+     "I grew up on a farm and I'm not a farmer. My dad says that's fine. He says it every day, so it's not totally fine. But it's fine.",
+     "If you see a kid on a mountain bike covered in mud eating a burrito by the harbour, say hi. It's me. Or my cousin. Say hi anyway.",
+     "The water out here is cold enough to reset your whole personality. Try it. You'll be nicer.",
+     "I can drive a tractor, prune an artichoke, pack sprouts and fix a sprinkler head in the dark. None of that is on my radio résumé. All of it is why I'm here at five a.m.",
+     "Planted tomatoes behind the shed. My mother looked at them and said nothing, which in my family is a review."
+    ],
+    "callers": [
+     "This one's for the crew on the sprout harvester by the highway. I know it's cold. Ya casi. Almost there.",
+     "Shout-out to Doña Carmen at the strawberry stand, who's been feeding me since I was six and says I still look skinny.",
+     "A caller says, Teo, play something for my dad, he's on the tractor and can't hear this. Okay. Then this one's for you, listening for him.",
+     "Somebody texted: how are you this happy at six a.m.? Cold water, mi amigo. And a sandwich. That's the whole secret.",
+     "For the surfers at the cliffs who let me have that wave: gracias. For the one who didn't: I remember your wetsuit."
+    ],
+    "ads": [
+     "This hour's brought to you by Quispe Family Farms, on the coast road. Sprouts, artichokes, pumpkins in October. I'm not allowed to say the sprouts are the best. They're the best.",
+     "The wetsuit place by the harbour will fix a tear for the price of a coffee, if you bring them the coffee. That's the whole deal.",
+     "La Panadería on Main: Peruvian bread on Sundays if you're there by seven. By eight, lo siento, nothing.",
+     "Coastside Bike Shop. They've fixed my chain four times. They've said something about it four times. Go anyway."
+    ],
+    "banter": [
+     "Marisol on eighty-eight one gets in at eleven. I'm done at nine. We've never been in the same room. I'm told she's lovely.",
+     "Kit's up on the ridge doing a hundred and seventy beats a minute at, let me check, six in the morning. Kit. Querida. Did you sleep? No. Okay.",
+     "The Tide plays the long version. Ridgeline plays the fast version. We play the version your tía dances to. Everybody wins.",
+     "Kit says my station is for people who go to bed early. Correct. ¿Y qué? Also, Kit: water."
+    ],
+    "night": [
+     "Driving at dawn is the opposite of driving at night. Nobody's hiding anything. Not even the road.",
+     "There's a moment just before the sun hits the water when the whole coast holds its breath. If you're on the road right now, you're in it.",
+     "My dad gets up at four and has never once said it was hard. I get up at five and tell everyone. We're different. We both get up.",
+     "You don't have to be going anywhere this early. Some of us just like the first hour, before it's anyone's.",
+     "Todo con calma. The day's long. The road's longer. Enjoy it.",
+     "It's two in the morning and this is a recording. I'm asleep. Buenas noches. Be nice to each other out there."
+    ]
+   }
+  },
+  "tess": {
+   "name": "Tess",
+   "station": "The Roadhouse, 101.7 FM",
+   "about": "A licensed low-power station in the back room of an actual roadhouse on the old highway: honky-tonk, the shuffle, bluegrass, outlaw country, and a little chicha from down the coast. Thirty-two, never married, a lesbian and poly and matter-of-fact about both: two girlfriends, Maggie (honey and bread at the farmers' market, where they met over a jar she was told she didn't need) and Dani (a welder in town). Lives on five acres off the highway with chickens, two goats, an orchard, a greenhouse she built, and a well pump she has rebuilt twice; fixes her own roof, fence, truck and radio tower, and will tell you how. Outdoors every daylight hour she isn't on air: the garden, the ridge trails, the river. The show is seven to midnight, and afterwards she drives home fast on an empty highway, which is the one thing she doesn't explain. Warm, dry, plain-spoken, generous with people and short with anyone who second-guesses her: she asked for your opinion or she didn't. Likes people in rooms: the market, the roadhouse, a kitchen full of friends.",
+   "lines": {
+    "ident": [
+     "The Roadhouse, one-oh-one point seven. Country for the old highway. I'm Tess. The kitchen's closed, the bar's open, the music's on.",
+     "One-oh-one seven, The Roadhouse, broadcasting from the back room of an actual roadhouse. If you can hear the dishwasher, that's not a drum machine.",
+     "This is Tess at The Roadhouse. Seven to midnight, then I drive home. The driving home is not part of the show. Don't ask about the driving home.",
+     "The Roadhouse, one-oh-one point seven. Honky-tonk, bluegrass, the slow ones and the fast ones. The dial's got a pirate, a harbour and a farm. We're the bar.",
+     "One-oh-one point seven. If you're on the old highway tonight, you're already here. If you're on the freeway, exit. Trust me. It's a better road."
+    ],
+    "music": [
+     "That one's a train beat. Snare on every eighth, kick on one and three. You could set a fence post to it. I have.",
+     "A shuffle now, for the people who've already pulled over. Brushes on the snare, steel guitar. Roll the windows down and don't say anything.",
+     "Bluegrass next. No drums, nobody needs them. The mandolin's keeping time, the banjo's doing everything else.",
+     "That was a telecaster through a slapback. One echo, a hundred milliseconds. Any more than that and you're in a different genre.",
+     "Outlaw cut coming up. It's in mixolydian, which means the seventh's flat, which means it sounds like somebody who's not sorry.",
+     "Here's a slow one. The steel's going to swell up under the chorus and I'm going to stop talking. Those two things are related."
+    ],
+    "morning": [
+     "Good morning. It's six, the chickens are out, the goats have opinions, and the coffee's not ready yet. This is a recording. I'm in the garden.",
+     "Morning. The Roadhouse is a night show, but the recording works at dawn too. If you're up this early, you've either got animals or a reason. Both are fine.",
+     "Good morning from the five acres. Greenhouse is thirty degrees warmer than the yard, the tomatoes know it, and so do I.\n\nTonight I'm on from seven. Right now I'm pulling weeds. Here's something to pull weeds to.",
+     "Morning. Frost on the fence line. Chickens unbothered. Me, bothered. Coffee, then the pump, then the show tonight."
+    ],
+    "weather": [
+     "Fog on the highway from the river crossing out to the dunes. Low beams. If you can't see the centre line, you're going too fast for it. I know. I've checked.",
+     "Clear and cold tonight. Stars all the way down to the ridge. Good night for a drive, if you're careful, which you will be, because I said so.",
+     "Rain's coming through around eleven. The field roads turn to soup. The highway's fine. The highway's always fine.",
+     "Hot one today. I watered at six and again at eight. The goats sat in the one shady spot and judged me the whole time.",
+     "Wind off the hills tonight. The tower's swaying, the signal's fine, and if it isn't, I'll climb up there Saturday. I built it. I'll fix it."
+    ],
+    "places": [
+     "The farmers' market, Saturday mornings in the lot by the feed store. Honey stand at the far end. Say hi to Maggie. Tell her I sent you. She'll charge you anyway.",
+     "The old highway between the river and the dunes: eleven miles, two curves that matter, no lights. That's all I'm going to say about it on a licensed station.",
+     "The feed store on Main closes at five and opens at seven, and the guy knows more about well pumps than the well pump guy. Go in with a question.",
+     "The river at the swimming hole by the bridge: cold till July, perfect in August. Leave it cleaner than you found it or don't come back.",
+     "The ridge trail from the water tank: two hours up, forty minutes down, and the view's the whole valley. Bring water. Bring more than that."
+    ],
+    "scene": [
+     "Somebody ran the old highway at one this morning, fast, and did it clean. I was behind them. Not racing. Driving. There's a difference, and I know what it is.",
+     "The racing crowd comes in the roadhouse after midnight for pie. They're polite, they tip, they don't talk about it. I like them. I'm not saying more.",
+     "Word is the record on the dunes road went last week. I don't keep records. I keep chickens. But I noticed.",
+     "The meet's at the summit lot, apparently. Up Kit's way. If you're going, go easy on the way up. The way down's your business.",
+     "Someone asked if I'd ever been in a street race. I said I drive home every night at midnight on an empty road. They said that's not an answer. It's not. Next song."
+    ],
+    "player": [
+     {
+      "template": "Somebody in a [colour] [car] just took the [road] record, right past the roadhouse. The whole bar looked up. Nobody said anything. That's a compliment here.",
+      "text": "Somebody in a silver Supra just took the old highway record, right past the roadhouse. The whole bar looked up. Nobody said anything. That's a compliment here."
+     },
+     {
+      "template": "A [colour] [car] just went by like it had somewhere to be. Fine. This one's for you. Don't hit a deer.",
+      "text": "A blue Skyline just went by like it had somewhere to be. Fine. This one's for you. Don't hit a deer."
+     },
+     {
+      "template": "Lost the cops on the [road], huh? I'm not going to say nice. I'm going to play a song, and you can take it how you want.",
+      "text": "Lost the cops on the dunes road, huh? I'm not going to say nice. I'm going to play a song, and you can take it how you want."
+     },
+     {
+      "template": "Still out there at this hour? Me too, in a minute. Different reasons. Same road. Here's one for the drive.",
+      "text": "Still out there at this hour? Me too, in a minute. Different reasons. Same road. Here's one for the drive."
+     },
+     {
+      "template": "Last week [rival] had you. Tonight you had them. Nobody second-guessed you into that. You just drove. Good.",
+      "text": "Last week the orange rally car had you. Tonight you had them. Nobody second-guessed you into that. You just drove. Good."
+     }
+    ],
+    "raves": [
+     "Forest party Saturday. I'll go. I'll stand at the back with Dani and the people who brought chairs. We're the chairs people now. It's great.",
+     "Went to the rave in the redwoods, danced till two, slept in the truck bed, and was home in time to let the chickens out. That's the whole weekend. Ten out of ten.",
+     "Kit says I don't dance. I dance. I dance like someone who has to be up at six. Efficiently.",
+     "Best thing at the rave last time was the woman with the camp stove making pancakes at sunrise. Marguerite. Maggie. Yes, I know her. Yes, that's how I know her."
+    ],
+    "tired": [
+     "I'm tired. I rebuilt the pump this morning, split wood this afternoon, and I'm here. Earned tired. The best kind.",
+     "If I'm slow tonight, it's because I spent four hours on a roof. Not mine. Dani's shop. She owes me a weld.",
+     "Harvest week. Everything ripened at once, like it does. There's thirty pounds of tomatoes in my kitchen and no plan. The music will be fine. I'm the problem.",
+     "I'm not tired. I'm quiet. There's a difference. Here's a slow one so you can hear it."
+    ],
+    "camping": [
+     "Camping spot of the week: the gravel bar on the river above the bridge. You can hear the water all night and nothing else. Pack it out.",
+     "If you camp on my side of the highway you'll hear my goats at five. That's not wildlife. That's Pearl and Dot. They're fine. Go back to sleep.",
+     "Camping advice: a tarp over the tent, not just the fly. Stakes in at an angle. Fire down to coals before you sleep. I'm not asking."
+    ],
+    "offair": [
+     "Spent the morning in the greenhouse with the tomatoes. Thirty-one varieties this year. Maggie says that's too many. Maggie's wrong, and she knows it, and she brought bread anyway.",
+     "I rebuilt the well pump for the second time this week. The first time was right. The second time was also right, and the pump just wanted attention.",
+     "Met Maggie at the farmers' market four years ago. I asked about a jar of honey. She said I didn't need it. I bought three. We've been together since. Dani came later, and that's a different story, and it's a good one.",
+     "Fixed the roof, the fence, the truck's starter and the tower in one weekend. Dani welded the bracket. I did the rest. We don't argue about who did what. We're too tired.",
+     "Never married. Never going to be. Two women I love, a garden, a dog, chickens, two goats. Nobody's missing anything out here, and I'd thank you not to count.",
+     "Somebody told me I was pruning the apple trees wrong. I've pruned them every February for eight years. The apples are fine. The somebody's not invited back.",
+     "After the show I drive home on the old highway with nobody on it. I'm not going to tell you how fast. I'm going to tell you it's the best eleven minutes of my day. You can do the math.",
+     "The dog's name is Boone. He rides in the truck, he's been on every trail in the county, and he's the only one who never has a note about how I do things."
+    ],
+    "callers": [
+     "This one's for Dani, who's still at the shop with the door up and the radio on. Finish the weld. Come get pie.",
+     "Somebody called asking if the goats are okay. The goats are fine. The goats are always fine. Thank you for asking. Nobody asks about me.",
+     "A caller says: Tess, you sound like you don't take advice. I take advice. I asked for it twice this year. Both times I asked Dani. Here's a song.",
+     "Shout-out to the kid who fixed my tail light at the gas station with a roll of tape and didn't lecture me. That's how you do it. This one's yours.",
+     "For Maggie, closing up the honey stand in the rain: I've got the fire going and the kettle on. Drive slow. That's me saying it, so you know it's serious."
+    ],
+    "ads": [
+     "The Roadhouse is brought to you by The Roadhouse. The actual one. Pie till midnight, eggs from my chickens on weekends, and the jukebox is me.",
+     "Hollis Feed and Hardware on Main. Pump parts, fence wire, chick starter, and a man who will not tell you you're doing it wrong unless you really are.",
+     "Maggie's Honey, Saturdays at the market. The wildflower's the good one. She'll tell you you don't need it. Buy it anyway. It worked on me.",
+     "Dani's Welding, by the tracks. Trailers, gates, radio tower brackets, and she'll do it right the first time, which I can tell you is not a given."
+    ],
+    "banter": [
+     "Marisol on eighty-eight one plays the slow stuff for the harbour. We play the slow stuff for the highway. Same fog. Different pedals.",
+     "Kit's up on the ridge going a hundred and seventy a minute. Kit, honey, come down to the roadhouse. There's pie. There's chairs. Nobody has to dance.",
+     "Teo on one-oh-four three is asleep. It's nine p.m. He's asleep. I respect that. I don't understand it, but I respect it.",
+     "The pirate, the harbour, the farm, and the bar. Four stations, one highway. Pick your hour. Mine's the late one."
+    ],
+    "night": [
+     "An empty highway at midnight is the most honest thing I know. It doesn't care what you drive. It just asks if you can see.",
+     "There's an hour after the bar closes when the road's mine. I don't share it. I'm telling you about it. That's not the same thing.",
+     "You don't need a reason to be out this late. You need headlights that work and the sense to stop before the deer do it for you.",
+     "The garden doesn't need me at night. The chickens are in. The goats are quiet. That's when I drive. Everything's handled. That's the point.",
+     "Whatever somebody told you tonight about how you should've done it: they weren't driving. You were. Go home easy.",
+     "It's two in the morning and this is a recording. I'm home, the truck's cooling in the yard, and the dog's asleep. Night. Mind the deer."
+    ]
+   }
   }
+ }
 }

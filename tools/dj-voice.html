@@ -6,7 +6,7 @@
 <title>DJ Chatter</title>
 <link rel="icon" href="data:,">
 <style>
-:root { --bg: #0d0f14; --card: #161a22; --line: #262c36; --fg: #e6e9ee; --muted: #8b94a3; --accent: #ff3d7f; --ok: #4dff8a; --tide: #5ec8ff; --ridge: #ffb03d; --pacifico: #7dff9a; }
+:root { --bg: #0d0f14; --card: #161a22; --line: #262c36; --fg: #e6e9ee; --muted: #8b94a3; --accent: #ff3d7f; --ok: #4dff8a; --tide: #5ec8ff; --ridge: #ffb03d; --pacifico: #7dff9a; --roadhouse: #ffd36b; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; padding: 16px; }
 h1 { font-size: 1.25rem; margin: 0 0 6px; }
@@ -28,6 +28,7 @@ button.no.picked { background: #4d1d24; border-color: #ff6b6b; }
 .card.marisol { border-top: 3px solid var(--tide); }
 .card.kit { border-top: 3px solid var(--ridge); }
 .card.teo { border-top: 3px solid var(--pacifico); }
+.card.tess { border-top: 3px solid var(--roadhouse); }
 .card b { font-size: 17px; }
 .card .station { color: var(--muted); margin-left: 6px; }
 .card p { margin: 6px 0 10px; font-size: 13px; }
@@ -41,6 +42,7 @@ button.no.picked { background: #4d1d24; border-color: #ff6b6b; }
 .who.marisol { color: var(--tide); }
 .who.kit { color: var(--ridge); }
 .who.teo { color: var(--pacifico); }
+.who.tess { color: var(--roadhouse); }
 input[type=search] { background: #11141b; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font: inherit; width: min(320px, 100%); }
 @media (max-width: 640px) { .line { flex-wrap: wrap; } .line .text { flex-basis: 100%; order: -1; } .line .who { width: auto; } }
 </style>
