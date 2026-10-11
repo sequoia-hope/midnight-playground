@@ -14,11 +14,11 @@ use crate::{Result, cargo, exec, output, root};
 use std::path::Path;
 use std::process::Command;
 
-const TARGET: &str = "wasm32-unknown-unknown";
+pub const TARGET: &str = "wasm32-unknown-unknown";
 
 /// Features the wasm32 target enables by default in current stable Rust;
 /// wasm-opt must be told, or it rejects the module.
-const WASM_FEATURES: &[&str] = &[
+pub const WASM_FEATURES: &[&str] = &[
     "--enable-bulk-memory",
     "--enable-nontrapping-float-to-int",
     "--enable-sign-ext",
@@ -464,7 +464,7 @@ fn swap_in(staging: &Path, live: &Path) -> Result {
     Ok(())
 }
 
-fn copy_dir(from: &Path, to: &Path) -> Result {
+pub fn copy_dir(from: &Path, to: &Path) -> Result {
     let entries =
         std::fs::read_dir(from).map_err(|e| format!("reading {}: {e}", from.display()))?;
     for entry in entries {

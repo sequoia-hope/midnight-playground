@@ -74,3 +74,7 @@ opt-level = 3
 # D1182; patches/wgpu/PATCHED.md). Bevy asks for the limits on every draw.
 [patch.crates-io]
 wgpu = { path = "patches/wgpu" }
+# wgpu-hal's GL backend skipping the GL calls that bind what is already
+# bound (D1190; patches/wgpu-hal/PATCHED.md): WebGL2 made 24,600 calls a
+# frame on Sierra where three.js made 4,400.
+wgpu-hal = { path = "patches/wgpu-hal" }

@@ -57,6 +57,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ROOT } from './lib/jstree.mjs';
+import { baseUrl, chromeFlags } from './lib/server.mjs';
 
 const args = process.argv.slice(2);
 const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
@@ -76,33 +77,9 @@ const tag = opt('--tag', null);
 const race = args.includes('--race');
 const dist = opt('--dist', 'next');
 
-function baseUrl() {
-  const given = opt('--url', null);
-  if (given) return given.endsWith('/') ? given : given + '/';
-  let port = opt('--port', null) || process.env.PORT;
-  if (!port) {
-    try {
-      port = execFileSync('proj', ['port'], { cwd: ROOT, encoding: 'utf8' }).trim();
-    } catch (e) {
-      throw new Error(`no server address: pass --url or --port, set $PORT, or register the project (proj port failed: ${e.message})`);
-    }
-  }
-  if (!/^\d+$/.test(port)) throw new Error(`proj port gave "${port}"`);
-  // The registered server serves the main checkout; a worktree sits below it.
-  const common = path.resolve(ROOT, execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8' }).trim());
-  const served = path.dirname(common);
-  const rel = path.relative(served, ROOT);
-  if (rel.startsWith('..')) throw new Error(`${ROOT} is not below the served checkout ${served}`);
-  return `http://127.0.0.1:${port}/${rel ? rel.split(path.sep).map(encodeURIComponent).join('/') + '/' : ''}`;
-}
-
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const base = baseUrl();
-const flags = ['--ignore-gpu-blocklist', '--mute-audio', '--enable-gpu', '--use-angle=vulkan', '--enable-precise-memory-info'];
-if (!capped) flags.push('--disable-gpu-vsync', '--disable-frame-rate-limit');
-if (race) flags.push('--autoplay-policy=no-user-gesture-required');
-if (game === 'rust' && backend === 'webgpu') flags.push('--enable-unsafe-webgpu', '--enable-features=Vulkan');
-if (game === 'rust' && backend === 'webgl2') flags.push('--disable-blink-features=WebGPU', '--disable-features=WebGPU');
+const base = baseUrl(opt);
+const flags = chromeFlags({ backend, capped, race, rust: game === 'rust' });
 
 const browser = await puppeteer.launch({
   executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',

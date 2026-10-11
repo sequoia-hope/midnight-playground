@@ -9916,3 +9916,41 @@ on a change of `chosen`. Clips rendered with `render.py --only tess --takes
 transcription against the script. `STATIONS[roadhouse].dj = Some("tess")`;
 the director already handles her like the others.
 
+
+## D1190. wgpu-hal's GL backend patched to skip binding what is bound; the profiling tools formalised
+
+2026-10-11, the owner: "let's keep working on performance. i noticed the
+game does not play smoothly on my 2017 laptop (carbon x1) in the rust
+version, but the js version does", then "formalize profiling tools".
+
+The tools, all through the registered dev server (`tools/parity/lib/server.mjs`
+holds the address and Chrome's flags for every one): `cargo xtask prof`
+makes `dist/prof/`, the release build with its function names kept
+(wasm-bindgen `--keep-debug`, wasm-opt `-Oz -g`, no rebuild);
+`tools/parity/rust-prof.mjs` profiles a race in it (CDP `Profiler` at
+250 µs) by function, by the nearest enclosing Bevy system, and by callers
+of a pattern; `tools/parity/gl-calls.mjs` counts WebGL2 calls a frame by
+name in either game and times the GPU a frame by pass and by program with
+`EXT_disjoint_timer_query_webgl2`, can dump every shader the page compiles
+by program, and can edit shader sources as they are compiled (`--sub`) to
+measure what a shader costs without something. `rust-perf.mjs` keeps the
+frame and CPU times. CLAUDE.md's table names them; BASELINE "A 2017
+laptop" has the findings.
+
+The patch: `patches/wgpu-hal/` is wgpu-hal 29.0.4 from crates.io with its
+GL backend keeping a cache of what GL has bound (program, each texture
+unit's texture with its mip range, each unit's sampler, the index
+buffer), cleared at the start of every command buffer and by the copies
+that bind outside it, and remembering per texture the mip range its
+`TEXTURE_BASE_LEVEL` and `TEXTURE_MAX_LEVEL` were last set to; a vertex
+buffer set to the binding it already has no longer dirties its
+attributes. 24,600 WebGL calls a frame became 15,400 on Sierra, the
+pictures are identical, the CPU gain about 5 % of the main thread; GPU
+time unchanged. `patches/wgpu-hal/PATCHED.md` says how to carry it to a
+new release. The same reasoning as D1182: a path crate's lints are not
+capped, so `#![allow(warnings)]`.
+
+What the laptop needs is still open: here the Rust WebGL2 build costs
+about twice the JS game's CPU a frame and 1.35 × its GPU time under the
+native driver (3 × under ANGLE's Vulkan backend), so without the laptop's
+own `?perf=1` numbers it is not known which side binds there.
