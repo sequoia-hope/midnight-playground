@@ -7,7 +7,7 @@
 use crate::instruments::{HitType, KitVoice};
 
 /// The SHA-256 of the lab's `canon(KITS)`.
-pub const KITS_SHA256: &str = "1df980cd5208e4c39a01661aa6a5dbfd3fb71d620afda591aeeff881462d346b";
+pub const KITS_SHA256: &str = "4d59bc5426576182745166a43ec8f1799867ed8b45af72310c7a8255eed27971";
 
 /// `KITS[kit]`: the lanes of a kit, in the lab's order.
 pub fn kit(name: &str) -> Option<&'static [(&'static str, KitVoice)]> {
@@ -634,6 +634,167 @@ pub static KITS: &[(&str, &[(&str, KitVoice)])] = &[
                 KitVoice {
                     t: HitType::Swell,
                     lvl: Some(0.28),
+                    ..KitVoice::NONE
+                },
+            ),
+        ],
+    ),
+    (
+        "country",
+        &[
+            (
+                "kick",
+                KitVoice {
+                    t: HitType::Kick808,
+                    tune: Some(55.0),
+                    pitch: Some(1.4),
+                    pt: Some(0.02),
+                    decay: Some(0.35),
+                    click: Some(0.08),
+                    click_hz: Some(1800.0),
+                    drive: Some(1.0),
+                    lvl: Some(0.8),
+                    ..KitVoice::NONE
+                },
+            ),
+            (
+                "snare",
+                KitVoice {
+                    t: HitType::Snare808,
+                    tune: Some(190.0),
+                    tone: Some(0.6),
+                    snappy: Some(0.18),
+                    decay: Some(0.12),
+                    nhp: Some(1500.0),
+                    nlp: Some(9000.0),
+                    lvl: Some(0.7),
+                    ..KitVoice::NONE
+                },
+            ),
+            (
+                "sidestick",
+                KitVoice {
+                    t: HitType::Rim,
+                    f1: Some(700.0),
+                    f2: Some(2300.0),
+                    decay: Some(0.04),
+                    lvl: Some(0.4),
+                    pan: Some(0.1),
+                    ..KitVoice::NONE
+                },
+            ),
+            (
+                "brush",
+                KitVoice {
+                    t: HitType::Brush,
+                    len: Some(0.11),
+                    bp: Some(3500.0),
+                    q: Some(0.7),
+                    lvl: Some(0.4),
+                    pan: Some(0.1),
+                    ..KitVoice::NONE
+                },
+            ),
+            (
+                "hat",
+                KitVoice {
+                    t: HitType::Metal,
+                    tune: Some(0.9),
+                    decay: Some(0.06),
+                    bp: Some(9000.0),
+                    hp: Some(6500.0),
+                    noise: Some(0.4),
+                    lvl: Some(0.32),
+                    pan: Some(0.2),
+                    ..KitVoice::NONE
+                },
+            ),
+            (
+                "ride",
+                KitVoice {
+                    t: HitType::Metal,
+                    tune: Some(1.2),
+                    decay: Some(1.2),
+                    bp: Some(7000.0),
+                    hp: Some(4500.0),
+                    noise: Some(0.3),
+                    lvl: Some(0.22),
+                    pan: Some(0.25),
+                    ..KitVoice::NONE
+                },
+            ),
+            (
+                "tomL",
+                KitVoice {
+                    t: HitType::Tom,
+                    tune: Some(75.0),
+                    pitch: Some(1.3),
+                    pt: Some(0.04),
+                    decay: Some(0.5),
+                    noise: Some(0.05),
+                    lvl: Some(0.7),
+                    pan: Some(-0.3),
+                    ..KitVoice::NONE
+                },
+            ),
+            (
+                "tomM",
+                KitVoice {
+                    t: HitType::Tom,
+                    tune: Some(110.0),
+                    pitch: Some(1.3),
+                    pt: Some(0.04),
+                    decay: Some(0.4),
+                    noise: Some(0.05),
+                    lvl: Some(0.65),
+                    ..KitVoice::NONE
+                },
+            ),
+            (
+                "tomH",
+                KitVoice {
+                    t: HitType::Tom,
+                    tune: Some(160.0),
+                    pitch: Some(1.3),
+                    pt: Some(0.04),
+                    decay: Some(0.32),
+                    noise: Some(0.05),
+                    lvl: Some(0.6),
+                    pan: Some(0.3),
+                    ..KitVoice::NONE
+                },
+            ),
+            (
+                "shaker",
+                KitVoice {
+                    t: HitType::Shaker,
+                    bp: Some(6000.0),
+                    decay: Some(0.07),
+                    attack: Some(0.008),
+                    lvl: Some(0.3),
+                    ..KitVoice::NONE
+                },
+            ),
+            (
+                "crash",
+                KitVoice {
+                    t: HitType::Cymbal,
+                    tune: Some(1.05),
+                    decay: Some(1.8),
+                    bp: Some(7500.0),
+                    hp: Some(4200.0),
+                    bp2: Some(3500.0),
+                    decay2: Some(0.25),
+                    noise: Some(0.4),
+                    lvl: Some(0.3),
+                    ..KitVoice::NONE
+                },
+            ),
+            (
+                "revCrash",
+                KitVoice {
+                    t: HitType::Swell,
+                    lvl: Some(0.26),
                     ..KitVoice::NONE
                 },
             ),

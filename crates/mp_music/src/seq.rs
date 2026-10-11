@@ -10,6 +10,11 @@
 //!                 the section (techno's slow filter motion);
 //!   T.lay         { lane or part: energy } mutes that lane or part while the
 //!                 live energy (0..1) is below the value;
+//!   bass 'p'      the approach: a half step below the next chord's root
+//!                 (the walking bass of country and swing), 'P' accented;
+//!   T.swing8      the shuffle (a triplet feel): the second 8th of every beat
+//!                 delayed by this many 16ths (2/3 is the triplet), the 16ths
+//!                 either side of it by half as much. Replaces `swing`;
 //!   bass 'n'      the next chord's root (a pickup into the change), 'N'
 //!                 accented; the same note as 'r' when the chord stays.
 
@@ -476,6 +481,18 @@ pub const FILLS: &[Fill] = &[
             ("cowbell", "...............x"),
         ],
     },
+    // Country: the snare's roll into the chorus over the train beat's kick,
+    // the floor tom on the last 8th.
+    Fill {
+        name: "train",
+        from: 8,
+        ramp: false,
+        lanes: &[
+            ("snare", "........x.x.xxXX"),
+            ("tomL", "..............x."),
+            ("kick", "x.......x......."),
+        ],
+    },
 ];
 
 /// `FILLS[name]`.
@@ -485,16 +502,56 @@ pub fn fill(name: &str) -> Option<&'static Fill> {
 
 /// The lanes a fill silences in the pattern under it.
 pub const FILL_REPLACES: &[&str] = &[
-    "snare", "clap", "hat", "ohat", "ride", "shaker", "rim", "snap", "tomL", "tomM", "tomH",
-    "timbaleH", "timbaleL", "cascara",
+    "snare",
+    "clap",
+    "hat",
+    "ohat",
+    "ride",
+    "shaker",
+    "rim",
+    "snap",
+    "tomL",
+    "tomM",
+    "tomH",
+    "timbaleH",
+    "timbaleL",
+    "cascara",
+    "brush",
+    "sidestick",
 ];
 
 pub const DRUM_LANES: &[&str] = &[
-    "kick", "snare", "clap", "hat", "ohat", "ride", "crash", "revCrash", "shaker", "rim", "snap",
-    "tomL", "tomM", "tomH", "boom", "cowbell",
+    "kick",
+    "snare",
+    "clap",
+    "hat",
+    "ohat",
+    "ride",
+    "crash",
+    "revCrash",
+    "shaker",
+    "rim",
+    "snap",
+    "tomL",
+    "tomM",
+    "tomH",
+    "boom",
+    "cowbell",
     // The latin kit's (instruments KITS.latin).
-    "congaO", "congaS", "tumba", "bongoH", "bongoL", "timbaleH", "timbaleL", "cascara", "guiroL",
-    "guiroS", "clave",
+    "congaO",
+    "congaS",
+    "tumba",
+    "bongoH",
+    "bongoL",
+    "timbaleH",
+    "timbaleL",
+    "cascara",
+    "guiroL",
+    "guiroS",
+    "clave",
+    // The country kit's (KITS.country): the brushes' swish and the rim click.
+    "brush",
+    "sidestick",
 ];
 
 pub fn is_drum_lane(name: &str) -> bool {
@@ -679,8 +736,11 @@ impl Voices {
             } else {
                 bass_deg(d)
             };
+            let next_root = lo + ((next_chord.bass as f64 - lo) % 12.0 + 12.0) % 12.0;
             let midi = if d == 'n' {
-                lo + ((next_chord.bass as f64 - lo) % 12.0 + 12.0) % 12.0
+                next_root
+            } else if d == 'p' {
+                next_root - 1.0
             } else {
                 root + iv as f64
             };
@@ -897,7 +957,9 @@ impl Seq {
         let bar = self.pos.bar;
         let sec = &self.t.sections[sec_i];
         let sec_bars = sec.bars;
-        let dt = if st % 2 == 1 {
+        let dt = if let Some(s8) = self.t.swing8.filter(|s| *s != 0.0) {
+            s8 * self.step_dur * [0.0, 0.5, 1.0, 0.5][st as usize % 4]
+        } else if st % 2 == 1 {
             self.t.swing.unwrap_or(0.0) * self.step_dur
         } else {
             0.0

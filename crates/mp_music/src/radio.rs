@@ -85,6 +85,17 @@ pub const STATIONS: &[Station] = &[
         genres: &[("chicha", 0.7), ("house", 0.2), ("garage", 0.1)],
         seed: 1043,
     },
+    // The coast country station (radio.md 7, sound.md 3.5.1): honky-tonk,
+    // the shuffle, bluegrass and outlaw, with a little chicha from down the
+    // highway. No DJ yet: the clips are the owner's call (D1183).
+    Station {
+        key: "roadhouse",
+        name: "The Roadhouse",
+        freq: "101.7",
+        dj: None,
+        genres: &[("country", 0.85), ("chicha", 0.15)],
+        seed: 1017,
+    },
 ];
 
 /// A station by key.
@@ -99,7 +110,8 @@ pub fn level_station(level: &str) -> &'static str {
         "coast" | "seaside" => "tide",
         "sierra" => "ridgeline",
         "streets" => "tide",
-        "desert" => "pacifico",
+        // The old highway, the freight train, the dry lake bed: country.
+        "desert" => "roadhouse",
         _ => "tide",
     }
 }

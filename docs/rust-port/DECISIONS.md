@@ -9814,3 +9814,73 @@ and the crate's own unused-import warnings are allowed (a path crate's
 lints are not capped as a registry crate's are). `patches/wgpu/PATCHED.md`
 says how to carry it to a new release. Worth reporting upstream; to be
 dropped when a release caches them.
+
+## D1183. Country: the grammar, the fiddle, the kit, and The Roadhouse
+
+2026-10-10, the owner: "add country music to the music system". Built in
+the lab first (the oracle, D1150), goldens regenerated (the eight old
+genres' hashes and renders byte-identical), then ported. sound.md 3.5.1
+is the spec; what was built and what was not:
+
+- **The grammar** (`gen.js` / `genres.rs` `country`, salt 9): four
+  sub-styles drawn per seed (honky-tonk 4, shuffle 2, bluegrass 2, outlaw
+  2), major keys (mixolydian for outlaw), the major pentatonic through
+  `avoid` [3, 6] ([3] in mixolydian: the b7 stays), the last chorus a
+  whole step up (a half for the shuffle) as eurobeat does it, the 12-bar
+  on four honky-tonk songs in ten as 12-bar sections (an `expand` block
+  restarts the progression, so a 24-bar section over a 12-bar would not
+  work; 12 % 8 ≠ 0 keeps the section whole). The lead instrument is the
+  sub-style's: the tele (honky-tonk, outlaw), the steel (shuffle), the
+  fiddle (bluegrass); the fiddle sings the verse, the tele takes the
+  break, the steel swells under every chorus. `hooks` gained `nbars` so a
+  hook is realised over all twelve bars of the 12-bar (an 8-bar hook over
+  a 12-bar progression would play over the wrong chords from bar 9, the
+  D1153 bug again).
+- **The composer and sequencer**: `PROGS.country`, `countryVerse`,
+  `twelve`, `outlaw`; the bass's approach note `'p'` (a half step below
+  the next chord's root, the walk 1-3-5-approach into every change);
+  `T.swing8` (the second 8th of every beat late by that many 16ths, the
+  16ths either side by half: 0.6 for the shuffle, `swing` ignored when
+  set). `steps` per bar (the waltz) is not built: no sub-style needs it.
+- **Instruments**: the plucked string gained `swell` (the volume pedal, a
+  linear rise after the pluck), `body2` / `body2Q` / `body2Mix` (the
+  acoustic's air mode under its top), `vib` / `vibRate` / `vibDelay` (the
+  steel bar's vibrato, re-tuning the loop every 16 samples) and `strings`
+  / `spread` courses (the mandolin's pairs, 6 cents apart). A new `bowed`
+  kind (`BowedVoice`): a polyblep saw as the bow, bow noise riding the
+  envelope, a slow ADSR, vibrato after a delay, glide when legato, a
+  ladder for the tone and two body resonances mixed over the dry string
+  (`dry`); polyphonic for double stops. Patches: telecaster,
+  acousticGuitar, pedalSteel, fiddle, banjo, mandolin, uprightBass,
+  baritoneGuitar, honkyPiano (the FM piano through chorus mode 3). The
+  pedal steel slides whole chords up a whole step with the swell (`bend`
+  2, `bendT` 0.28) instead of one note gliding inside a held chord: the
+  per-note slide in chord parts the spec asks for is not built. The
+  slapback is the song's delay at a 16th with 0.12 feedback, not a new
+  delay mode. No ghost pluck, no compression on the tele.
+- **The kit** `country`: a soft 808 kick, a snare with wires, a `brush`
+  hit (a new type: band-passed noise swelling over the stroke, 110 ms),
+  the sidestick on the rim type, hat, ride, three toms, a crash; no boom
+  (a `drop` only marks the chorus, as on the latin kit). Lanes `brush` and
+  `sidestick`, the `train` fill. Bluegrass has no drums: its sections play
+  the empty pattern `none`.
+- **Levelling by numbers** (the D1153 method): every part soloed over the
+  chorus and matched to 3.4's rule against the drums (bass −3 dB, lead
+  −2 to −4, the steel pad −4 to −6, the piano −8, the acoustic's strums
+  −9 to −12); found the steel 17 dB under and the outlaw baritone riff
+  silent (its chorus key had no variant suffix). The lab's "drop louder
+  than intro" test holds on every sub-style once the intros thinned to
+  the hook over the drums (or the banjo alone): country has no drop, but
+  the chorus must still arrive. 18 000 lead notes over 30 seeds: 11 % off
+  the chord (passing tones), no long semitone clashes; every new
+  instrument within 6 cents (the fiddle's and steel's vibrato aside).
+- **The station** The Roadhouse 101.7 (key `roadhouse`, seed 1017):
+  country 0.85, chicha 0.15; Desert Run's default (the old highway, the
+  freight train). No DJ: `dj: None` is handled everywhere (the director,
+  the Radio page); a voice and lines are the owner's call, as the clips
+  are (`explicit-delivery-choices`).
+- **Goldens**: `events.json` gains three country runs, `renders.json`
+  five (one per sub-style and a verse); `tracks.json` hashes every seed.
+  The Rust port matches events and hashes exactly and the renders within
+  the tolerance on the first run.
+

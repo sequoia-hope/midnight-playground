@@ -240,7 +240,18 @@ instruments (what the lab has, what it needs), rhythm, harmony, melody,
 form, how the game's energy maps onto it, what the composer lacks for it,
 and what makes it grab.
 
-### 3.5.1 Country
+### 3.5.1 Country (built 2026-10-10)
+
+Built in the lab (`gen.js` `country`) and ported (`mp_music::genres::country`,
+DECISIONS D1183): the four sub-styles below, the instruments as parameter
+sets of the plucked string plus the new `bowed` fiddle, the `country` kit
+with the brushes' swish and the sidestick, `PROGS.country` / `countryVerse`
+/ `twelve` / `outlaw`, the walking bass's approach note 'p', the shuffle's
+`swing8`, and the station The Roadhouse 101.7. Left for later (D1183 says
+why): `steps` per bar (the waltz), per-note slides in chord parts (the
+steel slides whole chords instead), the ghost pluck, a slapback delay mode
+(the song's delay is set to a 16th with little feedback instead), and the
+tele's light compression.
 
 **The sound.** Four sub-styles, picked per seed as house picks deep or
 anthem:

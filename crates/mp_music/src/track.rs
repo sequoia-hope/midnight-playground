@@ -78,7 +78,8 @@ macro_rules! lab_nums {
     ($( $field:ident : $js:literal ),* $(,)?) => {
         /// A lab patch (`instruments.js` `BPATCH[name]` with overrides,
         /// `gen.js`'s `P()`): the instrument `kind` ('tb303', 'juno',
-        /// 'mono', 'fm', 'string') and every parameter its voices read.
+        /// 'mono', 'fm', 'string', 'bowed') and every parameter its voices
+        /// read.
         /// `None` is a missing key: the instruments apply their defaults
         /// (`p.cutoff ?? 400`).
         #[derive(Clone, Debug, PartialEq, Default)]
@@ -148,6 +149,8 @@ lab_nums! {
     damp: "damp", pick: "pick", pick_pos: "pickPos", body: "body", body_q: "bodyQ", body_mix: "bodyMix",
     tone: "tone", trem: "trem", trem_rate: "tremRate", wah: "wah", wah_hz: "wahHz",
     wah_q: "wahQ", wah_rate: "wahRate", strum: "strum",
+    swell: "swell", body2: "body2", body2_q: "body2Q", body2_mix: "body2Mix",
+    strings: "strings", spread: "spread", dry: "dry",
 }
 
 /// A part's mixer channel (`part.ch`, `engine.js` `Channel`).
@@ -311,6 +314,9 @@ pub struct Track {
     pub bpm: f64,
     pub gain: f64,
     pub swing: Option<f64>,
+    /// The shuffle: the second 8th of every beat delayed by this many 16ths
+    /// (country's triplet feel); replaces `swing`.
+    pub swing8: Option<f64>,
     pub delay: f64,
     pub delay_fb: f64,
     pub pump: Pump,
@@ -335,6 +341,7 @@ impl Track {
             bpm: 120.0,
             gain: 1.0,
             swing: None,
+            swing8: None,
             delay: 0.75,
             delay_fb: 0.32,
             pump: Pump {
@@ -374,6 +381,7 @@ impl Track {
             ("bpm", Val::num(self.bpm)),
             ("gain", Val::num(self.gain)),
             ("swing", Val::onum(self.swing)),
+            ("swing8", Val::onum(self.swing8)),
             ("delay", Val::num(self.delay)),
             ("delayFb", Val::num(self.delay_fb)),
             ("pump", Some(self.pump.to_val())),

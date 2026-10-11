@@ -24,7 +24,7 @@ pub fn all() -> &'static [(&'static str, Lab)] {
 }
 
 /// The SHA-256 of the lab's `canon(BPATCH)` (`dump-tables.mjs` prints it).
-pub const LAB_SHA256: &str = "b3e2628df1defa3a932e4edb1b7fc13e316547e6501f64c4f3f12c5b00796466";
+pub const LAB_SHA256: &str = "e7a4d9b724fe7f37846057ef7d79ba1642d6e8974ef82fee63ce99204cb76295";
 
 fn build() -> Vec<(&'static str, Lab)> {
     vec![
@@ -1204,6 +1204,227 @@ fn build() -> Vec<(&'static str, Lab)> {
                 vib_delay: Some(0.0),
                 chorus: Some(0.0),
                 gain: Some(0.33),
+                ..Default::default()
+            },
+        ),
+        (
+            "telecaster",
+            Lab {
+                kind: "string".into(),
+                decay: Some(2.2),
+                damp: Some(0.25),
+                pick: Some(0.85),
+                pick_pos: Some(0.1),
+                body: Some(3200.0),
+                body_q: Some(2.0),
+                body_mix: Some(0.7),
+                tone: Some(7000.0),
+                drive: Some(0.35),
+                glide: Some(0.03),
+                r: Some(0.3),
+                chorus: Some(0.0),
+                gain: Some(0.3),
+                ..Default::default()
+            },
+        ),
+        (
+            "acousticGuitar",
+            Lab {
+                kind: "string".into(),
+                decay: Some(2.5),
+                damp: Some(0.4),
+                pick: Some(0.5),
+                pick_pos: Some(0.18),
+                body: Some(220.0),
+                body_q: Some(1.5),
+                body_mix: Some(0.5),
+                body2: Some(100.0),
+                body2_q: Some(2.0),
+                body2_mix: Some(0.35),
+                tone: Some(5000.0),
+                strum: Some(0.016),
+                r: Some(0.25),
+                chorus: Some(0.0),
+                gain: Some(0.42),
+                ..Default::default()
+            },
+        ),
+        (
+            "pedalSteel",
+            Lab {
+                kind: "string".into(),
+                decay: Some(8.0),
+                damp: Some(0.2),
+                pick: Some(0.7),
+                pick_pos: Some(0.08),
+                body: Some(2400.0),
+                body_q: Some(1.2),
+                body_mix: Some(0.5),
+                tone: Some(6500.0),
+                swell: Some(0.3),
+                bend: Some(2.0),
+                bend_t: Some(0.28),
+                vib: Some(20.0),
+                vib_rate: Some(4.5),
+                vib_delay: Some(0.5),
+                strum: Some(0.01),
+                glide: Some(0.12),
+                r: Some(0.6),
+                chorus: Some(0.0),
+                gain: Some(0.6),
+                ..Default::default()
+            },
+        ),
+        (
+            "fiddle",
+            Lab {
+                kind: "bowed".into(),
+                cutoff: Some(2600.0),
+                res: Some(0.1),
+                drive: Some(0.6),
+                noise: Some(0.08),
+                a: Some(0.09),
+                d: Some(0.3),
+                s: Some(0.85),
+                r: Some(0.18),
+                vib: Some(22.0),
+                vib_rate: Some(5.6),
+                vib_delay: Some(0.22),
+                glide: Some(0.06),
+                body: Some(280.0),
+                body_q: Some(3.0),
+                body_mix: Some(0.6),
+                body2: Some(450.0),
+                body2_q: Some(2.5),
+                body2_mix: Some(0.5),
+                dry: Some(0.5),
+                hpf: Some(180.0),
+                gain: Some(0.09),
+                ..Default::default()
+            },
+        ),
+        (
+            "banjo",
+            Lab {
+                kind: "string".into(),
+                decay: Some(0.45),
+                damp: Some(0.15),
+                pick: Some(0.9),
+                pick_pos: Some(0.12),
+                body: Some(1500.0),
+                body_q: Some(2.5),
+                body_mix: Some(0.8),
+                tone: Some(8000.0),
+                r: Some(0.15),
+                chorus: Some(0.0),
+                gain: Some(0.36),
+                ..Default::default()
+            },
+        ),
+        (
+            "mandolin",
+            Lab {
+                kind: "string".into(),
+                decay: Some(1.0),
+                damp: Some(0.3),
+                pick: Some(0.8),
+                pick_pos: Some(0.15),
+                body: Some(900.0),
+                body_q: Some(1.4),
+                body_mix: Some(0.5),
+                tone: Some(7000.0),
+                strings: Some(2.0),
+                spread: Some(6.0),
+                strum: Some(0.008),
+                r: Some(0.12),
+                chorus: Some(0.0),
+                gain: Some(0.3),
+                ..Default::default()
+            },
+        ),
+        (
+            "uprightBass",
+            Lab {
+                kind: "string".into(),
+                decay: Some(0.8),
+                damp: Some(0.5),
+                pick: Some(0.3),
+                pick_pos: Some(0.25),
+                body: Some(110.0),
+                body_q: Some(1.2),
+                body_mix: Some(0.6),
+                tone: Some(1400.0),
+                r: Some(0.1),
+                chorus: Some(0.0),
+                gain: Some(0.55),
+                ..Default::default()
+            },
+        ),
+        (
+            "baritoneGuitar",
+            Lab {
+                kind: "string".into(),
+                oct: Some(-1.0),
+                decay: Some(1.6),
+                damp: Some(0.35),
+                pick: Some(0.7),
+                pick_pos: Some(0.14),
+                body: Some(1800.0),
+                body_q: Some(1.6),
+                body_mix: Some(0.6),
+                tone: Some(4500.0),
+                drive: Some(0.8),
+                r: Some(0.2),
+                chorus: Some(0.0),
+                gain: Some(0.34),
+                ..Default::default()
+            },
+        ),
+        (
+            "honkyPiano",
+            Lab {
+                kind: "fm".into(),
+                algo: Some("ep".into()),
+                ops: Some(vec![
+                    Some(Op {
+                        r: Some(1.0),
+                        rel: Some(0.3),
+                        l: Some(1.0),
+                        a: Some(0.001),
+                        d: Some(1.4),
+                        s: Some(0.1),
+                        ..Default::default()
+                    }),
+                    Some(Op {
+                        r: Some(1.0),
+                        l: Some(2.0),
+                        d: Some(0.22),
+                        s: Some(0.08),
+                        v: Some(0.8),
+                        ..Default::default()
+                    }),
+                    Some(Op {
+                        r: Some(2.0),
+                        rel: Some(0.3),
+                        l: Some(0.45),
+                        a: Some(0.001),
+                        d: Some(0.9),
+                        s: Some(0.05),
+                        det: Some(3.0),
+                        ..Default::default()
+                    }),
+                    Some(Op {
+                        r: Some(7.0),
+                        l: Some(1.1),
+                        d: Some(0.06),
+                        s: Some(0.0),
+                        v: Some(0.9),
+                        ..Default::default()
+                    }),
+                ]),
+                r: Some(0.3),
+                chorus: Some(3.0),
+                gain: Some(0.17),
                 ..Default::default()
             },
         ),

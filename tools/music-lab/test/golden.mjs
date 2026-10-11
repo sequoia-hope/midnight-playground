@@ -61,7 +61,7 @@ fs.writeFileSync(new URL('tracks.json', OUT), JSON.stringify(tracks, null, 1) + 
 // ── events.json ──────────────────────────────────────────────────
 // Each entry: the track, the bar it starts at, and the events of the next
 // `steps` 16ths as canonical JSON (one array per step).
-const EVENT_RUNS = [['house', 3, 0, 64], ['chicha', 2, 0, 64], ['dnb', 5, 40, 48], ['garage', 1, 16, 32], ['eurobeat', 4, 56, 32]];
+const EVENT_RUNS = [['house', 3, 0, 64], ['chicha', 2, 0, 64], ['dnb', 5, 40, 48], ['garage', 1, 16, 32], ['eurobeat', 4, 56, 32], ['country', 3, 8, 64], ['country', 1, 8, 32], ['country', 2, 8, 32]];
 const events = [];
 for (const [g, seed, bar, steps] of EVENT_RUNS) {
   const T = GENRES[g](seed);
@@ -95,6 +95,12 @@ const RENDER_RUNS = [
   ['chicha', 1, 'drop', 6, 1, [0.5, 1.2, 2.7, 4.4, 5.6]],
   ['chicha', 3, 'drop', 6, 1, [0.5, 1.2, 2.7, 4.4, 5.6]],
   ['chicha', 3, 56, 6, 1, [0.5, 1.2, 2.7, 4.4, 5.6]],
+  // Country: honky-tonk (3), the shuffle (1), bluegrass (2), outlaw (7).
+  ['country', 3, 'drop', 6, 1, [0.5, 1.2, 2.7, 4.4, 5.6]],
+  ['country', 3, 8, 6, 1, [0.5, 1.2, 2.7, 4.4, 5.6]],
+  ['country', 1, 'drop', 6, 1, [0.5, 1.2, 2.7, 4.4, 5.6]],
+  ['country', 2, 'drop', 6, 1, [0.5, 1.2, 2.7, 4.4, 5.6]],
+  ['country', 7, 'drop', 6, 1, [0.5, 1.2, 2.7, 4.4, 5.6]],
 ];
 const renders = [];
 for (const [g, seed, barSpec, secs, energy, wins] of RENDER_RUNS) {

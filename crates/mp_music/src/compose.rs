@@ -281,6 +281,15 @@ pub struct Progs {
     /// Cumbia and chicha, in minor: i, iv and the dominant V7 ([4, 'dom']),
     /// the VII and VI of the Andean side; two-chord vamps mostly.
     pub cumbia: &'static [&'static [Item]],
+    /// Country, in major (sound.md 3.5.1): I, IV and the dominant V7, the
+    /// fifties' I–vi–IV–V, the modern I–V–vi–IV, a ii–V turnaround.
+    pub country: &'static [&'static [Item]],
+    /// Country's two-chord verses.
+    pub country_verse: &'static [&'static [Item]],
+    /// The 12-bar of honky-tonk.
+    pub twelve: &'static [&'static [Item]],
+    /// The outlaw side, in mixolydian: the bVII (degree 6) against I and IV.
+    pub outlaw: &'static [&'static [Item]],
 }
 
 pub const PROGS: Progs = Progs {
@@ -337,6 +346,60 @@ pub const PROGS: Progs = Progs {
         &[D(3), X(4, "dom"), D(0), D(0)],
         &[D(0), X(4, "dom"), D(0), X(4, "dom")],
         &[D(5), D(6), D(0), D(0)],
+    ],
+    country: &[
+        &[D(0), D(0), D(3), X(4, "dom")],
+        &[D(0), D(3), X(4, "dom"), D(0)],
+        &[D(0), D(3), D(0), X(4, "dom")],
+        &[D(0), D(5), D(3), X(4, "dom")],
+        &[D(0), X(4, "dom"), D(5), D(3)],
+        &[D(0), D(1), X(4, "dom"), D(0)],
+        &[D(3), D(0), X(4, "dom"), D(0)],
+    ],
+    country_verse: &[
+        &[D(0), D(0), X(4, "dom"), X(4, "dom")],
+        &[D(0), D(0), D(0), X(4, "dom")],
+        &[D(0), X(4, "dom"), D(0), X(4, "dom")],
+        &[D(0), D(0), D(3), D(3)],
+        &[D(0), D(3), D(0), D(0)],
+    ],
+    twelve: &[
+        &[
+            D(0),
+            D(0),
+            D(0),
+            D(0),
+            D(3),
+            D(3),
+            D(0),
+            D(0),
+            X(4, "dom"),
+            D(3),
+            D(0),
+            D(0),
+        ],
+        &[
+            D(0),
+            D(3),
+            D(0),
+            D(0),
+            D(3),
+            D(3),
+            D(0),
+            D(0),
+            X(4, "dom"),
+            X(4, "dom"),
+            D(0),
+            D(0),
+        ],
+    ],
+    outlaw: &[
+        &[D(0), D(0), D(6), D(3)],
+        &[D(0), D(6), D(3), D(0)],
+        &[D(0), D(6), D(0), D(6)],
+        &[D(0), D(0), D(6), D(6)],
+        &[D(0), D(3), D(6), D(0)],
+        &[D(0), D(6), D(3), X(4, "dom")],
     ],
 };
 
