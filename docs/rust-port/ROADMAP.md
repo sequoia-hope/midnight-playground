@@ -48,7 +48,7 @@ environment (M12c) needs only M1 and can start whenever wanted.
    it headless, look at the result, compare with the reference. Then commit
    and push to `main`.
 7. Local output is viewed through the registered server only (`proj up
-   midnight-racer`). Never start another server or write a port number
+   midnight-playground`). Never start another server or write a port number
    anywhere.
 
 ---

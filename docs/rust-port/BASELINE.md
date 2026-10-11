@@ -28,7 +28,7 @@ load 4.31s  heap 188MB
 
 The reference phones are named by the owner and joined to the tailnet
 (ROADMAP M0). Use the tailnet https address of the dev server, which serves
-the working tree: `https://loaf.cama-minor.ts.net/midnight-racer/`. Settings
+the working tree: `https://loaf.cama-minor.ts.net/midnight-playground/`. Settings
 as a player has them on a phone (high quality off, the default on touch
 devices). For each row, open the link, wait for the panel's numbers to
 settle, and note them; for the fly-camera rows, note the lowest fps and the

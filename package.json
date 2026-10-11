@@ -1,5 +1,5 @@
 {
-  "name": "midnight-racer",
+  "name": "midnight-playground",
   "private": true,
   "type": "module",
   "description": "Browser street-racing game (three.js, no build step)",

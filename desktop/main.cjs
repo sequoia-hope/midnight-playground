@@ -77,7 +77,7 @@ app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.setName('Midnight Racer');
 // Lets the desktop entry (tools/install-desktop-entry.sh) claim the window.
-process.env.CHROME_DESKTOP = process.env.CHROME_DESKTOP || 'midnight-racer.desktop';
+process.env.CHROME_DESKTOP = process.env.CHROME_DESKTOP || 'midnight-playground.desktop';
 
 // ── Window state ─────────────────────────────────────────────────
 const stateFile = () => path.join(app.getPath('userData'), 'window-state.json');

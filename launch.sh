@@ -3,7 +3,7 @@
 # Reconnects if the session already exists. Use -r to force restart.
 set -euo pipefail
 
-SESSION="midnight-racer"
+SESSION="midnight-playground"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_CMD="claude --dangerously-skip-permissions"
 FORCE_RESTART=false
