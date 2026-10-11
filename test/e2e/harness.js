@@ -3,7 +3,7 @@
 //
 // No web server and no port: every request to ORIGIN is answered from the
 // working tree by request interception. Set MP_BASE_URL to test a running
-// copy instead (`proj url midnight-racer`, or the GitHub Pages build).
+// copy instead (`proj url midnight-playground`, or the GitHub Pages build).
 //
 // Everything the tests read from the page goes through Runtime.evaluate with
 // userGesture: false. puppeteer's own page.evaluate() runs as a user gesture,

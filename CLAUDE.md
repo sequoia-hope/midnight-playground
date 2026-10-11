@@ -4,8 +4,8 @@ The game is **Midnight Playground**, in Rust; its crates are `mp_*`
 (DECISIONS D1100). The repository is `sequoia-hope/midnight-playground` and
 Pages serves the Rust game at https://sequoia-hope.github.io/midnight-playground/
 (the cutover, D1112). The JS game keeps the name Midnight Racer and is the
-legacy version, under `legacy/` on Pages. The local addresses keep the old
-name: the `proj` name and the tailnet path are still `midnight-racer`.
+legacy version, under `legacy/` on Pages. The local checkout, the `proj`
+name and the tailnet path are `midnight-playground` too (renamed 2026-10-10).
 
 Two games live in this repo:
 
@@ -104,7 +104,7 @@ the kernel on.
 
 ## Viewing output
 
-Only through the registered server: `proj up midnight-racer` (or
+Only through the registered server: `proj up midnight-playground` (or
 `./serve.sh`). It serves the repo root, so the Rust build is at `/dist/next/`
 and parity reports at `/parity/report/`. Phones and other machines use the
 tailnet https front (the registry's `web_url` for this project, plus

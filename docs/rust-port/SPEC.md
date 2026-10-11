@@ -1157,11 +1157,11 @@ The same rule affects development. The registered dev server speaks plain
 http, so by itself the Rust build opens from `localhost` on the dev machine
 but not from a phone or another computer. `serve.sh` therefore also mounts
 the server on the dev machine's tailnet https address with `tailscale serve`,
-under the path `/midnight-racer/` (the registry records the address as the
+under the path `/midnight-playground/` (the registry records the address as the
 project's `web_url`; the trailing slash matters). Any device on the tailnet
 gets a secure context there, so WebGPU and tilt work, with the working tree
-served live: the JS game at `/midnight-racer/` and the Rust build at
-`/midnight-racer/dist/next/`. This is how the Rust build is tested on phones
+served live: the JS game at `/midnight-playground/` and the Rust build at
+`/midnight-playground/dist/next/`. This is how the Rust build is tested on phones
 throughout the port. Since DECISIONS D1101, GitHub Pages also publishes
 the Rust build of every push to `main` at the same `dist/next/` path,
 so people outside the tailnet can play it.
@@ -1208,7 +1208,7 @@ any time after M1:
   pinned to the crate version, `wasm-opt`.
 - **`cargo xtask web [--release]`** builds the client and writes
   `dist/next/` (already git-ignored): `index.html`, the JS glue, the wasm,
-  `assets/`. The registered server (`./serve.sh`, `proj up midnight-racer`)
+  `assets/`. The registered server (`./serve.sh`, `proj up midnight-playground`)
   serves the repo root, so the build is at `/dist/next/` on the project's
   registered port. Do not start any other server, and never write a port
   number into a script, config or default. That server speaks plain http;

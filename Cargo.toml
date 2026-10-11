@@ -12,7 +12,7 @@ exclude = ["patches"]
 version = "0.1.0"
 edition = "2024"
 publish = false
-repository = "https://github.com/sequoia-hope/midnight-racer"
+repository = "https://github.com/sequoia-hope/midnight-playground"
 
 [workspace.dependencies]
 mp_math = { path = "crates/mp_math" }

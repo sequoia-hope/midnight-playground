@@ -150,7 +150,7 @@ pub fn run(args: &[String]) -> Result {
 
     println!(
         "web: built {} ({profile}) into dist/next/\n\
-         \x20    open /dist/next/ on the registered server (proj up midnight-racer),\n\
+         \x20    open /dist/next/ on the registered server (proj up midnight-playground),\n\
          \x20    or on phones at the project's tailnet web_url + dist/next/",
         built.join(" and ")
     );

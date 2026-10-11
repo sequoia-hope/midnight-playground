@@ -25,7 +25,7 @@ python tools/dj-voice/render.py     # ~210 lines x 2 takes, into audio/dj/
 ```
 
 Then open `tools/dj-voice.html` through the project's server
-(`proj up midnight-racer`, path `/tools/dj-voice.html`) and tell the owner
+(`proj up midnight-playground`, path `/tools/dj-voice.html`) and tell the owner
 it's ready.
 
 Both scripts only do what's missing, so they are safe to re-run after an

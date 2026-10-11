@@ -220,14 +220,14 @@ compiler the page was built from.
 **Locally,** build the web client and serve the repository:
 
 ```sh
-cargo xtask web --release   # the Rust web build, into dist/next/
-proj up midnight-racer      # or ./serve.sh — both use the registered port
-proj url midnight-racer     # prints the URL to open; the game is at dist/next/
+cargo xtask web --release    # the Rust web build, into dist/next/
+proj up midnight-playground  # or ./serve.sh — both use the registered port
+proj url midnight-playground # prints the URL to open; the game is at dist/next/
 ```
 
 The JavaScript game is at the root of the same server. The owner's tailnet
-serves the working tree at `https://<machine>.<tailnet>.ts.net/midnight-racer/`
-(the local names stay `midnight-racer`), with the Rust game at `dist/next/`.
+serves the working tree at `https://<machine>.<tailnet>.ts.net/midnight-playground/`,
+with the Rust game at `dist/next/`.
 Phones need that https address: WebGPU, tilt and the audio worklets only
 work in a secure context.
 
@@ -532,7 +532,7 @@ local files. You can force either behaviour with `MP_SANDBOX=1` or
 
 To add Midnight Racer to your applications menu, run
 `tools/install-desktop-entry.sh`. It writes
-`~/.local/share/applications/midnight-racer.desktop`; delete that file to
+`~/.local/share/applications/midnight-playground.desktop`; delete that file to
 remove it.
 
 `npm run app:smoke -- --no-sandbox --shot out.png` is a quick check of the
