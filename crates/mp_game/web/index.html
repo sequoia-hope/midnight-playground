@@ -23,7 +23,11 @@
   :root { color-scheme: dark; }
   html, body { margin: 0; height: 100%; background: #05060c; color: #e8ecf4;
                font: 16px/1.5 system-ui, sans-serif; overflow: hidden; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block;
+  /* !important: the client draws the canvas at a pixel ratio of its own by
+     setting the window's size in pixels (DECISIONS D1195), and winit then
+     writes that size into the canvas's inline style; the box stays the
+     page's. */
+  #game { position: fixed; inset: 0; width: 100% !important; height: 100% !important; display: block;
           outline: none; touch-action: none; -webkit-touch-callout: none;
           -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   .screen { position: fixed; inset: 0; display: flex; flex-direction: column;

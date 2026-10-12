@@ -5,7 +5,8 @@
 //   cargo xtask web --release
 //   node tools/parity/rust-perf.mjs --level sierra [--backend webgpu|webgl2]
 //       [--hq 1|0] [--secs N] [--reloads 10] [--reload-levels sierra,coast]
-//       [--query "t=0.2&cars=0"]   (more of the page's parameters)
+//       [--query "t=0.2&cars=0"]   (more of the page's parameters; scale=0.5
+//                    for the render scale, D1194)
 //       [--angle gl|vulkan]  (the native GL driver, as Chrome on Linux uses on Intel)
 //       [--size WxH --dpr N]  (a laptop's window in CSS pixels and its scale: both games render
 //                    at min(dpr, 1.5) times the window with hq on)

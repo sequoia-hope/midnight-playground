@@ -76,7 +76,7 @@ export function installBridge(selectorSrc) {
   // A setting each option shows (`__mp.settings`), for when it is not on screen.
   const SETTING = {
     'opt-mph': 'mph', 'opt-hq': 'hq', 'opt-flash': 'flash', 'opt-autogas': 'autogas', 'opt-fullscreen': 'fullscreen', 'opt-rumble': 'rumble',
-    'opt-track': 'track', 'opt-steer': 'steering', 'opt-pedals': 'pedals',
+    'opt-track': 'track', 'opt-steer': 'steering', 'opt-pedals': 'pedals', 'opt-scale': 'scale',
   };
   const SLIDERS = { 'vol-music': 'music', 'vol-sfx': 'sfx', 'opt-tilt-sens': 'tiltSens' };
   // TouchControls' SLIDER bands, for the panel's `--gas` and `--brk`.

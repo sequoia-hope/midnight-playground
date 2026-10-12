@@ -109,6 +109,9 @@ fn inbox() -> std::sync::MutexGuard<'static, Inbox> {
 pub struct Opts {
     pub o: Options,
     pub hq: bool,
+    /// The render scale on the web (D1194): the race's pixel ratio is the
+    /// JS's times this. 1 natively, where the window draws at scale 1.
+    pub scale: f64,
 }
 
 /// The level's Track, for the cameras (none for the models scene, or until
@@ -490,7 +493,7 @@ pub const ENV_INTENSITY: f64 = 0.7;
 
 /// The Bevy app for these options. The platform modules add where the scene
 /// comes from and how status is shown.
-pub fn app(o: Options, hq: bool) -> App {
+pub fn app(o: Options, (hq, scale): (bool, f64)) -> App {
     let mut app = App::new();
     let title = format!("{} — {}", banner(), o.level);
     let materials = o.materials.clone();
@@ -540,7 +543,7 @@ pub fn app(o: Options, hq: bool) -> App {
         attract: fly::Attract::default(),
         focus: DVec3::ZERO,
     })
-    .insert_resource(Opts { o, hq })
+    .insert_resource(Opts { o, hq, scale })
     .init_state::<AppState>()
     .add_systems(Startup, (spawn_camera, no_light_clustering))
     .add_systems(First, status::tick.after(bevy::time::TimeSystems))

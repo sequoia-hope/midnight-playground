@@ -100,20 +100,61 @@ pub fn copy_text(text: &str) {
     }
 }
 
-/// `applyQuality`'s pixel ratio: `hq ? min(devicePixelRatio, 1.5) : 1`.
-pub fn apply_pixel_ratio(w: &mut Window, hq: bool) {
-    w.resolution
-        .set_scale_factor_override(Some(pixel_ratio(hq, false)));
+/// Draws the canvas at `pr` pixels per CSS pixel: the window's scale
+/// factor override, so Bevy's logical pixels are CSS pixels, and its size
+/// in pixels, the canvas's CSS box times `pr`, which is what the surface
+/// (and so the canvas's backing store) is configured from. The override
+/// alone changes only the logical size: winit sizes the window from the
+/// canvas's box and the device's ratio, whatever Bevy's factor (D1195).
+/// Called every frame (a window resize puts winit's size back) and at the
+/// race's and the viewer's start; nothing is written when nothing changes.
+pub fn apply_pixel_ratio(w: &mut Window, pr: f32) {
+    if (w.resolution.scale_factor() - pr).abs() > 1e-3 {
+        w.resolution.set_scale_factor_override(Some(pr));
+    }
+    let Some(canvas) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id("game"))
+    else {
+        return;
+    };
+    let (cw, ch) = (canvas.client_width(), canvas.client_height());
+    if cw <= 0 || ch <= 0 {
+        return;
+    }
+    let want = (
+        (cw as f32 * pr).round().max(1.0) as u32,
+        (ch as f32 * pr).round().max(1.0) as u32,
+    );
+    if (
+        w.resolution.physical_width(),
+        w.resolution.physical_height(),
+    ) != want
+    {
+        w.resolution.set_physical_resolution(want.0, want.1);
+    }
 }
 
-/// The pixel ratio the canvas draws at: the JS's for the race; on the
+/// The pixel ratio the race draws at: `applyQuality`'s, `hq ?
+/// min(devicePixelRatio, 1.5) : 1` (D437), times the render scale
+/// (D1194). The viewer and the race's start apply it as it is.
+pub fn race_pixel_ratio(opts: &crate::Opts) -> f32 {
+    let dpr = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio());
+    ((if opts.hq { dpr.min(1.5) } else { 1.0 }) * opts.scale) as f32
+}
+
+/// The pixel ratio the canvas draws at: the race's; on the
 /// menu and the loading screen, at least `min(devicePixelRatio, 2)`, because the screens' text
 /// is drawn into the same canvas, where the DOM's was always sharp
 /// (DECISIONS D575).
-fn pixel_ratio(hq: bool, screen: bool) -> f32 {
-    let dpr = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio());
-    let race = if hq { dpr.min(1.5) } else { 1.0 };
-    (if screen { race.max(dpr.min(2.0)) } else { race }) as f32
+fn pixel_ratio(opts: &crate::Opts, screen: bool) -> f32 {
+    let race = race_pixel_ratio(opts);
+    if screen {
+        let dpr = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio()) as f32;
+        race.max(dpr.min(2.0))
+    } else {
+        race
+    }
 }
 
 /// Sharp text on the screens, the JS's pixel ratio while driving.
@@ -125,11 +166,9 @@ fn screen_pixel_ratio(
 ) {
     // Only with no race: a race's HUD text, laid out at the race's ratio,
     // is not laid out again when the ratio changes under it (pause).
-    let want = pixel_ratio(opts.hq, ui.screen != Screen::None && play.race.is_none());
-    if let Ok(mut w) = windows.single_mut()
-        && (w.resolution.scale_factor() - want).abs() > 1e-3
-    {
-        w.resolution.set_scale_factor_override(Some(want));
+    let want = pixel_ratio(&opts, ui.screen != Screen::None && play.race.is_none());
+    if let Ok(mut w) = windows.single_mut() {
+        apply_pixel_ratio(&mut w, want);
     }
 }
 
@@ -235,6 +274,7 @@ fn stage_control(
                 "opt-guide" => Sel::Guide,
                 "opt-assist" => Sel::Assist,
                 "opt-station" => Sel::Station,
+                "opt-scale" => Sel::Scale,
                 _ => return true,
             };
             let value = v["value"].as_str().unwrap_or("").to_owned();
@@ -515,6 +555,7 @@ fn publish_settings(s: &super::store::Settings) {
         (Sel::Guide, "opt-guide"),
         (Sel::Assist, "opt-assist"),
         (Sel::Station, "opt-station"),
+        (Sel::Scale, "opt-scale"),
     ] {
         let (opts, _) = super::menu::select_options(sel, s);
         selects.insert(
@@ -527,7 +568,7 @@ fn publish_settings(s: &super::store::Settings) {
         "steering": s.steering, "tiltSens": s.tilt_sens, "pedals": s.pedals,
         "fullscreen": s.fullscreen, "car": s.car, "level": s.level, "track": s.track,
         "flash": s.flash, "rumble": s.rumble,
-        "guide": s.guide, "assist": s.assist,
+        "guide": s.guide, "assist": s.assist, "scale": s.scale,
     });
     crate::bridge::publish("settings", Some(crate::bridge::V::Json(settings)));
     crate::bridge::publish(

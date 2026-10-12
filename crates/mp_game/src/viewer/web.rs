@@ -178,15 +178,13 @@ fn go(href: &str) {
     }
 }
 
-/// At start: the race's pixel ratio (`hq ? min(devicePixelRatio, 1.5) :
-/// 1`), so the viewer's frames cost what the race's do.
+/// Every frame (and at start, before the first): the race's pixel ratio
+/// (`hq ? min(devicePixelRatio, 1.5) : 1`, times the render scale, D1194),
+/// so the viewer's frames cost what the race's do; every frame because a
+/// resize puts winit's size back (D1195).
 fn setup(opts: Res<crate::Opts>, mut windows: Query<&mut Window, With<PrimaryWindow>>) {
-    let dpr = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio());
-    let pr = if opts.hq { dpr.min(1.5) } else { 1.0 };
-    if let Ok(mut w) = windows.single_mut()
-        && (pr - dpr).abs() > 1e-3
-    {
-        w.resolution.set_scale_factor_override(Some(pr as f32));
+    if let Ok(mut w) = windows.single_mut() {
+        crate::ui::web::apply_pixel_ratio(&mut w, crate::ui::web::race_pixel_ratio(&opts));
     }
 }
 
@@ -307,6 +305,9 @@ fn publish(
 
 pub fn plugin(app: &mut App) {
     app.add_systems(Startup, setup)
-        .add_systems(Update, frame_in.before(super::input::gather))
+        .add_systems(
+            Update,
+            (setup, frame_in).chain().before(super::input::gather),
+        )
         .add_systems(Last, publish);
 }
