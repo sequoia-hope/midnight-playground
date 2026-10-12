@@ -30,7 +30,9 @@ use crate::animate::MeshWrites;
 use crate::convert::{self, Draw, MeshKey};
 use crate::render::SharedImages;
 use crate::render::lighting::MaterialLights;
-use crate::render::material::{Model, Patch, ThreeKey, ThreeMaterial, ThreeParams, three_material};
+use crate::render::material::{
+    Model, Patch, ThreeBindings, ThreeKey, ThreeMaterial, ThreeParams, three_material,
+};
 use crate::warmup::{Combos, Layout};
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::NoFrustumCulling;
@@ -175,7 +177,7 @@ fn particles_material(
     scale: f64,
     shared: &SharedImages,
 ) -> ThreeMaterial {
-    ThreeMaterial {
+    ThreeMaterial::new(ThreeBindings {
         params: ThreeParams {
             diffuse: Vec4::ONE,
             kind0: Vec4::new(scale as f32, 0.0, 0.0, 0.0),
@@ -187,7 +189,6 @@ fn particles_material(
         aux: None,
         photo: None,
         loose: None,
-        globals: shared.globals.clone(),
         env: shared.env.clone(),
         key: ThreeKey {
             model: Model::Basic,
@@ -207,13 +208,13 @@ fn particles_material(
             sort_rank: rank,
             ..ThreeKey::default()
         },
-    }
+    })
 }
 
 /// `SkidMarks`' `ShaderMaterial`: transparent, no depth write, polygon
 /// offset (-4, -4), front faces only (three's default side), no fog.
 fn skid_material(shared: &SharedImages) -> ThreeMaterial {
-    ThreeMaterial {
+    ThreeMaterial::new(ThreeBindings {
         params: ThreeParams {
             diffuse: Vec4::ONE,
             ..ThreeParams::default()
@@ -224,7 +225,6 @@ fn skid_material(shared: &SharedImages) -> ThreeMaterial {
         aux: None,
         photo: None,
         loose: None,
-        globals: shared.globals.clone(),
         env: shared.env.clone(),
         key: ThreeKey {
             model: Model::Basic,
@@ -240,7 +240,7 @@ fn skid_material(shared: &SharedImages) -> ThreeMaterial {
             sort_rank: RANK_SKIDS,
             ..ThreeKey::default()
         },
-    }
+    })
 }
 
 /// What `Effects`' constructor builds with three's own classes: the

@@ -29,7 +29,7 @@ pub mod sky;
 pub mod sort;
 
 pub use lighting::Lighting;
-pub use material::{SharedImages, ThreeMaterial};
+pub use material::{SharedImages, ThreeBindings, ThreeMaterial};
 pub use sky::{SkyMaterial, SkyState};
 
 use bevy::core_pipeline::Core3dSystems;
@@ -41,10 +41,10 @@ use bevy::render::extract_component::ExtractComponentPlugin;
 use bevy::render::extract_resource::ExtractResourcePlugin;
 use bevy::render::render_asset::RenderAssets;
 use bevy::render::render_resource::{
-    Extent3d, Origin3d, TexelCopyBufferLayout, TexelCopyTextureInfo, TextureAspect,
-    TextureDimension, TextureFormat, TextureUsages,
+    BufferDescriptor, BufferUsages, Extent3d, Origin3d, TexelCopyBufferLayout,
+    TexelCopyTextureInfo, TextureAspect, TextureDimension, TextureFormat, TextureUsages,
 };
-use bevy::render::renderer::RenderQueue;
+use bevy::render::renderer::{RenderDevice, RenderQueue};
 use bevy::render::texture::GpuImage;
 use bevy::render::{Render, RenderApp, RenderStartup, RenderSystems};
 use lighting::{GLOBALS_WIDTH, Globals};
@@ -67,17 +67,28 @@ fn globals_image() -> Image {
     image
 }
 
-/// Writes this frame's globals into their texture.
+/// Makes the globals' uniform buffer (`material::GlobalsBuffer`, D1191).
+fn init_globals_buffer(mut commands: Commands, device: Res<RenderDevice>) {
+    commands.insert_resource(material::GlobalsBuffer(device.create_buffer(
+        &BufferDescriptor {
+            label: Some("three globals"),
+            size: material::GLOBALS_BYTES,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        },
+    )));
+}
+
+/// Writes this frame's globals into their buffer (the materials) and their
+/// texture (the sky dome and the environment's atlas, `sky.wgsl`).
 fn write_globals(
     globals: Option<Res<Globals>>,
     shared: Option<Res<SharedImages>>,
+    buffer: Option<Res<material::GlobalsBuffer>>,
     images: Res<RenderAssets<GpuImage>>,
     queue: Res<RenderQueue>,
 ) {
     let (Some(globals), Some(shared)) = (globals, shared) else {
-        return;
-    };
-    let Some(gpu) = images.get(&shared.globals) else {
         return;
     };
     let mut bytes = Vec::with_capacity(GLOBALS_WIDTH * 16);
@@ -86,6 +97,12 @@ fn write_globals(
             bytes.extend_from_slice(&x.to_le_bytes());
         }
     }
+    if let Some(buffer) = buffer {
+        queue.write_buffer(&buffer.0, 0, &bytes);
+    }
+    let Some(gpu) = images.get(&shared.globals) else {
+        return;
+    };
     queue.write_texture(
         TexelCopyTextureInfo {
             texture: &gpu.texture,
@@ -168,7 +185,11 @@ impl Plugin for ThreeRenderPlugin {
             .init_resource::<post::PostCache>()
             .add_systems(
                 RenderStartup,
-                (pmrem::init_pmrem_pipelines, post::init_post_pipelines),
+                (
+                    init_globals_buffer,
+                    pmrem::init_pmrem_pipelines,
+                    post::init_post_pipelines,
+                ),
             )
             .add_systems(
                 Render,

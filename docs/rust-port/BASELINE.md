@@ -1165,3 +1165,59 @@ draws, 805 k, 0.60); the instanced scenery, 40 draws, 27,000 instances,
 Not done: a vertex-array-object cache in the GL backend (the remaining
 10,000 calls), fewer draws, and the laptop's own numbers, which decide
 whether its frame is the CPU's or the GPU's.
+
+## The laptop itself: the GPU, and Mesa's SIMD8 fragment shaders (DECISIONS D1191)
+
+2026-10-11, measured on the X1 Carbon over ssh (the repo copied to it,
+`dist/next/` served there by `tools/serve.py` on an explicit port). It is
+a 6th-generation X1 Carbon: i7-8650U, UHD Graphics 620 (Mesa's iris
+driver), a 2560 × 1440 panel at a 1.76 scale under GNOME on Wayland, and
+Chrome 131, which has no WebGPU, runs as an X11 client (so its pages see
+a 1456 × 819 screen at pixel ratio 1), and thermally throttles the GPU
+within a minute (every A/B below waited for the package to cool below
+52 °C; a hot run reads 10 to 15 % slower). Headless Chrome there falls
+back to SwiftShader, so the tools gained `--headed` (a window on the
+session's display, with `XDG_RUNTIME_DIR`, `DISPLAY` and the Xwayland
+`XAUTHORITY` exported over ssh), `--dpr` and `--angle gl`.
+
+**At vsync, the laptop's own window (1456 × 740 CSS pixels at 1, high
+quality, Sierra's race)**: JS 37.7 ms a frame (26 fps, CPU 13.1 ms), Rust
+WebGL2 47.6 ms (21 fps, CPU 15.6 ms; 5th-percentile fps 15 against the
+JS's 24), Rust WebGPU behind Chrome's flag 50.2 ms. Neither is smooth
+there; the Rust game is 1.3 × the JS and spikier. Both are the GPU's: it
+sits at its 1150 MHz ceiling in both, the CPU is well under the frame.
+
+**The GPU's own time a frame** (`gl-calls.mjs --headed --angle gl`,
+1456 × 740): JS 42 ms, Rust 65 ms. With every vertex clipped away both
+cost 22 ms, so the vertex side is equal and the whole gap is fragment
+work: JS about 20 ms, Rust about 43. By program, the Rust terrain
+(114 draws, 967 k triangles) is 33 ms where the JS terrain (the same
+geometry) is 13; the instanced scenery is 7 ms against 8. Early exits
+with the output depending on what had been computed (a constant output
+lets the compiler drop everything before it, which the first bisection
+missed) put the terrain's cost at: the procedural ground texturing
+(`terrain_map`) 20 ms, the lights 10, the rest 5. Stubbing the seven
+samples to constants saved 9 ms; shadow, spot and point light, IBL, fog
+and the bump each 0 to 3.
+
+**Why: Mesa compiles 78 of the Rust fragment shaders at SIMD8 only**
+(`INTEL_DEBUG=perf` through `MP_DUMPIO=1`, the shader cache off:
+"SIMD16 shader failed to compile: Failure to register allocate. Reduce
+number of live scalar values"), against 8 of the JS game's; its terrain
+shader runs at half the fragment throughput of three's (SIMD8, 2026
+instructions, 54 sends, 189 virtual registers; three's 1501 instructions
+at SIMD16, 32 sends, 119 to 127 registers). The `--sub` experiments that
+compile at the same time showed what the register pressure is made of:
+the globals texture's `textureLoad`s (19 a fragment, each a send whose
+result waits in registers) and the animation-block lookups (7 more) are
+most of it: as plain uniforms the globals alone let 66 of the 78 shaders
+compile at SIMD16, without the block lookups 20 remain, without the
+second spot light and the point light 6. The terrain itself reached
+SIMD16 only with its shadow and IBL removed as well, so a SIMD16 terrain
+is not on offer without changing what it draws; the measured wins are in
+the sends and registers, not the width.
+
+**Measured on the laptop, cooled, GPU a frame** (65.8 baseline): globals
+as named uniforms 61.8 ms; no block lookups 62.4; both 56.3; both and the
+terrain's near, rock and varnish samples inside their branches as the JS
+has them 53.2 (−19 %). The three changes are D1191's.

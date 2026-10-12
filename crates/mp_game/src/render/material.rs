@@ -10,15 +10,19 @@
 //! [`ThreeKey`] that picks the shader variant, culling, blending and depth
 //! state the way three's `WebGLPrograms` and `WebGLState` do.
 
+use bevy::ecs::system::SystemParamItem;
 use bevy::math::Vec4;
 use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::pbr::{Material, MaterialPipeline, MaterialPipelineKey, MeshPipelineKey};
 use bevy::prelude::*;
 use bevy::render::extract_resource::ExtractResource;
 use bevy::render::render_resource::{
-    AsBindGroup, BlendComponent, BlendFactor, BlendOperation, BlendState, CompareFunction, Face,
-    RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError,
+    AsBindGroup, AsBindGroupError, BindGroupLayout, BindGroupLayoutEntry, BindingType,
+    BlendComponent, BlendFactor, BlendOperation, BlendState, Buffer, BufferBindingType, BufferSize,
+    CompareFunction, Face, OwnedBindingResource, RenderPipelineDescriptor, ShaderStages,
+    ShaderType, SpecializedMeshPipelineError, UnpreparedBindGroup,
 };
+use bevy::render::renderer::RenderDevice;
 use bevy::shader::{ShaderDefVal, ShaderRef};
 use mp_scene::{MaterialDesc, MaterialKind, Scene, TextureDesc, three};
 
@@ -307,9 +311,12 @@ pub struct ThreeParams {
     pub slots: Vec4,
 }
 
-#[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
+/// The material's bindings that Bevy's derive can express: its parameters
+/// and textures. The globals buffer (binding 10) is shared by every material
+/// and bound by `ThreeMaterial`'s own `AsBindGroup` (D1191).
+#[derive(TypePath, AsBindGroup, Clone, Debug)]
 #[bind_group_data(ThreeKey)]
-pub struct ThreeMaterial {
+pub struct ThreeBindings {
     #[uniform(0)]
     pub params: ThreeParams,
     #[texture(1)]
@@ -333,22 +340,94 @@ pub struct ThreeMaterial {
     #[texture(15)]
     #[sampler(16)]
     pub loose: Option<Handle<Image>>,
-    #[texture(
-        10,
-        sample_type = "float",
-        filterable = false,
-        visibility(vertex, fragment)
-    )]
-    pub globals: Handle<Image>,
     #[texture(11)]
     #[sampler(12)]
     pub env: Handle<Image>,
     pub key: ThreeKey,
 }
 
-impl From<&ThreeMaterial> for ThreeKey {
-    fn from(m: &ThreeMaterial) -> ThreeKey {
+impl From<&ThreeBindings> for ThreeKey {
+    fn from(m: &ThreeBindings) -> ThreeKey {
         m.key
+    }
+}
+
+/// A three_std material: `ThreeBindings` plus the scene-wide globals, one
+/// uniform buffer every material shares (`GlobalsBuffer`, written each
+/// frame by `render::write_globals`). The globals were a texture read with
+/// `textureLoad` (D293); as a uniform block the reads at constant offsets
+/// are push constants on Mesa's Intel driver, which halved the number of
+/// its fragment shaders too wide for SIMD16 (D1191).
+#[derive(Asset, TypePath, Clone, Debug, Deref, DerefMut)]
+pub struct ThreeMaterial {
+    pub b: ThreeBindings,
+}
+
+impl ThreeMaterial {
+    pub fn new(b: ThreeBindings) -> Self {
+        Self { b }
+    }
+}
+
+/// The globals' binding in the material's bind group (`three_material.wgsl`).
+pub const GLOBALS_BINDING: u32 = 10;
+/// The globals buffer's size: `GLOBALS_WIDTH` texels of four floats.
+pub const GLOBALS_BYTES: u64 = (super::lighting::GLOBALS_WIDTH * 16) as u64;
+
+/// The globals as a uniform buffer in the render world, made at
+/// `RenderStartup` and written every frame (`render::write_globals`).
+#[derive(Resource, Clone)]
+pub struct GlobalsBuffer(pub Buffer);
+
+impl AsBindGroup for ThreeMaterial {
+    type Data = ThreeKey;
+    type Param = (
+        <ThreeBindings as AsBindGroup>::Param,
+        bevy::ecs::system::lifetimeless::SRes<GlobalsBuffer>,
+    );
+
+    fn label() -> &'static str {
+        "three_material"
+    }
+
+    fn bind_group_data(&self) -> ThreeKey {
+        self.b.key
+    }
+
+    fn unprepared_bind_group(
+        &self,
+        layout: &BindGroupLayout,
+        render_device: &RenderDevice,
+        (inner, globals): &mut SystemParamItem<'_, '_, Self::Param>,
+        force_no_bindless: bool,
+    ) -> Result<UnpreparedBindGroup, AsBindGroupError> {
+        let mut u =
+            self.b
+                .unprepared_bind_group(layout, render_device, inner, force_no_bindless)?;
+        u.bindings.push((
+            GLOBALS_BINDING,
+            OwnedBindingResource::Buffer(globals.0.clone()),
+        ));
+        Ok(u)
+    }
+
+    fn bind_group_layout_entries(
+        render_device: &RenderDevice,
+        force_no_bindless: bool,
+    ) -> Vec<BindGroupLayoutEntry> {
+        let mut entries =
+            ThreeBindings::bind_group_layout_entries(render_device, force_no_bindless);
+        entries.push(BindGroupLayoutEntry {
+            binding: GLOBALS_BINDING,
+            visibility: ShaderStages::VERTEX_FRAGMENT,
+            ty: BindingType::Buffer {
+                ty: BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: BufferSize::new(GLOBALS_BYTES),
+            },
+            count: None,
+        });
+        entries
     }
 }
 
@@ -432,7 +511,10 @@ impl Material for ThreeMaterial {
             }
             return Ok(());
         }
-        let mut defs: Vec<ShaderDefVal> = Vec::new();
+        let mut defs: Vec<ShaderDefVal> = vec![ShaderDefVal::UInt(
+            "GLOBALS_WIDTH".into(),
+            super::lighting::GLOBALS_WIDTH as u32,
+        )];
         // A patch's own attribute (aSurf, aLane, aDepth, gsize, ph, and the
         // points' quad corners) at location 8, beside Bevy's standard ones.
         if layout.0.contains(crate::convert::ATTRIBUTE_EXTRA) {
@@ -1024,7 +1106,7 @@ pub fn three_material(
         alpha_map,
         flat_shading: flag("flatShading", false),
     };
-    Some(ThreeMaterial {
+    Some(ThreeMaterial::new(ThreeBindings {
         params: p,
         map: map.map(|(h, _)| h),
         emissive_map: emissive_map.map(|(h, _)| h),
@@ -1032,8 +1114,7 @@ pub fn three_material(
         aux,
         photo,
         loose,
-        globals: shared.globals.clone(),
         env: shared.env.clone(),
         key,
-    })
+    }))
 }

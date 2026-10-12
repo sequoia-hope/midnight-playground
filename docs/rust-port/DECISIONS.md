@@ -9954,3 +9954,47 @@ What the laptop needs is still open: here the Rust WebGL2 build costs
 about twice the JS game's CPU a frame and 1.35 × its GPU time under the
 native driver (3 × under ANGLE's Vulkan backend), so without the laptop's
 own `?perf=1` numbers it is not known which side binds there.
+
+## D1191. The globals as a uniform buffer, and the terrain's samples inside their branches
+
+2026-10-11, after D1190, the owner: "ssh in to sequoia@sequoia-x1 and
+copy the repo to ~/Software/ so you can test it". BASELINE "The laptop
+itself" has the measurements: on the X1 Carbon's UHD 620 the frame is
+the GPU's, and the Rust game's fragment shaders cost twice the JS's
+because Mesa's Intel compiler cannot register-allocate their SIMD16
+variants, the globals texture's `textureLoad`s and the animation-block
+lookups being most of the pressure.
+
+The globals row is now a uniform buffer as well as a texture:
+`material::GlobalsBuffer`, made at `RenderStartup` and written every
+frame by `render::write_globals` beside the texture (the sky dome and
+the environment atlas keep reading the texture). `ThreeMaterial` wraps
+`ThreeBindings`, the derived bind group of its parameters and textures,
+and implements `AsBindGroup` itself: the derived bindings plus the
+buffer at binding 10, so every material shares one buffer and none is
+re-prepared when the globals change (D293's and D456's reason for the
+texture holds). `three_material.wgsl` reads `globals.texels[i]`; the
+array's length is the `GLOBALS_WIDTH` shader def. Two things learnt the
+hard way: a `#[uniform]` field in the derive would be a buffer per
+material, re-prepared every frame, which is why the manual impl; and
+naga_oil reads a bare `t` in a struct as a use of the `mr::three_std as
+t` import and then waits forever for a module named `mr`, which is why
+the field is `texels`.
+
+`terrain_map`'s close-grain, rock and varnish samples are taken inside
+their branches with `textureSampleGrad` and gradients computed before
+them, as the JS samples inside its `if`s, instead of unconditionally
+with `select` after.
+
+Pictures (`tools/parity/build-diff.mjs`, the previous build in
+`dist/prof/` against the new, WebGL2, four levels): identical but for
+scattered single pixels on terrain slopes, at most 12 of 255 in a
+channel on 0.2 to 2.6 % of the pixels, the rock samples' level of detail
+from explicit gradients rounding differently. The laptop, cooled, GPU a
+frame, the same edits applied to the compiled shaders in place: 65.8 to
+53.2 ms (BASELINE "The laptop itself" has the breakdown). Open: the
+animation-block lookups as a shader variant for materials that never
+animate (measured 3 to 5 ms of the laptop's frame), the light count as a
+variant, and a render scale for weak GPUs, since even the JS game runs
+at 26 fps there.
+
