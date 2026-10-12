@@ -1270,3 +1270,11 @@ there: 38 ms, 26 fps, at its own ratio of 1.
 `rust-perf.mjs` and `gl-calls.mjs` take `--query scale=0.5`; the page's
 own perf report (`?perf=1`) prints the canvas's size in pixels, which is
 how to check a phone draws at the JS game's ratio.
+
+**The screens over the scene at the race's ratio (D1199).** Since
+2026-10-12 a screen sharper than the race (the menu, pause, results,
+Settings) draws the scene at the race's ratio and only the UI at the
+screens'. The menu over Sierra at Half, 1280 × 720 at a device ratio of 2,
+under SwiftShader: the GPU 2131 to 448 ms a frame. On this machine's GPU
+Settings over the paused race 9.7 to 8.2 ms (Full), 9.5 to 7.9 (Half),
+and the pause screen 0.6 ms over driving. The laptop's numbers are owed.
