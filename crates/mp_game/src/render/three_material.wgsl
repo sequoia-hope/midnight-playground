@@ -141,8 +141,16 @@ fn block_base() -> i32 {
     return i32(globals_at(g::G_BLOCK_MAP + id / 4)[id % 4]);
 }
 
+// Only a material an animator has touched reads its block (`MP_BLOCKS`,
+// D1192): the others compile without the lookups, which on a 2017
+// laptop's Intel GPU were part of what kept their fragment shaders from
+// SIMD16.
 fn has_block() -> bool {
+#ifdef MP_BLOCKS
     return block_base() > 0;
+#else
+    return false;
+#endif
 }
 
 fn block_at(k: i32) -> vec4<f32> {

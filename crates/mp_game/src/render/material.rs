@@ -261,6 +261,11 @@ pub struct ThreeKey {
     /// A tangent-space normal map (the sea's), with three's derivative
     /// frame (no tangents).
     pub normal_map: bool,
+    /// The material has an animation block in the globals (D490): the
+    /// shader reads it (`MP_BLOCKS`). Set by `crate::animate` the first
+    /// time an animator touches the material, which re-specialises it
+    /// once; every other material compiles without the lookups (D1192).
+    pub blocks: bool,
     /// `alphaMap` (`alphamap_fragment`: its green channel), bound in the
     /// `photo` slot, which only the terrain uses otherwise.
     pub alpha_map: bool,
@@ -545,6 +550,9 @@ impl Material for ThreeMaterial {
                 .buffers
                 .push(super::instancing::instance_layout(true));
             defs.push("MP_INSTANCED".into());
+        }
+        if k.blocks {
+            defs.push("MP_BLOCKS".into());
         }
         // three's own materials (no kind patch): an animator's opacity is the
         // block's texel 4.x (`crate::animate`, D701).
@@ -1102,6 +1110,7 @@ pub fn three_material(
         depth_slope: 0,
         sort_rank: 0,
         patch,
+        blocks: false,
         normal_map,
         alpha_map,
         flat_shading: flag("flatShading", false),

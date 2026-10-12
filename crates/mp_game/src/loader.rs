@@ -780,7 +780,10 @@ pub fn build_step(
         status.warm_up = n;
         // What the scenery's animators address (`crate::animate`).
         commands.insert_resource(crate::animate::SceneIndex::new(
-            &b.scene, &b.meshes, &b.offset,
+            &b.scene,
+            &b.meshes,
+            &b.offset,
+            &b.materials,
         ));
         // Dropping the build drops the Scene: the CPU copies go here.
         commands.remove_resource::<Build>();
@@ -873,7 +876,7 @@ pub fn finish_section(
         .sky_noise()
         .or_else(|| crate::render::sky::noise_image().map(|i| images.add(i)));
     let warm_up = b.combos.spawn_each(commands, meshes);
-    let index = crate::animate::SceneIndex::new(&b.scene, &b.meshes, &b.offset);
+    let index = crate::animate::SceneIndex::new(&b.scene, &b.meshes, &b.offset, &b.materials);
     SectionScene {
         loaded: b.out.clone(),
         index,
