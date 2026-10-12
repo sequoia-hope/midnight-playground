@@ -1221,3 +1221,9 @@ the sends and registers, not the width.
 as named uniforms 61.8 ms; no block lookups 62.4; both 56.3; both and the
 terrain's near, rock and varnish samples inside their branches as the JS
 has them 53.2 (−19 %). The three changes are D1191's.
+
+**The build with D1191, on the laptop, cooled** (two runs each): GPU a
+frame 54.3 ms (from 65.8; the terrain 24.3 from 33, SIMD16 failures 12
+from 78); the race at vsync 41.9 ms a frame, 24 fps, 5th-percentile fps
+18 (from 47.6, 21 and 15), the JS game beside it 37.9 ms, 26 fps,
+5th-percentile 25. CPU a frame unchanged at 17 ms.

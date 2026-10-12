@@ -9991,8 +9991,10 @@ Pictures (`tools/parity/build-diff.mjs`, the previous build in
 scattered single pixels on terrain slopes, at most 12 of 255 in a
 channel on 0.2 to 2.6 % of the pixels, the rock samples' level of detail
 from explicit gradients rounding differently. The laptop, cooled, GPU a
-frame, the same edits applied to the compiled shaders in place: 65.8 to
-53.2 ms (BASELINE "The laptop itself" has the breakdown). Open: the
+frame: 65.8 to 54.3 ms with this build (the terrain 33 to 24, Mesa's
+SIMD16 failures 78 to 12); the race at vsync 47.6 to 41.9 ms a frame,
+21 to 24 fps, the JS game at 37.9 and 26 (BASELINE "The laptop itself"
+has the breakdown). Open: the
 animation-block lookups as a shader variant for materials that never
 animate (measured 3 to 5 ms of the laptop's frame), the light count as a
 variant, and a render scale for weak GPUs, since even the JS game runs
