@@ -1227,3 +1227,9 @@ frame 54.3 ms (from 65.8; the terrain 24.3 from 33, SIMD16 failures 12
 from 78); the race at vsync 41.9 ms a frame, 24 fps, 5th-percentile fps
 18 (from 47.6, 21 and 15), the JS game beside it 37.9 ms, 26 fps,
 5th-percentile 25. CPU a frame unchanged at 17 ms.
+
+**With D1192 (the block lookups only in materials with a block)**, the
+same way: GPU a frame 50.4 ms (the terrain 21.4, SIMD16 failures 8); the
+race 40.6 ms, 24.6 fps, 5th percentile 19.5, the JS game 38.6 and 25.7.
+From the start of the pass: GPU 65.8 to 50.4 ms (−23 %), the race 47.6
+to 40.6 ms, against the JS game's 38.

@@ -428,6 +428,9 @@ struct MatInfo {
     /// The kind's uniforms as exported, in their block slots.
     uniforms: [f32; 4],
     block: Option<usize>,
+    /// The Bevy materials made from it (one per instancing variant), whose
+    /// key flips to `blocks` when the block is made (D1192).
+    handles: Vec<Handle<ThreeMaterial>>,
 }
 
 struct InstInfo {
@@ -673,6 +676,7 @@ impl SceneIndex {
         scene: &Scene,
         meshes: &HashMap<crate::convert::MeshKey, Option<Handle<Mesh>>>,
         offset: &[Vec3],
+        materials: &HashMap<(u32, bool, bool), Option<Handle<ThreeMaterial>>>,
     ) -> SceneIndex {
         let nodes = scene
             .nodes
@@ -762,6 +766,11 @@ impl SceneIndex {
                         .any(|p| p.material == i as u32 && p.prop == "emissiveIntensity"),
                     uniforms,
                     block: None,
+                    handles: materials
+                        .iter()
+                        .filter(|(k, _)| k.0 == i as u32)
+                        .filter_map(|(_, h)| h.clone())
+                        .collect(),
                 }
             })
             .collect();
@@ -887,7 +896,12 @@ pub fn pack_blocks(blocks: Res<AnimBlocks>, mut globals: ResMut<Globals>) {
 /// material's `night` does), the kind's uniforms as exported. The material
 /// finds it through the block map by its index (`ThreeParams::slots.z`, set
 /// by the loader), so the Bevy material is never edited.
-fn block_of(index: &mut SceneIndex, i: u32, blocks: &mut AnimBlocks) -> Option<usize> {
+fn block_of(
+    index: &mut SceneIndex,
+    i: u32,
+    blocks: &mut AnimBlocks,
+    materials: &mut Assets<ThreeMaterial>,
+) -> Option<usize> {
     let m = index.materials.get_mut(i as usize)?;
     if let Some(b) = m.block {
         return Some(b);
@@ -895,6 +909,13 @@ fn block_of(index: &mut SceneIndex, i: u32, blocks: &mut AnimBlocks) -> Option<u
     let k = blocks.texels.len() / BLOCK_TEXELS;
     if k >= MAX_BLOCKS || i as usize >= MAX_MAPPED {
         return None;
+    }
+    // The material now reads its block: its shader variant changes once
+    // (D1192).
+    for h in &m.handles {
+        if let Some(mut mat) = materials.get_mut(h) {
+            mat.key.blocks = true;
+        }
     }
     let e = m.emissive;
     let mut t = [[0f32; 4]; BLOCK_TEXELS];
@@ -972,6 +993,7 @@ pub fn run_animators(
     index: Option<ResMut<SceneIndex>>,
     mut sky_res: ResMut<SkyRes>,
     mut blocks: ResMut<AnimBlocks>,
+    mut materials: ResMut<Assets<ThreeMaterial>>,
     meshes: Res<Assets<Mesh>>,
     mesh_writes: Res<MeshWrites>,
     camera: Query<(&Transform, &Projection), With<Camera3d>>,
@@ -1160,12 +1182,12 @@ pub fn run_animators(
                 }
             }
             (SceneRef::Material(i), change) => {
-                apply_material(index, i, change, &mut blocks);
+                apply_material(index, i, change, &mut blocks, &mut materials);
             }
             (SceneRef::Texture(t), Change::TextureOffset(off)) => {
                 let users = index.textures.get(t as usize).cloned().unwrap_or_default();
                 for (i, role, base) in users {
-                    let Some(k) = block_of(index, i, &mut blocks) else {
+                    let Some(k) = block_of(index, i, &mut blocks, &mut materials) else {
                         continue;
                     };
                     let d = [(off[0] - base[0]) as f32, (off[1] - base[1]) as f32];
@@ -1357,7 +1379,13 @@ fn change_name(c: &Change) -> &'static str {
 
 /// A material's number or colour, into its block: a uniform of that name
 /// if the kind has one animated (D411's rule), else the parameter.
-fn apply_material(index: &mut SceneIndex, i: u32, change: Change, blocks: &mut AnimBlocks) {
+fn apply_material(
+    index: &mut SceneIndex,
+    i: u32,
+    change: Change,
+    blocks: &mut AnimBlocks,
+    materials: &mut Assets<ThreeMaterial>,
+) {
     let Some(kind) = index.materials.get(i as usize).map(|m| m.kind) else {
         return;
     };
@@ -1389,7 +1417,7 @@ fn apply_material(index: &mut SceneIndex, i: u32, change: Change, blocks: &mut A
                     return;
                 }
             };
-            if let Some(k) = block_of(index, i, blocks) {
+            if let Some(k) = block_of(index, i, blocks, materials) {
                 set_texel(blocks, k, texel, |t| {
                     t[at] = v;
                     if let Some(f) = flag {
@@ -1407,7 +1435,7 @@ fn apply_material(index: &mut SceneIndex, i: u32, change: Change, blocks: &mut A
                     return;
                 }
             };
-            if let Some(k) = block_of(index, i, blocks) {
+            if let Some(k) = block_of(index, i, blocks, materials) {
                 set_texel(blocks, k, texel, |t| {
                     *t = [rgb[0] as f32, rgb[1] as f32, rgb[2] as f32, 1.0];
                 });

@@ -10000,3 +10000,25 @@ animate (measured 3 to 5 ms of the laptop's frame), the light count as a
 variant, and a render scale for weak GPUs, since even the JS game runs
 at 26 fps there.
 
+## D1192. The animation-block lookups only in the materials that have a block
+
+2026-10-11, the owner: "do the animation-block shader variant next"
+(D1191's first open item). Every three_std material read the globals'
+block map and its block each frame (`has_block`, `block_at`,
+`kind_uniforms`: seven fetches, now uniform loads, and their branches),
+although only the materials the scenery's animators touch ever have one
+(Sierra: one material). Now `ThreeKey::blocks` adds the `MP_BLOCKS`
+shader def, without which `has_block()` is false and the block code
+falls away; `animate::block_of` sets the flag on the material's Bevy
+materials (`MatInfo::handles`, from the loader's map) the first time an
+animator makes its block, which re-specialises that material once. The
+animators run from the first frame, before the warm-up ends, so the
+variants are compiled before the game is ready; a material an animator
+first touches later compiles its variant then, once. Measured on the
+laptop as a what-if (BASELINE): 3 to 5 ms of a 56 to 66 ms GPU frame.
+With this build, the laptop cooled: GPU a frame 54.3 to 50.4 ms (the
+terrain 24.3 to 21.4, Mesa's SIMD16 failures 12 to 8, the JS game's
+count); the race at vsync 41.9 to 40.6 ms, 24 to 24.6 fps, 5th
+percentile 18 to 19.5, the JS game at 38.6 and 25.7. Pictures identical
+(`build-diff.mjs`, four levels).
+
