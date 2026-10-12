@@ -1,8 +1,9 @@
 //! `mp-host`: the native multiplayer host (SPEC 9.4, WP 10.5). One program
 //! that
 //!
-//! - serves the repository's files the way `tools/serve.py` does (so the JS
-//!   game, the Rust build at `dist/next/` and the tools all work from it),
+//! - serves the repository's files the way `tools/serve.py` does, laid out
+//!   as Pages lays out the site (D1197): the Rust build at the root and at
+//!   `dist/next/`, the JS game under `legacy/`, the tools where they are,
 //! - accepts WebSocket connections on any path ending in `/ws` (the game is
 //!   always served under a sub-path, so clients connect relative to it),
 //! - and runs the lobby and the authoritative race headless

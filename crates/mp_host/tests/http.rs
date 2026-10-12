@@ -180,6 +180,44 @@ fn files_directories_and_missing_paths() {
     assert_eq!((r.code, &r.body[..]), (200, &b"<h1>root</h1>"[..]));
 }
 
+/// The site's layout (D1197): a built `dist/next/` is the root, the JS
+/// game is under `legacy/`, and `dist/next/` itself still answers.
+#[test]
+fn the_build_is_the_root_and_the_js_game_is_under_legacy() {
+    let root = site();
+    put(&root, "dist/next/index.html", b"<h1>rust</h1>");
+    put(&root, "dist/next/audio/dj/a.mp3", b"COPY");
+    let h = serve(&root);
+    for (path, body) in [
+        ("/", &b"<h1>rust</h1>"[..]),
+        ("/index.html", b"<h1>rust</h1>"),
+        ("/dist/next/", b"<h1>rust</h1>"),
+        ("/legacy/", b"<h1>root</h1>"),
+        ("/legacy/index.html", b"<h1>root</h1>"),
+        ("/legacy/sub/", b"sub"),
+        ("/legacy/vendor/lib.js", b"lib"),
+        ("/sub/", b"sub"),
+        ("/plain.js", b"PLAIN"),
+        ("/audio/dj/a.mp3", b"COPY"),
+        ("/audio/a.mp3", b"ID3"),
+    ] {
+        let r = get(h.1, path);
+        assert_eq!((r.code, &r.body[..]), (200, body), "{path}");
+    }
+    assert_eq!(get(h.1, "/legacy").header("Location"), Some("/legacy/"));
+    assert_eq!(get(h.1, "/legacy/dist/next/app.wasm").code, 404);
+    assert_eq!(
+        get(h.1, "/legacy/vendor/lib.js").header("Cache-Control"),
+        Some("no-cache")
+    );
+    // The build's precompressed copies, through the root too.
+    let r = request(h.1, "GET", "/app.wasm", &[("Accept-Encoding", "br")]);
+    assert_eq!(
+        (&r.body[..], r.header("Content-Encoding")),
+        (&b"BR"[..], Some("br"))
+    );
+}
+
 #[test]
 fn paths_outside_the_root_are_never_served() {
     let root = site();

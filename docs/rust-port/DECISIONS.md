@@ -10166,3 +10166,44 @@ and Fullscreen rows) sees it hidden there, and the gamepad suite that
 steps down from Race into the Track option finds the Settings row
 instead: those two are the deviation (the Rust suites in
 `tools/parity/e2e/` pass as before).
+
+## D1197. The dev server lays the working tree out as Pages lays out the site
+
+**Date:** 2026-10-12. The owner opened the tailnet address (the project's
+`web_url`) and found the JS game: the registered server served the repo
+root as it is, where `index.html` is Midnight Racer's, and the Rust game
+only under `dist/next/`. Pages, since the cutover (D1112), puts the Rust
+build at the root and the JS game under `legacy/`. Asked to "make the local
+root match pages".
+
+**Choice.** Both file servers, `tools/serve.py` and `mp-host`
+(`crates/mp_host/src/http.rs`, `Files::resolve`), map URLs the way
+`pages.yml` assembles `_site/`:
+
+- `/<path>` is `dist/next/<path>` when the build has that file (or that
+  directory's `index.html`; over the root file by file, as `cp -r
+  dist/next/. _site/` is), else `<path>` in the tree. So `/` is Midnight
+  Playground once `cargo xtask web` has run, and the JS game's page until
+  then; the tools, `parity/report/` and `dist/next/` itself are where they
+  were. The build's `audio/` and `assets/` copies win over the tree's, as on
+  Pages.
+- `/legacy/<path>` is `<path>` in the tree, so the JS game is at
+  `/legacy/`; `legacy/dist/` is nothing, as Pages removes it.
+- The precompressed copies (`.br`, `.gz`) are sent for any file resolved
+  under `dist/`, so the root gets them too; `vendor/` and `audio/` stay
+  `no-cache` under `legacy/` as well.
+
+The forward Pages writes at `dist/next/index.html` is not imitated: locally
+that path is the build itself. The game's own path test
+(`ui/web.rs`, the Music player link) already handled both layouts: at the
+root it links `legacy/music.html`, which now resolves.
+
+**Consequences.** The tailnet address plays the Rust game, as Pages does,
+and the old `…/dist/next/` links keep working. The tools that open the
+build through the server (`pursuit-scenes`, `effects-scenes`,
+`rust-web-stations`, `web-console`, `tools/radio`) use `dist/next/` and are
+unchanged; the suites use request interception and never see the server.
+`mp-host`'s tests cover the layout (`tests/http.rs`,
+`the_build_is_the_root_and_the_js_game_is_under_legacy`), and
+`tests/host.rs` reads the JS page under `legacy/`. `proj up` must be re-run
+for `serve.py` to pick the change up.

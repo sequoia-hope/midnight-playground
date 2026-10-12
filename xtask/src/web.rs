@@ -1,9 +1,9 @@
 //! `cargo xtask web [--release] [--only webgpu|webgl2]`: build the web
 //! client into `dist/next/` (SPEC 11): the WebGPU build and the WebGL2 one,
 //! which the page picks between (SPEC 2, roadmap WP 2.7). `dist/` is
-//! git-ignored; the registered dev server serves the repo root, so the build
-//! is at `/dist/next/` there and on the tailnet https front. Nothing here
-//! knows or writes a port.
+//! git-ignored; the registered dev server lays the build over the repo root
+//! as Pages does (D1197), so it is at `/` and at `/dist/next/` there and on
+//! the tailnet https front. Nothing here knows or writes a port.
 //!
 //! The build is made in `dist/next.staging/` and swapped in whole once it
 //! is done, so `dist/next/` keeps serving the last complete build for the
@@ -150,8 +150,8 @@ pub fn run(args: &[String]) -> Result {
 
     println!(
         "web: built {} ({profile}) into dist/next/\n\
-         \x20    open /dist/next/ on the registered server (proj up midnight-playground),\n\
-         \x20    or on phones at the project's tailnet web_url + dist/next/",
+         \x20    open / (or /dist/next/) on the registered server (proj up midnight-playground),\n\
+         \x20    or on phones at the project's tailnet web_url",
         built.join(" and ")
     );
     Ok(())

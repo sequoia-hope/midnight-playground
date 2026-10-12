@@ -69,10 +69,21 @@ fn get(port: u16, path: &str) -> (u16, String, Vec<u8>) {
 #[test]
 fn it_serves_files_like_serve_py() {
     let h = start();
-    let (code, head, body) = get(h.1, "/index.html");
+    // The JS game's page is under legacy/ (D1197); the root is the Rust
+    // build when there is one, else the JS game's page too.
+    let (code, head, body) = get(h.1, "/legacy/index.html");
     assert_eq!(code, 200);
     assert!(head.contains("Cache-Control: no-store"), "{head}");
     assert_eq!(body, std::fs::read(root().join("index.html")).unwrap());
+    let (code, _, body) = get(h.1, "/index.html");
+    assert_eq!(code, 200);
+    let built = root().join("dist/next/index.html");
+    let expect = if built.is_file() {
+        built
+    } else {
+        root().join("index.html")
+    };
+    assert_eq!(body, std::fs::read(expect).unwrap());
     let (code, head, _) = get(h.1, "/vendor/");
     assert!(code == 200 || code == 404, "{code}");
     let _ = head;
