@@ -25,7 +25,7 @@ pub(crate) mod nav;
 pub(crate) mod pad_setup;
 mod screens;
 #[cfg(target_arch = "wasm32")]
-mod web;
+pub(crate) mod web;
 
 use crate::options::Options;
 use crate::play::flow::{Mode, fmt_time, ordinal};
@@ -105,6 +105,8 @@ pub enum Sel {
     Assist,
     /// The radio station (Rust only, D1151).
     Station,
+    /// The render scale (the web only, D1194).
+    Scale,
 }
 
 /// What activating a control does.
@@ -269,15 +271,19 @@ pub fn menu_first(o: &Options) -> bool {
 /// Before the app is built: a menu-first run builds the saved level
 /// (`settings.level`) behind the menu, as `loadLevel(settings.level)` does
 /// at boot; and the high-quality setting is the saved one unless `?hq=`
-/// says. Returns `hq`.
-pub fn prepare(o: &mut Options, touch: bool) -> bool {
+/// says, the render scale the saved one unless `?scale=` says (D1194).
+/// Returns `(hq, scale)`.
+pub fn prepare(o: &mut Options, touch: bool) -> (bool, f64) {
     let store = Store::platform();
     let settings = Settings::load(&store, touch);
     let level_given = o.param("level").is_some();
     if !level_given && (menu_first(o) || o.param("autostart").is_some()) {
         o.level = settings.level.clone();
     }
-    o.hq.unwrap_or(settings.hq)
+    (
+        o.hq.unwrap_or(settings.hq),
+        o.scale.unwrap_or_else(|| store::scale_of(&settings.scale)),
+    )
 }
 
 pub fn plugin(app: &mut App) {
@@ -1191,12 +1197,9 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
             let v = *slot;
             ctx.store.set_bool(key, v);
             if o == Opt::Hq {
-                // `applyQuality`: shadows, and the pixel ratio on the web.
+                // `applyQuality`: shadows, and the pixel ratio on the web
+                // (`web::screen_pixel_ratio` follows `opts` every frame).
                 ctx.opts.hq = v;
-                #[cfg(target_arch = "wasm32")]
-                if let Ok(mut w) = ctx.windows.single_mut() {
-                    web::apply_pixel_ratio(&mut w, v);
-                }
             }
         }
         Act::Slide(_) => {}
@@ -1242,6 +1245,13 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
                     ui.settings.station = v.clone();
                     ctx.store.set_str("radioStation", &v);
                     ctx.store.set_str("station", &v);
+                }
+                // The render scale (D1194): the pixel ratio follows `opts`
+                // every frame, as High quality's does.
+                Sel::Scale => {
+                    ui.settings.scale = v.clone();
+                    ctx.store.set_str("renderScale", &v);
+                    ctx.opts.scale = store::scale_of(&v);
                 }
             }
         }
@@ -1501,6 +1511,7 @@ pub fn sel_id(sel: Sel) -> &'static str {
         Sel::Guide => "opt-guide",
         Sel::Assist => "opt-assist",
         Sel::Station => "opt-station",
+        Sel::Scale => "opt-scale",
     }
 }
 
@@ -1915,7 +1926,11 @@ pub(crate) mod tests {
         w.insert_resource(ui_state(screen));
         w.insert_resource(crate::play::tests::bare_play());
         w.insert_resource(Store::memory());
-        w.insert_resource(Opts { o, hq: false });
+        w.insert_resource(Opts {
+            o,
+            hq: false,
+            scale: 1.0,
+        });
         w.insert_resource(CameraState {
             fly: None,
             attract: crate::fly::Attract::default(),

@@ -129,6 +129,16 @@ pub fn select_options(sel: Sel, s: &Settings) -> (Vec<(String, String)>, String)
             }
             (o, s.radio_station.clone())
         }
+        // The render scale (the web only, D1194): a fraction of the race's
+        // pixel ratio, for GPUs the full picture is too much for.
+        Sel::Scale => (
+            vec![
+                ("100".into(), "Full".into()),
+                ("75".into(), "3/4".into()),
+                ("50".into(), "Half".into()),
+            ],
+            s.scale.clone(),
+        ),
     }
 }
 
@@ -781,6 +791,10 @@ fn options(
     if radio {
         sels.push((Sel::Station, "Station", &s.radio_station));
     }
+    // The render scale (D1194), on the web, where the canvas's pixel ratio
+    // is the client's to set (natively the window draws at 1).
+    #[cfg(target_arch = "wasm32")]
+    sels.push((Sel::Scale, "Render scale", &s.scale));
     for (sel, label, value) in sels {
         let id = super::sel_id(sel);
         let f = cx.f(id);

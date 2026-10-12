@@ -30,9 +30,9 @@ pub fn run() {
     // The saved level for the menu, and the saved High quality, which the
     // JS game defaults to off on touch devices (DECISIONS D570).
     let touch = crate::ui::touch_ui(&o);
-    let hq = crate::ui::prepare(&mut o, touch);
+    let resolved = crate::ui::prepare(&mut o, touch);
     crate::ui::set_start_level(&o.level);
-    crate::app(o, hq).run();
+    crate::app(o, resolved).run();
 }
 
 /// The scene file's bytes, downloaded by the page. Parsed here, so the
@@ -139,6 +139,7 @@ fn publish(mut status: ResMut<Status>, opts: Res<Opts>, mut counts_sent: Local<b
     set(mr, "state", status.state);
     set(mr, "level", opts.o.level.as_str());
     set(mr, "hq", opts.hq);
+    set(mr, "scale", opts.scale);
     set(mr, "progress", status.progress);
     set(mr, "frames", status.frames as f64);
     set(mr, "frameMs", status.frame_ms);

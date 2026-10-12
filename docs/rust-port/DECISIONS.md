@@ -10022,3 +10022,98 @@ count); the race at vsync 41.9 to 40.6 ms, 24 to 24.6 fps, 5th
 percentile 18 to 19.5, the JS game at 38.6 and 25.7. Pictures identical
 (`build-diff.mjs`, four levels).
 
+
+## D1193. The light count is not a shader variant: measured, it costs nothing now
+
+2026-10-11, the owner: "continue D1191" (its second open item, the
+light count as a variant). Measured first as what-ifs on the laptop
+(`gl-calls.mjs --headed --angle gl --sub-frag`, the GLSL edited as
+Chrome compiles it, the D1192 build, cooled, Sierra's race): the GPU
+frame 50.5 ms with both light slots; 50.3 without the point light (its
+colour fetch replaced by zero, so its branch falls away); 50.6 with one
+spot slot instead of two; 51.1 without both. Mesa's SIMD16 failures 8 in
+every case, the terrain 21.7 ms in every case. The earlier what-if that
+put the second spot and the point light at 20 to 6 failures (BASELINE,
+D1191) was taken with the globals still a texture: each light was then
+four to five `textureLoad` sends held in registers, and as uniform loads
+they cost nothing the compiler cannot schedule. So no variant: it would
+have put a scene-wide fact in every material's key (and, since the
+headlight arrives with the race and the pursuit's light with a pursuit,
+either compiled every material again at race start, a multi-second
+hitch on WebGL2, or fixed the counts per level and gained nothing on
+the levels with police). The shader keeps its two slots and its point
+light, read from the globals buffer as before.
+
+## D1194. A render scale for weak GPUs
+
+2026-10-11, D1191's last open item. On the laptop the frame is the GPU's
+and fragment-bound (BASELINE "The laptop itself"), and even the JS game
+runs at 26 fps there, so the one lever left that does not change what is
+drawn is the number of pixels. The JS game's canvas draws at
+`applyQuality`'s pixel ratio (`hq ? min(devicePixelRatio, 1.5) : 1`),
+which the client meant to draw at since D437 and does since D1195; the
+render scale multiplies it: `Render scale` in the menu's
+options, `Full`, `3/4` or `Half` (`mr.renderScale`, `100`, `75` or `50`,
+Rust only, the web only), or `?scale=0.75` in a link. The race, pause
+and results draw at the scaled ratio, as do the viewer and the race's
+start; the menu and the loading screen keep D575's sharper ratio
+(`max(race, min(dpr, 2))`), so the scale shows only while driving. The
+browser composites the smaller canvas up to its CSS size, bilinear, for
+free. Touch positions keep working: `play::web` measures the canvas
+against the window and corrects by the override, whatever it is (D437).
+The HUD is Bevy UI in the same canvas, so at `Half` its text is drawn at
+half resolution too, where the JS game's DOM HUD would stay sharp: the
+price of a one-setting change against a second camera and a smaller
+render target for the scene alone, which would have touched the post
+chain, `render::frame`, screenshots and the viewer. Natively the window
+draws at a scale factor of 1 and the setting is not shown. The default is
+`Full`: nothing changes for anyone who does not choose it. Measured on
+the laptop, cooled, Sierra's race at vsync (`rust-perf.mjs --headed`,
+1456 × 740 CSS pixels at 1, two rounds each): `Full` 40.1 ms a frame,
+24.7 fps, 5th-percentile fps 19.5 (D1192's numbers); `3/4` (1092 × 555)
+33.1 ms, 31 fps, 25.4; `Half` (728 × 370) 38.8 fps, 33.3. The GPU's own
+time a frame 50.4, 37.6 and 27.2 ms (the terrain 21.4, 13.4 and 8.1).
+A quarter of the pixels takes the fragment side from about 28 ms to
+about 5 and leaves the 22 ms the vertex side costs with every fragment
+clipped (BASELINE "The laptop itself"): the laptop's next floor is its
+3.8 million triangles a frame, not its pixels.
+
+## D1195. The pixel ratio sets the canvas's size in pixels; the scale factor override never did
+
+2026-10-11, found while measuring D1194: the laptop's frame was 40 ms at
+every render scale, and `gl-calls.mjs` showed the race's pass still
+1456 × 740 at a scale of 0.75. In Bevy 0.19 `set_scale_factor_override`
+sets only the factor: the window's size in pixels stays what winit
+reports, the canvas's CSS box times the device's pixel ratio (its
+`ResizeObserver`, device pixels where the browser gives them), and the
+surface, and with it the canvas's backing store, is configured from
+that size. The override only divides it into a different logical size.
+So D437's pixel ratio never drew fewer pixels: a 3× phone drew its
+canvas at 3× with High quality off, where the JS game draws it at 1×,
+and D575's sharper menu cost nothing extra because the race was already
+drawn at the device's ratio. (The UI was right throughout: `play::web`
+measures CSS pixels against the logical size and the touch positions
+against the override, D437, which is why nothing looked wrong.)
+
+Now `ui::web::apply_pixel_ratio` sets both: the override, so logical
+pixels are CSS pixels, and the window's size in pixels, the canvas's
+`clientWidth` and `clientHeight` times the ratio, which Bevy configures
+the surface from and wgpu writes into `canvas.width` and `height`. It
+runs every frame (the menu's and the race's `screen_pixel_ratio`, the
+viewer's `setup`), because a resize or a rotation puts winit's size
+back, and writes nothing when nothing changes. Bevy's `changed_windows`
+answers a size it did not report with `request_inner_size`, which on
+the web winit turns into the canvas's inline CSS width and height in
+CSS pixels (the size over the device's ratio), which would have shrunk
+the canvas's box on the page to the scaled size: the page's rule for
+`#game` is now `width: 100% !important; height: 100% !important`, which
+an inline style without `!important` cannot override, so the box stays
+the page's and the browser scales the smaller backing store into it.
+Pointer and touch positions are unchanged: winit hands them in device
+pixels over the override, as before.
+
+What changes for players: a phone now draws the race at the JS game's
+pixel count, a third as many in each direction with High quality off
+(the touch default) and half as many with it on, which is what D437
+said and the owner's phone measurements (BASELINE, D1180 to D1182) were
+taken without. The picture is softer there, as the JS game's is.

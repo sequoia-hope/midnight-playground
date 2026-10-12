@@ -74,6 +74,11 @@ pub struct Options {
     /// culled by compute, indirect draws) where the device has compute.
     /// Default off (DECISIONS D396).
     pub gpu_preprocessing: Option<bool>,
+    /// `?scale=`: the render scale on the web (D1194), a fraction of the
+    /// race's pixel ratio (`hq ? min(devicePixelRatio, 1.5) : 1`, D437),
+    /// 0.25 to 1; a value above 1 is read as a percentage. Default: the
+    /// saved Render scale setting.
+    pub scale: Option<f64>,
     /// Natively, with `materials` or `stations`: the directory the PNGs go to (one
     /// directory per group, as `tools/parity/materials.mjs` writes them).
     pub out: Option<String>,
@@ -102,6 +107,7 @@ impl Default for Options {
             stations: None,
             cars: None,
             gpu_preprocessing: None,
+            scale: None,
             out: None,
             smoke_race: false,
             query: Vec::new(),
@@ -200,6 +206,10 @@ impl Options {
         o.cars = get("cars").map(|v| v == "1" || v == "true");
         o.query = pairs.clone();
         o.gpu_preprocessing = get("gpupre").map(|v| v == "1" || v == "true");
+        o.scale = get("scale").map(number).and_then(|v| {
+            let v = if v > 1.0 { v / 100.0 } else { v };
+            v.is_finite().then_some(v.clamp(0.25, 1.0))
+        });
         o
     }
 
@@ -328,7 +338,7 @@ pub fn usage() -> &'static str {
      levels: sierra coast streets desert seaside cruise, or models\n\
      query:  the JS game's names: level, s, h, back, lat, v, yaw, pitch, t, freeze=1; hq=0|1;\n\
      \x20       scene=<file>; mat=<names> (the material test scenes); cars=0|1 (stand-in cars);\n\
-     \x20       gpupre=0|1 (Bevy's GPU preprocessing)\n\
+     \x20       gpupre=0|1 (Bevy's GPU preprocessing); scale=0.25..1 (the web's render scale)\n\
      viewer: view=god (the level viewer, SPEC 8.6): mode=free|orbit|over|ride, cam=x,y,z,yaw,pitch,\n\
      \x20       orbit=x,y,z, fog=0|1, far=0|1, anim=0|1, t=<route fraction>, hide=<groups>, speed=N\n\
      race:   a level without s= is a race (race=0: the attract camera); car=<kind>, seed=N,\n\

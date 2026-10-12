@@ -355,6 +355,14 @@ pub const PEDALS: [&str; 2] = ["slider", "buttons"];
 pub const GUIDE: [&str; 3] = ["full", "brake", "off"];
 /// Steering assist choices (Rust only, D1083).
 pub const ASSIST: [&str; 3] = ["off", "light", "strong"];
+/// Render scale choices, in percent (the web only, D1194).
+pub const SCALES: [&str; 3] = ["100", "75", "50"];
+
+/// A render scale setting as the fraction the pixel ratio is multiplied by.
+pub fn scale_of(v: &str) -> f64 {
+    v.parse::<f64>()
+        .map_or(1.0, |p| (p / 100.0).clamp(0.25, 1.0))
+}
 
 /// `main.js`'s `settings`, read from the store at start.
 #[derive(Clone, Debug, PartialEq)]
@@ -398,6 +406,9 @@ pub struct Settings {
     /// `mr.radioStation` (D1160): the station the radio comes back to when
     /// switched on, `auto` or a key.
     pub radio_station: String,
+    /// `mr.renderScale` (the web only, D1194): the race's pixel ratio is the
+    /// JS's times this percentage: `100`, `75` or `50`.
+    pub scale: String,
 }
 
 /// Whether a station setting is one the menu offers.
@@ -434,6 +445,7 @@ impl Settings {
             classic_engine: store.bool("classicEngine", false),
             station: store.string("station", "playlist"),
             radio_station: String::new(),
+            scale: store.string("renderScale", "100"),
         };
         if !station_ok(&s.station) {
             s.station = "playlist".into();
@@ -446,6 +458,9 @@ impl Settings {
         }
         if !ASSIST.contains(&s.assist.as_str()) {
             s.assist = if touch_ui { "light" } else { "off" }.into();
+        }
+        if !SCALES.contains(&s.scale.as_str()) {
+            s.scale = "100".into();
         }
         if touch_ui && !STEERING.contains(&s.steering.as_str()) {
             s.steering = "stick".into();
@@ -563,6 +578,7 @@ mod tests {
                 classic_engine: false,
                 station: "playlist".into(),
                 radio_station: "auto".into(),
+                scale: "100".into(),
             }
         );
         // Touch screens get lighter rendering by default, and the guide
@@ -590,6 +606,7 @@ mod tests {
             ("mr.steerAssist", "\"off\""),
             ("mr.classicEngine", "true"),
             ("mr.station", "\"ridgeline\""),
+            ("mr.renderScale", "\"75\""),
         ]);
         let s = Settings::load(&store, true);
         assert_eq!(
@@ -614,6 +631,7 @@ mod tests {
                 classic_engine: true,
                 station: "ridgeline".into(),
                 radio_station: "ridgeline".into(),
+                scale: "75".into(),
             }
         );
         // A choice the menu does not offer falls back to the default.
@@ -621,10 +639,13 @@ mod tests {
             ("mr.guideLine", "\"rainbow\""),
             ("mr.steerAssist", "3"),
             ("mr.station", "\"kzzz\""),
+            ("mr.renderScale", "\"33\""),
         ]);
         let s = Settings::load(&store, false);
         assert_eq!((s.guide.as_str(), s.assist.as_str()), ("off", "off"));
         assert_eq!(s.station, "playlist");
+        assert_eq!(s.scale, "100");
+        assert_eq!((scale_of("75"), scale_of("x")), (0.75, 1.0));
     }
 
     /// `store.get(k, d)` gives `d` for a value that does not parse, as the

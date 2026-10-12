@@ -433,6 +433,6 @@ pub fn run() -> AppExit {
     // D570).
     let mut o = o;
     let touch = crate::ui::touch_ui(&o);
-    let hq = crate::ui::prepare(&mut o, touch);
-    crate::app(o, hq).run()
+    let resolved = crate::ui::prepare(&mut o, touch);
+    crate::app(o, resolved).run()
 }

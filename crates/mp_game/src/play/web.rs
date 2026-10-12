@@ -67,12 +67,8 @@ fn setup(
         let _ = d.add_event_listener_with_callback("visibilitychange", f.as_ref().unchecked_ref());
         f.forget();
     }
-    let dpr = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio());
-    let pr = if opts.hq { dpr.min(1.5) } else { 1.0 };
-    if let Ok(mut w) = windows.single_mut()
-        && (pr - dpr).abs() > 1e-3
-    {
-        w.resolution.set_scale_factor_override(Some(pr as f32));
+    if let Ok(mut w) = windows.single_mut() {
+        crate::ui::web::apply_pixel_ratio(&mut w, crate::ui::web::race_pixel_ratio(&opts));
     }
 }
 

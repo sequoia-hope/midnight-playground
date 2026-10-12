@@ -1233,3 +1233,40 @@ same way: GPU a frame 50.4 ms (the terrain 21.4, SIMD16 failures 8); the
 race 40.6 ms, 24.6 fps, 5th percentile 19.5, the JS game 38.6 and 25.7.
 From the start of the pass: GPU 65.8 to 50.4 ms (−23 %), the race 47.6
 to 40.6 ms, against the JS game's 38.
+
+**The light count as a shader variant, measured and dropped (D1193).**
+What-ifs on the D1192 build, cooled, the GLSL edited as Chrome compiles
+it (`--sub-frag`): GPU a frame 50.5 ms with both light slots; 50.3 with
+the point light's colour fetch replaced by zero; 50.6 with one spot slot
+instead of two; 51.1 without both. SIMD16 failures 8 and the terrain
+21.7 ms in every case: with the globals a uniform buffer the lights are
+no longer register pressure, and the earlier "20 to 6" (above) was the
+texture's sends.
+
+## The render scale, and the canvas's size in pixels (DECISIONS D1194, D1195)
+
+2026-10-11. The render scale (`Render scale` in the menu, `?scale=`)
+multiplies the race's pixel ratio. Its first build measured the same at
+every scale, which is how D1195 was found: Bevy's scale factor override
+had never changed the canvas's size in pixels, so neither had D437's
+pixel ratio on phones. With the size set from the canvas's CSS box times
+the ratio:
+
+| Scale | Pass | Race, ms a frame (p50) | fps median / 5th pct | GPU ms a frame | terrain |
+|---|---|---:|---:|---:|---:|
+| Full | 1456 × 740 | 40.1 | 24.7 / 19.5 | 50.4 | 21.4 |
+| 3/4 | 1092 × 555 | 33.1 | 31.0 / 25.4 | 37.6 | 13.4 |
+| Half | 728 × 370 | 17.0 (p90 33.6) | 38.8 / 33.3 | 27.2 | 8.1 |
+
+The laptop, cooled, Sierra's race at vsync, 1456 × 740 CSS pixels at a
+device ratio of 1, two rounds each (`rust-perf.mjs --race --capped
+--headed --angle gl --size 1456x740 --dpr 1 --query scale=N`; the GPU
+from `gl-calls.mjs --by-program`, the D1192 build's 50.4 at Full). At
+Half the fragment side is down to about 5 ms and the 22 ms the vertex
+side costs with every fragment clipped (above) is what is left: the
+laptop's next floor is its 3.8 million triangles a frame. The JS game
+there: 38 ms, 26 fps, at its own ratio of 1.
+
+`rust-perf.mjs` and `gl-calls.mjs` take `--query scale=0.5`; the page's
+own perf report (`?perf=1`) prints the canvas's size in pixels, which is
+how to check a phone draws at the JS game's ratio.
