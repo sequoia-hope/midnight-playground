@@ -4,7 +4,8 @@
 //!
 //! - [`store`]: the settings and records under the JS's `localStorage` keys.
 //! - [`widgets`]: tokens, breakpoints, the font and the controls.
-//! - `menu`: the main menu; `screens`: loading, pause, results, controller.
+//! - `menu`: the main menu; `screens`: loading, pause, results, controller;
+//!   `settings`: the Settings screen (D1196), over the menu or pause.
 //!
 //! The session flow is `main.js`'s: the menu over the attract camera; Race
 //! loads the chosen level if it is not the one built (`loadLevel`), builds
@@ -24,6 +25,7 @@ mod menu;
 pub(crate) mod nav;
 pub(crate) mod pad_setup;
 mod screens;
+mod settings;
 #[cfg(target_arch = "wasm32")]
 pub(crate) mod web;
 
@@ -53,6 +55,8 @@ pub enum Screen {
     PadSetup,
     /// Multiplayer's lobby (WP 10.7).
     Lobby,
+    /// The options, over the menu or the pause screen (D1196).
+    Settings,
     None,
 }
 
@@ -65,6 +69,7 @@ impl Screen {
             Screen::Results => "results",
             Screen::PadSetup => "padsetup",
             Screen::Lobby => "lobby",
+            Screen::Settings => "settings",
             Screen::None => "none",
         }
     }
@@ -125,6 +130,10 @@ pub enum Act {
     /// The level viewer on the chosen level (SPEC 8.6).
     Viewer,
     PadSetup,
+    /// The Settings screen, from the menu or the pause screen (D1196),
+    /// and its Done.
+    Settings,
+    SettingsDone,
     Resume,
     EndRun,
     Restart,
@@ -203,6 +212,8 @@ pub struct UiState {
     preview: bool,
     pub screen: Screen,
     pad_return: Screen,
+    /// Where the Settings screen goes back to (D1196).
+    settings_return: Screen,
     starting: Option<Starting>,
     /// Rebuild the screen's nodes.
     dirty: bool,
@@ -236,6 +247,42 @@ pub struct UiState {
     pub now_playing: String,
     /// A radio station plays: the pause screen's button says "Next station".
     pub on_station: bool,
+}
+
+impl UiState {
+    /// The screen under an overlay (Settings, or the Controller screen,
+    /// which may itself sit over Settings): where it goes back to.
+    fn under(&self) -> Option<Screen> {
+        match self.screen {
+            Screen::Settings => Some(self.settings_return),
+            Screen::PadSetup if self.pad_return == Screen::Settings => Some(self.settings_return),
+            Screen::PadSetup => Some(self.pad_return),
+            _ => None,
+        }
+    }
+
+    /// Opens the Settings screen over the menu or the pause screen.
+    fn open_settings(&mut self) {
+        if self.screen == Screen::Menu || self.screen == Screen::Pause {
+            self.settings_return = self.screen;
+            self.screen = Screen::Settings;
+            self.scroll = 0.0;
+            self.focus = None;
+            self.dropdown = None;
+            self.dirty = true;
+        }
+    }
+
+    /// Done, Esc or B on the Settings screen: back to where it was opened.
+    pub(crate) fn leave_settings(&mut self) {
+        if self.screen == Screen::Settings {
+            self.screen = self.settings_return;
+            self.scroll = 0.0;
+            self.focus = None;
+            self.dropdown = None;
+            self.dirty = true;
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -330,6 +377,7 @@ pub fn plugin(app: &mut App) {
             preview: first,
             screen: Screen::Loading,
             pad_return: Screen::Menu,
+            settings_return: Screen::Menu,
             starting: None,
             dirty: true,
             bp: None,
@@ -565,13 +613,14 @@ fn flow(
         } else {
             Screen::Menu
         };
-    // The Controller screen sits over the menu or the pause screen it was
-    // opened from; Esc (which the race takes as un-pause) leaves it and
-    // keeps the pause.
-    if ui.screen == Screen::PadSetup {
-        if screen == ui.pad_return {
-            screen = Screen::PadSetup;
-        } else if ui.pad_return == Screen::Pause
+    // The Settings and Controller screens sit over the menu or the pause
+    // screen they were opened from (the Controller screen over Settings
+    // too); an un-pause under them (Esc, which the race takes as one,
+    // unless `pad_setup::frame` caught it) leaves them and keeps the pause.
+    if let Some(under) = ui.under() {
+        if screen == under {
+            screen = ui.screen;
+        } else if under == Screen::Pause
             && screen == Screen::None
             && let Some(r) = play.race.as_mut()
         {
@@ -1120,6 +1169,8 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
             | Act::Quit
             | Act::Menu
             | Act::PadSetup
+            | Act::Settings
+            | Act::SettingsDone
             | Act::PadDone
             | Act::PadDefaults
             | Act::PadBind(_)
@@ -1265,8 +1316,16 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
                 crate::viewer::open(&ui.settings.level);
             }
         }
+        Act::Settings => {
+            ui.open_settings();
+            // An Esc left over from the menu would close it at once.
+            if let Some(r) = ctx.play.race.as_mut() {
+                r.input.consume("pause");
+            }
+        }
+        Act::SettingsDone => ui.leave_settings(),
         Act::PadSetup => {
-            if ui.screen == Screen::Menu || ui.screen == Screen::Pause {
+            if matches!(ui.screen, Screen::Menu | Screen::Pause | Screen::Settings) {
                 ui.pad_return = ui.screen;
                 ui.screen = Screen::PadSetup;
                 // An Esc left over from the menu would close it at once.
@@ -1758,11 +1817,12 @@ fn build(
     commands.entity(root).with_children(|p| {
         screen_node = Some(match screen {
             Screen::Loading => screens::loading(p, &mut cx, &status),
-            Screen::Menu => menu::menu(p, &mut cx, &ui, &store, &play, &opts),
+            Screen::Menu => menu::menu(p, &mut cx, &ui, &store, &opts),
             Screen::Pause => screens::pause(p, &mut cx, &ui, &play, &netv),
             Screen::Results => screens::results(p, &mut cx, &ui),
             Screen::PadSetup => screens::padsetup(p, &mut cx, &ui, &pad_setup.view),
             Screen::Lobby => lobby::lobby(p, &mut cx, &ui, &netv),
+            Screen::Settings => settings::settings(p, &mut cx, &ui, &play),
             Screen::None => return,
         });
         if screen == Screen::Menu && bp.touch && bp.portrait {
@@ -1867,6 +1927,7 @@ pub(crate) mod tests {
             preview: false,
             screen,
             pad_return: Screen::Menu,
+            settings_return: Screen::Menu,
             starting: None,
             dirty: false,
             bp: None,

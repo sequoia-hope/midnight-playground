@@ -402,6 +402,7 @@ pub(super) fn update(
                 Screen::Pause => Some(Act::Resume),
                 Screen::Results => Some(Act::Menu),
                 Screen::PadSetup => Some(Act::PadDone),
+                Screen::Settings => Some(Act::SettingsDone),
                 _ => None,
             };
             if let Some(a) = a {

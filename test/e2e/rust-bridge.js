@@ -469,7 +469,7 @@ export function installBridge(selectorSrc) {
   // By the JS game's element id.
   function byId(id) {
     switch (id) {
-      case 'loading': case 'menu': case 'pause': case 'results': case 'padsetup':
+      case 'loading': case 'menu': case 'pause': case 'results': case 'padsetup': case 'settings':
         return new El({ domId: id, visible: () => M().screen === id });
       case 'hud':
         return new El({ domId: id, visible: () => !!hud().shown });

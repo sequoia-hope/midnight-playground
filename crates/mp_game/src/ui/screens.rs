@@ -298,6 +298,15 @@ pub fn pause(
             b(p, cx, "btn-restart", Act::Restart, "Restart", false);
             b(p, cx, "btn-quit", Act::Quit, "Main menu", false);
         }
+        // Settings (D1196): the render scale and the rest, mid-race.
+        b(
+            p,
+            cx,
+            "btn-settings-pause",
+            Act::Settings,
+            "Settings",
+            false,
+        );
         if ui.pads {
             b(p, cx, "btn-pad-pause", Act::PadSetup, "Controller", false);
         }

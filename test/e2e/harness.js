@@ -202,9 +202,27 @@ export class Game {
   // The Rust build: the control with that id (`__mp.ui`), scrolled to the
   // middle of its screen (`__mp.reveal`); fails if it is not shown or
   // another control is on top of its centre (the client's own hit test).
+  //
+  // The options live on the Settings screen (D1196), where the JS menu
+  // had them: a control that is not shown from the menu or the pause
+  // screen opens Settings first, and one not shown from Settings closes
+  // it, as a player would.
   async centerRust(selector) {
     const id = selectorId(selector);
     if (!id) throw new Error(`no Rust control for ${selector}`);
+    for (let tries = 0; tries < 2; tries++) {
+      const r = await this.centerRustOnce(id);
+      if (!r.error) return r;
+      const screen = await this.eval(() => window.__mp.screen);
+      const via = screen === 'menu' ? 'btn-settings' : screen === 'pause' ? 'btn-settings-pause' : screen === 'settings' ? 'btn-settings-done' : null;
+      if (!via || tries) throw new Error(r.error);
+      await this.cdp.send('Runtime.evaluate', { expression: `window.__mp.stage(${JSON.stringify({ cmd: 'act', id: via })})` });
+      await this.frames(3);
+    }
+    throw new Error('unreachable');
+  }
+
+  async centerRustOnce(id) {
     await this.cdp.send('Runtime.evaluate', { expression: `window.__mp.reveal(${JSON.stringify(id)})` });
     await this.frames(3);
     const res = await this.cdp.send('Runtime.evaluate', {
@@ -223,9 +241,7 @@ export class Game {
       }})(${JSON.stringify(id)})`,
       returnByValue: true,
     });
-    const r = res.result.value;
-    if (r.error) throw new Error(r.error);
-    return r;
+    return res.result.value;
   }
 
   // A finger tap (touchstart → touchend), as on a phone.
