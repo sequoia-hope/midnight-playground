@@ -10229,3 +10229,55 @@ screen does not apply to the overlays.
 of the paused race behind it for as long as it is open, as the menu does;
 the race is unchanged. The Render scale select in Settings still takes
 effect at once, visible when the screen closes.
+
+## D1199. The screens draw at their own ratio, the scene under them at the race's
+
+**Date:** 2026-10-12. The screens draw their text into the game's canvas,
+so the canvas went to the screens' ratio, `max(race's, min(devicePixelRatio,
+2))` (D575, D1198), and the 3D scene behind them went with it: the attract
+camera's flight behind the menu, and the paused race behind Settings,
+drew up to four times the pixels the race does on a phone, and on a
+desktop at a render scale under Full (D1194) up to sixteen. A game set to
+Half for its frame rate lost that frame rate on the menu. The owner asked
+for the menu's resolution to be separate from the game's.
+
+**Choice.** `ui::web::screen_pixel_ratio` keeps the window at the
+screens' ratio while a screen is up, and whenever that ratio is above the
+race's it points the scene's camera (the one `Camera3d`) at an image,
+`SceneImage`, sized at the canvas's CSS box times the race's ratio, with
+that ratio as the image's scale factor (so the camera's logical size is
+still CSS pixels, for the name tags and every projection). A second
+camera, the screens' (`Camera2d`, order 1, no MSAA, no tone mapping), is
+switched on and becomes the default UI camera; its lowest node, an
+`ImageNode` at full size under every other (`GlobalZIndex(i32::MIN)`),
+shows the image stretched with linear filtering, and the UI draws over it
+at the window's ratio. When the ratios are the same (driving; a screen on
+a desktop at Full without High quality) the scene's camera draws into the
+window as before, the screens' camera is off and the UI is the scene
+camera's again, so a race pays nothing for this: no extra pass, no extra
+texture in use. Every switch is written only on change; the image is
+reallocated only when its size changes.
+
+With the race's picture no longer tied to the canvas, the pause and
+results screens take the screens' ratio too (D575 kept them at the
+race's because the HUD was laid out at it; D1198 found the HUD comes
+back the same across a change, and the HUD after resuming is the same
+picture as before pausing, phone-size profile at Half).
+
+**Measured** (headless Chrome, WebGL2, 1280 × 720 CSS px at a device
+ratio of 2, High quality off, the GPU's time a frame from a timer query
+around each frame). Software rendering (SwiftShader, every pixel paid
+for, as on a fill-bound GPU), the menu over Sierra at Half: 2131 ms a
+frame before, 448 after, 7 frames in 4 s before and 13 after. This
+machine's GPU, vertex-bound, Settings over the paused race: 9.7 ms
+before, 8.2 after at Full, 9.5 and 7.9 at Half; the pause screen now
+costs 0.6 ms more than driving (the UI and the stretched picture at
+four times the pixels), the race itself unchanged (7.4 ms at Half).
+
+**Consequences.** On a screen the scene looks as soft as the race does at
+its ratio (at Half on a phone, visibly), with sharp text over it; that is
+what the race behind it looks like while driving. The screens' camera's
+UI pipelines (no HDR, no MSAA) are compiled the first time a screen is
+sharper than the race, which on a phone is the menu at start, behind the
+loading screen. Natively nothing changes: the window draws at scale 1
+everywhere.

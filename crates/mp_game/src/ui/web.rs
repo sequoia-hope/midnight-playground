@@ -1,14 +1,17 @@
 //! The screens' web glue: the page's touch decision, another level's
-//! scene through the page (`__mp.reload`), the pixel ratio when High
-//! quality changes, fullscreen and the landscape lock inside the Race tap
-//! (SPEC 8.4), and the test bridge's part for the screens (SPEC 8.5):
+//! scene through the page (`__mp.reload`), the pixel ratio (the screens'
+//! sharper than the race's, over the scene at the race's, D1199),
+//! fullscreen and the landscape lock inside the Race tap (SPEC 8.4), and the test bridge's part for the screens (SPEC 8.5):
 //! `__mp.screen`, `__mp.mode`, `__mp.ui(id)`, `__mp.reveal(id)` and a few
 //! `__mp.stage(cmd)` commands. WP 6.7 owns the full bridge.
 
 use super::{Screen, UiState, mode_name, snapshot};
 use crate::play::Play;
 use crate::status::Status;
+use bevy::camera::{ImageRenderTarget, RenderTarget};
 use bevy::prelude::*;
+use bevy::render::render_resource::Extent3d;
+use bevy::window::WindowRef;
 use js_sys::{Object, Reflect};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -112,20 +115,9 @@ pub fn apply_pixel_ratio(w: &mut Window, pr: f32) {
     if (w.resolution.scale_factor() - pr).abs() > 1e-3 {
         w.resolution.set_scale_factor_override(Some(pr));
     }
-    let Some(canvas) = web_sys::window()
-        .and_then(|w| w.document())
-        .and_then(|d| d.get_element_by_id("game"))
-    else {
+    let Some(want) = canvas_pixels(pr) else {
         return;
     };
-    let (cw, ch) = (canvas.client_width(), canvas.client_height());
-    if cw <= 0 || ch <= 0 {
-        return;
-    }
-    let want = (
-        (cw as f32 * pr).round().max(1.0) as u32,
-        (ch as f32 * pr).round().max(1.0) as u32,
-    );
     if (
         w.resolution.physical_width(),
         w.resolution.physical_height(),
@@ -133,6 +125,22 @@ pub fn apply_pixel_ratio(w: &mut Window, pr: f32) {
     {
         w.resolution.set_physical_resolution(want.0, want.1);
     }
+}
+
+/// The canvas's CSS box at `pr` pixels per CSS pixel, or `None` before the
+/// page has laid it out.
+fn canvas_pixels(pr: f32) -> Option<(u32, u32)> {
+    let canvas = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id("game"))?;
+    let (cw, ch) = (canvas.client_width(), canvas.client_height());
+    if cw <= 0 || ch <= 0 {
+        return None;
+    }
+    Some((
+        (cw as f32 * pr).round().max(1.0) as u32,
+        (ch as f32 * pr).round().max(1.0) as u32,
+    ))
 }
 
 /// The pixel ratio the race draws at: `applyQuality`'s, `hq ?
@@ -143,10 +151,9 @@ pub fn race_pixel_ratio(opts: &crate::Opts) -> f32 {
     ((if opts.hq { dpr.min(1.5) } else { 1.0 }) * opts.scale) as f32
 }
 
-/// The pixel ratio the canvas draws at: the race's; on the
-/// menu and the loading screen, at least `min(devicePixelRatio, 2)`, because the screens' text
-/// is drawn into the same canvas, where the DOM's was always sharp
-/// (DECISIONS D575).
+/// The pixel ratio the canvas draws at: the race's; on a screen, at least
+/// `min(devicePixelRatio, 2)`, because the screens' text is drawn into the
+/// same canvas, where the DOM's was always sharp (DECISIONS D575, D1199).
 fn pixel_ratio(opts: &crate::Opts, screen: bool) -> f32 {
     let race = race_pixel_ratio(opts);
     if screen {
@@ -157,23 +164,168 @@ fn pixel_ratio(opts: &crate::Opts, screen: bool) -> f32 {
     }
 }
 
-/// Sharp text on the screens, the JS's pixel ratio while driving.
+/// The screens' camera (D1199): while a screen draws at a sharper ratio
+/// than the race's, it draws the scene's picture and the UI into the
+/// window; otherwise it is off.
+#[derive(Component)]
+struct ScreenCam;
+
+/// The scene's picture under the screens (D1199), the screens' camera's
+/// lowest node.
+#[derive(Component)]
+struct ScenePicture;
+
+/// The image the scene draws into under a sharper screen (D1199).
+#[derive(Resource)]
+struct SceneImage(Handle<Image>);
+
+/// The screens' camera, off, and the node that shows the scene's picture
+/// on it, hidden (D1199).
+fn spawn_screen_cam(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
+    use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
+    use bevy::image::ImageSampler;
+    use bevy::render::render_resource::TextureFormat;
+    use bevy::render::view::Msaa;
+    let mut image = Image::new_target_texture(1, 1, TextureFormat::Rgba8UnormSrgb, None);
+    // Drawn into, never uploaded: no copy of its pixels in memory.
+    image.data = None;
+    image.sampler = ImageSampler::linear();
+    let image = images.add(image);
+    let cam = commands
+        .spawn((
+            Camera2d,
+            Camera {
+                order: 1,
+                is_active: false,
+                ..default()
+            },
+            Msaa::Off,
+            Tonemapping::None,
+            DebandDither::Disabled,
+            ScreenCam,
+        ))
+        .id();
+    commands.spawn((
+        ImageNode::new(image.clone()),
+        Node {
+            display: Display::None,
+            position_type: PositionType::Absolute,
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            ..default()
+        },
+        GlobalZIndex(i32::MIN),
+        UiTargetCamera(cam),
+        ScenePicture,
+    ));
+    commands.insert_resource(SceneImage(image));
+}
+
+type SceneCams<'w, 's> = Query<
+    'w,
+    's,
+    (Entity, &'static mut RenderTarget, Has<IsDefaultUiCamera>),
+    (With<Camera3d>, Without<ScreenCam>),
+>;
+type ScreenCams<'w, 's> = Query<
+    'w,
+    's,
+    (Entity, &'static mut Camera, Has<IsDefaultUiCamera>),
+    (With<ScreenCam>, Without<Camera3d>),
+>;
+
+/// Sharp text on the screens, the JS's pixel ratio while driving, and the
+/// scene at the race's ratio under every screen (D1199): a screen draws its
+/// text at the screens' ratio, but the scene behind it (the attract
+/// camera's flight, a paused or finished race) costs what the race does.
+/// While the screens' ratio is the higher, the scene's camera draws into
+/// [`SceneImage`], sized at the race's ratio, and the screens' camera
+/// draws it, stretched, under the UI at the window's. When the two are the
+/// same (driving, or a screen on a desktop at Full) the scene's camera
+/// draws into the window as before and the screens' camera is off, so a
+/// race costs nothing more.
+#[allow(clippy::too_many_arguments)]
 fn screen_pixel_ratio(
+    mut commands: Commands,
     ui: Res<UiState>,
-    play: Res<Play>,
     opts: Res<crate::Opts>,
+    scene_image: Option<Res<SceneImage>>,
+    mut images: ResMut<Assets<Image>>,
     mut windows: Query<&mut Window, With<bevy::window::PrimaryWindow>>,
+    mut scene_cams: SceneCams,
+    mut screen_cams: ScreenCams,
+    mut picture: Query<&mut Node, With<ScenePicture>>,
 ) {
-    // With no race, and on the overlays (Settings, the controller screen)
-    // over a paused one, whose text is the point (D1198): the pause and
-    // results screens, which show the race, stay at its ratio (D575).
-    let overlay = matches!(ui.screen, Screen::Settings | Screen::PadSetup);
-    let want = pixel_ratio(
-        &opts,
-        ui.screen != Screen::None && (play.race.is_none() || overlay),
-    );
+    // Every screen draws its text at the screens' ratio (D575, D1198); the
+    // race's picture under the pause and results screens stays at the
+    // race's (D1199).
+    let want = pixel_ratio(&opts, ui.screen != Screen::None);
     if let Ok(mut w) = windows.single_mut() {
         apply_pixel_ratio(&mut w, want);
+    }
+
+    let race = race_pixel_ratio(&opts);
+    let (
+        Some(scene_image),
+        Ok((scene, mut target, scene_default)),
+        Ok((screen, mut cam, screen_default)),
+    ) = (
+        scene_image,
+        scene_cams.single_mut(),
+        screen_cams.single_mut(),
+    )
+    else {
+        return;
+    };
+    let size = canvas_pixels(race).filter(|_| want > race + 1e-3);
+    if let Some((w, h)) = size {
+        let extent = Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        };
+        if images
+            .get(&scene_image.0)
+            .is_some_and(|i| i.texture_descriptor.size != extent)
+            && let Some(mut i) = images.get_mut(&scene_image.0)
+        {
+            i.resize(extent);
+        }
+    }
+    let split = size.is_some();
+    let into = split.then(|| ImageRenderTarget {
+        handle: scene_image.0.clone(),
+        scale_factor: race,
+    });
+    let now = match &*target {
+        RenderTarget::Image(t) => Some(t),
+        _ => None,
+    };
+    if now != into.as_ref() {
+        *target = into.map_or(
+            RenderTarget::Window(WindowRef::Primary),
+            RenderTarget::Image,
+        );
+    }
+    if cam.is_active != split {
+        cam.is_active = split;
+    }
+    if let Ok(mut node) = picture.single_mut() {
+        let display = if split { Display::Flex } else { Display::None };
+        if node.display != display {
+            node.display = display;
+        }
+    }
+    // The UI goes with the camera that draws into the window.
+    for (e, is, should) in [
+        (scene, scene_default, !split),
+        (screen, screen_default, split),
+    ] {
+        if should && !is {
+            commands.entity(e).insert(IsDefaultUiCamera);
+        } else if is && !should {
+            commands.entity(e).remove::<IsDefaultUiCamera>();
+        }
     }
 }
 
@@ -584,7 +736,8 @@ fn publish_settings(s: &super::store::Settings) {
 }
 
 pub fn plugin(app: &mut App) {
-    app.add_systems(Update, take_commands.before(super::pointer))
+    app.add_systems(Startup, spawn_screen_cam)
+        .add_systems(Update, take_commands.before(super::pointer))
         .add_systems(Update, screen_pixel_ratio.after(super::build))
         .add_systems(Last, publish);
 }
