@@ -10207,3 +10207,25 @@ unchanged; the suites use request interception and never see the server.
 `the_build_is_the_root_and_the_js_game_is_under_legacy`), and
 `tests/host.rs` reads the JS page under `legacy/`. `proj up` must be re-run
 for `serve.py` to pick the change up.
+
+## D1198. The Settings and controller screens draw sharp over a paused race
+
+**Date:** 2026-10-12. The Settings screen (D1196) over a paused race drew
+at the race's pixel ratio, as the pause screen does (D575): on a phone
+without High quality, or at a render scale under Full, its text was
+soft where the menu's is sharp. The owner asked for it sharp.
+
+**Choice.** `ui::web::screen_pixel_ratio` applies the screens' ratio,
+`max(race's, min(devicePixelRatio, 2))`, on the overlays, Settings and
+the controller screen, whether or not a race is under them; the pause and
+results screens, which show the race, keep its ratio, and so does the
+race itself. The ratio changes when the overlay opens and again when it
+closes; the HUD, drawn by its own material from the window each frame,
+comes back the same (the pause screen before and after a visit is the
+same picture, phone and desktop profiles), so D575's reason for the pause
+screen does not apply to the overlays.
+
+**Consequences.** On a phone the overlay costs up to four times the pixels
+of the paused race behind it for as long as it is open, as the menu does;
+the race is unchanged. The Render scale select in Settings still takes
+effect at once, visible when the screen closes.

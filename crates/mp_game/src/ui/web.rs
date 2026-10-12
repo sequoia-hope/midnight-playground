@@ -164,9 +164,14 @@ fn screen_pixel_ratio(
     opts: Res<crate::Opts>,
     mut windows: Query<&mut Window, With<bevy::window::PrimaryWindow>>,
 ) {
-    // Only with no race: a race's HUD text, laid out at the race's ratio,
-    // is not laid out again when the ratio changes under it (pause).
-    let want = pixel_ratio(&opts, ui.screen != Screen::None && play.race.is_none());
+    // With no race, and on the overlays (Settings, the controller screen)
+    // over a paused one, whose text is the point (D1198): the pause and
+    // results screens, which show the race, stay at its ratio (D575).
+    let overlay = matches!(ui.screen, Screen::Settings | Screen::PadSetup);
+    let want = pixel_ratio(
+        &opts,
+        ui.screen != Screen::None && (play.race.is_none() || overlay),
+    );
     if let Ok(mut w) = windows.single_mut() {
         apply_pixel_ratio(&mut w, want);
     }
