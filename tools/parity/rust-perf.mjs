@@ -6,6 +6,11 @@
 //   node tools/parity/rust-perf.mjs --level sierra [--backend webgpu|webgl2]
 //       [--hq 1|0] [--secs N] [--reloads 10] [--reload-levels sierra,coast]
 //       [--query "t=0.2&cars=0"]   (more of the page's parameters)
+//       [--angle gl|vulkan]  (the native GL driver, as Chrome on Linux uses on Intel)
+//       [--size WxH --dpr N]  (a laptop's window in CSS pixels and its scale: both games render
+//                    at min(dpr, 1.5) times the window with hq on)
+//       [--headed]  (a window on $DISPLAY instead of headless: a laptop's headless Chrome
+//                    may be stuck on SwiftShader, or stall frames)
 //   node tools/parity/rust-perf.mjs --game js --level sierra [--secs N]
 //
 // The Rust side runs the client's own measurement page (`index.html?perf=1`,
@@ -76,15 +81,17 @@ const traceS = Number(opt('--trace', 0));
 const tag = opt('--tag', null);
 const race = args.includes('--race');
 const dist = opt('--dist', 'next');
+const headed = args.includes('--headed'); // a real window on $DISPLAY: what a player sees (and the GPU headless may not reach)
+const angle = opt('--angle', 'vulkan'); // what ANGLE runs WebGL on: vulkan, or gl for the native driver
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const base = baseUrl(opt);
-const flags = chromeFlags({ backend, capped, race, rust: game === 'rust' });
+const flags = chromeFlags({ backend, capped, race, rust: game === 'rust', angle });
 
 const browser = await puppeteer.launch({
   executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
-  headless: 'new',
-  args: flags,
+  headless: headed ? false : 'new',
+  args: headed ? [...flags, '--window-size=1920,1080', '--window-position=0,0'] : flags,
   protocolTimeout: timeoutS * 1000,
   dumpio: !!process.env.MP_DUMPIO,
 });
@@ -184,7 +191,7 @@ try {
     await page.setViewport({ width: 844, height: 390, deviceScaleFactor: 3, isMobile: true, hasTouch: true, isLandscape: true });
   } else {
     const [w, h] = opt('--size', '1280x800').split('x').map(Number);
-    await page.setViewport({ width: w, height: h, deviceScaleFactor: 1 });
+    await page.setViewport({ width: w, height: h, deviceScaleFactor: Number(opt('--dpr', 1)) });
   }
   const cdp = await page.createCDPSession();
   if (throttle > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: throttle });

@@ -106,14 +106,23 @@ struct ThreeParams {
 @group(#{MATERIAL_BIND_GROUP}) @binding(14) var photo_sampler: sampler;
 @group(#{MATERIAL_BIND_GROUP}) @binding(15) var loose_texture: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(16) var loose_sampler: sampler;
-@group(#{MATERIAL_BIND_GROUP}) @binding(10) var globals_texture: texture_2d<f32>;
+// The scene-wide globals (`three_globals.wgsl`'s layout), one uniform
+// buffer every material shares (`GlobalsBuffer` in material.rs, D1191): reads
+// at constant offsets are push constants on Mesa's Intel driver, where the
+// texture's `textureLoad`s cost registers and sends in every shader.
+// (The field is not `t`: naga_oil reads a bare `t` as a use of the
+// `mr::three_std as t` import and then waits for a module named `mr`.)
+struct GlobalsBuffer {
+    texels: array<vec4<f32>, #{GLOBALS_WIDTH}>,
+};
+@group(#{MATERIAL_BIND_GROUP}) @binding(10) var<uniform> globals: GlobalsBuffer;
 @group(#{MATERIAL_BIND_GROUP}) @binding(11) var env_texture: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(12) var env_sampler: sampler;
 
 // (Not `gl`: naga's GLSL writer turns it into `gl_1`, a name GLSL reserves,
 // and the WebGL2 build's shaders fail to compile.)
 fn globals_at(i: i32) -> vec4<f32> {
-    return textureLoad(globals_texture, vec2<i32>(i, 0), 0);
+    return globals.texels[i];
 }
 
 // The material's animation block (D490): what the scenery's animators
@@ -727,23 +736,38 @@ fn terrain_map(p: vec3<f32>, t_norm: vec3<f32>, v_color: vec3<f32>, v_surf: f32)
     let dA = textureSample(detail_texture, detail_sampler, p.xz / 9.0);
     let dB = textureSample(detail_texture, detail_sampler, p.xz / 61.0 + 0.37);
     let dM = textureSample(detail_texture, detail_sampler, p.xz / 900.0 + 0.11);
-    // Close grain and the side (rock) samples only where they show; both
-    // conditions are smooth over the screen so the branches stay coherent.
-    let dC_sample = textureSample(detail_texture, detail_sampler, p.xz / 2.3 + 0.61);
-    let dC = select(vec4<f32>(0.5), dC_sample, mp_near > 0.0);
-    let sx_sample = textureSample(aux_texture, aux_sampler, vec2<f32>(p.z / 23.0, p.y / 15.0 + dB.r * 0.35)).rgb;
-    let sz_sample = textureSample(aux_texture, aux_sampler, vec2<f32>(p.x / 23.0, p.y / 15.0 + dB.a * 0.35)).rgb;
-    let vs = textureSample(detail_texture, detail_sampler, vec2<f32>((p.x + p.z) / 7.0, p.y / 55.0));
+    // Close grain and the side (rock) samples only where they show, as the
+    // JS samples them inside its branches: `textureSample` needs uniform
+    // control flow, so the gradients are taken here and the branches
+    // sample with them (the same level of detail; D1191: on a 2017
+    // laptop's GPU the four samples every ground pixel paid were measured).
+    let dc_uv = p.xz / 2.3 + 0.61;
+    let dc_dx = dpdx(dc_uv);
+    let dc_dy = dpdy(dc_uv);
+    let sx_uv = vec2<f32>(p.z / 23.0, p.y / 15.0 + dB.r * 0.35);
+    let sx_dx = dpdx(sx_uv);
+    let sx_dy = dpdy(sx_uv);
+    let sz_uv = vec2<f32>(p.x / 23.0, p.y / 15.0 + dB.a * 0.35);
+    let sz_dx = dpdx(sz_uv);
+    let sz_dy = dpdy(sz_uv);
+    let vs_uv = vec2<f32>((p.x + p.z) / 7.0, p.y / 55.0);
+    let vs_dx = dpdx(vs_uv);
+    let vs_dy = dpdy(vs_uv);
+    var dC = vec4<f32>(0.5);
+    if (mp_near > 0.0) {
+        dC = textureSampleGrad(detail_texture, detail_sampler, dc_uv, dc_dx, dc_dy);
+    }
     var sx = vec3<f32>(0.85);
     var sz = vec3<f32>(0.85);
     var varnish = 0.0;
     if (tw.x + tw.z > 0.004) {
-        sx = sx_sample;
-        sz = sz_sample;
+        sx = textureSampleGrad(aux_texture, aux_sampler, sx_uv, sx_dx, sx_dy).rgb;
+        sz = textureSampleGrad(aux_texture, aux_sampler, sz_uv, sz_dx, sz_dy).rgb;
         // Desert varnish on red rock: dark streaks running down the face
         // (the noise stretched vertically), only on warm-red faces.
         let red = t::smooth_step(0.35, 0.65, (v_color.r - v_color.g) / (v_color.r + 0.02));
         if (red > 0.0) {
+            let vs = textureSampleGrad(detail_texture, detail_sampler, vs_uv, vs_dx, vs_dy);
             varnish = t::smooth_step(0.45, 0.8, vs.a) * red;
         }
     }

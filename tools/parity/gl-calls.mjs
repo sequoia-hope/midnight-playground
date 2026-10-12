@@ -8,6 +8,7 @@
 //       [--dump-shaders <dir>]   every shader source the page compiles
 //       [--by-program --passes 30]   the GPU split also by shader program
 //       [--angle gl|vulkan]   ANGLE's backend (default vulkan)
+//       [--headed]   a window on $DISPLAY, as rust-perf.mjs's --headed
 //       [--sub 'regex=>replacement' ...]   edit every shader source as it is
 //                 compiled (an experiment: what a shader costs without X);
 //                 --sub-vert and --sub-frag for one stage
@@ -39,9 +40,10 @@ const base = baseUrl(opt);
 
 const browser = await puppeteer.launch({
   executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
-  headless: 'new',
+  headless: args.includes('--headed') ? false : 'new', // --headed: a window on $DISPLAY (a laptop's headless Chrome may miss the GPU)
   args: chromeFlags({ backend: 'webgl2', race: true, rust: game === 'rust', angle: opt('--angle', 'vulkan') }),
   protocolTimeout: 600000,
+  dumpio: !!process.env.MP_DUMPIO, // Chrome's own stderr, e.g. with INTEL_DEBUG=perf for Mesa's shader notes
 });
 try {
   const page = await browser.newPage();
@@ -115,11 +117,33 @@ try {
     };
     const fbIds = new WeakMap();
     let nextFb = 1, curFb = 'fb0', curVp = '', frameGpu = 0;
+    // Each framebuffer's attachments, so a framebuffer bound again is keyed
+    // by what it holds (three.js attaches once, at creation).
+    const fbAtts = new WeakMap();
+    let curFbObj = null;
     // wgpu draws every pass through one framebuffer and swaps its
     // attachments, so the colour attachment (texture or renderbuffer,
     // numbered in order of first use) is part of the key.
     const attIds = new WeakMap();
     let nextAtt = 1, curAtt = '';
+    // What each attachment is (format, size, samples), from the storage
+    // call made on the texture or renderbuffer bound at the time; the
+    // depth attachment in use when a colour one is attached is kept too.
+    const storage = new WeakMap(), bound = {};
+    const fmtNames = { 0x881A: 'RGBA16F', 0x8058: 'RGBA8', 0x8C43: 'SRGB8_ALPHA8', 0x8CAC: 'DEPTH32F', 0x88F0: 'DEPTH24_STENCIL8', 0x8CAD: 'DEPTH32F_STENCIL8', 0x81A6: 'DEPTH24', 0x81A5: 'DEPTH16', 0x1908: 'RGBA', 0x1907: 'RGB', 0x8229: 'R8', 0x822F: 'RG16F', 0x822E: 'R32F', 0x8814: 'RGBA32F', 0x822D: 'R16F', 0x822B: 'RG8', 0x8059: 'RGB10_A2', 0x8C3A: 'R11F_G11F_B10F', 0x8D62: 'RGB565', 0x8056: 'RGBA4', 0x8057: 'RGB5_A1', 0x8D46: 'STENCIL8' };
+    const fmtName = (f) => fmtNames[f] || `0x${Number(f).toString(16)}`;
+    window.__gl.attachments = {};
+    window.__gl.depthFor = {};
+    window.__gl.onStorage = (k, a) => {
+      if (k === 'bindTexture' || k === 'bindRenderbuffer') { bound[a[0]] = a[1]; return; }
+      const obj = bound[a[0] === 0x8515 || (a[0] >= 0x8515 && a[0] <= 0x851A) ? 0x8513 : a[0]];
+      if (!obj) return;
+      if (k === 'texStorage2D') storage.set(obj, `tex ${fmtName(a[2])} ${a[3]}x${a[4]}`);
+      else if (k === 'texImage2D' && a[1] === 0) storage.set(obj, `tex ${fmtName(a[2])} ${a[3]}x${a[4]}`);
+      else if (k === 'renderbufferStorageMultisample') storage.set(obj, `rb ${fmtName(a[2])} ${a[3]}x${a[4]} x${a[1]}`);
+      else if (k === 'renderbufferStorage') storage.set(obj, `rb ${fmtName(a[1])} ${a[2]}x${a[3]}`);
+    };
+    let curDepth = '';
     // `--by-program`: the key also names the program in use (numbered in
     // order of creation), splitting a pass by shader.
     const byProgram = new URLSearchParams(location.search).has('__byprogram');
@@ -136,10 +160,15 @@ try {
     window.__gl.drawsBy = drawsBy;
     window.__gl.onAttach = (attachment, obj) => {
       if (attachment !== 0x8CE0 /* COLOR_ATTACHMENT0 */ && attachment !== 0x8D00 /* DEPTH_ATTACHMENT */ && attachment !== 0x821A /* DEPTH_STENCIL */) return;
-      if (attachment !== 0x8CE0 && curAtt && !curAtt.startsWith('d')) return;
-      if (!obj || typeof obj !== 'object') { curAtt = ''; return; }
+      const atts = curFbObj ? (fbAtts.get(curFbObj) || fbAtts.set(curFbObj, {}).get(curFbObj)) : {};
+      if (!obj || typeof obj !== 'object') { if (attachment === 0x8CE0) { curAtt = ''; atts.c = ''; } else atts.d = ''; return; }
       if (!attIds.has(obj)) attIds.set(obj, nextAtt++);
-      curAtt = (attachment === 0x8CE0 ? 'c' : 'd') + attIds.get(obj);
+      const id = (attachment === 0x8CE0 ? 'c' : 'd') + attIds.get(obj);
+      window.__gl.attachments[id] = storage.get(obj) || '?';
+      if (attachment !== 0x8CE0) { curDepth = id; atts.d = id; if (atts.c) window.__gl.depthFor[atts.c] = id; return; }
+      atts.c = id;
+      curAtt = id;
+      if (atts.d) window.__gl.depthFor[id] = atts.d;
       if (active) active.key = keyNow();
       else cut(keyNow());
     };
@@ -164,8 +193,9 @@ try {
       cut(keyNow());
     };
     window.__gl.onBindFramebuffer = (fb) => {
-      if (!fb) curFb = 'fb0';
-      else { if (!fbIds.has(fb)) fbIds.set(fb, nextFb++); curFb = `fb${fbIds.get(fb)}`; }
+      curFbObj = fb || null;
+      if (!fb) { curFb = 'fb0'; curAtt = ''; }
+      else { if (!fbIds.has(fb)) fbIds.set(fb, nextFb++); curFb = `fb${fbIds.get(fb)}`; curAtt = (fbAtts.get(fb) || {}).c || ''; }
       cut(keyNow());
     };
     window.__gl.onViewport = (w, h) => {
@@ -191,6 +221,7 @@ try {
         else if (k === 'bindFramebuffer' && this === ctx) window.__gl.onBindFramebuffer(a[1]);
         else if (k === 'viewport' && this === ctx) window.__gl.onViewport(a[2], a[3]);
         else if ((k === 'framebufferTexture2D' || k === 'framebufferTextureLayer' || k === 'framebufferRenderbuffer') && this === ctx) window.__gl.onAttach(a[1], k === 'framebufferTextureLayer' ? a[2] : a[3]);
+        else if ((k === 'bindTexture' || k === 'bindRenderbuffer' || k === 'texStorage2D' || k === 'texImage2D' || k === 'renderbufferStorage' || k === 'renderbufferStorageMultisample') && this === ctx) window.__gl.onStorage(k, a);
         return r;
       };
     }
@@ -212,7 +243,7 @@ try {
   await page.evaluate(() => { for (const k in window.__gl.counts) delete window.__gl.counts[k]; for (const o of [window.__gl.byTarget, window.__gl.trisBy, window.__gl.instBy, window.__gl.drawsBy, window.__gl.vertsBy, window.__gl.nonIndexedBy]) for (const k in o) delete o[k]; window.__gl.gpu.length = 0; });
   const f0 = await page.evaluate(() => window.__gl.frames());
   await new Promise((r) => setTimeout(r, secs * 1000));
-  const { counts, f1, gpu, timer, byTarget, trisBy, instBy, drawsBy, vertsBy, nonIndexedBy } = await page.evaluate(() => ({ counts: window.__gl.counts, f1: window.__gl.frames(), gpu: window.__gl.gpu, timer: window.__gl.timer, byTarget: window.__gl.byTarget, trisBy: window.__gl.trisBy, instBy: window.__gl.instBy, drawsBy: window.__gl.drawsBy, vertsBy: window.__gl.vertsBy, nonIndexedBy: window.__gl.nonIndexedBy }));
+  const { counts, f1, gpu, timer, byTarget, trisBy, instBy, drawsBy, vertsBy, nonIndexedBy, attachments, depthFor } = await page.evaluate(() => ({ counts: window.__gl.counts, f1: window.__gl.frames(), gpu: window.__gl.gpu, timer: window.__gl.timer, byTarget: window.__gl.byTarget, trisBy: window.__gl.trisBy, instBy: window.__gl.instBy, drawsBy: window.__gl.drawsBy, vertsBy: window.__gl.vertsBy, nonIndexedBy: window.__gl.nonIndexedBy, attachments: window.__gl.attachments, depthFor: window.__gl.depthFor }));
   const n = f1 - f0;
   const rows = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   const total = rows.reduce((a, [, v]) => a + v, 0);
@@ -227,6 +258,10 @@ try {
     const allVerts = Object.values(vertsBy).reduce((a, b) => a + b, 0);
     console.log(`triangles a frame: ${(allTris / n / 1e3).toFixed(0)}k, vertices submitted ${(allVerts / n / 1e3).toFixed(0)}k; by pass (gpu ms, k triangles, k vertices, instances, draws of which non-indexed):`);
     for (const [k, v] of Object.entries(byTarget).sort((a, b) => b[1] - a[1]).slice(0, Number(opt('--passes', 12)))) console.log(`  ${(v / tn).toFixed(2).padStart(6)} ms  ${((trisBy[k] || 0) / n / 1e3).toFixed(0).padStart(6)}k  ${((vertsBy[k] || 0) / n / 1e3).toFixed(0).padStart(6)}k  ${((instBy[k] || 0) / n).toFixed(0).padStart(6)}  ${((drawsBy[k] || 0) / n).toFixed(0).padStart(5)}/${((nonIndexedBy[k] || 0) / n).toFixed(0)}  ${k}`);
+    // The targets behind the keys: each colour attachment's storage and
+    // the depth attachment it was last paired with.
+    const used = new Set(Object.keys(byTarget).map((k) => k.split(' ')[0].split('/')[1]).filter(Boolean));
+    for (const id of [...used].sort()) console.log(`  ${id} = ${attachments[id] || '?'}${id.startsWith('c') && depthFor[id] ? `, depth ${depthFor[id]} = ${attachments[depthFor[id]] || '?'}` : ''}`);
   } else {
     console.log(`gpu: ${timer === false ? 'no EXT_disjoint_timer_query_webgl2' : 'no timed frames'}`);
   }

@@ -20,7 +20,7 @@ use super::Play;
 use super::flow::Mode;
 use crate::animate::MeshWrites;
 use crate::render::SharedImages;
-use crate::render::material::{Model, Patch, ThreeKey, ThreeMaterial, ThreeParams};
+use crate::render::material::{Model, Patch, ThreeBindings, ThreeKey, ThreeMaterial, ThreeParams};
 use crate::warmup::{Combos, Layout};
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::NoFrustumCulling;
@@ -144,7 +144,7 @@ fn guide_mesh() -> Mesh {
 /// Unlit, vertex colours with their alpha, transparent, no depth write,
 /// both faces, fog; the skid marks' polygon offset keeps it over the road.
 fn guide_material(shared: &SharedImages) -> ThreeMaterial {
-    ThreeMaterial {
+    ThreeMaterial::new(ThreeBindings {
         params: ThreeParams {
             diffuse: Vec4::ONE,
             ..ThreeParams::default()
@@ -155,7 +155,6 @@ fn guide_material(shared: &SharedImages) -> ThreeMaterial {
         aux: None,
         photo: None,
         loose: None,
-        globals: shared.globals.clone(),
         env: shared.env.clone(),
         key: ThreeKey {
             model: Model::Basic,
@@ -173,7 +172,7 @@ fn guide_material(shared: &SharedImages) -> ThreeMaterial {
             sort_rank: 6,
             ..ThreeKey::default()
         },
-    }
+    })
 }
 
 /// The line's entity.

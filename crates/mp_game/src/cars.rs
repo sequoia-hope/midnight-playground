@@ -12,7 +12,7 @@
 //! stations (`Options::cars_on`).
 
 use crate::render::SharedImages;
-use crate::render::material::{Model, ThreeKey, ThreeMaterial, ThreeParams};
+use crate::render::material::{Model, ThreeBindings, ThreeKey, ThreeMaterial, ThreeParams};
 use crate::render::sky::hex_color;
 use crate::{Opts, TrackRes, loader::SceneEntity};
 use bevy::math::Vec4;
@@ -138,7 +138,7 @@ pub fn start_cars(
 /// A plain MeshStandardMaterial of the car's colour (roughness 0.45,
 /// metalness 0.3).
 fn stand_in_material(c: [f64; 3], shared: &SharedImages) -> ThreeMaterial {
-    ThreeMaterial {
+    ThreeMaterial::new(ThreeBindings {
         params: ThreeParams {
             diffuse: Vec4::new(c[0] as f32, c[1] as f32, c[2] as f32, 1.0),
             pbr: Vec4::new(0.45, 0.3, 0.0, 0.0),
@@ -153,7 +153,6 @@ fn stand_in_material(c: [f64; 3], shared: &SharedImages) -> ThreeMaterial {
         aux: None,
         photo: None,
         loose: None,
-        globals: shared.globals.clone(),
         env: shared.env.clone(),
         key: ThreeKey {
             model: Model::Physical,
@@ -166,7 +165,7 @@ fn stand_in_material(c: [f64; 3], shared: &SharedImages) -> ThreeMaterial {
             depth_test: true,
             ..ThreeKey::default()
         },
-    }
+    })
 }
 
 /// Where a car's box sits: on the ground under it (`visY`), its length
