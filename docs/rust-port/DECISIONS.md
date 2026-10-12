@@ -10117,3 +10117,52 @@ pixel count, a third as many in each direction with High quality off
 (the touch default) and half as many with it on, which is what D437
 said and the owner's phone measurements (BASELINE, D1180 to D1182) were
 taken without. The picture is softer there, as the JS game's is.
+
+## D1196. A Settings screen, over the menu and the pause screen
+
+2026-10-12, the owner's request: the main menu was carrying every option
+in one wrapped row under Race (the JS menu's `.menu-opts`, which by now
+held fourteen controls on a phone with the Rust-only aids, the radio and
+the render scale), and the render scale, meant for a GPU that turns out
+too weak mid-race, could only be set from the menu.
+
+The options move to a Settings screen (`ui::settings`, `Screen::Settings`,
+`__mp.screen === 'settings'`): a card of labelled rows in three groups,
+Sound (the volumes, the track, the radio and its station, the engine's
+voice), Picture (High quality, the render scale on the web, the police
+lights, Fullscreen on touch, MPH) and Driving (the guide line, the steer
+assist, and on touch Auto gas, Steering, Pedals, the tilt sensitivity and
+the tilt note), with Controller setup and the Music player under the card
+and Done. A checkbox's row is the control, as a `<label>` is. The
+controls keep their ids (`opt-*`, `vol-*`, `btn-pad`, `link-music`), so
+the bridge's `choose`, `slide` and `act` commands and `__mp.settings` are
+unchanged.
+
+The menu keeps the level tabs, the card, the car picks, Race and its
+neighbours, and under them a small row: Settings (`btn-settings`),
+Controller setup when a pad is connected, and the Music player link; then
+the help, and Quit natively. The pause screen gains Settings
+(`btn-settings-pause`) and keeps its volume sliders and Now playing line,
+which are what a player reaches for most. Settings sits over the screen
+it was opened from, as the Controller screen does (`UiState::under`): the
+flow keeps it while the screen under it is the one it came from, Done,
+Esc, P, Start or B leave it (`pad_setup::frame` catches the key before
+the race takes it as un-pause, as it does for the Controller screen), and
+an un-pause that gets through puts the pause back. The Controller screen
+can open from Settings and returns to it.
+
+The render scale changes take effect at once, paused or not:
+`screen_pixel_ratio` follows `opts` every frame (D1194), so the picture
+behind the pause screen is redrawn at the new scale while Settings is up.
+
+What the suites see: `npm run test:e2e:rust` runs the JS suites against
+the Rust build through `rust-bridge.js`, whose selectors are the JS
+menu's; the harness's `centerRust` (and the Rust suites' `center`) now
+opens Settings when a control is not shown from the menu or the pause
+screen, and closes it when one is not shown from Settings, so taps and
+clicks on the options still land. A JS suite that reads an option's
+visibility on the menu without tapping it (the phone menu test's Auto gas
+and Fullscreen rows) sees it hidden there, and the gamepad suite that
+steps down from Race into the Track option finds the Settings row
+instead: those two are the deviation (the Rust suites in
+`tools/parity/e2e/` pass as before).

@@ -1245,7 +1245,7 @@ texture's sends.
 
 ## The render scale, and the canvas's size in pixels (DECISIONS D1194, D1195)
 
-2026-10-11. The render scale (`Render scale` in the menu, `?scale=`)
+2026-10-11. The render scale (`Render scale` in Settings since D1196, `?scale=`)
 multiplies the race's pixel ratio. Its first build measured the same at
 every scale, which is how D1195 was found: Bevy's scale factor override
 had never changed the canvas's size in pixels, so neither had D437's

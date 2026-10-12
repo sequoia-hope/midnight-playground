@@ -240,6 +240,17 @@ pub fn frame(
             && !k.repeat
             && matches!(k.key_code, KeyCode::Escape | KeyCode::KeyP)
     });
+    // Esc, P or Start on the Settings screen leave it too (D1196), before
+    // the race could take them as un-pause.
+    if ui.screen == Screen::Settings {
+        let esc = match play.race.as_mut() {
+            Some(r) => r.input.consume("pause"),
+            None => keyed || pads.state.edges.contains(&Action::Pause),
+        };
+        if esc {
+            ui.leave_settings();
+        }
+    }
     if !setup.open {
         return;
     }

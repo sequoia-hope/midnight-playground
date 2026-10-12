@@ -129,8 +129,24 @@ export class Game {
 
   // A control's centre in CSS px, scrolled to the middle first; fails if it
   // is not shown, off screen, or another control is on top of that point.
+  // The options live on the Settings screen (D1196): a control not shown
+  // from the menu or the pause screen opens Settings first, and one not
+  // shown from Settings closes it, as a player would.
   async center(sel) {
     const id = idOf(sel);
+    for (let tries = 0; tries < 2; tries++) {
+      const r = await this.centerOnce(id);
+      if (!r.error) return r;
+      const screen = await this.screen();
+      const via = screen === 'menu' ? 'btn-settings' : screen === 'pause' ? 'btn-settings-pause' : screen === 'settings' ? 'btn-settings-done' : null;
+      if (!via || tries) throw new Error(r.error);
+      await this.eval((v) => window.__mp.stage({ cmd: 'act', id: v }), via);
+      await this.frames(3);
+    }
+    throw new Error('unreachable');
+  }
+
+  async centerOnce(id) {
     await this.eval((i) => window.__mp.reveal(i), id);
     await this.frames(3);
     const r = await this.eval((i) => {
@@ -147,7 +163,6 @@ export class Game {
       if (u.enabled && top && top.k !== i) return { error: `${i} is covered by ${top.k}` };
       return { x, y };
     }, id);
-    if (r.error) throw new Error(r.error);
     return r;
   }
 

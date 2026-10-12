@@ -1,16 +1,16 @@
 //! The main menu (`#menu` in `index.html`, `.level-pick` to `.controls` in
-//! `hud.css`, `renderLevelCard` and the option bindings in `main.js`): the
-//! level tabs, the level card with its stats, best times and the Race / Hot
-//! Pursuit switch, the car picks, the Race button, the options, and the
+//! `hud.css`, `renderLevelCard` in `main.js`): the level tabs, the level
+//! card with its stats, best times and the Race / Hot Pursuit switch, the
+//! car picks, the Race button, the way to the Settings screen (which has
+//! the options the JS menu's `.menu-opts` row carried, D1196), and the
 //! touch or keyboard help. On a phone held sideways it is the two-column
 //! grid of `(max-height: 500px) and (orientation: landscape)`.
 
 use super::screens::{self, Cx};
 use super::store::{self, Settings, Store};
 use super::widgets::{self as w, Bp, Control, T, Value};
-use super::{Act, Opt, Sel, Sl, UiState};
+use super::{Act, Sel, UiState};
 use crate::Opts;
-use crate::play::Play;
 use crate::play::flow::fmt_time;
 use bevy::prelude::*;
 use bevy::text::{Justify, TextLayout};
@@ -142,7 +142,7 @@ pub fn select_options(sel: Sel, s: &Settings) -> (Vec<(String, String)>, String)
     }
 }
 
-fn shown(sel: Sel, s: &Settings) -> String {
+pub(super) fn shown(sel: Sel, s: &Settings) -> String {
     let (o, v) = select_options(sel, s);
     o.into_iter()
         .find(|(k, _)| *k == v)
@@ -151,7 +151,7 @@ fn shown(sel: Sel, s: &Settings) -> String {
 
 /// `TILT_NOTES[tilt.state]` when tilt is chosen (`showTiltState`; the
 /// sensor is `play::tilt`, WP 6.6).
-fn tilt_note(s: &Settings) -> &'static str {
+pub(super) fn tilt_note(s: &Settings) -> &'static str {
     if s.steering == "tilt" {
         crate::play::tilt::note(crate::play::tilt::state())
     } else {
@@ -213,7 +213,6 @@ pub fn menu(
     cx: &mut Cx,
     ui: &UiState,
     store: &Store,
-    play: &Play,
     opts: &Opts,
 ) -> Entity {
     let bp = cx.bp;
@@ -634,7 +633,8 @@ pub fn menu(
             });
         });
 
-        // The options.
+        // Settings (D1196), the controller and the music player: small
+        // buttons under Race, where the JS menu's options row was.
         let mut n = Node {
             flex_wrap: FlexWrap::Wrap,
             justify_content: JustifyContent::Center,
@@ -645,10 +645,55 @@ pub fn menu(
             ..default()
         };
         place(&bp, &mut n, (2, 3), (5, 1));
-        let ot = T::new(if bp.compact { 14.0 } else { 15.0 }).c(w::dim());
-        p.spawn(n).with_children(|p| {
-            options(p, cx, s, ot, play.touch_ui, ui.pads);
-        });
+        p.spawn((n, Control::named("menu-opts", Value::None)))
+            .with_children(|p| {
+                let f = cx.f("btn-settings");
+                w::button_mini(
+                    p,
+                    &bp,
+                    Control::act("btn-settings", Act::Settings),
+                    "Settings",
+                    None,
+                    f,
+                );
+                if ui.pads {
+                    let f = cx.f("btn-pad");
+                    w::button_mini(
+                        p,
+                        &bp,
+                        Control::act("btn-pad", Act::PadSetup),
+                        "Controller setup",
+                        None,
+                        f,
+                    );
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    // The music player is the JS page until M5's player screen.
+                    let f = cx.f("link-music");
+                    let mut e = p.spawn((
+                        Node {
+                            align_items: AlignItems::Center,
+                            column_gap: bp.px(4.0),
+                            ..default()
+                        },
+                        Control::act("link-music", Act::MusicLink)
+                            .value(Value::Text("Music player".into())),
+                    ));
+                    w::focus_ring(&mut e, &bp, f);
+                    e.with_children(|p| {
+                        w::icon_node(p, &bp, &cx.icons.note, 14.0, Color::WHITE);
+                        p.spawn(w::text(
+                            "Music player",
+                            T::new(if bp.compact { 14.0 } else { 15.0 })
+                                .bold()
+                                .ls(0.04)
+                                .c(w::accent2()),
+                            bp.k,
+                        ));
+                    });
+                }
+            });
 
         // Help: touch or keyboard.
         if bp.touch {
@@ -704,206 +749,6 @@ pub fn menu(
             });
         }
     })
-}
-
-/// `.menu-opts` on the menu.
-fn options(
-    p: &mut ChildSpawnerCommands,
-    cx: &mut Cx,
-    s: &Settings,
-    ot: T,
-    touch: bool,
-    pads: bool,
-) {
-    let bp = cx.bp;
-    let vol = |p: &mut ChildSpawnerCommands, cx: &mut Cx, label: &str, id: &str, sl: Sl, v: f64| {
-        let f = cx.f(id);
-        p.spawn(Node {
-            align_items: AlignItems::Center,
-            column_gap: bp.px(8.0),
-            ..default()
-        })
-        .with_children(|p| {
-            p.spawn(w::text(label, ot, bp.k));
-            w::slider(p, &bp, Control::act(id, Act::Slide(sl)), sl, v, 110.0, f);
-        });
-    };
-    vol(p, cx, "Music", "vol-music", Sl::Music, s.music);
-    vol(p, cx, "SFX", "vol-sfx", Sl::Sfx, s.sfx);
-    let f = cx.f("opt-track");
-    p.spawn(Node {
-        align_items: AlignItems::Center,
-        column_gap: bp.px(8.0),
-        ..default()
-    })
-    .with_children(|p| {
-        p.spawn(w::text("Track", ot, bp.k));
-        w::select(
-            p,
-            &bp,
-            Control::act("opt-track", Act::Open(Sel::Track)).value(Value::Text(s.track.clone())),
-            &shown(Sel::Track, s),
-            cx.icons,
-            f,
-        );
-    });
-    let check =
-        |p: &mut ChildSpawnerCommands, cx: &mut Cx, id: &str, o: Opt, on: bool, label: &str| {
-            let f = cx.f(id);
-            w::checkbox(
-                p,
-                &bp,
-                Control::act(id, Act::Toggle(o)),
-                label,
-                on,
-                ot,
-                cx.icons,
-                f,
-            );
-        };
-    check(p, cx, "opt-mph", Opt::Mph, s.mph, "MPH");
-    check(p, cx, "opt-hq", Opt::Hq, s.hq, "High quality");
-    check(
-        p,
-        cx,
-        "opt-flash",
-        Opt::Flash,
-        s.flash,
-        "Police lights flash",
-    );
-    check(
-        p,
-        cx,
-        "opt-classic-engine",
-        Opt::ClassicEngine,
-        s.classic_engine,
-        "Classic engine sound",
-    );
-    // The radio (D1160): off by default (the music); on, its station.
-    let radio = s.station != "playlist";
-    check(p, cx, "opt-radio", Opt::Radio, radio, "Radio");
-    // The driving aids (Rust only, D1083), on every device; the radio's
-    // station while it is on.
-    let mut sels = vec![
-        (Sel::Guide, "Guide line", &s.guide),
-        (Sel::Assist, "Steer assist", &s.assist),
-    ];
-    if radio {
-        sels.push((Sel::Station, "Station", &s.radio_station));
-    }
-    // The render scale (D1194), on the web, where the canvas's pixel ratio
-    // is the client's to set (natively the window draws at 1).
-    #[cfg(target_arch = "wasm32")]
-    sels.push((Sel::Scale, "Render scale", &s.scale));
-    for (sel, label, value) in sels {
-        let id = super::sel_id(sel);
-        let f = cx.f(id);
-        p.spawn(Node {
-            align_items: AlignItems::Center,
-            column_gap: bp.px(4.0),
-            ..default()
-        })
-        .with_children(|p| {
-            p.spawn(w::text(label, ot, bp.k));
-            w::select(
-                p,
-                &bp,
-                Control::act(id, Act::Open(sel)).value(Value::Text(value.clone())),
-                &shown(sel, s),
-                cx.icons,
-                f,
-            );
-        });
-    }
-    if touch {
-        check(p, cx, "opt-autogas", Opt::Autogas, s.autogas, "Auto gas");
-        for (sel, label) in [(Sel::Steer, "Steering"), (Sel::Pedals, "Pedals")] {
-            let id = super::sel_id(sel);
-            let f = cx.f(id);
-            let value = if sel == Sel::Steer {
-                s.steering.clone()
-            } else {
-                s.pedals.clone()
-            };
-            p.spawn(Node {
-                align_items: AlignItems::Center,
-                column_gap: bp.px(4.0),
-                ..default()
-            })
-            .with_children(|p| {
-                p.spawn(w::text(label, ot, bp.k));
-                w::select(
-                    p,
-                    &bp,
-                    Control::act(id, Act::Open(sel)).value(Value::Text(value)),
-                    &shown(sel, s),
-                    cx.icons,
-                    f,
-                );
-            });
-        }
-        if s.steering == "tilt" {
-            vol(p, cx, "Tilt", "opt-tilt-sens", Sl::TiltSens, s.tilt_sens);
-        }
-        check(
-            p,
-            cx,
-            "opt-fullscreen",
-            Opt::Fullscreen,
-            s.fullscreen,
-            "Fullscreen",
-        );
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        // The music player is the JS page until M5's player screen.
-        let f = cx.f("link-music");
-        let mut e = p.spawn((
-            Node {
-                align_items: AlignItems::Center,
-                column_gap: bp.px(4.0),
-                ..default()
-            },
-            Control::act("link-music", Act::MusicLink).value(Value::Text("Music player".into())),
-        ));
-        w::focus_ring(&mut e, &bp, f);
-        e.with_children(|p| {
-            w::icon_node(p, &bp, &cx.icons.note, 14.0, Color::WHITE);
-            p.spawn(w::text(
-                "Music player",
-                T::new(ot.size).bold().ls(0.04).c(w::accent2()),
-                bp.k,
-            ));
-        });
-    }
-    if pads {
-        let f = cx.f("btn-pad");
-        w::button_mini(
-            p,
-            &bp,
-            Control::act("btn-pad", Act::PadSetup),
-            "Controller setup",
-            None,
-            f,
-        );
-    }
-    let note = tilt_note(s);
-    if touch && !note.is_empty() {
-        p.spawn((
-            Node {
-                flex_basis: Val::Percent(100.0),
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            Control::named("tilt-note", Value::Text(note.into())),
-        ))
-        .with_children(|p| {
-            p.spawn((
-                w::text(note, T::new(14.0).c(w::rgb(0xffb454)), bp.k),
-                TextLayout::justify(Justify::Center),
-            ));
-        });
-    }
 }
 
 /// `.touch-help`.

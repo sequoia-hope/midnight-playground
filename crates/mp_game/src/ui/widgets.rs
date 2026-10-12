@@ -603,34 +603,41 @@ pub fn checkbox(
     ));
     focus_ring(&mut e, bp, focused);
     e.with_children(|p| {
-        let mut b = p.spawn((
-            Node {
-                width: bp.px(13.0),
-                height: bp.px(13.0),
-                margin: UiRect::new(bp.px(4.0), bp.px(3.0), bp.px(3.0), bp.px(3.0)),
-                border: border(bp, if on { 0.0 } else { 1.0 }),
-                border_radius: radius(bp, 2.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BorderColor::all(rgb(0x767676)),
-            BackgroundColor(if on { accent() } else { Color::WHITE }),
-        ));
-        if on {
-            b.with_children(|p| {
-                p.spawn((
-                    ImageNode::new(icons.check.clone()),
-                    Node {
-                        width: bp.px(11.0),
-                        height: bp.px(11.0),
-                        ..default()
-                    },
-                ));
-            });
-        }
+        check_mark(p, bp, on, icons);
         p.spawn(text(format!(" {label}"), t, bp.k));
     });
+}
+
+/// A checkbox's box alone (`input[type=checkbox]` with `accent-color`):
+/// for a control whose label sits elsewhere, as the Settings rows.
+pub fn check_mark(p: &mut ChildSpawnerCommands, bp: &Bp, on: bool, icons: &Icons) {
+    let mut b = p.spawn((
+        Node {
+            width: bp.px(13.0),
+            height: bp.px(13.0),
+            margin: UiRect::new(bp.px(4.0), bp.px(3.0), bp.px(3.0), bp.px(3.0)),
+            border: border(bp, if on { 0.0 } else { 1.0 }),
+            border_radius: radius(bp, 2.0),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            flex_shrink: 0.0,
+            ..default()
+        },
+        BorderColor::all(rgb(0x767676)),
+        BackgroundColor(if on { accent() } else { Color::WHITE }),
+    ));
+    if on {
+        b.with_children(|p| {
+            p.spawn((
+                ImageNode::new(icons.check.clone()),
+                Node {
+                    width: bp.px(11.0),
+                    height: bp.px(11.0),
+                    ..default()
+                },
+            ));
+        });
+    }
 }
 
 /// `<input type=range>` with `accent-color`: Chrome's track (4 px, the
