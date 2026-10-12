@@ -10,6 +10,8 @@
 //! - A directory serves its `index.html`; a directory without a trailing
 //!   slash is redirected to one (so relative URLs in it resolve).
 //! - Paths can't climb out of the root.
+//! - The URL space is GitHub Pages' (D1197): `dist/next/` over the root,
+//!   the JS game under `legacy/`; see `Files::resolve`.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
@@ -31,18 +33,43 @@ impl Files {
         Files { root }
     }
 
-    /// The file a URL path names, if it is inside the root.
+    /// The file a URL path names, if it is inside the root, with the
+    /// working tree laid out as GitHub Pages lays out the site (DECISIONS
+    /// D1197): the Rust build, `dist/next/`, over the root, so `/` is
+    /// Midnight Playground; the JS game under `/legacy/`, as its tracked
+    /// files at the root (Pages drops `legacy/dist/`, so that is nothing
+    /// here either); everything else, `dist/next/` itself, the tools and
+    /// the parity reports, where it is in the tree.
     pub fn resolve(&self, url_path: &str) -> Option<PathBuf> {
         let decoded = percent_decode(url_path)?;
-        let mut p = self.root.clone();
+        let mut rel = PathBuf::new();
         for c in Path::new(decoded.trim_start_matches('/')).components() {
             match c {
-                Component::Normal(s) => p.push(s),
+                Component::Normal(s) => rel.push(s),
                 Component::CurDir => {}
                 _ => return None,
             }
         }
-        Some(p)
+        if let Ok(under) = rel.strip_prefix("legacy") {
+            if under.starts_with("dist") {
+                return Some(self.root.join(&rel));
+            }
+            return Some(self.root.join(under));
+        }
+        // Over the root file by file, as `cp -r dist/next/. _site/` is: a
+        // directory only counts when the build has its page.
+        let over = self.root.join("dist").join("next").join(&rel);
+        Some(if over.is_file() || over.join("index.html").is_file() {
+            over
+        } else {
+            self.root.join(&rel)
+        })
+    }
+
+    /// Whether `file` (from `resolve`) is part of a build under `dist/`,
+    /// where a `.br` or `.gz` copy may sit beside it.
+    fn built(&self, file: &Path) -> bool {
+        file.starts_with(self.root.join("dist"))
     }
 }
 
@@ -251,7 +278,8 @@ fn answer(out: &mut TcpStream, files: &Files, req: &Request) -> bool {
             false,
         );
     }
-    let pinned = req.path.starts_with("/vendor/") || req.path.starts_with("/audio/");
+    let unprefixed = req.path.strip_prefix("/legacy").unwrap_or(&req.path);
+    let pinned = unprefixed.starts_with("/vendor/") || unprefixed.starts_with("/audio/");
     let cache = (
         "Cache-Control",
         if pinned { "no-cache" } else { "no-store" }.to_string(),
@@ -285,7 +313,7 @@ fn answer(out: &mut TcpStream, files: &Files, req: &Request) -> bool {
         return respond(out, 304, "Not Modified", &[cache], b"", true);
     }
     // The release build's precompressed copies under dist/.
-    if req.path.starts_with("/dist/") {
+    if files.built(&file) {
         let accepted: Vec<String> = req
             .header("Accept-Encoding")
             .unwrap_or("")

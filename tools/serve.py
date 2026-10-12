@@ -1,5 +1,9 @@
 """Static file server for the game (run by serve.sh, which finds the port).
 
+The URL space is GitHub Pages' (D1112, D1197): the Rust build (dist/next/)
+sits over the repo root, so / is Midnight Playground, and the JS game is
+under /legacy/. See Handler.translate_path.
+
 python3 -m http.server sends Last-Modified but no Cache-Control, so browsers
 guess how long each file stays fresh. A phone then reloads with some modules
 new and some hours old: new touch controls lit up while an old Input.js
@@ -66,7 +70,33 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def pinned(self):
         # No path yet when the request line itself is bad (e.g. a browser
         # trying https on this port), and send_error still sends headers.
-        return getattr(self, 'path', '').startswith(('/vendor/', '/audio/'))
+        path = getattr(self, 'path', '')
+        if path.startswith('/legacy/'):
+            path = path[len('/legacy'):]
+        return path.startswith(('/vendor/', '/audio/'))
+
+    def translate_path(self, path):
+        """The working tree laid out as GitHub Pages lays out the site
+        (DECISIONS D1197): the Rust build, `dist/next/`, over the root, so
+        `/` is Midnight Playground; the JS game under `/legacy/`, as its
+        tracked files at the root; everything else, `dist/next/` itself,
+        the tools and the parity reports, where it is in the tree."""
+        file = super().translate_path(path)
+        root = os.path.abspath(self.directory)
+        rel = os.path.relpath(file, root)
+        if rel == '.':
+            rel = ''
+        if rel == 'legacy' or rel.startswith('legacy' + os.sep):
+            rel = rel[len('legacy'):].lstrip(os.sep)
+            if rel == 'dist' or rel.startswith('dist' + os.sep):
+                return file  # Pages drops legacy/dist/: nothing there.
+            return os.path.join(root, rel)
+        # Over the root file by file, as `cp -r dist/next/. _site/` is: a
+        # directory only counts when the build has its page.
+        over = os.path.join(root, 'dist', 'next', rel)
+        if os.path.isfile(over) or os.path.isfile(os.path.join(over, 'index.html')):
+            return over
+        return file
 
     def is_favourites(self):
         return getattr(self, 'path', '').split('?', 1)[0] == '/' + FAVOURITES
@@ -104,11 +134,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         realistic (SPEC 6.6). Browsers offer brotli only on https, so phones
         on the tailnet front get it and plain http gets gzip (D677)."""
         path = getattr(self, 'path', '').split('?', 1)[0].split('#', 1)[0]
-        if not path.startswith('/dist/'):
+        file = self.translate_path(path)
+        if not file.startswith(os.path.join(os.path.abspath(self.directory), 'dist') + os.sep):
             return None
         accepted = {t.split(';', 1)[0].strip().lower()
                     for t in self.headers.get('Accept-Encoding', '').split(',')}
-        file = self.translate_path(path)
         if not os.path.isfile(file):
             return None
         for encoding, ext in (('br', '.br'), ('gzip', '.gz')):

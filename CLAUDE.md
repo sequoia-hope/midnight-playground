@@ -110,10 +110,12 @@ the kernel on.
 ## Viewing output
 
 Only through the registered server: `proj up midnight-playground` (or
-`./serve.sh`). It serves the repo root, so the Rust build is at `/dist/next/`
-and parity reports at `/parity/report/`. Phones and other machines use the
-tailnet https front (the registry's `web_url` for this project, plus
-`dist/next/`), which is a secure context, so WebGPU and tilt work there.
+`./serve.sh`). It serves the repo root laid out as Pages lays out the site
+(D1197): the Rust build (`dist/next/`, once built) over the root, so `/` is
+the Rust game and `/dist/next/` still works; the JS game under `/legacy/`;
+the tools and parity reports where they are (`/parity/report/`). Phones and
+other machines use the tailnet https front (the registry's `web_url` for
+this project), which is a secure context, so WebGPU and tilt work there.
 
 **Never start another server, and never write a port number** into a script,
 config, default or doc. A program that needs a port takes `--port`, then
