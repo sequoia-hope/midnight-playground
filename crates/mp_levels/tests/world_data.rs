@@ -21,6 +21,11 @@ fn world_data_matches_the_js_world() {
     for (level, t) in common::tracks() {
         let id = level.id;
         let want = &g["levels"][id];
+        if want.is_null() {
+            // A corridor from the atlas has no JS world to match.
+            assert!(level.is_path(), "{id}: no golden");
+            continue;
+        }
         let w = level_world_data(level, t);
         assert_eq!(world_data(id), w, "{id}: world_data by id");
         assert_eq!(

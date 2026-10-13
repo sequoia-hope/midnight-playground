@@ -25,6 +25,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod corridor;
 pub mod geo;
 pub mod graph;
 pub mod plan;

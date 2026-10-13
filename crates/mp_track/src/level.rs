@@ -147,6 +147,10 @@ impl fmt::Debug for LoopSpec {
 pub enum Route {
     Segments(Vec<Segment>),
     Loop(LoopSpec),
+    /// An open road given as a path (x, z and optionally y per point):
+    /// a corridor from the atlas (docs/vision/peninsula.md, stage 1). Built
+    /// as a loop is, without the wrap; raced as segments are.
+    Path(LoopSpec),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -260,15 +264,21 @@ impl Level {
     pub fn segments(&self) -> Option<&[Segment]> {
         match &self.route {
             Route::Segments(s) => Some(s),
-            Route::Loop(_) => None,
+            Route::Loop(_) | Route::Path(_) => None,
         }
     }
 
+    /// The path spec of a loop or an open path.
     pub fn loop_spec(&self) -> Option<&LoopSpec> {
         match &self.route {
-            Route::Loop(l) => Some(l),
+            Route::Loop(l) | Route::Path(l) => Some(l),
             Route::Segments(_) => None,
         }
+    }
+
+    /// An open road given as a path.
+    pub fn is_path(&self) -> bool {
+        matches!(self.route, Route::Path(_))
     }
 }
 

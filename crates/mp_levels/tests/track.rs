@@ -26,7 +26,12 @@ fn length_start_and_finish() {
             assert_eq!(t.finish_s, f64::INFINITY, "a loop has no finish");
             assert_eq!(t.road_end(), f64::INFINITY);
         } else {
-            let total: f64 = l.segments().unwrap().iter().map(|s| s.len).sum();
+            // A path's length is its resampled polyline's (n samples a
+            // metre apart); segments add up.
+            let total: f64 = match l.segments() {
+                Some(segs) => segs.iter().map(|s| s.len).sum(),
+                None => (t.n - 1) as f64,
+            };
             assert_eq!(t.length, total, "one sample per metre");
             assert_eq!(t.n as f64, total + 1.0);
             assert_eq!(t.finish_s, t.length - l.finish_runoff.unwrap_or(180.0));

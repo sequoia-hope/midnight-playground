@@ -15,7 +15,9 @@ mod common;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-fn golden(id: &str) -> Value {
+/// The JS game's levels have goldens; a corridor from the atlas (a path,
+/// docs/vision/peninsula.md) has no JS to match.
+fn golden(id: &str) -> Option<Value> {
     let text = match id {
         "sierra" => include_str!("../../../parity/golden/world/sierra.json"),
         "coast" => include_str!("../../../parity/golden/world/coast.json"),
@@ -23,9 +25,9 @@ fn golden(id: &str) -> Value {
         "desert" => include_str!("../../../parity/golden/world/desert.json"),
         "seaside" => include_str!("../../../parity/golden/world/seaside.json"),
         "cruise" => include_str!("../../../parity/golden/world/cruise.json"),
-        _ => unreachable!(),
+        _ => return None,
     };
-    serde_json::from_str(text).unwrap()
+    Some(serde_json::from_str(text).unwrap())
 }
 
 fn sha_f32(a: &[f32]) -> String {
@@ -49,7 +51,7 @@ fn num(v: f64) -> Option<f64> {
 fn every_track_array_matches_the_js_dump() {
     let mut failures = Vec::new();
     for (level, t) in common::tracks() {
-        let g = golden(level.id);
+        let Some(g) = golden(level.id) else { continue };
         let arrays = g["track"]["arrays"].as_object().unwrap();
         for (name, want) in arrays {
             let (len, sha) = match name.as_str() {
@@ -107,7 +109,7 @@ fn every_track_array_matches_the_js_dump() {
 #[test]
 fn track_scalars_match_the_js_dump() {
     for (level, t) in common::tracks() {
-        let g = golden(level.id);
+        let Some(g) = golden(level.id) else { continue };
         let s = &g["track"]["scalars"];
         let id = level.id;
         assert_eq!(s["loop"], Value::Bool(t.is_loop), "{id}: loop");

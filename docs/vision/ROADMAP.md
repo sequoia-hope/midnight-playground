@@ -138,7 +138,8 @@ classes at the owner's request; Seaside Raceway first.
 - One breakable shortcut through a fence.
 - **Gate:** from pressing Drive, the owner finds and plays a race, a
   time trial and a delivery without opening a menu.
-- Design doc: `docs/vision/peninsula.md`.
+- Design doc: `docs/vision/peninsula.md` (written 2026-10-13; stage 1,
+  the first corridor from the atlas, built the same day: D1207).
 
 ## M19. Off the tarmac
 
