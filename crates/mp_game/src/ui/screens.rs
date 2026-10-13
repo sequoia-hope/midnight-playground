@@ -72,9 +72,13 @@ pub fn screen(
         (16.0, 16.0, 16.0)
     };
     let mut top_aligned = bp.short;
+    // `body.touch #menu` in portrait: under the rotate hint. The column
+    // starts below it rather than padding under it, so nothing scrolls
+    // beneath the hint (D1204).
+    let mut header = 0.0;
     if kind == Kind::Menu && bp.touch && bp.portrait {
-        // `body.touch #menu` in portrait: under the rotate hint.
-        pad.0 = bp.inset_top.max(12.0) + 40.0;
+        header = bp.inset_top.max(12.0) + 40.0;
+        pad.0 = 0.0;
         top_aligned = true;
     }
     let bg = if kind == Kind::Loading {
@@ -106,6 +110,11 @@ pub fn screen(
         inner.align_items = AlignItems::Center;
         inner.row_gap = bp.px(gap);
     }
+    // The menu's column stops above the page's build line (`#build`), so
+    // nothing scrolls under it (D1204); the background still fills the
+    // window behind the hint, the column and the line.
+    let footer = if kind == Kind::Menu { bp.footer } else { 0.0 };
+    let mut scroller = None;
     p.spawn((
         Node {
             position_type: PositionType::Absolute,
@@ -113,17 +122,30 @@ pub fn screen(
             right: Val::Px(0.0),
             top: Val::Px(0.0),
             bottom: Val::Px(0.0),
-            flex_direction: FlexDirection::Column,
-            padding: UiRect::new(bp.px(pad.1), bp.px(pad.1), bp.px(pad.0), bp.px(pad.2)),
-            overflow: Overflow::scroll_y(),
             ..default()
         },
         bg,
     ))
     .with_children(|p| {
-        p.spawn(inner).with_children(|p| body(p, cx));
-    })
-    .id()
+        scroller = Some(
+            p.spawn(Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                top: bp.px(header),
+                bottom: bp.px(footer),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::new(bp.px(pad.1), bp.px(pad.1), bp.px(pad.0), bp.px(pad.2)),
+                overflow: Overflow::scroll_y(),
+                ..default()
+            })
+            .with_children(|p| {
+                p.spawn(inner).with_children(|p| body(p, cx));
+            })
+            .id(),
+        );
+    });
+    scroller.expect("the screen's column")
 }
 
 /// The logo node, at this breakpoint's size.
@@ -138,7 +160,10 @@ pub fn logo(p: &mut ChildSpawnerCommands, cx: &Cx, place: impl FnOnce(&mut Node)
         ..default()
     };
     place(&mut n);
-    p.commands_mut().entity(e).insert(n);
+    // Named for the bridge (the overlap tests), as `.logo` was in the DOM.
+    p.commands_mut()
+        .entity(e)
+        .insert((n, Control::named("logo", Value::None)));
 }
 
 /// `.title`.

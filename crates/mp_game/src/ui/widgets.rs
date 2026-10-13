@@ -91,6 +91,9 @@ pub struct Bp {
     pub portrait: bool,
     /// `env(safe-area-inset-top)`, CSS px.
     pub inset_top: f32,
+    /// The page's build line at the foot of the menu (`#build`): how far
+    /// up from the bottom it reaches, CSS px, 0 where there is none.
+    pub footer: f32,
 }
 
 impl Bp {
@@ -105,6 +108,7 @@ impl Bp {
             compact: h <= 500.0,
             portrait: h >= w,
             inset_top,
+            footer: 0.0,
         }
     }
 

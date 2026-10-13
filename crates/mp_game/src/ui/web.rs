@@ -189,6 +189,11 @@ fn spawn_screen_cam(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let mut image = Image::new_target_texture(1, 1, TextureFormat::Rgba8UnormSrgb, None);
     // Drawn into, never uploaded: no copy of its pixels in memory.
     image.data = None;
+    // Drawn afresh every frame, so a resize (a phone turned on a screen)
+    // keeps nothing of the old picture. Bevy's copy of it would need
+    // COPY_SRC, which a target texture lacks: WebGPU rejected the copy and
+    // Bevy quit the app on the validation error (D1204).
+    image.copy_on_resize = false;
     image.sampler = ImageSampler::linear();
     let image = images.add(image);
     let cam = commands
@@ -589,6 +594,7 @@ fn publish(
     play: Res<Play>,
     status: Res<Status>,
     controls: super::ControlQuery,
+    parents: Query<&ChildOf>,
 ) {
     let Some(mr) = mr() else { return };
     set(&mr, "staged", STAGED.load(Ordering::Relaxed));
@@ -615,16 +621,53 @@ fn publish(
         ui.inset_top = top as f32;
         ui.dirty = true;
     }
+    // How far the build line reaches up from the bottom (the menu keeps
+    // clear of it).
+    if let Some(f) = Reflect::get(&mr, &JsValue::from_str("footer"))
+        .ok()
+        .and_then(|v| v.as_f64())
+        && (f as f32 - ui.footer).abs() > 0.5
+    {
+        ui.footer = f as f32;
+        ui.dirty = true;
+    }
     let css = play.css_scale.max(0.01);
     let mut nodes = serde_json::Map::new();
     let mut full = Vec::new();
     let mut tilt_option = Vec::new();
-    for (id, r, vis, enabled, value, sel, z) in snapshot(&controls, css) {
+    let snaps = snapshot(&controls, css);
+    let ids: std::collections::BTreeMap<Entity, &str> =
+        snaps.iter().map(|s| (s.entity, s.id.as_str())).collect();
+    // The nearest control a control sits inside (for the overlap tests:
+    // a control may cover the one it is part of, never any other).
+    let parent_of = |e: Entity| {
+        let mut at = e;
+        while let Ok(p) = parents.get(at) {
+            at = p.parent();
+            if let Some(id) = ids.get(&at) {
+                return Some(id.to_string());
+            }
+        }
+        None
+    };
+    let parent_ids: Vec<Option<String>> = snaps.iter().map(|s| parent_of(s.entity)).collect();
+    for (s, parent) in snaps.into_iter().zip(parent_ids) {
+        let super::Snap {
+            id,
+            rect: r,
+            shown,
+            visible: vis,
+            enabled,
+            value,
+            sel,
+            z,
+            ..
+        } = s;
         if matches!(id.as_str(), "btn-start" | "btn-again" | "btn-restart") && vis {
-            full.push(r);
+            full.push(shown);
         }
         if id == "option-tilt" && vis && play.touch_ui {
-            tilt_option.push(r);
+            tilt_option.push(shown);
         }
         let value = match value {
             super::Value::None => serde_json::Value::Null,
@@ -637,6 +680,8 @@ fn publish(
             serde_json::json!({
                 "x": r.0, "y": r.1, "w": r.2, "h": r.3,
                 "visible": vis, "enabled": enabled, "value": value, "sel": sel, "z": z,
+                "shown": { "x": shown.0, "y": shown.1, "w": shown.2, "h": shown.3 },
+                "parent": parent,
             }),
         );
     }

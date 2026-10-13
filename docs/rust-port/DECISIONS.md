@@ -10459,3 +10459,48 @@ and under throttle the rear went first. Three causes, three changes:
 
 The arcade model and every arcade golden are untouched. The sim race's
 pinned hash in `sim_model.rs` moved with the tuning.
+
+## D1204. No part of the menu covers another; a phone turned on a screen no longer quits
+
+**Date:** 2026-10-12. The owner: "the text on mobile that explains the
+controls in the menu obscures the build info. make sure no menu item ever
+obscures another, with tests to keep it that way".
+
+- **The build line** (`#build`, the page's, D1112) is fixed at the foot of
+  the window, and the menu's scrolling column ran the full height under
+  it: on an iPhone held sideways the touch help ended 10 px into it, in
+  portrait 19 px, and on any window the content scrolled under it. The
+  page now publishes how far the line reaches up from the bottom
+  (`__mp.footer`, measured on resize and with the line's 400 ms check; the
+  line stays laid out while hidden, `visibility: hidden`, so the height is
+  known before the menu shows), and on the menu the scrolling column stops
+  there (`Bp.footer`). The screen's background moves to a node of its own
+  behind the column, so it still fills the window.
+- **The rotate hint** in portrait sat over the top of the same column,
+  which padded under it, so content scrolled beneath the pill. The column
+  now starts below the hint instead.
+- **The level viewer pill** floated in the card's corner out of the
+  layout, over the full-width rows of the level number and, at the compact
+  size, the top 3 px of the title; a longer title would have run under it.
+  It now shares the number's line (space-between), reaching into the
+  card's padding by its old offset so it sits where it did and the line
+  stays the number's height.
+- **The hit test** takes a control only where it shows (`css_shown`: its
+  box cut to its scrolling ancestors' clip), so a tap on the build line or
+  the hint does not reach the control hidden under it. The bridge gives
+  every control that box (`shown`) and the control it sits inside
+  (`parent`); the logo and the car heading are named controls now.
+- **`tools/parity/e2e/menu-layout.test.mjs`** keeps it: six desktop sizes
+  (one compact) and nine phone sizes both ways up, the menu and the
+  Settings screen each scrolled to the top, the middle and the foot. No
+  two shown controls overlap unless one is inside the other, none shows
+  under the build line, none runs off the side. Without the footer
+  reserve it fails at every size.
+- **Found by the same test**: resizing the window on a phone's screen (a
+  phone turned on the menu) quit the client. The screens' scene picture
+  (D1199) is a render target without `COPY_SRC`, and Bevy's
+  `copy_on_resize` copied the old picture into the new texture; WebGPU
+  rejected the copy and Bevy quits on a validation error. The picture is
+  drawn afresh every frame, so `copy_on_resize` is off. The test checks
+  the client still draws after every resize, since no console error
+  showed it (Bevy's errors go to `console.log`).

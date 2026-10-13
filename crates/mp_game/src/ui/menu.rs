@@ -326,38 +326,50 @@ pub fn menu(
             BorderColor::all(w::white(0.12)),
         ))
         .with_children(|p| {
-            // The level viewer (SPEC 8.6, D679): a pill in the card's
-            // corner, out of the layout, so nothing else on the menu moves.
+            // The level number, and the level viewer (SPEC 8.6, D679): a
+            // pill in the card's corner. They share the first line, so the
+            // card's text never runs under the pill (D1204); the pill keeps
+            // its spot in the corner by reaching into the card's padding,
+            // which keeps the line as tall as the number.
             let f = cx.f("btn-viewer");
-            let mut e = p.spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    top: bp.px(if bp.compact { 6.0 } else { 10.0 }),
-                    right: bp.px(if bp.compact { 10.0 } else { 14.0 }),
-                    padding: UiRect::axes(bp.px(10.0), bp.px(3.0)),
-                    border: w::border(&bp, 1.0),
-                    border_radius: w::pill(),
-                    ..default()
-                },
-                BorderColor::all(w::white(0.25)),
-                BackgroundColor(w::white(0.06)),
-                Control::act("btn-viewer", Act::Viewer).value(Value::Text("Level viewer".into())),
-            ));
-            w::focus_ring(&mut e, &bp, f);
-            e.with_children(|p| {
+            p.spawn(Node {
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::FlexStart,
+                column_gap: bp.px(10.0),
+                ..default()
+            })
+            .with_children(|p| {
                 p.spawn((
-                    w::text(
-                        "LEVEL VIEWER",
-                        T::new(11.0).bold().ls(0.12).c(w::accent2()),
-                        bp.k,
-                    ),
-                    TextLayout::no_wrap(),
+                    w::text(level.num, T::new(12.0).bold().ls(0.4).c(w::accent()), bp.k),
+                    Control::named("lvl-num", Value::Text(level.num.into())),
                 ));
+                let reach = if bp.compact { -4.0 } else { -6.0 };
+                let mut e = p.spawn((
+                    Node {
+                        flex_shrink: 0.0,
+                        margin: UiRect::new(bp.px(0.0), bp.px(reach), bp.px(reach), bp.px(0.0)),
+                        padding: UiRect::axes(bp.px(10.0), bp.px(3.0)),
+                        border: w::border(&bp, 1.0),
+                        border_radius: w::pill(),
+                        ..default()
+                    },
+                    BorderColor::all(w::white(0.25)),
+                    BackgroundColor(w::white(0.06)),
+                    Control::act("btn-viewer", Act::Viewer)
+                        .value(Value::Text("Level viewer".into())),
+                ));
+                w::focus_ring(&mut e, &bp, f);
+                e.with_children(|p| {
+                    p.spawn((
+                        w::text(
+                            "LEVEL VIEWER",
+                            T::new(11.0).bold().ls(0.12).c(w::accent2()),
+                            bp.k,
+                        ),
+                        TextLayout::no_wrap(),
+                    ));
+                });
             });
-            p.spawn((
-                w::text(level.num, T::new(12.0).bold().ls(0.4).c(w::accent()), bp.k),
-                Control::named("lvl-num", Value::Text(level.num.into())),
-            ));
             p.spawn((
                 w::text(
                     level.title,
@@ -490,6 +502,7 @@ pub fn menu(
                     margin: UiRect::bottom(bp.px(6.0)),
                     ..default()
                 },
+                Control::named("car-heading", Value::Text("YOUR CAR".into())),
             ));
             p.spawn((
                 Node {
