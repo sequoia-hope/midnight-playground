@@ -341,6 +341,7 @@ pub fn level() -> Level {
         elevation: Some(Arc::new(ground)),
         ground: Some(Arc::new(ground)),
         loose_ground: None,
+        open: false,
         sea_y: None,
         zones: vec![
             zone(

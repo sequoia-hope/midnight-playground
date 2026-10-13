@@ -245,6 +245,11 @@ pub struct Level {
     pub ground: Option<GroundFn>,
     /// Off the tarmac: 0 on paved run-off, 1 on dirt and grass (Seaside).
     pub loose_ground: Option<GroundFn>,
+    /// An open level: the car may leave the road onto `ground`, which is the
+    /// real ground under the whole box (docs/vision/peninsula.md, stage 2).
+    /// The Track blends the road into it ([`crate::Track::ground_y`]) and
+    /// world generation shapes the land from it with the same law.
+    pub open: bool,
     pub sea_y: Option<f64>,
     pub zones: Vec<Zone>,
     pub sky: Vec<SkyKey>,

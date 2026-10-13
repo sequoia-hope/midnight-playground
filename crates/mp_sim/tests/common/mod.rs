@@ -195,6 +195,7 @@ pub fn straight_level(length: f64, road: &'static str) -> Level {
         elevation: None,
         ground: None,
         loose_ground: None,
+        open: false,
         sea_y: None,
         zones: vec![Zone {
             key: "test",

@@ -91,6 +91,7 @@ pub(crate) fn police(heat_cap: &[u32], los_open_ground: &[bool]) -> Police {
 pub mod coast;
 pub mod cruise;
 pub mod desert;
+pub mod ground;
 pub mod seaside;
 pub mod sierra;
 pub mod south_coast;

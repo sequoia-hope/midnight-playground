@@ -76,18 +76,39 @@ from the real road through the existing coast generator.
   the road: the climb to the crest, the farms, the drop to the creeks,
   the town's lights at the end.
 
-### Stage 2. Ground under the whole box
+### Stage 2. Ground under the whole box (built 2026-10-13)
 
-- An atlas height field as a `Ground`: the cache's 15 m terrain (the
-  build script's cache, finer than the 50 m planning grid in git) for
-  the corridor's region, blended with the road surface as Seaside blends
-  its fine and wide grids.
-- The arcade handling allowed off the ribbon onto it: the small
-  interface of port SPEC 4.5 gets its second implementation, and the
-  walls become the road's edge only where there is a wall.
-- The world generator's terrain takes its heights from the field
-  instead of a landform, with the kit's shaping (shoulders, flattens)
-  kept near the road.
+- **`tools/atlas/ground.py <corridor>`** writes `<corridor>.ground.bin`
+  beside the corridor file: the Terrarium terrain tiles (15 m real, the
+  same source as the planning grid, cached in `tools/atlas/cache/`)
+  resampled onto a grid of 12 game metres over the corridor's box plus
+  1.5 km, heights compressed as the road is. 341 kB zlib in git;
+  `mp_levels::ground::HeightGrid` reads it (bilinear, clamped) and the
+  level includes it at compile time, inflated once when the level is
+  first made. Packing it into the wasm rather than fetching it as
+  Seaside's survey is fetched is a delivery choice for the owner: this
+  way needed no page, loader or host plumbing.
+- **An open level** (`Level::open`): its `ground` is the land under the
+  whole box. The Track blends the road into it (`Track::ground_y`): the
+  road's own surface out to the drawn shoulder, a metre's step down to
+  the land with the road blended in by the coast landform's law
+  (`OPEN_R0`, `OPEN_BAND`, `OPEN_POW`, `OPEN_DROP` in `mp_track`), and
+  the land itself past the band. World generation's terrain uses the
+  same constants in its near field and the level's ground as every
+  zone's landform, so the car sits on what is drawn: a test holds the
+  two within 0.75 m along the corridor, and equal past the band.
+- **The arcade car off the road:** on an open level the walls are gone
+  (no `collide_walls`), the height comes from `ground_y`, and past the
+  shoulder the car is on loose ground (the circuit run-off's drag). The
+  sim car's `TrackGround` reads the same ground and offers no wall
+  colliders. Rivals, traffic and police are unchanged: they live on the
+  ribbon.
+- Not yet: the land's cover (farms, scrub, forest) is still the kit's
+  colouring and planting over the real shape; the coast kit's sea stacks
+  and cliffs are placed by its own rules, so some stand on dry land.
+  Progress along the road is still the nearest point of the ribbon, so
+  a field cuts a corner; a road network (stage 3) is where that gets
+  its proper answer.
 - **Gate:** pull off Highway 1 at the crest and drive across a field.
 
 ### Stage 3. Two roads meeting

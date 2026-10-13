@@ -105,6 +105,7 @@ pub fn level() -> Level {
         elevation: None,
         ground: None,
         loose_ground: None,
+        open: false,
         sea_y: None,
         zones: vec![
             zone(

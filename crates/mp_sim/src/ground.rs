@@ -37,6 +37,10 @@ impl<'a> TrackGround<'a> {
         let t = self.track;
         let mut off = if t.run_l.is_some() {
             clamp((lat.abs() - hw - 0.4) / 1.5, 0.0, 1.0)
+        } else if t.open_ground.is_some() {
+            // An open level: past the shoulder the car is on the land.
+            let p = t.project(x, z, self.hint);
+            clamp((lat.abs() - hw - t.margin[p.i] as f64) / 1.5, 0.0, 1.0)
         } else {
             0.0
         };
@@ -53,7 +57,7 @@ impl Ground for TrackGround<'_> {
     fn height(&self, x: f64, z: f64) -> GroundSample {
         let t = self.track;
         let p = t.project(x, z, self.hint);
-        let y = t.surface_y(p.s, p.lat);
+        let y = t.ground_y(x, z, p.s, p.lat);
         let f = t.frame(p.s);
         // Slopes across and along the road, from the surface itself, so
         // bank, grade and run-off all come out as the arcade sees them.
@@ -105,7 +109,10 @@ impl Ground for TrackGround<'_> {
         let f = t.frame(p.s);
         let y = t.surface_y(p.s, p.lat);
         // The corridor's walls as planes facing the road, from the frame
-        // nearest the box's centre.
+        // nearest the box's centre. An open level has none.
+        if t.open_ground.is_some() {
+            return;
+        }
         out.push(Collider::Plane {
             point: Vec3::new(f.x + f.rx * f.wall_r, y, f.z + f.rz * f.wall_r),
             normal: Vec3::new(-f.rx, 0.0, -f.rz),

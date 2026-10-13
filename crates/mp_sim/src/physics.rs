@@ -489,8 +489,11 @@ impl CarPhysics {
             // Circuit run-off (surveyed tracks carry run-off grades): off the
             // tarmac the tyres plough through dirt and dry grass. Paved run-off
             // drives like the road.
+            // An open level: past the shoulder the car is on the land.
             let mut off = if t.run_l.is_some() {
                 clamp((v.lat.abs() - f.hw - 0.4) / 1.5, 0.0, 1.0)
+            } else if t.open_ground.is_some() {
+                clamp((v.lat.abs() - f.hw - f.margin) / 1.5, 0.0, 1.0)
             } else {
                 0.0
             };
@@ -648,16 +651,19 @@ impl CarPhysics {
         v.speed = v.vx * kernel::cos(v.yaw) + v.vz * kernel::sin(v.yaw);
 
         // ── Integrate position ─────────────────────────────────────
-        let prev_ground = t.surface_y(v.s, v.lat);
+        let prev_ground = t.ground_y(v.x, v.z, v.s, v.lat);
         v.x += v.vx * dt;
         v.z += v.vz * dt;
         let p = t.project(v.x, v.z, v.s);
         v.s = p.s;
         v.lat = p.lat;
-        self.collide_walls(v, t, dt);
+        // An open level has no walls: the car may leave the road.
+        if t.open_ground.is_none() {
+            self.collide_walls(v, t, dt);
+        }
 
         // Vertical: follow the road unless it falls away faster than gravity.
-        let ground = t.surface_y(v.s, v.lat);
+        let ground = t.ground_y(v.x, v.z, v.s, v.lat);
         let ground_vy = (ground - prev_ground) / dt;
         v.vy -= G * dt;
         let y_new = v.y + v.vy * dt;
