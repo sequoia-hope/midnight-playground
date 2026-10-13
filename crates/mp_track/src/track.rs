@@ -966,30 +966,42 @@ fn build_racing_line(t: &mut Track) {
     t.racing_line = racing_line;
 
     // Speed a well-driven car can carry through each metre.
-    t.speed_profile = speed_profile(t, 15.5, 11.0, false);
-    t.speed_profile_sim = speed_profile(t, SIM_A_LAT, SIM_BRAKE, true);
+    t.speed_profile = speed_profile(t, 15.5, 0.0, 11.0, false);
+    t.speed_profile_sim = speed_profile(t, SIM_A_LAT, SIM_A_LAT_V2, SIM_BRAKE, true);
 }
 
 /// The lateral grip (m/s²) and the braking (m/s²) a sim car is driven to:
-/// the Vento GT's tyres, with a margin for the driver.
-pub const SIM_A_LAT: f64 = 7.5;
-pub const SIM_BRAKE: f64 = 8.5;
+/// the Vento GT's, with a margin for the driver (about three quarters of
+/// what the car holds on the rig). Its downforce adds `SIM_A_LAT_V2` of grip
+/// per (m/s)²: since its race tyres and wing (D1206) the Vento holds
+/// 12.5 m/s² at 20 m/s and 15.7 at 60 m/s, and brakes at 15 m/s² from
+/// 67 m/s. On street tyres it was 7.5 flat and 8.5.
+pub const SIM_A_LAT: f64 = 9.0;
+pub const SIM_A_LAT_V2: f64 = 0.0007;
+pub const SIM_BRAKE: f64 = 10.5;
 /// Over a crest, the share of gravity a sim car may ask of it (m/s²), and
 /// the samples either side the crest's bend is measured over.
 const CREST_G: f64 = 6.5;
 const CREST_SPAN: i64 = 4;
 
-/// The speed a car with `a_lat` of grip and `brake` of braking can carry
-/// through each metre. `crests`: also slow enough over a crest to keep the
-/// wheels on the road (a car that flies cannot brake for what follows).
-fn speed_profile(t: &Track, a_lat: f64, brake: f64, crests: bool) -> Vec<f32> {
+/// The speed a car with `a_lat + a_lat_v2·v²` of grip and `brake` of
+/// braking can carry through each metre. `crests`: also slow enough over a
+/// crest to keep the wheels on the road (a car that flies cannot brake for
+/// what follows).
+fn speed_profile(t: &Track, a_lat: f64, a_lat_v2: f64, brake: f64, crests: bool) -> Vec<f32> {
     let n = t.n;
     let w = t.is_loop;
     let mut vmax = vec![0f32; n];
     let v_top = 69.5;
     for i in 0..n {
         let k = (t.k_smooth[i] as f64).abs() + 1e-5;
-        vmax[i] = js::min(v_top, (a_lat / k).sqrt()) as f32;
+        // v²k = a_lat + a_lat_v2·v²; flat out where downforce outgrows the
+        // bend.
+        vmax[i] = if k > a_lat_v2 {
+            js::min(v_top, (a_lat / (k - a_lat_v2)).sqrt())
+        } else {
+            v_top
+        } as f32;
     }
     if crests {
         // The road's downward bend (1/m) over a few samples either side.

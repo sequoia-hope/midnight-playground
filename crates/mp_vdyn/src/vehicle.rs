@@ -32,10 +32,12 @@ const ABS_GAIN: f64 = 60.0;
 /// throttle past the target and gives it back below. Going straight it
 /// allows `TC_TARGET_STRAIGHT`, the extra fading out by `TC_STRAIGHT_LAT`
 /// of the peak: at 0.06 the car with it took 0.3 s longer to 30 m/s than
-/// the car spinning its wheels without it.
+/// the car spinning its wheels without it. 0.14 since the Vento's race
+/// tyres (D1206), which reach their peak at a larger slip (the brush
+/// tyre's `3μFz/C`): at 0.1 it launched 0.04 s slower than wheelspin.
 const TC_TARGET: f64 = 0.06;
 const TC_TARGET_LAT: f64 = 0.03;
-const TC_TARGET_STRAIGHT: f64 = 0.1;
+const TC_TARGET_STRAIGHT: f64 = 0.14;
 const TC_STRAIGHT_LAT: f64 = 0.25;
 const TC_CUT: f64 = 40.0;
 const TC_RESTORE: f64 = 4.0;

@@ -10592,3 +10592,69 @@ obscures another, with tests to keep it that way".
   quarter of the front tyres' peak lateral acceleration; past that the
   target is D1203's.
 - The sim race's pinned hash in `sim_model.rs` moved.
+
+## D1206. Race tyres and downforce for the sim car; a fixed stick and the slider at the right edge
+
+**Date:** 2026-10-13. The owner, choosing from D1205's open question:
+"race tyres and downforce, option 2. also let's update the mobile UI. put
+throttle all the way on the right. i dont use drift much, might drop it.
+make the steering box stay fixed. i need right turn braking without my
+fingers colliding."
+
+- **The Vento GT is a GT race car** (`mp_vdyn::cars::vento_gt`): race
+  tyres, peak friction 1.45 front and 1.55 rear (the street tyres' 1.15
+  and 1.25, the stagger kept), and a splitter and wing, ClA 1.1 m² front
+  and 1.4 m² rear (0.3 and 0.4), CdA 0.9 m² (0.8). At 67 m/s the
+  downforce is 0.45 of the car's weight, 44 % of it on the front axle,
+  which carries 52 % of the weight, so the balance moves toward
+  understeer as the speed rises. On the flat rig (`cargo run --release -p
+  mp_vdyn --example grip_probe`: the steering wound on over 12 s under a
+  speed hold, the most lateral acceleration held a third of a second)
+  the car holds 1.28 g at 20 m/s, 1.39 at 40 and 1.60 at 60 (street
+  tyres: 1.04, 1.06, 1.08), brakes at 1.55 g from 67 m/s (1.22) and
+  tops out at 74 m/s after 40 s (77). The grip-scaled lock, the yaw
+  damper and the cap (D1205) take their scale from the tyres and the
+  downforce, so they follow without change.
+- **The sim speed profile** (`speed_profile_sim`, for the guide line and
+  the sim rivals) gains a downforce term: the grip is `SIM_A_LAT +
+  SIM_A_LAT_V2·v²`, 9.0 m/s² and 0.0007 per (m/s)², and the braking
+  `SIM_BRAKE` 10.5 m/s² (7.5 flat and 8.5): about three quarters of what
+  the car holds, the margin the street-tyre numbers had. The arcade
+  profile is the same function with no downforce term, unchanged to the
+  bit.
+- **Traction control** allows 0.14 slip going straight (0.1, D1205): the
+  race tyres peak at a larger slip ratio (the brush tyre's `3μFz/C`, about
+  0.12 at the rear now), and at 0.1 the car launched 0.04 s slower than
+  with wheelspin. With race tyres the difference is small either way
+  (4.28 s to 30 m/s with it, 4.29 s without).
+- **Measured.** The person-like driver on Cruise's freeway
+  (`--example freeway`, four stretches, the best gain and preview each):
+  on the stick the lane error's RMS at 55, 60 and 67 m/s went from 0.14,
+  0.30 and 1.81 m to 0.09, 0.10 and 0.24 m, and the wall hit at 67 m/s is
+  gone; on keys from 0.78, 0.90 and 2.01 m to 0.93, 1.02 and 1.29 m, no
+  wall either (keys' full lock now asks for more cornering, so the lower
+  speeds are a little twitchier). `mp-sim race --physics all` over
+  Sierra, Coast, Desert, Streets and Seaside: the sim rivals' wall
+  impacts 36 to 18, their re-placements 22 to 21, and the autopilot
+  player's wall impacts 123 to 43.
+- **The touch controls** (`play::touch`, deviation recorded):
+  - the stick stays at its resting place, bottom left. A thumb put down
+    anywhere in the left 45 % of the screen steers by how far it is
+    left or right of the stick's centre, and full lock is a stick's
+    range from it; the centre no longer jumps under the thumb nor
+    follows it past full lock;
+  - the pedal slider is at the right edge (the JS's DRIFT strip, 0.7 b
+    and a 6 px gap, stood there), the same width and bands. The DRIFT
+    strip is gone: a thumb past the slider's right edge is still on the
+    pedals, and the handbrake is on the pedal buttons (and keys and pads)
+    only. The help line says so.
+  - Full right lock with the knob's edge now ends 64 px before the brake
+    upright on the owner's iPhone (390 px wide; the stick had centred
+    under a thumb landing as far right as 175 px, putting full right lock
+    over the old slider's brake), and further sideways
+    (`bigger_controls_on_an_iphone` checks more than 50 px both ways up).
+  - The shared browser suites keep the JS game's checks and run the Rust
+    game's own where they differ (`TARGET === 'rust'`: the stick test,
+    the slider's right edge, the panels on screen); `stickHome` puts a
+    thumb on the stick's centre.
+- The sim race's pinned hash in `sim_model.rs` moved.

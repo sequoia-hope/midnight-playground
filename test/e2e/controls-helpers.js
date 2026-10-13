@@ -1,6 +1,8 @@
 // Shared bits for the controls and audio tests: start a race the way a
 // player does, read the car, and hold on-screen pads with real touches.
 
+import { TARGET } from './harness.js';
+
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Wait for secs of race time to pass. Physics checks wait on this, not the
@@ -101,12 +103,26 @@ export function choose(game, selector, value) {
   }, selector, value);
 }
 
+// Where a thumb steers straight: anywhere on the left in the JS game,
+// which centres the stick under it (a fifth of the way across, by
+// default); the stick's own centre in the Rust game, whose stick stays put
+// (D1206).
+export async function stickHome(game) {
+  const vw = await game.eval('innerWidth');
+  if (TARGET !== 'rust') return Math.round(vw * 0.2);
+  return game.eval(() => {
+    const b = document.querySelector('#touch .t-stick').getBoundingClientRect();
+    return Math.round((b.left + b.right) / 2);
+  });
+}
+
 // A thumb on the steering stick: down at (x, y), a point on the left of
-// the screen (by default a third of the way up from the bottom-left), as
-// finger `id`. Returns the point; move it with stickTo.
+// the screen (by default where it steers straight, a third of the way up
+// from the bottom), as finger `id`. Returns the point; move it with
+// stickTo.
 export async function stickDown(game, { x, y, id = 0 } = {}) {
-  const vw = await game.eval('innerWidth'), vh = await game.eval('innerHeight');
-  const p = { x: x ?? Math.round(vw * 0.2), y: y ?? Math.round(vh * 0.7), id };
+  const vh = await game.eval('innerHeight');
+  const p = { x: x ?? (await stickHome(game)), y: y ?? Math.round(vh * 0.7), id };
   await game.touch('touchStart', [p]);
   return p;
 }
@@ -117,7 +133,8 @@ export function stickTo(game, p, dx, others = []) {
 }
 
 // A point on the pedal slider at height u (0 bottom, 1 top), or with
-// drift, on the DRIFT strip beside it at that height.
+// drift, on the DRIFT strip beside it at that height (the JS game's; the
+// Rust game has none since D1206).
 export function sliderPoint(game, u, { drift = false, id = 0 } = {}) {
   return game.eval((u, drift, id) => {
     const t = document.querySelector('#touch .t-slider').getBoundingClientRect();

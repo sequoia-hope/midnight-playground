@@ -2,7 +2,7 @@
 //! Bevy UI: the thumb stick under the left thumb (or waiting in its
 //! corner), the ◂ ▸ pads, or the wheel that tilt turns; the pedal slider
 //! with its BRAKE, GAS and N2O bands, the fill to the thumb and the knob,
-//! and the DRIFT strip beside it, or the GAS, BRAKE, DRIFT and N2O pads;
+//! or the GAS, BRAKE, DRIFT and N2O pads;
 //! and the reset, camera and pause buttons. Positions come from
 //! [`super::touch::Layout`], sizes are CSS px (fonts, borders and icons
 //! too), turned into Bevy UI px by the page's scale. The SVG icons are
@@ -32,7 +32,6 @@ pub(super) enum Part {
     FillGas,
     FillBrake,
     Knob,
-    Drift,
     Tap(usize),
     /// `.t-dir`: ◂ (0) and ▸ (1).
     Dir(usize),
@@ -59,7 +58,6 @@ const ON: Color = Color::srgba(1.0, 1.0, 1.0, 0.26);
 const GREEN: (f32, f32, f32) = (77.0 / 255.0, 1.0, 138.0 / 255.0);
 const RED: (f32, f32, f32) = (1.0, 56.0 / 255.0, 96.0 / 255.0);
 const BLUE: (f32, f32, f32) = (56.0 / 255.0, 182.0 / 255.0, 1.0);
-const ORANGE: (f32, f32, f32) = (1.0, 180.0 / 255.0, 84.0 / 255.0);
 /// `--accent`.
 const ACCENT: Color = Color::srgb(1.0, 56.0 / 255.0, 96.0 / 255.0);
 
@@ -357,26 +355,7 @@ pub(super) fn spawn(
             .id(),
     ];
     commands.entity(slider).add_children(&parts);
-    let drift = commands
-        .spawn((
-            centred(Node {
-                border_radius: BorderRadius::all(Val::Px(22.0)),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(2.0),
-                ..abs()
-            }),
-            BackgroundColor(PAD),
-            BorderColor::all(rgba(ORANGE, 0.55)),
-            Border(2.0),
-            Part::Drift,
-            Visibility::Inherited,
-        ))
-        .with_children(|p| {
-            p.spawn(label("DRIFT", 11.0, white));
-            p.spawn(icon(&icons.right, 18.0, white));
-        })
-        .id();
-    let mut kids = vec![stick_track, knob, slider, drift];
+    let mut kids = vec![stick_track, knob, slider];
     for (i, name) in TAPS.iter().enumerate() {
         let img = match *name {
             "reset" => &icons.reset,
@@ -609,17 +588,6 @@ pub(super) fn update(
                     } else {
                         LINE
                     });
-                }
-            }
-            Part::Drift => {
-                show(vis, t.pedals == PedalKind::Slider);
-                place(&mut n, lay.drift, k);
-                let on = slide.is_some_and(|s| s.drift);
-                if let Some(mut bg) = bg {
-                    bg.0 = if on { rgba(ORANGE, 0.42) } else { PAD };
-                }
-                if let Some(mut b) = border {
-                    *b = BorderColor::all(rgba(ORANGE, if on { 1.0 } else { 0.55 }));
                 }
             }
             Part::BandBrake => band(&mut n, lay.track, 0.0, s.brake_top, k),

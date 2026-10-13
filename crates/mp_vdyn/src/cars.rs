@@ -108,7 +108,12 @@ pub fn rig_car() -> VehicleDef {
 
 /// The Vento GT ("sports"): 1350 kg, 4.47 m by 1.9 m, 2.6 m wheelbase,
 /// 1.62 m track, 0.34 m wheels, rear drive, about 280 kW at 6000 rpm
-/// through six gears, top speed about 300 km/h.
+/// through six gears, top speed about 270 km/h. A GT race car since D1206:
+/// race tyres and a splitter and wing. On street tyres it held 1.05 g at
+/// every speed, and Cruise's freeway, curves of 300 to 700 m taken at
+/// 67 m/s in the arcade car, asks for up to 1.5 g; now 1.3 g at 20 m/s
+/// rising to 1.6 g at 60 m/s (`--example grip_probe`), and 1.55 g of
+/// braking from 67 m/s.
 pub fn vento_gt() -> VehicleDef {
     let mut def = rig_car();
     def.name = "Vento GT";
@@ -128,7 +133,9 @@ pub fn vento_gt() -> VehicleDef {
     // first in every corner. About 0.7°/g of understeer now: the front
     // runs out first, progressively, and the rear holds through the drive.
     def.axles[1].tyre.a = 0.105;
-    def.axles[1].tyre.mu0 = 1.25;
+    // Race tyres: the street tyre's 1.15 and 1.25.
+    def.axles[0].tyre.mu0 = 1.45;
+    def.axles[1].tyre.mu0 = 1.55;
     def.engine = Some(EngineDef {
         torque: vec![
             (1000.0, 300.0),
@@ -155,7 +162,12 @@ pub fn vento_gt() -> VehicleDef {
         half: Vec3::new(4.47 / 2.0, 0.4, 1.9 / 2.0),
         ..ChassisDef::default()
     };
-    def.aero.cda = 0.8;
+    // A splitter and a wing: at 67 m/s 0.45 of the car's weight, 44 % of it
+    // on the front axle (which carries 52 % of the weight), so the balance
+    // moves toward understeer as the speed rises; and the drag they add.
+    def.aero.cla_front = 1.1;
+    def.aero.cla_rear = 1.4;
+    def.aero.cda = 0.9;
     def.balance_springs();
     def
 }
