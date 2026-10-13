@@ -1,4 +1,8 @@
 {
  "about": "Songs heard on the Radio page and kept or rejected (docs/vision/radio.md 8). A song is its (genre, seed) pair: \"keep\" puts it in the station's rotation, \"reject\" keeps discovery from drawing it again; the note is why. Written by tools/serve.py; edit by hand freely.",
- "songs": []
+ "songs": [
+  {"at": "2026-10-09T06:27:54Z", "bars": 120, "bpm": 93, "dj": "teo", "genre": "chicha", "note": "", "seed": 81676, "station": "pacifico", "style": "Cumbia amazónica · D minor · Dm Gm A7 Dm", "title": "Chicha 81676", "verdict": "keep", "wall": 1791527109},
+  {"at": "2026-10-09T03:03:41Z", "bars": 136, "bpm": 134, "dj": "teo", "genre": "garage", "note": "", "seed": 49516, "station": "pacifico", "style": "UK garage · A dorian · Am7 D7 Am7 Em7", "title": "Garage 49516", "verdict": "keep", "wall": 1791514800},
+  {"at": "2026-10-09T03:13:46Z", "bars": 144, "bpm": 175, "dj": "marisol", "genre": "dnb", "note": "", "seed": 38720, "station": "tide", "style": "Liquid drum & bass · A minor · Am7 G7 Fmaj7 Em7", "title": "Drum & bass 38720", "verdict": "keep", "wall": 1791515463}
+ ]
 }
