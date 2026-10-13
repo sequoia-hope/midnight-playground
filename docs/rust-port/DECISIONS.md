@@ -10504,3 +10504,91 @@ obscures another, with tests to keep it that way".
   drawn afresh every frame, so `copy_on_resize` is off. The test checks
   the client still draws after every resize, since no console error
   showed it (Bevy's errors go to `console.log`).
+
+## D1205. Sim handling at motorway speed: proportional steering, a yaw damper and cap
+
+**Date:** 2026-10-13. The owner: "still cant steer the car properly at
+150mph even on the night city cruise freeway with big sweeping turns".
+
+- **What the car did.** On the flat rig (scratch step-steer runs at 30 to
+  75 m/s), a step of the stick at 67 m/s overshot the yaw rate it settles
+  at by 55 % (a tenth of the stick), 64 % (three tenths) and 121 % (full),
+  and full lock then weaved for about 3 s. That is the car's own yaw mode:
+  the linear bicycle model with the Vento's numbers (1350 kg, yaw inertia
+  2100 kg·m², 180 and 245 kN/rad per axle) has a damping ratio of 0.57 at
+  67 m/s and overshoots 39 %; the suspension's roll adds the rest. Every
+  correction overshot, and the next corrected that.
+- **And the stick's map was steep at its start.** The lock scaled one
+  full-lock wheel angle by the stick, and the brush curve is steep at
+  small slip, so at 67 m/s a tenth of the stick gave 0.18 g and three
+  tenths 0.46 g, not the 0.1 and 0.3 g D1203 meant.
+- **The Casual steering assists (SPEC 4.8), in `SimCar::steer`:**
+  - the request is filtered (0.05 s);
+  - for analogue steering (a stick, tilt, a gamepad) the wheel angle is
+    the steady state's for `|steer| · LOCK_FORCE` of the front tyres' peak
+    (`SimCar::wheel_for`), so a share of the stick is that share of the
+    cornering at every speed (0.10 g and 0.30 g at 67 m/s). Keys and pads
+    keep the share of full lock's angle: the client's ramp is their
+    progression, and with the proportional map a tap lost its bite (keys
+    on the freeway below, and the autopilot, which steers as keys do, hit
+    179 walls over the five levels against 99; 123 with the split);
+  - a yaw damper with washout, as an aircraft's: the wheel angle less
+    0.06 rad per rad/s of yaw rate away from its 0.7 s average, coming in
+    from 10 to 40 m/s. A steady turn keeps its wheel angle (the average
+    catches up), so the steering's map and the rivals' tuning stand;
+  - a yaw-rate cap at 1.1 times the yaw rate full steering settles at,
+    0.6 rad per rad/s past it: the spec's stability control, done with the
+    steering rather than the brakes, which would cost speed on every
+    sweeper; it is also the counter-steer the spec asks for in a slide.
+  Both are off on the handbrake, in the air and going backwards.
+  On the rig at 67 m/s the overshoot is now 0 % (a tenth), 3 % (three
+  tenths) and 36 % (full lock); below 15 m/s nothing changes.
+- **The lock counts the downforce** (`SimCar::axle_loads`): at 67 m/s the
+  front carries 12 % more than at rest, so full steering reaches about
+  1.0 g there instead of 0.9 g.
+- **Measured with a person-like driver** (`cargo run --release -p mp_sim
+  --example freeway`: 0.2 s reaction delay, a point ahead to steer for,
+  the best of a range of gains, four stretches of Cruise's freeway). Lane
+  error RMS before → after, on a stick: 0.21 → 0.14 m at 55 m/s, 0.44 →
+  0.30 m at 60, 2.21 → 1.81 m at 67; on keys 0.68 → 0.78, 0.90 → 0.90,
+  2.11 → 2.01. The spec's speed-sensitive rate limit for
+  keys was tried (1.5 a second at 65 m/s) and made keys worse at every
+  speed, so there is none.
+- **What is left is grip.** Cruise's freeway at 67 m/s is a chain of 300
+  to 700 m curves: 0.65 to 1.5 g. The arcade car has about 1.6 g (its
+  profile says 69.5 m/s throughout); the Vento on its street tyres about
+  1.05 g at that speed. Whatever the steering, the sim car must slow to
+  about 55 to 60 m/s for the 400 m curves. Whether the sim cars should
+  have more grip is the owner's call.
+- **The guide line on a sim car** colours for the sim speed profile and
+  the sim car's braking (`SimCar::braking`, `assist::brake_urgency_with`:
+  firm braking is `SIM_BRAKE`, the drag the car's own, a third of the
+  arcade's at 67 m/s); it had shown green at 67 m/s into curves the car
+  cannot take.
+- **The sim rivals** ask for the cornering they want as a share of full
+  lock's (`v²·κ / full_lock_ay`), the new steering's meaning, with their
+  yaw feedback as before. Over Sierra, Coast, Streets, Desert and Seaside
+  (`mp-sim race --physics all`, the autopilot player among them, so the
+  counts move with every contact) their wall impacts went from 46 to
+  between 16 and 36 and their re-placements from 13 to between 3 and 22,
+  race times much as before; with the old request (a share of full
+  lock's wheel angle) under the new map it was 33 and 13. Three
+  rival faults the new runs met, fixed in the sim branch only (the arcade
+  rivals and every golden are unchanged):
+  - a rival nose to tail with a wreck waited for good: the "cars
+    alongside" rule held it below the wreck's speed, and the stuck timer
+    only counted while that held speed was over 4 m/s. It now counts
+    against what the road asks for before the other cars (`want`);
+  - two rivals stopped side by side each dropped back for the other: now
+    only the one clearly (0.5 m) behind gives way;
+  - two rivals stuck together were put back on top of each other, each on
+    its own line, and stuck again every 2.5 s. The AI now picks the line
+    (`AiDriver::replace_lat`): its own if clear of every car there, else
+    the first clear across the road, from the side away from the nearest.
+- **Traction control in a straight line.** D1203's 0.06 slip target made
+  the car with traction control 0.3 s slower to 30 m/s than the car
+  spinning its wheels (`traction_control_beats_wheelspin` has failed in
+  CI since). Going straight it now allows 0.1, the extra fading out by a
+  quarter of the front tyres' peak lateral acceleration; past that the
+  target is D1203's.
+- The sim race's pinned hash in `sim_model.rs` moved.

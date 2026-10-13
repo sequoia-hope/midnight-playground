@@ -29,6 +29,22 @@ pub const BRAKE_DECEL: f64 = 15.0;
 pub const DRAG_V2: f64 = 0.00115;
 pub const DRAG_V: f64 = 0.01;
 
+/// A car's deceleration on a flat road (m/s²): `brake` at full pedal,
+/// and the drag, `drag_v2 · v² + drag_v · v`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Braking {
+    pub brake: f64,
+    pub drag_v2: f64,
+    pub drag_v: f64,
+}
+
+/// The arcade car's, as physics applies it.
+pub const ARCADE_BRAKING: Braking = Braking {
+    brake: BRAKE_DECEL,
+    drag_v2: DRAG_V2,
+    drag_v: DRAG_V,
+};
+
 /// The deceleration of a car going `v` m/s forward on a flat road with
 /// the brake fully on: the brake and the drag.
 pub fn full_brake_decel(v: f64) -> f64 {
@@ -40,11 +56,16 @@ pub fn full_brake_decel(v: f64) -> f64 {
 /// by Simpson's rule over eight steps (the integrand is smooth; exact to
 /// well under a millimetre at racing speeds). 0 when `v0 <= v1`.
 pub fn brake_distance(v0: f64, v1: f64, frac: f64) -> f64 {
+    brake_distance_with(v0, v1, frac, ARCADE_BRAKING)
+}
+
+/// [`brake_distance`] for a car braking as `b`.
+pub fn brake_distance_with(v0: f64, v1: f64, frac: f64, b: Braking) -> f64 {
     if v0 <= v1 {
         return 0.0;
     }
     let v1 = js::max(v1, 0.0);
-    let f = |u: f64| u / (BRAKE_DECEL * frac + DRAG_V2 * u * u + DRAG_V * u);
+    let f = |u: f64| u / (b.brake * frac + b.drag_v2 * u * u + b.drag_v * u);
     const N: usize = 8;
     let h = (v0 - v1) / N as f64;
     let mut sum = f(v1) + f(v0);
@@ -78,10 +99,16 @@ pub const RED_T: f64 = 0.25;
 /// (red) at t = 0: brake now. A point the car is already at or under the
 /// speed for is green; so is everything when the car is (nearly) still.
 pub fn brake_urgency(v: f64, vt: f64, d: f64) -> f64 {
+    brake_urgency_with(v, vt, d, ARCADE_BRAKING)
+}
+
+/// [`brake_urgency`] for a car braking as `b` (a sim car's, with its own
+/// speed profile: `SimCar::braking`).
+pub fn brake_urgency_with(v: f64, vt: f64, d: f64, b: Braking) -> f64 {
     if v <= vt || v < 1.0 {
         return 0.0;
     }
-    let t = (d - brake_distance(v, vt, FIRM)) / v;
+    let t = (d - brake_distance_with(v, vt, FIRM, b)) / v;
     clamp((WARN_T - t) / (WARN_T - ORANGE_T), 0.0, 1.0) + clamp((RED_T - t) / RED_T, 0.0, 1.0)
 }
 

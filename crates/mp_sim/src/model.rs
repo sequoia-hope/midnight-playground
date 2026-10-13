@@ -19,7 +19,7 @@
 //! its next update: small changes as impulses on the rigid body, a jump as
 //! a re-placement (SPEC 4.7).
 
-use mp_math::{clamp, kernel, smoothstep, wrap_angle};
+use mp_math::{clamp, js, kernel, smoothstep, wrap_angle};
 use mp_track::Track;
 use mp_vdyn::cars::vento_gt;
 use mp_vdyn::{Controls, Ground, Quat, Vec3, VehicleDef};
@@ -103,6 +103,11 @@ pub struct SimCar {
     written: Written,
     /// Seconds without any tyre on the ground.
     air: f64,
+    /// The steering request after the assists' filter (−1..1, a share of
+    /// the grip-scaled lock).
+    steer_in: f64,
+    /// The yaw rate's slow average, the yaw damper's washout (rad/s).
+    yaw_lp: f64,
 }
 
 /// Physics constants shared with the arcade model's readouts.
@@ -117,6 +122,28 @@ const IDLE: f64 = 900.0;
 /// Full steering asks the front tyres for this share of their peak force
 /// (`SimCar::steer_max`).
 const LOCK_FORCE: f64 = 0.9;
+/// The steering request's filter (s): it takes the edge off a step of the
+/// stick or a tap of a pad, which the car would otherwise answer with a
+/// yaw rate well past the one it settles at.
+const STEER_TAU: f64 = 0.05;
+/// The yaw damper (SPEC 4.8's stability control, done with the steering):
+/// wheel angle (rad) per rad/s of yaw rate away from its slow average, at
+/// speed. The car's own yaw mode is lightly damped at motorway speeds (on
+/// the rig at 67 m/s a step of the stick overshoots its yaw rate by 55 to
+/// 120 % and weaves for seconds; the bicycle model gives a damping ratio of
+/// 0.57), and this damps it. A steady turn is left its wheel angle: the
+/// washout lets the average catch up.
+const YAW_DAMP: f64 = 0.06;
+/// The washout's time constant (s).
+const YAW_WASHOUT: f64 = 0.7;
+/// The yaw-rate cap: past `YAW_CAP` times the yaw rate full steering
+/// settles at, the steering takes off this much angle (rad) per rad/s, so
+/// a car stepping out is caught with opposite lock.
+const YAW_CAP: f64 = 1.1;
+const YAW_CAP_GAIN: f64 = 0.6;
+/// The yaw damper and the cap come in between these speeds (m/s).
+const YAW_ASSIST_FROM: f64 = 10.0;
+const YAW_ASSIST_FULL: f64 = 40.0;
 
 impl SimCar {
     /// A sim car where the body view `v` is, at its speed.
@@ -132,6 +159,8 @@ impl SimCar {
             rest_height,
             written: Written::default(),
             air: 0.0,
+            steer_in: 0.0,
+            yaw_lp: 0.0,
         };
         s.written = s.snapshot_of(v);
         s
@@ -175,16 +204,27 @@ impl SimCar {
     /// Grip-scaled lock (the arcade's ANALOG_LOCK idea): full steering asks
     /// the front tyres for `LOCK_FORCE` of their peak at `speed`, so the
     /// whole travel steers and a tap does not throw the car into a slide.
-    /// The wheel angle is the steady state's: the kinematic angle for that
-    /// lateral acceleration plus the front axle's slip angle, less the
-    /// rear's carrying its share (the brush curve inverted). The old lock
-    /// added the full-slide slip angle (7.7°) at every speed, so at speed
-    /// the first third of the stick already slid all four tyres. Radians.
+    /// Radians. See [`SimCar::wheel_for`].
     pub fn steer_max(&self, speed: f64) -> f64 {
+        self.wheel_for(LOCK_FORCE, speed)
+    }
+
+    /// The wheel angle at which the car settles into a turn asking the
+    /// front tyres for `f` of their peak force at `speed`: the kinematic
+    /// angle for that lateral acceleration plus the front axle's slip
+    /// angle, less the rear's carrying its share (the brush curve
+    /// inverted). The steering asks for `|steer| · LOCK_FORCE`, so a share
+    /// of the stick is that share of the cornering at every speed; scaling
+    /// the full-lock angle instead gave 0.18 g for a tenth of the stick at
+    /// 67 m/s, the brush curve being steep at its start. Radians, ≥ 0.
+    pub fn wheel_for(&self, f: f64, speed: f64) -> f64 {
         let def = &self.def;
-        let loads = def.static_axle_loads();
         let v = speed.abs().max(1.0);
         let g = mp_vdyn::vehicle::G;
+        // Each axle's load at this speed: its static share and its
+        // downforce (at 67 m/s the Vento's front carries 12 % more).
+        let loads = self.axle_loads(v);
+        let st = def.static_axle_loads();
         // The slip angle at which an axle's tyres give `f` of their peak:
         // the brush force is `1 − (1−λ)³` of the peak at `λ`, and `λ = 1`
         // is the slip of the full slide, `3μFz/C`.
@@ -194,14 +234,102 @@ impl SimCar {
             let l = 1.0 - kernel::pow(1.0 - clamp(f, 0.0, 1.0), 1.0 / 3.0);
             kernel::atan(l * 3.0 * t.mu_at(fz) * fz / t.stiffness())
         };
-        let ay = LOCK_FORCE * def.axles[0].tyre.mu_at(loads[0] / 2.0) * g;
-        let f_rear = ay / (def.axles[1].tyre.mu_at(loads[1] / 2.0) * g);
-        let want = def.wheelbase() * ay / (v * v) + slip(0, LOCK_FORCE) - slip(1, f_rear);
+        // The lateral acceleration at which the front axle (carrying its
+        // static share of the car's mass) uses `f` of its grip, and the
+        // share of its own grip the rear then uses.
+        let peak = |i: usize| def.axles[i].tyre.mu_at(loads[i] / 2.0) * loads[i] / (st[i] / g);
+        let ay = f * peak(0);
+        let f_rear = ay / peak(1);
+        let want = def.wheelbase() * ay / (v * v) + slip(0, f) - slip(1, f_rear);
         clamp(want, 0.0, def.axles[0].steer_lock)
     }
 
+    /// Each axle's load (N, both wheels) on level ground at `speed`: the
+    /// static share and the downforce, as the vehicle applies it.
+    fn axle_loads(&self, speed: f64) -> [f64; 2] {
+        let def = &self.def;
+        let st = def.static_axle_loads();
+        let q = 0.5 * def.aero.rho * speed * speed;
+        [
+            st[0] + q * def.aero.cla_front,
+            st[1] + q * def.aero.cla_rear,
+        ]
+    }
+
+    /// The braking the guide line's colour rule plans with for this car
+    /// (`assist::brake_urgency_with`): firm braking is the sim speed
+    /// profile's `SIM_BRAKE`, the drag the car's own (at 67 m/s about a
+    /// third of the arcade car's, which would put the braking points late).
+    pub fn braking(&self) -> crate::assist::Braking {
+        let a = &self.def.aero;
+        crate::assist::Braking {
+            brake: mp_track::track::SIM_BRAKE / crate::assist::FIRM,
+            drag_v2: 0.5 * a.rho * a.cda / self.def.mass,
+            drag_v: 0.0,
+        }
+    }
+
+    /// The lateral acceleration full steering settles at (m/s²).
+    pub fn full_lock_ay(&self, speed: f64) -> f64 {
+        let def = &self.def;
+        let loads = self.axle_loads(speed.abs());
+        let st = def.static_axle_loads();
+        LOCK_FORCE * def.axles[0].tyre.mu_at(loads[0] / 2.0) * loads[0] / st[0]
+            * mp_vdyn::vehicle::G
+    }
+
+    /// The steering assists (SPEC 4.8): the request filtered, the wheel
+    /// angle for it, and the yaw damper and cap on top. Analogue steering
+    /// (a stick, tilt) asks for that share of the cornering; keys and pads,
+    /// ramped by the client, for that share of full lock's wheel angle, as
+    /// before: their ramp is their progression, and a tap needs the bite
+    /// (a person-like driver on keys held Cruise's freeway worse with the
+    /// proportional map, and the autopilot hit more walls). Returns the wheel angle (rad). Keys and pads come ramped by the
+    /// client; a further, speed-sensitive rate limit (SPEC 4.8) made a
+    /// person-like driver on keys hold Cruise's freeway worse at every
+    /// speed, so there is none.
+    fn steer(&mut self, inp: &Input, handbrake: bool, dt: f64) -> f64 {
+        let car = &self.car;
+        let speed = car.speed();
+        let target = clamp(inp.steer, -1.0, 1.0);
+        self.steer_in += (target - self.steer_in) * (1.0 - kernel::exp(-dt / STEER_TAU));
+        let u = self.steer_in;
+        let ff = if inp.analog {
+            js::sign(u) * self.wheel_for(u.abs() * LOCK_FORCE, speed)
+        } else {
+            u * self.steer_max(speed)
+        };
+
+        let r = car.yaw_rate();
+        self.yaw_lp += (r - self.yaw_lp) * dt / YAW_WASHOUT;
+        // Forward, on the ground, not on the handbrake (a handbrake turn
+        // is meant to rotate the car).
+        let on = if speed > 1.0 && self.air == 0.0 && !handbrake {
+            smoothstep(YAW_ASSIST_FROM, YAW_ASSIST_FULL, speed)
+        } else {
+            0.0
+        };
+        let mut fb = 0.0;
+        if on > 0.0 {
+            fb -= YAW_DAMP * on * (r - self.yaw_lp);
+            let cap = YAW_CAP * self.full_lock_ay(speed) / speed;
+            if r.abs() > cap {
+                fb -= YAW_CAP_GAIN * on * (r.abs() - cap) * js::sign(r);
+            }
+        }
+        let lock = self.def.axles[0].steer_lock;
+        clamp(ff + fb, -lock, lock)
+    }
+
     /// The *Casual* assists: the race's controls to the vehicle's.
-    fn controls(&mut self, phys: &CarPhysics, inp: &Input, frame: &InputFrame) -> Controls {
+    fn controls(
+        &mut self,
+        phys: &CarPhysics,
+        inp: &Input,
+        frame: &InputFrame,
+        dt: f64,
+    ) -> Controls {
+        let wheel = self.steer(inp, inp.handbrake, dt);
         let car = &mut self.car;
         let speed = car.speed();
         // Stopped means stopped, not sliding sideways or spinning.
@@ -234,14 +362,13 @@ impl SimCar {
             brake = 1.0;
         }
         let lock = self.def.axles[0].steer_lock;
-        let steer_max = self.steer_max(speed);
         let boost = if inp.nitro && phys.nitro > 0.0 && speed > 4.0 && inp.throttle > 0.1 {
             NITRO_BOOST
         } else {
             0.0
         };
         Controls {
-            steer: inp.steer * steer_max / lock,
+            steer: wheel / lock,
             throttle,
             brake,
             handbrake: if inp.handbrake { 1.0 } else { 0.0 },
@@ -265,7 +392,7 @@ impl SimCar {
         frame: &InputFrame,
     ) {
         self.sync_in(v, t);
-        let ctl = self.controls(phys, inp, frame);
+        let ctl = self.controls(phys, inp, frame, dt);
         // Shredded tyres (Hot Pursuit's spikes) grip less.
         if phys.spiked > 0.0 {
             phys.spiked = (phys.spiked - dt).max(0.0);
@@ -423,7 +550,9 @@ impl SimCar {
     /// Appends the sim state's bits for the race's hash.
     pub fn hash_into(&self, out: &mut Vec<u8>) {
         self.car.hash_into(out);
-        out.extend_from_slice(&self.air.to_bits().to_le_bytes());
+        for x in [self.air, self.steer_in, self.yaw_lp] {
+            out.extend_from_slice(&x.to_bits().to_le_bytes());
+        }
     }
 }
 
@@ -454,7 +583,7 @@ pub fn use_physics(st: &mut crate::race::SimState, t: &Track, physics: Physics) 
 /// How far a sim rival's pace may fall below the profile before it counts
 /// as stuck, and how long it may stay so before it is put back on the road
 /// (s).
-const STUCK_SPEED: f64 = 1.5;
+pub const STUCK_SPEED: f64 = 1.5;
 /// A sim rival's wheel angle (rad) per rad/s of yaw rate it lacks.
 const YAW_GAIN: f64 = 0.1;
 const STUCK_SECS: f64 = 2.5;
@@ -493,8 +622,12 @@ impl SimRival {
     }
 
     /// One tick: steer for `lat_t` a little ahead, hold `v_t` (m/s), and
-    /// write the body view back into `k`. Before the start the car is held
-    /// on its brakes.
+    /// write the body view back into `k`. Stuck, it is put back on the road
+    /// at `place` across it (`AiDriver::replace_lat`). `want` is the speed the road
+    /// asks for before the other cars are counted: held still below it for
+    /// long (behind a wreck, say, which the rules for cars ahead and
+    /// alongside keep it waiting for), the car is stuck. Before the start
+    /// the car is held on its brakes.
     #[allow(clippy::too_many_arguments)]
     pub fn drive(
         &mut self,
@@ -502,7 +635,9 @@ impl SimRival {
         t: &Track,
         dt: f64,
         v_t: f64,
+        want: f64,
         lat_t: f64,
+        place: f64,
         nitro: bool,
         spiked: f64,
         started: bool,
@@ -523,8 +658,11 @@ impl SimRival {
             let err = wrap_angle(want - v.yaw);
             let dist = (dx * dx + dz * dz).sqrt().max(1.0);
             let curv = 2.0 * kernel::sin(err) / dist;
-            let wheel = self.car.def.wheelbase() * curv + YAW_GAIN * (speed * curv - v.yaw_rate);
-            inp.steer = clamp(wheel / self.car.steer_max(speed), -1.0, 1.0);
+            // The steering asks for a share of full lock's cornering: the
+            // arc's, and the feedback's wheel angle as a share of the lock.
+            let ay = speed * speed * curv;
+            let fb = YAW_GAIN * (speed * curv - v.yaw_rate) / self.car.steer_max(speed);
+            inp.steer = clamp(ay / self.car.full_lock_ay(speed) + fb, -1.0, 1.0);
             inp.analog = true;
             // Speed: throttle up to it, brake past it. To stand still, the
             // handbrake: the brake held at a standstill would reverse.
@@ -565,7 +703,7 @@ impl SimRival {
         // little behind, facing along it, as the player's reset puts them.
         let f = k.f;
         let facing = wrap_angle(k.v.yaw - kernel::atan2(f.fz, f.fx)).abs();
-        if started && ((v_t > 4.0 && k.speed < STUCK_SPEED) || facing > 1.6) {
+        if started && ((want > 4.0 && k.speed < STUCK_SPEED) || facing > 1.6) {
             self.stuck += dt;
         } else {
             self.stuck = 0.0;
@@ -574,14 +712,8 @@ impl SimRival {
             self.stuck = 0.0;
             self.resets += 1;
 
-            let s = if t.is_loop {
-                t.wrap(k.s - 5.0)
-            } else {
-                (k.s - 5.0).max(t.start_s)
-            };
-            let hw = t.frame(s).hw;
-            k.s = s;
-            k.lat = clamp(lat_t, -hw * 0.5, hw * 0.5);
+            k.s = replace_s(t, k.s);
+            k.lat = place;
             k.speed = 0.0;
             k.lat_vel = 0.0;
             k.write_pos(t);
@@ -594,6 +726,16 @@ impl SimRival {
     pub fn hash_into(&self, out: &mut Vec<u8>) {
         self.car.hash_into(out);
         out.extend_from_slice(&self.stuck.to_bits().to_le_bytes());
+    }
+}
+
+/// Where a stuck sim rival is put back along the road: 5 m behind, as the
+/// player's reset puts them.
+pub fn replace_s(t: &Track, s: f64) -> f64 {
+    if t.is_loop {
+        t.wrap(s - 5.0)
+    } else {
+        (s - 5.0).max(t.start_s)
     }
 }
 

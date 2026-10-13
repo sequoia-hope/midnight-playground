@@ -29,7 +29,8 @@ use bevy::math::Vec4;
 use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::prelude::*;
 use mp_scene::three;
-use mp_sim::assist::{Assist, brake_urgency};
+use mp_sim::assist::{ARCADE_BRAKING, Assist, brake_urgency_with};
+use mp_sim::model::VehicleModel;
 use mp_track::Track;
 
 /// The guide line's setting.
@@ -389,6 +390,11 @@ fn draw(
         mp_math::kernel::hypot(l(a.vx, b.vx), l(a.vz, b.vz))
     };
     let reach = reach(speed);
+    // A sim car corners and brakes for its own profile.
+    let (profile, braking) = match &p0.model {
+        VehicleModel::Sim(c) => (&track.speed_profile_sim, c.braking()),
+        VehicleModel::Arcade => (&track.speed_profile, ARCADE_BRAKING),
+    };
     // The sort point: the middle of the line's reach (D808's way: the
     // entity sits there and the vertices are written relative to it).
     let mid = track.point_at(ps + reach * 0.5, line_at(track, ps + reach * 0.5));
@@ -426,7 +432,7 @@ fn draw(
         // Near the car it would only sit under it or the camera.
         let fade = mp_math::smoothstep(3.0, 9.0, dist)
             * (1.0 - mp_math::smoothstep(reach * 0.55, reach, dist));
-        let u = brake_urgency(speed, f64::from(track.speed_profile[track.idx(sc)]), dist);
+        let u = brake_urgency_with(speed, f64::from(profile[track.idx(sc)]), dist, braking);
         let a = fade
             * match mode {
                 GuideMode::Full => 1.0,
