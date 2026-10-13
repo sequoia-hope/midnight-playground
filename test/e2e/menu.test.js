@@ -8,7 +8,7 @@ import { launch, openGame } from './harness.js';
 import { LEVELS } from '../../src/levels/index.js';
 import { CAR_SPECS } from '../../src/vehicles/CarPhysics.js';
 import { TRACKS } from '../../src/game/audio/tracks.js';
-import { isShown, stored, expectScreen } from './flow-helpers.js';
+import { isShown, stored, expectScreen, openingLevel, showOptions } from './flow-helpers.js';
 
 let browser;
 before(async () => { browser = await launch(); });
@@ -40,14 +40,16 @@ test('desktop: one tab per level and one pick per car, defaults selected', async
     }));
     assert.equal(menu.tabs.length, LEVELS.length);
     LEVELS.forEach((l, i) => assert.ok(menu.tabs[i].text.includes(l.title), `tab ${i} is ${l.title}`));
-    assert.deepEqual(menu.tabs.map((t) => t.sel), LEVELS.map((l) => l.id === 'sierra'), 'Level 1 selected by default');
+    const open = LEVELS.find((l) => l.id === openingLevel(game));
+    assert.deepEqual(menu.tabs.map((t) => t.sel), LEVELS.map((l) => l === open), 'Level 1 selected by default');
     assert.equal(menu.picks.length, CARS.length);
     CARS.forEach((k, i) => assert.ok(menu.picks[i].text.includes(CAR_SPECS[k].label), `pick ${i} is ${CAR_SPECS[k].label}`));
     assert.deepEqual(menu.picks.map((p) => p.sel), CARS.map((k) => k === 'sports'), 'Vento GT selected by default');
-    assert.equal(menu.world, 'sierra');
+    assert.equal(menu.world, open.id);
     assert.equal(menu.start, 'Race');
-    assert.equal(menu.name, LEVELS[0].title);
-    assert.equal(menu.num, LEVELS[0].num);
+    assert.equal(menu.name, open.title);
+    // The Rust menu numbers Coast Highway Level 1 (D1102).
+    assert.equal(menu.num, game.target === 'rust' ? 'LEVEL 1' : open.num);
     assert.match(menu.len, /\d+\.\d km · \d+\.\d mi · 5 rivals · traffic/);
     assert.equal(menu.best, '', 'no best time yet');
     assert.deepEqual(game.errors, []);
@@ -137,9 +139,10 @@ test('desktop: keyboard help shows; touch-only options and the rotate hint do no
   try {
     assert.equal(await game.eval(isShown, '#menu .controls'), true, 'keyboard help');
     assert.equal(await game.eval(isShown, '#menu .touch-help'), false);
+    assert.equal(await game.eval(isShown, '#rotate-hint'), false);
+    await showOptions(game);
     assert.equal(await game.eval(() => document.getElementById('opt-autogas').closest('label').getClientRects().length), 0, 'no Auto gas');
     assert.equal(await game.eval(() => document.getElementById('opt-fullscreen').closest('label').getClientRects().length), 0, 'no Fullscreen');
-    assert.equal(await game.eval(isShown, '#rotate-hint'), false);
   } finally { await game.close(); }
 });
 
@@ -148,6 +151,7 @@ test('phone: touch-only options and touch help show, keyboard help does not; Hig
   try {
     assert.equal(await game.eval(isShown, '#menu .controls'), false, 'no keyboard help');
     assert.equal(await game.eval(isShown, '#menu .touch-help'), true);
+    await showOptions(game);
     assert.ok(await game.eval(() => document.getElementById('opt-autogas').closest('label').getClientRects().length > 0), 'Auto gas');
     assert.ok(await game.eval(() => document.getElementById('opt-fullscreen').closest('label').getClientRects().length > 0), 'Fullscreen');
     assert.equal(await game.eval(() => document.getElementById('opt-hq').checked), false);

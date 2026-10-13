@@ -7589,7 +7589,8 @@ runs and passes.
   `audio` suite's "a few seconds of hard driving log no warnings or
   errors" fails on it (its `game.warnings` count from the page's load).
   Not fixed here: it needs a patch to Bevy's batching or finding the
-  menu's node that adds no quads. Now and then the page also logs `A
+  menu's node that adds no quads. **Fixed by D1200** (Bevy's UI patched to skip
+  empty batches). Now and then the page also logs `A
   valid external Instance reference no longer exists.` at start-up
   (owner: the page, WP 2.1/2.7: its WebGPU probe's adapter).
 - An `autostart` race with no gesture logs Chrome's "The AudioContext
@@ -10281,3 +10282,41 @@ UI pipelines (no HDR, no MSAA) are compiled the first time a screen is
 sharper than the race, which on a phone is the menu at start, behind the
 loading screen. Natively nothing changes: the window draws at scale 1
 everywhere.
+
+## D1200. The JS suites pass on the Rust build again; Bevy's UI skips empty batches
+
+**Date:** 2026-10-12. `npm run test:e2e:rust` failed nine tests. One was a
+harness bug: `centerRust` (D1196) opened and closed Settings with a bare
+`__mp.stage`, past the bridge's count of what it sent, so `__mp.staged`
+ran ahead and every later eval returned before the frame that applied
+its own commands (the menu suite read the track picker's choice before it
+was stored). The switch now goes through the bridge (2562e56).
+
+Seven were the suites still expecting what the owner has since changed;
+they now expect the Rust game's behaviour on the Rust target, and the
+JS game's as before on the JS one:
+
+- **Coast first** (D1102): `flow-helpers.js` `openingLevel` names the
+  level the menu opens on; the menu defaults, the best time saved by a win
+  (and not by a second place) and the Hot Pursuit choice read that
+  level's keys, and the pursuit test returns to that level's tab.
+- **The options on Settings** (D1196): `flow-helpers.js` `showOptions`
+  opens Settings on the Rust target as a player would; the touch-only
+  options (shown on a phone, not on a desktop) and the tilt slider are
+  checked there. The gamepad test goes down from Race to Settings, A
+  opens it, and adjusts Track and Music in its column (up and down where
+  the JS row used left and right); B leaves it on Settings.
+- **T is the radio's** (D1160): on the Rust target, T switches the radio
+  on and then steps the station, Next track on the pause screen steps it
+  again, and the pause screen names it (by its frequency). The bridge's
+  `__audio` gains `station`.
+
+The last was D907's warning, `Calling [RenderPassEncoder "ui"].Draw with
+an index count of 0 is unusual.`, now fixed where it starts: Bevy's UI
+renderer drew a batch whose nodes added no quads. `bevy_ui_render` 0.19.1
+is patched (`patches/bevy_ui_render/PATCHED.md`, like D1182's wgpu): its
+five UI draw commands return before drawing an empty range. An empty draw
+does nothing, so no picture changes.
+
+What still does not run against the Rust build is the three skips in
+`tools/parity/e2e/js-suites.mjs`, each with its reason.

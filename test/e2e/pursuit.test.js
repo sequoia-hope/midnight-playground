@@ -7,7 +7,8 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, openGame } from './harness.js';
-import { isShown, stored, startFromMenu, waitRacing, expectScreen, sleep } from './flow-helpers.js';
+import { isShown, stored, startFromMenu, waitRacing, expectScreen, sleep, openingLevel } from './flow-helpers.js';
+import { LEVELS } from '../../src/levels/index.js';
 
 let browser;
 before(async () => { browser = await launch(); });
@@ -18,10 +19,13 @@ const FAST = 'timescale=2';
 test('menu: the Race / Hot Pursuit toggle is offered on sprint levels, remembered per level, and starts a pursuit', async () => {
   const game = await openGame(browser, { query: FAST });
   try {
+    // The level the menu opens on, a sprint level on both builds.
+    const open = openingLevel(game);
+    const openTab = `.lvl-tab:nth-child(${LEVELS.findIndex((l) => l.id === open) + 1})`;
     assert.equal(await game.eval(isShown, '#mode-pick'), true, 'shown on Level 1');
     assert.equal(await game.eval(() => document.getElementById('btn-start').textContent), 'Race');
     await game.click('#mode-pick [data-mode="pursuit"]');
-    assert.equal(await stored(game, 'mode.sierra'), 'pursuit');
+    assert.equal(await stored(game, 'mode.' + open), 'pursuit');
     assert.equal(await game.eval(() => document.getElementById('btn-start').textContent), 'Hot Pursuit');
     assert.equal(await game.eval(() => document.querySelector('#mode-pick .sel').dataset.mode), 'pursuit');
     // The cruise loop has no police.
@@ -29,7 +33,7 @@ test('menu: the Race / Hot Pursuit toggle is offered on sprint levels, remembere
     await game.click('.lvl-tab:last-child');
     await menuBack();
     assert.equal(await game.eval(isShown, '#mode-pick'), false, 'hidden on the cruise');
-    await game.click('.lvl-tab:first-child');
+    await game.click(openTab);
     await menuBack();
     assert.equal(await game.eval(isShown, '#mode-pick'), true);
     assert.equal(await game.eval(() => document.getElementById('btn-start').textContent), 'Hot Pursuit', 'remembered for Level 1');

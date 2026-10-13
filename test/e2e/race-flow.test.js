@@ -8,7 +8,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, openGame } from './harness.js';
 import { fmtTime } from '../../src/game/HUD.js';
-import { isShown, stored, startFromMenu, markRace, newRaceStarted, waitRacing, expectScreen, sleep } from './flow-helpers.js';
+import { isShown, stored, startFromMenu, markRace, newRaceStarted, waitRacing, expectScreen, sleep, openingLevel } from './flow-helpers.js';
 
 let browser;
 before(async () => { browser = await launch(); });
@@ -200,7 +200,7 @@ test('desktop: winning shows the results, saves the best time, and Race again re
     assert.equal(res.title, 'You win!');
     assert.equal(res.rows, 6, 'you and five rivals');
     assert.equal(res.me, 0, 'you are first');
-    const best = await stored(game, 'best.sierra');
+    const best = await stored(game, 'best.' + openingLevel(game));
     assert.ok(Math.abs(best - res.time) < 1e-6, `best time saved (${best} vs ${res.time})`);
     assert.equal(res.best, `Best winning time: ${fmtTime(best)}`);
 
@@ -228,7 +228,7 @@ test('desktop: finishing second saves no best time; Main menu from the results',
     await expectScreen(game, 'results', 25000);
     assert.equal(await game.eval(() => document.getElementById('res-title').textContent), '2nd place');
     assert.equal(await game.eval(() => document.querySelector('#res-table tr.me')?.rowIndex), 1);
-    assert.equal(await stored(game, 'best.sierra'), null);
+    assert.equal(await stored(game, 'best.' + openingLevel(game)), null);
     assert.equal(await game.eval(() => document.getElementById('res-best').textContent), 'Win the race to set a best time');
     await game.click('#btn-menu');
     await expectScreen(game, 'menu');

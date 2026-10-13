@@ -78,3 +78,6 @@ wgpu = { path = "patches/wgpu" }
 # bound (D1190; patches/wgpu-hal/PATCHED.md): WebGL2 made 24,600 calls a
 # frame on Sierra where three.js made 4,400.
 wgpu-hal = { path = "patches/wgpu-hal" }
+# Bevy's UI skipping the draw of an empty batch (D1200;
+# patches/bevy_ui_render/PATCHED.md): Chrome warned about it on the menu.
+bevy_ui_render = { path = "patches/bevy_ui_render" }

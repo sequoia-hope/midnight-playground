@@ -42,3 +42,18 @@ export async function expectScreen(game, name, timeout = 8000) {
   }})(${JSON.stringify(name)})`, { timeout, what: `the "${name}" screen` });
   assert.equal(await game.screen(), name);
 }
+
+// The level a new player's menu opens on: the Rust menu starts on Coast
+// Highway, numbered Level 1 there (DEVIATIONS.md, D1102); the JS on Sierra.
+export const openingLevel = (game) => (game.target === 'rust' ? 'coast' : 'sierra');
+
+// Bring up the options. The JS menu shows them; the Rust game keeps them
+// on its Settings screen (DEVIATIONS.md, D1196), opened as a player would
+// from the menu or the pause screen.
+export async function showOptions(game) {
+  if (game.target !== 'rust') return;
+  const screen = await game.eval(() => window.__mp.screen);
+  if (screen === 'settings') return;
+  await game.eval((id) => window.__mpShim.send({ cmd: 'act', id }), screen === 'pause' ? 'btn-settings-pause' : 'btn-settings');
+  await game.waitFor(() => window.__mp.screen === 'settings', { what: 'the Settings screen' });
+}

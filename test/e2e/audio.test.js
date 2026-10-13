@@ -142,6 +142,26 @@ test('desktop: T and the pause screen\'s Next track change the track', async () 
     const id0 = await game.waitFor(trackId, { what: 'a track to play' });
     // The Rust menu starts on Coast (DEVIATIONS.md, D1102), the JS on Sierra.
     assert.equal(id0, LEVEL_TRACK[TARGET === 'rust' ? 'coast' : 'sierra'], 'the level starts on its own track');
+    if (TARGET === 'rust') {
+      // The Rust game's T is the radio's (D1160): it switches the radio on,
+      // then steps round the stations; Next track on the pause screen steps
+      // too, and the pause screen names the station.
+      const station = () => window.__audio.station;
+      await game.key('KeyT');
+      const st1 = await game.waitFor(`(${station})() !== 'playlist' && (${station})()`, { what: 'T to switch the radio on' });
+      assert.equal(await game.eval(() => JSON.parse(localStorage.getItem('mr.station'))), st1, 'the station is remembered');
+      await game.key('KeyT');
+      const st2 = await game.waitFor(`(${station})() !== ${JSON.stringify(st1)} && (${station})()`, { what: 'T to step to the next station' });
+      assert.notEqual(st2, 'playlist', 'T stays on the radio');
+      await game.key('Escape');
+      await game.waitFor(() => window.__game.mode === 'paused', { what: 'pause' });
+      await game.click('#btn-next-track');
+      const st3 = await game.waitFor(`(${station})() !== ${JSON.stringify(st2)} && (${station})()`, { what: 'Next track to step the station' });
+      assert.notEqual(st3, 'playlist');
+      await game.waitFor(() => /\b\d{2,3}\.\d\b/.test(document.getElementById('np-pause').textContent), { what: 'the pause screen to name the station' });
+      assert.deepEqual(game.errors, []);
+      return;
+    }
     await game.key('KeyT');
     const id1 = await game.waitFor(`(${trackId})() !== ${JSON.stringify(id0)} && (${trackId})()`, { what: 'T to change the track' });
     await game.key('Escape');
