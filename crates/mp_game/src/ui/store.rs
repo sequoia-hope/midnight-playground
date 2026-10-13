@@ -409,6 +409,9 @@ pub struct Settings {
     /// `mr.renderScale` (the web only, D1194): the race's pixel ratio is the
     /// JS's times this percentage: `100`, `75` or `50`.
     pub scale: String,
+    /// `mr.physics` (Rust only, D1202): which cars the sim model moves,
+    /// `arcade` (the default), `player` or `all`.
+    pub physics: String,
 }
 
 /// Whether a station setting is one the menu offers.
@@ -446,6 +449,7 @@ impl Settings {
             station: store.string("station", "playlist"),
             radio_station: String::new(),
             scale: store.string("renderScale", "100"),
+            physics: store.string("physics", "arcade"),
         };
         if !station_ok(&s.station) {
             s.station = "playlist".into();
@@ -461,6 +465,9 @@ impl Settings {
         }
         if !SCALES.contains(&s.scale.as_str()) {
             s.scale = "100".into();
+        }
+        if mp_sim::model::Physics::parse(&s.physics).is_none() {
+            s.physics = "arcade".into();
         }
         if touch_ui && !STEERING.contains(&s.steering.as_str()) {
             s.steering = "stick".into();
@@ -579,6 +586,7 @@ mod tests {
                 station: "playlist".into(),
                 radio_station: "auto".into(),
                 scale: "100".into(),
+                physics: "arcade".into(),
             }
         );
         // Touch screens get lighter rendering by default, and the guide
@@ -607,6 +615,7 @@ mod tests {
             ("mr.classicEngine", "true"),
             ("mr.station", "\"ridgeline\""),
             ("mr.renderScale", "\"75\""),
+            ("mr.physics", "\"all\""),
         ]);
         let s = Settings::load(&store, true);
         assert_eq!(
@@ -632,6 +641,7 @@ mod tests {
                 station: "ridgeline".into(),
                 radio_station: "ridgeline".into(),
                 scale: "75".into(),
+                physics: "all".into(),
             }
         );
         // A choice the menu does not offer falls back to the default.
@@ -640,11 +650,13 @@ mod tests {
             ("mr.steerAssist", "3"),
             ("mr.station", "\"kzzz\""),
             ("mr.renderScale", "\"33\""),
+            ("mr.physics", "\"rally\""),
         ]);
         let s = Settings::load(&store, false);
         assert_eq!((s.guide.as_str(), s.assist.as_str()), ("off", "off"));
         assert_eq!(s.station, "playlist");
         assert_eq!(s.scale, "100");
+        assert_eq!(s.physics, "arcade");
         assert_eq!((scale_of("75"), scale_of("x")), (0.75, 1.0));
     }
 

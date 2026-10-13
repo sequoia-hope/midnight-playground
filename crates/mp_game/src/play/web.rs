@@ -163,6 +163,22 @@ fn frame(
     o.set("gear", p.phys.gear);
     o.set("finished", p.rules.finished);
     o.set("locked", p.phys.locked);
+    // Handling (D1202): the race's choice, and where each rival is and
+    // whether the sim model moves it.
+    o.set("physics", race.setup.opts.physics.name());
+    let rivals: Vec<V> = st
+        .rivals
+        .iter()
+        .map(|a| {
+            let mut r = Obj::new();
+            r.set("s", a.k.s);
+            r.set("lat", a.k.lat);
+            r.set("speed", a.k.speed);
+            r.set("sim", a.sim.is_some());
+            r.into()
+        })
+        .collect();
+    o.set("rivals", rivals);
     let mut inp = Obj::new();
     inp.set("steer", s.steer);
     inp.set("throttle", s.throttle);

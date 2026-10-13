@@ -76,6 +76,7 @@ fn fuzz_run(id: &str, level: &str, heat: Option<f64>) {
             seed: 1,
             pursuit: heat.is_some(),
             heat: heat.unwrap_or(1.0),
+            physics: mp_sim::model::Physics::Arcade,
         },
     );
     let mut fz = Fuzzer::new(1);
@@ -216,6 +217,7 @@ fn a_cloned_state_steps_identically() {
             seed: 7,
             pursuit: true,
             heat: 4.0,
+            physics: mp_sim::model::Physics::Arcade,
         },
     );
     let mut ev = Vec::new();
@@ -248,6 +250,7 @@ fn the_same_race_twice_gives_the_same_hashes() {
                 seed: 3,
                 pursuit: true,
                 heat: 2.0,
+                physics: mp_sim::model::Physics::Arcade,
             },
         );
         let mut ev = Vec::new();

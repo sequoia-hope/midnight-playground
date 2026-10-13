@@ -96,6 +96,7 @@ fn a_short_autopilot_race_matches_the_library() {
             seed: 4,
             pursuit: false,
             heat: 1.0,
+            physics: mp_sim::model::Physics::Arcade,
         },
     );
     let mut ev = Vec::new();
@@ -128,6 +129,7 @@ fn a_short_fuzzed_race_matches_the_library() {
             seed: 1,
             pursuit: false,
             heat: 1.0,
+            physics: mp_sim::model::Physics::Arcade,
         },
     );
     let mut fz = Fuzzer::new(3);
@@ -166,6 +168,7 @@ fn a_short_sim_race_matches_the_library_and_writes_telemetry() {
             seed: 1,
             pursuit: false,
             heat: 1.0,
+            physics: mp_sim::model::Physics::Arcade,
         },
     );
     use_sim(&mut st.players[0], &lr.track);

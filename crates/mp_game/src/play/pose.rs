@@ -27,6 +27,10 @@ pub struct Pose {
     pub on_ground: bool,
     pub speed: f64,
     pub steer_angle: f64,
+    /// A sim car's chassis orientation (`Vehicle.pose`, x y z w; body
+    /// frame x forward, y up, z right): drawn as it is, instead of from the
+    /// road frame and the springs (D1202).
+    pub orient: Option<[f64; 4]>,
 }
 
 impl Pose {
@@ -43,6 +47,7 @@ impl Pose {
             on_ground: v.on_ground,
             speed: v.speed,
             steer_angle: v.steer_angle,
+            orient: v.pose.as_ref().map(|p| p.orient),
         }
     }
 
@@ -73,6 +78,14 @@ impl Pose {
             on_ground: if t < 0.5 { a.on_ground } else { b.on_ground },
             speed: l(a.speed, b.speed),
             steer_angle: l(a.steer_angle, b.steer_angle),
+            orient: match (a.orient, b.orient) {
+                (Some(qa), Some(qb)) => Some(
+                    DQuat::from_array(qa)
+                        .slerp(DQuat::from_array(qb), t)
+                        .to_array(),
+                ),
+                (_, q) => q,
+            },
         }
     }
 }
@@ -86,6 +99,11 @@ fn norm(v: DVec3) -> DVec3 {
 /// `Vehicle.sync`'s placement of the model's root: its position and the
 /// rotation whose basis is the road-aligned (X, Y, Z), +Z the nose.
 pub fn root(track: &Track, p: &Pose) -> (DVec3, DQuat) {
+    if let Some(o) = p.orient {
+        // The model's +Z nose is the body's +x, its +X the body's -z.
+        let q = DQuat::from_array(o) * DQuat::from_rotation_y(core::f64::consts::FRAC_PI_2);
+        return (DVec3::new(p.x, p.y, p.z), q.normalize());
+    }
     let f = track.frame(p.s);
     // Surface normal from the road frame (grade along, bank across).
     let t = norm(DVec3::new(f.fx, f.grade, f.fz));
@@ -157,6 +175,7 @@ mod tests {
                 seed: 1,
                 pursuit: false,
                 heat: 1.0,
+                physics: mp_sim::model::Physics::Arcade,
             },
         );
         let mut ev = Vec::new();
@@ -189,6 +208,52 @@ mod tests {
         assert!(st.race.time > 5.0, "the field is moving");
     }
 
+    /// Every car on the sim model (D1202): drawn from the chassis's own
+    /// orientation, which on the road agrees with the road-frame placement
+    /// (nose along the heading, up off the road) to within the body's
+    /// pitch and roll, through a race's opening seconds.
+    #[test]
+    fn a_sim_car_is_drawn_as_its_chassis_lies() {
+        let lr = LevelRuntime::new(mp_levels::level_by_id("sierra")).unwrap();
+        let mut st = SimState::new(
+            &lr,
+            RaceOpts {
+                car: "sports",
+                seed: 1,
+                pursuit: false,
+                heat: 1.0,
+                physics: mp_sim::model::Physics::All,
+            },
+        );
+        let mut ev = Vec::new();
+        let t = &*lr.track;
+        let mut checked = 0;
+        for tick in 0..1200 {
+            let mut inp = Input::default();
+            mp_sim::autopilot::autopilot_at(&mut inp, &st.players[0].v, t, 0.6);
+            step(&lr, &mut st, &[InputFrame::quantise(&inp)], &mut ev);
+            if tick % 40 != 0 {
+                continue;
+            }
+            let cars = st.rivals.iter().map(|r| &r.k.v).chain([&st.players[0].v]);
+            for v in cars {
+                let p = Pose::of(v);
+                assert!(p.orient.is_some(), "a sim car has a pose");
+                let (_, q) = root(t, &p);
+                let (_, q_road) = root(t, &Pose { orient: None, ..p });
+                let nose = q * DVec3::Z;
+                let nose_road = q_road * DVec3::Z;
+                assert!(
+                    nose.dot(nose_road) > 0.98,
+                    "nose {nose} against {nose_road}"
+                );
+                assert!((q * DVec3::Y).dot(q_road * DVec3::Y) > 0.98);
+                checked += 1;
+            }
+        }
+        assert!(checked > 100 && st.race.time > 5.0);
+    }
+
     /// On a level road the body's nose is along the heading and its up is
     /// up; the heading convention is forward = (cos yaw, sin yaw).
     #[test]
@@ -209,6 +274,7 @@ mod tests {
             on_ground: true,
             speed: 0.0,
             steer_angle: 0.0,
+            orient: None,
         };
         let (pos, q) = root(t, &p);
         assert_eq!(pos, DVec3::new(f.x, f.y, f.z));

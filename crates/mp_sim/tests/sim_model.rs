@@ -20,6 +20,7 @@ const OPTS: RaceOpts = RaceOpts {
     seed: 7,
     pursuit: false,
     heat: 1.0,
+    physics: mp_sim::model::Physics::Arcade,
 };
 
 fn sim_race(lr: &LevelRuntime) -> SimState {

@@ -22,7 +22,7 @@ use mp_levels::{SeasideData, levels, seaside};
 use mp_sim::autopilot::{autopilot, autopilot_at};
 use mp_sim::fuzz::Fuzzer;
 use mp_sim::input::{Input, InputFrame, RESET, quantise};
-use mp_sim::model::{VehicleModel, use_sim};
+use mp_sim::model::{Physics, VehicleModel};
 use mp_sim::physics::PhysEvent;
 use mp_sim::race::{
     LevelRuntime, RaceOpts, SimEvent, SimState, cruise_results, hash, pursuit_stats, results, step,
@@ -34,7 +34,7 @@ use mp_track::{Level, Mode};
 const USAGE: &str = "usage:
   mp-sim race [--level ID] [--car KIND] [--seed N] [--pursuit HEAT] [--fuzz SEED]
               [--ticks N] [--trace FILE] [--state-at TICK] [--survey FILE]
-              [--sim] [--telemetry FILE]
+              [--sim | --physics arcade|player|all] [--telemetry FILE]
   mp-sim bench [--runs N] [--ticks N]
   mp-sim replay FILE [--race N] [--trace FILE] [--state-at TICK] [--survey FILE]
 
@@ -46,7 +46,8 @@ tick. Seaside needs its survey (default assets/seaside/survey.bin).
 --sim drives the player's car on the sim model (\"Sim handling\",
 docs/vehicle-dynamics/SPEC.md) with the Casual assists; --telemetry then
 writes its per-tick telemetry as CSV (per tick; per tyre: load, slip
-angle, slip ratio, sliding share, travel, spin).
+angle, slip ratio, sliding share, travel, spin). --physics all puts the
+rivals on the sim model too (--sim is --physics player).
 
 replay: steps every race of a client run recording (record=1,
 docs/rust-port/RECORDING.md), or race N, with its recorded inputs, checks
@@ -108,7 +109,13 @@ fn race(args: &[String]) -> Result<(), String> {
         .map_err(|e| format!("--state-at: {e}"))?;
     let survey = arg(args, "--survey").unwrap_or_else(|| "assets/seaside/survey.bin".into());
     let trace_out = arg(args, "--trace");
-    let sim = args.iter().any(|a| a == "--sim");
+    // `--sim` is `--physics player`.
+    let physics = match arg(args, "--physics") {
+        Some(p) => Physics::parse(&p).ok_or_else(|| format!("--physics: no {p}"))?,
+        None if args.iter().any(|a| a == "--sim") => Physics::Player,
+        None => Physics::Arcade,
+    };
+    let sim = physics != Physics::Arcade;
     let telemetry_out = arg(args, "--telemetry");
     if telemetry_out.is_some() && !sim {
         return Err("--telemetry needs --sim".into());
@@ -123,11 +130,9 @@ fn race(args: &[String]) -> Result<(), String> {
             seed,
             pursuit: heat.is_some(),
             heat: heat.unwrap_or(1.0),
+            physics,
         },
     );
-    if sim {
-        use_sim(&mut st.players[0], &t);
-    }
     let mut telemetry = telemetry_out.as_ref().map(|_| {
         let mut h = String::from("tick,speed,yaw_rate,ax,ay,gear,rpm,steer_torque");
         for w in ["fl", "fr", "rl", "rr"] {
@@ -291,6 +296,14 @@ fn race(args: &[String]) -> Result<(), String> {
     }
     if sim {
         println!("sim handling: {walls} wall impacts, {resets} resets");
+    }
+    for a in &st.rivals {
+        if let Some(r) = &a.sim {
+            println!(
+                "sim rival {:<8} {} wall impacts, {} put back on the road",
+                a.name, r.impacts, r.resets
+            );
+        }
     }
     eprintln!("{:.0} ticks/s", st.tick as f64 / secs);
     Ok(())

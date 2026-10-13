@@ -24,7 +24,7 @@ use crate::collisions::Hit;
 use crate::dims::dims;
 use crate::field::{Field, RacerAccess};
 use crate::input::{AUTOPILOT, Input, InputFrame, RESET};
-use crate::model::VehicleModel;
+use crate::model::{Physics, VehicleModel, use_physics};
 use crate::park::{PARK_GAP, PARK_ROW, Park};
 use crate::physics::{CarPhysics, CarSpec, PhysEvent, car_spec};
 use crate::police::Mode as PoliceMode;
@@ -287,6 +287,8 @@ pub struct RaceOpts {
     pub pursuit: bool,
     /// Hot Pursuit's starting heat (`?heat=`, 1 by default).
     pub heat: f64,
+    /// Which cars the sim model moves (Rust only).
+    pub physics: Physics,
 }
 
 impl SimState {
@@ -413,7 +415,7 @@ impl SimState {
                 last_hit,
             }
         });
-        SimState {
+        let mut st = SimState {
             tick: 0,
             race: RaceState {
                 state: RaceStateKind::Countdown,
@@ -467,7 +469,9 @@ impl SimState {
             traffic,
             pv,
             rng,
-        }
+        };
+        use_physics(&mut st, t, o.physics);
+        st
     }
 }
 
@@ -539,6 +543,8 @@ impl SimState {
                 seed: o.seed,
                 pursuit: false,
                 heat: 1.0,
+                // The lobby has no say in it yet: online races are arcade.
+                physics: Physics::Arcade,
             },
         );
 
@@ -1826,6 +1832,13 @@ pub fn hash(st: &SimState) -> u64 {
     for (i, p) in st.players.iter().enumerate() {
         if let VehicleModel::Sim(sim) = &p.model {
             rec.extend_from_slice(b"vdyn");
+            rec.push(i as u8);
+            sim.hash_into(&mut rec);
+        }
+    }
+    for (i, a) in st.rivals.iter().enumerate() {
+        if let Some(sim) = &a.sim {
+            rec.extend_from_slice(b"vdyr");
             rec.push(i as u8);
             sim.hash_into(&mut rec);
         }

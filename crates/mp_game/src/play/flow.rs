@@ -382,7 +382,14 @@ impl Race {
             let s = input.update(DT, Some(touch));
             let mut inp = s.sim();
             if autodrive {
-                autopilot(&mut inp, &st.players[me].v, &track);
+                let p = &st.players[me];
+                if matches!(p.model, mp_sim::model::VehicleModel::Sim(_)) {
+                    // The profile is the arcade's: a sim car takes it
+                    // slower (as `mp-sim race --sim` drives it).
+                    mp_sim::autopilot::autopilot_at(&mut inp, &p.v, &track, 0.93 * 0.72);
+                } else {
+                    autopilot(&mut inp, &p.v, &track);
+                }
             } else if assist != Assist::Off {
                 // Before quantising: the frame carries the assisted
                 // steering, so a recording replays it exactly.
@@ -705,6 +712,7 @@ pub(crate) mod tests {
             seed: 1,
             pursuit: false,
             heat: 1.0,
+            physics: mp_sim::model::Physics::Arcade,
         };
         let lr = LevelRuntime::new(mp_levels::level_by_id("sierra")).unwrap();
         let smoke = smoke_race(lr, opts, 1.0 / 60.0).unwrap();
@@ -743,6 +751,7 @@ pub(crate) mod tests {
                     seed: 1,
                     pursuit: false,
                     heat: 1.0,
+                    physics: mp_sim::model::Physics::Arcade,
                 },
                 autodrive: false,
                 touch: false,
@@ -773,6 +782,7 @@ pub(crate) mod tests {
                     seed: 1,
                     pursuit: true,
                     heat: 2.0,
+                    physics: mp_sim::model::Physics::Arcade,
                 },
                 autodrive: true,
                 touch: false,
@@ -878,6 +888,7 @@ pub(crate) mod tests {
             seed: 1,
             pursuit: false,
             heat: 1.0,
+            physics: mp_sim::model::Physics::Arcade,
         };
         Race::online(
             lr,

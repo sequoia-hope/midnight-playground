@@ -432,6 +432,7 @@ fn stage_control(
                 "opt-assist" => Sel::Assist,
                 "opt-station" => Sel::Station,
                 "opt-scale" => Sel::Scale,
+                "opt-physics" => Sel::Physics,
                 _ => return true,
             };
             let value = v["value"].as_str().unwrap_or("").to_owned();
@@ -713,6 +714,7 @@ fn publish_settings(s: &super::store::Settings) {
         (Sel::Assist, "opt-assist"),
         (Sel::Station, "opt-station"),
         (Sel::Scale, "opt-scale"),
+        (Sel::Physics, "opt-physics"),
     ] {
         let (opts, _) = super::menu::select_options(sel, s);
         selects.insert(
@@ -726,6 +728,7 @@ fn publish_settings(s: &super::store::Settings) {
         "fullscreen": s.fullscreen, "car": s.car, "level": s.level, "track": s.track,
         "flash": s.flash, "rumble": s.rumble,
         "guide": s.guide, "assist": s.assist, "scale": s.scale,
+        "physics": s.physics,
     });
     crate::bridge::publish("settings", Some(crate::bridge::V::Json(settings)));
     crate::bridge::publish(

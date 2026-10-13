@@ -81,6 +81,7 @@ pub fn start_cars(
             seed: 1,
             pursuit: false,
             heat: 1.0,
+            physics: mp_sim::model::Physics::Arcade,
         },
     );
     let mut entities = Vec::new();

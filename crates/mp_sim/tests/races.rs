@@ -63,6 +63,7 @@ fn run_heat(id: &str, level: &str, car: &'static str, stop_ticks: Option<u32>, h
             seed: 1,
             pursuit: heat.is_some(),
             heat: heat.unwrap_or(1.0),
+            physics: mp_sim::model::Physics::Arcade,
         },
     );
     let mut events = Vec::new();
