@@ -122,6 +122,13 @@ pub fn vento_gt() -> VehicleDef {
         a.half_track = 0.81;
         a.hub_y = tyre.radius - cg_h;
     }
+    // Staggered: wider, grippier rear tyres. On equal tyres the car was
+    // neutral (0.2° of understeer per g), so both axles reached their limit
+    // together and the driven rear, carrying the throttle as well, let go
+    // first in every corner. About 0.7°/g of understeer now: the front
+    // runs out first, progressively, and the rear holds through the drive.
+    def.axles[1].tyre.a = 0.105;
+    def.axles[1].tyre.mu0 = 1.25;
     def.engine = Some(EngineDef {
         torque: vec![
             (1000.0, 300.0),

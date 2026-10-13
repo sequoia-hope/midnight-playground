@@ -98,7 +98,7 @@ fn the_same_inputs_give_the_same_race_and_a_rollback_replays_it() {
     assert_eq!(a, b);
     assert_eq!(hash(&a), hash(&b));
     // Native and wasm (CI runs these tests in Node) must both get this.
-    assert_eq!(hash(&a), 0x3b912e4b6f8511ed, "hash {:#018x}", hash(&a));
+    assert_eq!(hash(&a), 0xca93f9d59b24a21e, "hash {:#018x}", hash(&a));
     // Rollback: a saved state stepped again gives the same bits.
     let saved = a.clone();
     drive(&lr, &mut a, 5 * 120);

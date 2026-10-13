@@ -10419,3 +10419,43 @@ V4's "Tier 1 rivals behind a flag" brought forward as a setting.
   quaternion (slerped between ticks; the model's +Z nose is the body's
   +x) instead of the road frame, and its pitch and roll springs are held
   at zero, since the chassis pitches and rolls on its own suspension.
+
+## D1203. Sim handling: the car no longer slides on every turn past 10 m/s
+
+**Date:** 2026-10-12. The owner, on the phone: "the sim handling model is
+weird at least on mobile. at a certain speed the car drifts on all turns."
+Measured on the flat rig with a step-steer sweep (the new
+`mp_vdyn` example `steer_sweep`): on the Vento at every speed from 10 m/s
+up, 60 % of the player's steering put all four tyres into a full slide,
+and under throttle the rear went first. Three causes, three changes:
+
+- **The grip-scaled lock added the full-slide slip angle at every speed.**
+  `SimCar::steer_max` was the kinematic angle for 1.25 g plus `3μFz/C`,
+  the brush tyre's slip at `λ = 1`, 7.7° on the sport tyre. At 40 m/s the
+  kinematic part is 0.9°, so the first third of the stick (or a tap of a
+  touch pad, which steers ±1) was already past the tyres' limit. Now full
+  lock asks the front tyres for `LOCK_FORCE` (0.9) of their peak: the
+  kinematic angle for that lateral acceleration plus the front axle's slip
+  angle at it, less the rear's carrying its share, both from the brush
+  curve inverted (`1 − (1−λ)³ = f`). 30 % of the stick is 0.3 g, 60 % is
+  0.6 g, full is about 0.9 g with the front just into its slide, at every
+  speed. The sim rivals steer through the same lock; headless, they finish
+  Sierra, Coast, Streets and Desert much as before (D1202), the autopilot
+  a few seconds faster.
+- **The Vento was neutral.** Equal tyres on both axles gave 0.17° of
+  understeer per g, so both axles reached their limit together, and the
+  driven rear, carrying the drive torque as well, let go first in every
+  corner. The rear tyre is now wider and grippier (`a` 0.105 m, `μ0`
+  1.25: a staggered setup), 0.71°/g of understeer, so the front runs out
+  first and progressively.
+- **Traction control allowed a tenth of slip ratio.** The brush tyre has
+  no hump: at κ = 0.1 (`λ` 0.75) it holds nine tenths of its peak force,
+  so any cornering on top of that was a full rear slide, and once sliding
+  the friction falls (`slide_ratio`). The target is 0.06 in a straight
+  line, falling to 0.03 as the lateral acceleration nears the front tyres'
+  peak (`TC_TARGET_LAT`; the electronics measure it). At 20 m/s and up a
+  pinned throttle at 60 % lock now holds the rear at 0.5 to 0.7 of a
+  slide; out of a hairpin in first or second gear it still powerslides.
+
+The arcade model and every arcade golden are untouched. The sim race's
+pinned hash in `sim_model.rs` moved with the tuning.
