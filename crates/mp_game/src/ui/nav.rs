@@ -83,7 +83,7 @@ fn root_of(ui: &UiState) -> Option<Screen> {
 fn focusables(controls: &ControlQuery, css: f32) -> List {
     let mut v: Vec<_> = controls
         .iter()
-        .filter(|(_, c, _, _, vis, _)| vis.get() && c.focus)
+        .filter(|(_, c, _, _, vis, ..)| vis.get() && c.focus)
         .filter_map(|(_, c, n, t, ..)| match &c.act {
             // The open drop-down's list is not one of the screen's controls.
             Some(Act::Choose(..) | Act::CloseDropdown) | None => None,

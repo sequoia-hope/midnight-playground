@@ -47,7 +47,9 @@
   #build { position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 4px);
            text-align: center; font: 11px/1.4 system-ui, sans-serif; color: #8b93a8; opacity: 0.75;
            pointer-events: none; padding: 0 12px; }
-  #build[hidden] { display: none; }
+  /* Hidden off the menu, but still laid out: the menu keeps clear of its
+     height (__mp.footer, D1204), which it needs before it shows. */
+  #build[hidden] { display: block; visibility: hidden; }
   #build a { color: #b9c2d8; pointer-events: auto; text-decoration: none; border-bottom: 1px dotted #6b7388; }
   #build a:hover { color: #fff; }
   #nogpu p { max-width: 34em; margin: 0; color: #c5cbdb; }
@@ -236,7 +238,12 @@
       el.textContent = parts.join(' · ') + ' · ';
       const link = (href, text) => { const a = document.createElement('a'); a.href = href; a.textContent = text; return a; };
       el.append(link(up + 'tools/', 'Tools'), ' · ', link(up ? up : 'legacy/', 'JavaScript version'));
-      setInterval(() => { el.hidden = window.__mp?.screen !== 'menu'; }, 400);
+      // How far up from the window's foot the line reaches (it wraps on a
+      // narrow phone): the menu's column stops above it (D1204).
+      const footer = () => { mr.footer = Math.max(0, Math.ceil(window.innerHeight - el.getBoundingClientRect().top)); };
+      footer();
+      window.addEventListener('resize', footer);
+      setInterval(() => { el.hidden = window.__mp?.screen !== 'menu'; footer(); }, 400);
     }
 
     // 2. The client: wasm with progress (0–30 % of the bar).

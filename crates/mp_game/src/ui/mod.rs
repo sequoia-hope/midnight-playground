@@ -245,6 +245,9 @@ pub struct UiState {
     pub pads: bool,
     /// The page's safe-area inset at the top, CSS px.
     pub inset_top: f32,
+    /// How far the page's build line reaches up from the bottom, CSS px
+    /// (`__mp.footer`): the menu keeps clear of it.
+    pub footer: f32,
     /// `#np-pause`: the track playing (`showNowPlaying`), empty until one does.
     pub now_playing: String,
     /// A radio station plays: the pause screen's button says "Next station".
@@ -402,6 +405,7 @@ pub fn plugin(app: &mut App) {
             to_menu: false,
             pads: false,
             inset_top: 0.0,
+            footer: 0.0,
             now_playing: String::new(),
             on_station: false,
         })
@@ -946,6 +950,29 @@ fn css_rect(node: &ComputedNode, t: &UiGlobalTransform, css: f32) -> (f32, f32, 
     (c.x - s.x / 2.0, c.y - s.y / 2.0, s.x, s.y)
 }
 
+/// The part of a control's box its scrolling screen shows, in CSS px:
+/// [`css_rect`] cut to the clip its ancestors give it (empty, at its
+/// corner, when none of it shows).
+fn css_shown(
+    node: &ComputedNode,
+    t: &UiGlobalTransform,
+    clip: Option<&CalculatedClip>,
+    css: f32,
+) -> (f32, f32, f32, f32) {
+    let r = css_rect(node, t, css);
+    let Some(clip) = clip else { return r };
+    let k = node.inverse_scale_factor * css;
+    let (x0, y0) = (r.0.max(clip.clip.min.x * k), r.1.max(clip.clip.min.y * k));
+    let (x1, y1) = (
+        (r.0 + r.2).min(clip.clip.max.x * k),
+        (r.1 + r.3).min(clip.clip.max.y * k),
+    );
+    if x1 <= x0 || y1 <= y0 {
+        return (r.0, r.1, 0.0, 0.0);
+    }
+    (x0, y0, x1 - x0, y1 - y0)
+}
+
 fn inside(r: (f32, f32, f32, f32), p: Vec2) -> bool {
     p.x >= r.0 && p.x <= r.0 + r.2 && p.y >= r.1 && p.y <= r.1 + r.3
 }
@@ -960,6 +987,7 @@ type ControlQuery<'w, 's> = Query<
         &'static UiGlobalTransform,
         &'static InheritedVisibility,
         Option<&'static GlobalZIndex>,
+        Option<&'static CalculatedClip>,
     ),
 >;
 
@@ -967,14 +995,16 @@ type ControlQuery<'w, 's> = Query<
 /// smallest box (the innermost control).
 fn hit(controls: &ControlQuery, css: f32, p: Vec2) -> Option<(Entity, String, Option<Act>)> {
     let mut best: Option<(i32, f32, Entity, &Control)> = None;
-    for (e, c, n, t, vis, z) in controls.iter() {
+    for (e, c, n, t, vis, z, clip) in controls.iter() {
         if !vis.get() || c.act.is_none() {
             continue;
         }
-        let r = css_rect(n, t, css);
-        if !inside(r, p) {
+        // Only where it shows: not through what clips it (the build line
+        // under the menu, D1204).
+        if !inside(css_shown(n, t, clip, css), p) {
             continue;
         }
+        let r = css_rect(n, t, css);
         let z = z.map_or(0, |z| z.0);
         let area = r.2 * r.3;
         let better = match &best {
@@ -1776,13 +1806,16 @@ fn build(
     }
     let Ok(w) = windows.single() else { return };
     let css = play.css_scale.max(0.01);
-    let bp = Bp::new(
-        w.width() * css,
-        w.height() * css,
-        1.0 / css,
-        play.touch_ui,
-        ui.inset_top,
-    );
+    let bp = Bp {
+        footer: ui.footer,
+        ..Bp::new(
+            w.width() * css,
+            w.height() * css,
+            1.0 / css,
+            play.touch_ui,
+            ui.inset_top,
+        )
+    };
     if ui.bp != Some(bp) {
         ui.bp = Some(bp);
         ui.dirty = true;
@@ -1902,25 +1935,37 @@ fn after_layout(
     }
 }
 
-/// The values the bridge reports for a control (CSS px).
-#[allow(clippy::type_complexity)]
-pub fn snapshot(
-    controls: &ControlQuery,
-    css: f32,
-) -> Vec<(String, (f32, f32, f32, f32), bool, bool, Value, bool, i32)> {
-    let mut out = Vec::new();
-    for (_, c, n, t, vis, z) in controls.iter() {
-        out.push((
-            c.id.clone(),
-            css_rect(n, t, css),
-            vis.get(),
-            c.act.is_some(),
-            c.value.clone(),
-            c.sel,
-            z.map_or(0, |z| z.0),
-        ));
-    }
-    out
+/// What the bridge reports for a control (CSS px).
+pub struct Snap {
+    pub entity: Entity,
+    pub id: String,
+    /// Its box.
+    pub rect: (f32, f32, f32, f32),
+    /// The part of it its screen shows ([`css_shown`]).
+    pub shown: (f32, f32, f32, f32),
+    pub visible: bool,
+    pub enabled: bool,
+    pub value: Value,
+    pub sel: bool,
+    pub z: i32,
+}
+
+/// The values the bridge reports for every control.
+pub fn snapshot(controls: &ControlQuery, css: f32) -> Vec<Snap> {
+    controls
+        .iter()
+        .map(|(e, c, n, t, vis, z, clip)| Snap {
+            entity: e,
+            id: c.id.clone(),
+            rect: css_rect(n, t, css),
+            shown: css_shown(n, t, clip, css),
+            visible: vis.get(),
+            enabled: c.act.is_some(),
+            value: c.value.clone(),
+            sel: c.sel,
+            z: z.map_or(0, |z| z.0),
+        })
+        .collect()
 }
 
 /// Whether the race is counting down or running (for the tests).
@@ -1970,6 +2015,7 @@ pub(crate) mod tests {
             to_menu: false,
             pads: false,
             inset_top: 0.0,
+            footer: 0.0,
             now_playing: String::new(),
             on_station: false,
         }
