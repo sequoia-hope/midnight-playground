@@ -2,14 +2,17 @@
 """Streaming probe: can a browser on a weak device play a WebRTC stream from
 this machine, and send its keys and gamepad back, fast enough for a game?
 
-Sends a 1280x720 test pattern (a moving bar, a frame counter, and a marker
-square that turns white for a few frames after the viewer's "ping") and a
-440 Hz tone, over WebRTC (aiortc). The viewer page (`viewer.html`) shows the
+Sends a test pattern (a moving bar, a frame counter, and a marker square
+that turns white for a few frames after the viewer's "ping"), 1280x720 unless
+--size says otherwise, and a 440 Hz tone, over WebRTC (aiortc). The viewer page (`viewer.html`) shows the
 decode stats, the keys and pads it sees, and the press-to-picture time, and
 sends all of it back here, where it is printed and appended to
 `probe-log.jsonl` beside this file.
 
-    python probe.py [--port N] [--fps 60] [--codec h264|vp8]
+    python probe.py [--port N] [--fps 60] [--codec h264|vp8] [--size 960x540]
+
+The viewer can ask for a codec itself with `?codec=h264|vp8`, which lists it
+first in its offer.
 
 The port: --port, then $PORT, then the registry's "stream" listener for this
 project (`~/scripts/launcher.toml`, web_extra), then failure.
@@ -32,7 +35,7 @@ from av import AudioFrame, VideoFrame
 
 HERE = Path(__file__).resolve().parent
 LOG = HERE / "probe-log.jsonl"
-W, H = 1280, 720
+W, H = 1280, 720  # --size
 
 
 def registry_port():
@@ -107,10 +110,10 @@ class Pattern(MediaStreamTrack):
             await asyncio.sleep(delay)
         img = self.base.copy()
         bx = int((self.n * 12) % W)
-        img[:, bx:bx + 40, 1] = 220  # the moving bar: motion to judge smoothness
-        draw_text(img, str(self.n), 40, 520, 24)
+        img[:, bx:bx + W // 32, 1] = 220  # the moving bar: motion to judge smoothness
+        draw_text(img, str(self.n), 40, H * 520 // 720, max(8, 24 * H // 720))
         if self.flash > 0:
-            img[40:240, 40:240] = 255  # the marker the viewer samples
+            img[H * 2 // 36:H * 12 // 36, W * 2 // 64:W * 12 // 64] = 255  # the marker the viewer samples (around 5,5 of 64x36)
             self.flash -= 1
         frame = VideoFrame.from_ndarray(img, format="rgb24")
         frame.pts = self.n
@@ -149,7 +152,10 @@ def main():
     ap.add_argument("--port", type=int)
     ap.add_argument("--fps", type=int, default=60)
     ap.add_argument("--codec", choices=["h264", "vp8"], default="h264")
+    ap.add_argument("--size", default="1280x720")
     a = ap.parse_args()
+    global W, H
+    W, H = (int(v) for v in a.size.split("x"))
     port = a.port or (int(os.environ["PORT"]) if os.environ.get("PORT") else None) or registry_port()
     if not port:
         sys.exit("probe: no port (--port, $PORT, or a 'stream' web_extra for this project in ~/scripts/launcher.toml)")
@@ -205,7 +211,7 @@ def main():
     app.router.add_get("/", index)
     app.router.add_post("/offer", offer)
     app.on_shutdown.append(on_shutdown)
-    print(f"probe: serving on 0.0.0.0:{port} (fps {a.fps}, {a.codec})", flush=True)
+    print(f"probe: serving on 0.0.0.0:{port} ({W}x{H} at {a.fps} fps, {a.codec})", flush=True)
     web.run_app(app, host="0.0.0.0", port=port, print=None)
 
 
