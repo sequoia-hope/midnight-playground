@@ -216,7 +216,10 @@ export class Game {
       const screen = await this.eval(() => window.__mp.screen);
       const via = screen === 'menu' ? 'btn-settings' : screen === 'pause' ? 'btn-settings-pause' : screen === 'settings' ? 'btn-settings-done' : null;
       if (!via || tries) throw new Error(r.error);
-      await this.cdp.send('Runtime.evaluate', { expression: `window.__mp.stage(${JSON.stringify({ cmd: 'act', id: via })})` });
+      // Through the bridge, which counts what it sends: a command sent
+      // past it would put `__mp.staged` ahead of the count, and the next
+      // eval would not wait for the frame that applies its own commands.
+      await this.eval((v) => window.__mpShim.send({ cmd: 'act', id: v }), via);
       await this.frames(3);
     }
     throw new Error('unreachable');
