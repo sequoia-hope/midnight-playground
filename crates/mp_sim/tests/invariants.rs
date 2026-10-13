@@ -58,6 +58,7 @@ fn sp(lr: &LevelRuntime, seed: u32) -> SimState {
             seed,
             pursuit: false,
             heat: 1.0,
+            physics: mp_sim::model::Physics::Arcade,
         },
     )
 }

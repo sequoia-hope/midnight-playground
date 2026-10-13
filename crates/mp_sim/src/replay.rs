@@ -11,6 +11,7 @@
 //! dependency). The inputs are a run-length text ([`encode`]).
 
 use crate::input::InputFrame;
+use crate::model::Physics;
 use crate::race::{LevelRuntime, RaceOpts, SimState};
 
 /// One recorded race (a restart is a race of its own).
@@ -27,6 +28,8 @@ pub struct Recorded {
     /// does (`flow::apply_pursuit_opts`).
     pub cops: f64,
     pub flash: bool,
+    /// Which cars the sim model moves (absent in older recordings: arcade).
+    pub physics: Physics,
     /// Every tick's input from tick 1, in order.
     pub inputs: Vec<InputFrame>,
     /// (tick, `race::hash` of the state after it).
@@ -48,6 +51,7 @@ impl Recorded {
             seed: self.seed,
             pursuit: self.pursuit,
             heat: self.heat,
+            physics: self.physics,
         })
     }
 
@@ -160,6 +164,9 @@ pub fn parse(text: &str) -> Result<Vec<Recorded>, String> {
                 heat: num(line, "heat").map_err(at)?,
                 cops: num(line, "cops").map_err(at)?,
                 flash: field(line, "flash") != Some("false"),
+                physics: field(line, "physics")
+                    .and_then(Physics::parse)
+                    .unwrap_or_default(),
                 ..Recorded::default()
             }),
             Some("ticks") => {

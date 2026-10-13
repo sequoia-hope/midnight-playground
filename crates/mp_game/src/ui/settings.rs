@@ -211,6 +211,7 @@ pub fn settings(p: &mut ChildSpawnerCommands, cx: &mut Cx, ui: &UiState, play: &
             heading(p, &bp, "DRIVING", false);
             select_row(p, cx, Sel::Guide, "Guide line", s, ot);
             select_row(p, cx, Sel::Assist, "Steer assist", s, ot);
+            select_row(p, cx, Sel::Physics, "Handling", s, ot);
             if touch {
                 check_row(
                     p,

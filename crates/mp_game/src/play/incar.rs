@@ -225,6 +225,7 @@ mod tests {
                 seed: 1,
                 pursuit: false,
                 heat: 1.0,
+                physics: mp_sim::model::Physics::Arcade,
             },
         );
         (lr, st)

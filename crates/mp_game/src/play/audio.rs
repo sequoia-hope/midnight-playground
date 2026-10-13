@@ -1679,6 +1679,7 @@ mod tests {
             seed: 1,
             pursuit: false,
             heat: 1.0,
+            physics: mp_sim::model::Physics::Arcade,
         };
         let lr = LevelRuntime::new(mp_levels::level_by_id("sierra")).unwrap();
         let mut race = Race::new(
@@ -1727,6 +1728,7 @@ mod tests {
             seed: 1,
             pursuit: true,
             heat: 2.0,
+            physics: mp_sim::model::Physics::Arcade,
         };
         let lr = LevelRuntime::new(mp_levels::level_by_id("sierra")).unwrap();
         let mut race = Race::new(

@@ -48,6 +48,7 @@ fn one_human_is_exactly_single_player() {
             seed: 7,
             pursuit: false,
             heat: 1.0,
+            physics: mp_sim::model::Physics::Arcade,
         };
         let mut a = SimState::new(&lr, sp_opts);
         let mut b = SimState::new_multi(&lr, &opts(&["muscle"]));

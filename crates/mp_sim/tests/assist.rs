@@ -50,6 +50,7 @@ fn run(level: &str, driver: Driver, assist: Assist, limit_s: f64) -> Run {
         seed: 1,
         pursuit: false,
         heat: 1.0,
+        physics: mp_sim::model::Physics::Arcade,
     };
     let mut st = SimState::new(&lr, opts);
     let mut ev = Vec::new();

@@ -445,6 +445,7 @@ pub(crate) mod tests {
                         seed: r.start.seed,
                         pursuit: false,
                         heat: 1.0,
+                        physics: mp_sim::model::Physics::Arcade,
                     };
                     *race = Some(Race::online(
                         lr.clone(),
@@ -601,6 +602,7 @@ pub(crate) mod tests {
             seed: r.start.seed,
             pursuit: false,
             heat: 1.0,
+            physics: mp_sim::model::Physics::Arcade,
         };
         Race::online(
             lr.clone(),

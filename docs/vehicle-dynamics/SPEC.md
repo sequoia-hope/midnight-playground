@@ -9,9 +9,11 @@ flat-ground rig and telemetry, and passes section 10's flat-ground tests
 natively and in wasm. V2's simulation side is in too: the Vento GT with
 an engine, gearbox, traction control and wall contact, selectable on
 `PlayerCar` (`mp_sim::model::use_sim`) and driven headlessly by
-`mp-sim race --sim`; the client side of V2 (the setting, drawing the pose,
-driving it on a keyboard and pad) is not. Where the build departs from
-this text, DECISIONS D1140 to D1143 say how and why. (Originally: work starts
+`mp-sim race --sim`. The client's *Handling* setting (2026-10-12, D1202)
+puts the player's car, or every racer, on it, and draws a sim car from its
+chassis's pose; rivals on Tier 1 drive through the Casual assists (open
+question 1, answered for now). Where the build departs from this text,
+DECISIONS D1140 to D1143 and D1202 say how and why. (Originally: work starts
 after the Rust port's cutover, ROADMAP M9.)
 
 This is the design document that ROADMAP "M12 and beyond" row e (realistic

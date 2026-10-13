@@ -206,6 +206,9 @@ pub struct Track {
     pub bounds: Bounds,
     pub racing_line: Vec<f32>,
     pub speed_profile: Vec<f32>,
+    /// The same for a car on the sim model's tyres (Rust only), which hold
+    /// less than the arcade's: what a sim rival aims for.
+    pub speed_profile_sim: Vec<f32>,
 }
 
 impl Track {
@@ -905,6 +908,7 @@ fn build(level: &Level, is_loop: bool, raw: Raw, tags: Vec<Tag>) -> Track {
         bounds: Bounds::default(),
         racing_line: Vec::new(),
         speed_profile: Vec::new(),
+        speed_profile_sim: Vec::new(),
     };
     build_spatial_hash(&mut t);
     build_racing_line(&mut t);
@@ -962,14 +966,50 @@ fn build_racing_line(t: &mut Track) {
     t.racing_line = racing_line;
 
     // Speed a well-driven car can carry through each metre.
+    t.speed_profile = speed_profile(t, 15.5, 11.0, false);
+    t.speed_profile_sim = speed_profile(t, SIM_A_LAT, SIM_BRAKE, true);
+}
+
+/// The lateral grip (m/s²) and the braking (m/s²) a sim car is driven to:
+/// the Vento GT's tyres, with a margin for the driver.
+pub const SIM_A_LAT: f64 = 7.5;
+pub const SIM_BRAKE: f64 = 8.5;
+/// Over a crest, the share of gravity a sim car may ask of it (m/s²), and
+/// the samples either side the crest's bend is measured over.
+const CREST_G: f64 = 6.5;
+const CREST_SPAN: i64 = 4;
+
+/// The speed a car with `a_lat` of grip and `brake` of braking can carry
+/// through each metre. `crests`: also slow enough over a crest to keep the
+/// wheels on the road (a car that flies cannot brake for what follows).
+fn speed_profile(t: &Track, a_lat: f64, brake: f64, crests: bool) -> Vec<f32> {
+    let n = t.n;
+    let w = t.is_loop;
     let mut vmax = vec![0f32; n];
-    let (a_lat, v_top) = (15.5, 69.5);
+    let v_top = 69.5;
     for i in 0..n {
         let k = (t.k_smooth[i] as f64).abs() + 1e-5;
         vmax[i] = js::min(v_top, (a_lat / k).sqrt()) as f32;
     }
+    if crests {
+        // The road's downward bend (1/m) over a few samples either side.
+        let at = |i: i64| {
+            let j = if w {
+                i.rem_euclid(n as i64)
+            } else {
+                i.clamp(0, n as i64 - 1)
+            };
+            t.grade[j as usize] as f64
+        };
+        for i in 0..n {
+            let ii = i as i64;
+            let bend = (at(ii - CREST_SPAN) - at(ii + CREST_SPAN)) / (2 * CREST_SPAN) as f64;
+            if bend > 1e-5 {
+                vmax[i] = js::min(vmax[i] as f64, (CREST_G / bend).sqrt()) as f32;
+            }
+        }
+    }
     // Backward pass: you have to brake before a corner (twice round a loop).
-    let brake = 11.0;
     let passes = if w { 2 } else { 1 };
     for _ in 0..passes {
         let top = n as i64 - 2 + i64::from(w);
@@ -980,5 +1020,5 @@ fn build_racing_line(t: &mut Track) {
             vmax[i] = js::min(vmax[i] as f64, (vj * vj + 2.0 * brake).sqrt()) as f32;
         }
     }
-    t.speed_profile = vmax;
+    vmax
 }

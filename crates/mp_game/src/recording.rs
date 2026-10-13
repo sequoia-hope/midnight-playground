@@ -429,6 +429,7 @@ fn race(mut rec: ResMut<Recorder>, play: Option<Res<Play>>, opts: Res<Opts>) {
                 "seed": o.seed,
                 "pursuit": o.pursuit,
                 "heat": o.heat,
+                "physics": o.physics.name(),
                 "cops": race.pursuit_opts.cops,
                 "flash": race.pursuit_opts.flash,
                 "pursuit_on": st.race.pursuit_on,
@@ -901,6 +902,7 @@ mod tests {
             seed: 7,
             pursuit: false,
             heat: 1.0,
+            physics: mp_sim::model::Physics::Arcade,
         };
         let lr = LevelRuntime::new(mp_levels::level_by_id("coast")).unwrap();
         let setup = Setup {

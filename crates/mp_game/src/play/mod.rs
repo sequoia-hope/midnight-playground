@@ -92,6 +92,11 @@ pub struct Params {
     pub line: Option<guide::GuideMode>,
     /// `?assist=0|1|2`: the steering assist, over the setting (D1083).
     pub assist: Option<mp_sim::assist::Assist>,
+    /// Which cars the sim model moves: the Handling setting, or
+    /// `?physics=arcade|player|all` over it (D1202).
+    pub physics: mp_sim::model::Physics,
+    /// The address set `physics`: the setting does not.
+    pub physics_forced: bool,
 }
 
 impl Params {
@@ -127,6 +132,12 @@ impl Params {
             camera: get("camera").and_then(|c| camera::MODES.iter().position(|m| m.name == c)),
             line: get("line").and_then(guide::GuideMode::parse),
             assist: get("assist").and_then(mp_sim::assist::Assist::parse),
+            physics: get("physics")
+                .and_then(mp_sim::model::Physics::parse)
+                .unwrap_or_default(),
+            physics_forced: get("physics")
+                .and_then(mp_sim::model::Physics::parse)
+                .is_some(),
         }
     }
 
@@ -136,6 +147,7 @@ impl Params {
             seed: self.seed.unwrap_or_else(clock_seed),
             pursuit: self.pursuit,
             heat: self.heat,
+            physics: self.physics,
         }
     }
 }
@@ -346,6 +358,8 @@ fn start(
             setup.opts.car = first.players[me].v.kind;
             setup.opts.seed = r.start.seed;
             setup.opts.pursuit = false;
+            // The lobby does not carry the Handling setting: arcade.
+            setup.opts.physics = mp_sim::model::Physics::Arcade;
             Err((lr, first, me))
         }
         _ => Ok(lr),
@@ -585,6 +599,7 @@ fn read_input(
         Mode::Results if again && !race.online_now() => {
             let mut opts = race.setup.opts;
             opts.seed = opts_for_restart.seed.unwrap_or_else(clock_seed);
+            opts.physics = opts_for_restart.physics;
             race.restart(opts);
         }
         Mode::Paused if again => race.pause(false),
@@ -701,7 +716,10 @@ fn draw(
         }
         *t = Transform::from_translation(pos.as_vec3()).with_rotation(q.as_quat());
         if let Some(sp) = race.springs.get_mut(i) {
-            if dt > 0.0 {
+            if v.pose.is_some() {
+                // A sim car's pitch and roll are its chassis's own.
+                *sp = pose::Springs::default();
+            } else if dt > 0.0 {
                 sp.step(v.accel_long, v.accel_lat, dt);
             }
             models.sync_parts(i, sp, p.speed, p.steer_angle, dt, &mut bodies);

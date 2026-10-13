@@ -10,8 +10,14 @@ use mp_track::{Frame, Track};
 
 use crate::body::{AgentView, Body};
 use crate::kinematic::Kinematic;
+use crate::model::{SimRival, read_back};
 use crate::park::Park;
 use crate::vehicle::Vehicle;
+
+/// How much further a sim rival keeps off the walls than a kinematic one (m).
+const SIM_WALL_MARGIN: f64 = 0.6;
+/// The braking a sim rival allows itself behind a car in its path (m/s²).
+const SIM_FOLLOW_DECEL: f64 = 5.0;
 
 /// The options Race gives a rival (`opts`); `None` takes the JS default.
 #[derive(Clone, Copy, Debug, Default)]
@@ -61,6 +67,9 @@ pub struct AiDriver {
     pub spiked: f64,
     /// Race progress, set by the grid and the race.
     pub prog: Option<f64>,
+    /// On the sim model (`Physics::All`): the sim car that `k.v` is the
+    /// body view of. `None`: the kinematic rival of the JS.
+    pub sim: Option<Box<SimRival>>,
 }
 
 impl AiDriver {
@@ -92,17 +101,25 @@ impl AiDriver {
             hold_lat: None,
             spiked: 0.0,
             prog: None,
+            sim: None,
         }
     }
 
     pub fn write_pos(&mut self, t: &Track) {
-        self.k.write_pos(t);
+        if self.sim.is_some() {
+            read_back(&mut self.k, t);
+        } else {
+            self.k.write_pos(t);
+        }
     }
 
     pub fn update(&mut self, t: &Track, dt: f64, ctx: &AiCtx, rng: &mut dyn Rng) {
         let f = self.k.frame(t);
         if !ctx.started {
-            self.k.write_pos(t);
+            match &mut self.sim {
+                Some(sim) => sim.drive(&mut self.k, t, dt, 0.0, 0.0, false, 0.0, false),
+                None => self.k.write_pos(t),
+            }
             return;
         }
         let park = self.park;
@@ -111,10 +128,13 @@ impl AiDriver {
         // Target speed from the profile a little ahead (braking points).
         let look = clamp(speed * 0.5, 6.0, 40.0);
         let i_a = t.idx(s + look);
-        let mut v_t = js::min(
-            t.speed_profile[t.idx(s)] as f64,
-            t.speed_profile[i_a] as f64,
-        ) * self.skill;
+        // A sim car holds less than the arcade's: its own profile.
+        let profile = if self.sim.is_some() {
+            &t.speed_profile_sim
+        } else {
+            &t.speed_profile
+        };
+        let mut v_t = js::min(profile[t.idx(s)] as f64, profile[i_a] as f64) * self.skill;
         if let Some(p) = park {
             v_t = js::min(v_t, p.speed(t, s));
         } else {
@@ -247,25 +267,50 @@ impl AiDriver {
 
         lat_t = clamp(lat_t, -lim, lim);
 
+        if self.sim.is_some() {
+            // A sim car holds a line less tightly: keep further off the walls.
+            let lim = js::max(0.0, lim - SIM_WALL_MARGIN);
+            let lat_t = clamp(lat_t, -lim, lim);
+            // Nor can it swerve round a car as sharply: whatever is in its
+            // path now, it keeps a speed it could still stop behind.
+            for (i, o) in ctx.cars.iter().enumerate() {
+                if Some(i) == ctx.me || o.dir != 1 || o.gap_lat.is_some() {
+                    continue;
+                }
+                let gap = t.ds(s, o.s) - self.k.v.half_l - o.half_l;
+                let near = my_w + o.half_w + 0.3;
+                if !(0.0..=120.0).contains(&gap)
+                    || ((o.lat - lat).abs() > near && (o.lat - lat_t).abs() > near)
+                {
+                    continue;
+                }
+                let vb = js::max(0.0, o.speed_along);
+                let room = js::max(0.0, gap - 2.0);
+                v_t = js::min(v_t, (vb * vb + 2.0 * SIM_FOLLOW_DECEL * room).sqrt());
+            }
+            let nitroing = self.nitro_step(park.is_some(), &f, speed, dt, rng);
+            if nitroing {
+                v_t *= 1.12;
+            }
+            self.throttle = if v_t > speed { 1.0 } else { 0.0 };
+            self.nitro_active = nitroing;
+            let sim = self.sim.as_mut().expect("a sim rival");
+            sim.drive(&mut self.k, t, dt, v_t, lat_t, nitroing, self.spiked, true);
+            if !self.finished && self.k.s >= t.finish_s {
+                self.finished = true;
+                self.finish_time = Some(ctx.time);
+            }
+            return;
+        }
+
         // Lateral controller (critically damped-ish, limited accel).
         let lat_a = clamp((lat_t - lat) * 3.2 - self.k.lat_vel * 2.6, -7.0, 7.0);
         self.k.lat_vel += lat_a * dt;
         self.k.lat_vel = clamp(self.k.lat_vel, -6.0, 6.0);
 
         // Speed controller.
-        self.nitro_timer -= dt;
-        if park.is_none()
-            && self.nitro_timer < 0.0
-            && self.nitro <= 0.0
-            && f.kappa.abs() < 0.004
-            && speed > 30.0
-        {
-            self.nitro = 2.5;
-            self.nitro_timer = 12.0 + rng.next_f64() * 14.0;
-        }
-        let nitroing = self.nitro > 0.0;
+        let nitroing = self.nitro_step(park.is_some(), &f, speed, dt, rng);
         if nitroing {
-            self.nitro -= dt;
             v_t *= 1.12;
         }
         let acc = js::min(9.0, self.power / js::max(speed, 5.0)) + if nitroing { 4.0 } else { 0.0 };
@@ -301,6 +346,33 @@ impl AiDriver {
         }
     }
 
+    /// The nitro's timer: a burst now and then on a straight, never while
+    /// parking. Whether it burns this tick.
+    fn nitro_step(
+        &mut self,
+        parking: bool,
+        f: &Frame,
+        speed: f64,
+        dt: f64,
+        rng: &mut dyn Rng,
+    ) -> bool {
+        self.nitro_timer -= dt;
+        if !parking
+            && self.nitro_timer < 0.0
+            && self.nitro <= 0.0
+            && f.kappa.abs() < 0.004
+            && speed > 30.0
+        {
+            self.nitro = 2.5;
+            self.nitro_timer = 12.0 + rng.next_f64() * 14.0;
+        }
+        let nitroing = self.nitro > 0.0;
+        if nitroing {
+            self.nitro -= dt;
+        }
+        nitroing
+    }
+
     /// This driver as `findBlock` and `passLat` read it.
     pub fn seeker(&self) -> Seeker {
         Seeker {
@@ -312,6 +384,8 @@ impl AiDriver {
     }
 }
 
+/// A sim rival is pushed as the player's car is (`PhysicsBody`): on its
+/// body view, which its sim car takes back at its next step.
 impl Body for AiDriver {
     fn v(&self) -> &Vehicle {
         &self.k.v
@@ -320,16 +394,38 @@ impl Body for AiDriver {
         self.k.v.mass
     }
     fn velocity(&self) -> (f64, f64) {
-        self.k.velocity()
+        if self.sim.is_some() {
+            (self.k.v.vx, self.k.v.vz)
+        } else {
+            self.k.velocity()
+        }
     }
     fn set_velocity(&mut self, vx: f64, vz: f64) {
-        self.k.set_velocity(vx, vz)
+        if self.sim.is_some() {
+            self.k.v.vx = vx;
+            self.k.v.vz = vz;
+            let f = &self.k.f;
+            self.k.speed = vx * f.fx + vz * f.fz;
+            self.k.lat_vel = vx * f.rx + vz * f.rz;
+        } else {
+            self.k.set_velocity(vx, vz)
+        }
     }
     fn translate(&mut self, t: &Track, dx: f64, dz: f64) {
-        self.k.translate(t, dx, dz)
+        if self.sim.is_some() {
+            self.k.v.x += dx;
+            self.k.v.z += dz;
+            read_back(&mut self.k, t);
+        } else {
+            self.k.translate(t, dx, dz)
+        }
     }
     fn add_spin(&mut self, w: f64) {
-        self.k.add_spin(w)
+        if self.sim.is_some() {
+            self.k.v.yaw_rate += w;
+        } else {
+            self.k.add_spin(w)
+        }
     }
     fn view(&self) -> AgentView {
         self.k.view()

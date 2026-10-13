@@ -112,6 +112,8 @@ pub enum Sel {
     Station,
     /// The render scale (the web only, D1194).
     Scale,
+    /// Handling: which cars the sim model moves (Rust only, D1202).
+    Physics,
 }
 
 /// What activating a control does.
@@ -360,6 +362,10 @@ pub fn plugin(app: &mut App) {
         }
         // `new PursuitView(race, { flash: settings.flash })`.
         play.params.flash = settings.flash;
+        if !play.params.physics_forced {
+            play.params.physics =
+                mp_sim::model::Physics::parse(&settings.physics).unwrap_or_default();
+        }
         if o.param("pursuit").is_none() {
             let level = mp_levels::level_by_id(&o.level);
             play.params.pursuit = store::mode_for(&store, &level) == "pursuit";
@@ -764,6 +770,9 @@ fn arm(ui: &mut UiState, play: &mut Play, store: &Store, o: &Options) {
     play.params.pursuit =
         level.police.is_some() && forced.unwrap_or(store::mode_for(store, &level) == "pursuit");
     play.params.flash = s.flash;
+    if !play.params.physics_forced {
+        play.params.physics = mp_sim::model::Physics::parse(&s.physics).unwrap_or_default();
+    }
     play.stop = true;
     play.armed = true;
     play.hold = true;
@@ -1304,6 +1313,16 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
                     ctx.store.set_str("renderScale", &v);
                     ctx.opts.scale = store::scale_of(&v);
                 }
+                // Handling (D1202): the next race, or the next restart of
+                // this one, is built with it.
+                Sel::Physics => {
+                    ui.settings.physics = v.clone();
+                    ctx.store.set_str("physics", &v);
+                    if !ctx.play.params.physics_forced {
+                        ctx.play.params.physics =
+                            mp_sim::model::Physics::parse(&v).unwrap_or_default();
+                    }
+                }
             }
         }
         Act::CloseDropdown => ui.dropdown = None,
@@ -1363,9 +1382,13 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
         }
         Act::Restart | Act::Again => {
             let seed = ctx.play.params.seed;
+            let physics = ctx.play.params.physics;
             if let Some(r) = ctx.play.race.as_mut() {
                 let mut o = r.setup.opts;
                 o.seed = seed.unwrap_or_else(crate::play::clock_seed);
+                if !r.online_now() {
+                    o.physics = physics;
+                }
                 r.restart(o);
                 ui.races += 1;
             }
@@ -1571,6 +1594,7 @@ pub fn sel_id(sel: Sel) -> &'static str {
         Sel::Assist => "opt-assist",
         Sel::Station => "opt-station",
         Sel::Scale => "opt-scale",
+        Sel::Physics => "opt-physics",
     }
 }
 
@@ -2330,6 +2354,7 @@ pub(crate) mod tests {
                     seed: 1,
                     pursuit: false,
                     heat: 1.0,
+                    physics: mp_sim::model::Physics::Arcade,
                 },
                 autodrive: false,
                 touch: false,

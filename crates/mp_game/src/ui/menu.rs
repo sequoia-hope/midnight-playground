@@ -120,6 +120,15 @@ pub fn select_options(sel: Sel, s: &Settings) -> (Vec<(String, String)>, String)
             ],
             s.assist.clone(),
         ),
+        // Which cars the sim model moves (D1202).
+        Sel::Physics => (
+            vec![
+                ("arcade".into(), "Arcade".into()),
+                ("player".into(), "Sim: your car".into()),
+                ("all".into(), "Sim: every racer".into()),
+            ],
+            s.physics.clone(),
+        ),
         // The radio's station (D1160): the level's own, or one of them. On
         // or off is the Radio checkbox.
         Sel::Station => {

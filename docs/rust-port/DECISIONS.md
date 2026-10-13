@@ -10362,3 +10362,60 @@ tilt, a few hundred ms". Both cars play on the exhaust model (D1110).
   *Classic engine sound* (no worklet): if the classic engine lags as much,
   the lag is the output's (Bluetooth headphones add 150 to 250 ms; the
   speaker does not), not the model's.
+
+## D1202. Handling: the sim model for the player's car, or for every racer
+
+**Date:** 2026-10-12. The owner: "add the option to enable sim physics for
+all cars participating in the race, or just the player". This is the
+client half of vehicle-dynamics V2 (the setting, drawing the pose), and
+V4's "Tier 1 rivals behind a flag" brought forward as a setting.
+
+- **The choice is `mp_sim::model::Physics`**: `Arcade` (the default),
+  `Player`, `All`. It is a field of `RaceOpts`, so `SimState::new` builds
+  the field and then puts those cars on the sim model where they stand
+  (`model::use_physics`), and a restart, a recording and a replay carry
+  it (`race_start` gains `physics`; a recording without it is arcade).
+  Every arcade golden is bit-identical. `new_multi` passes `Arcade`: the
+  lobby does not carry the setting yet, so online races stay arcade.
+  `mp-sim race --physics all` runs it headless (`--sim` is `player`) and
+  prints each sim rival's wall impacts and re-placements.
+- **The setting** is Settings › Driving › *Handling*: Arcade, "Sim: your
+  car", "Sim: every racer" (`mr.physics`, control `opt-physics`, in the
+  bridge's `settings` and `selects`). `?physics=arcade|player|all`
+  overrides it. It applies to the next race built, and to a restart.
+- **A sim rival** (`model::SimRival`, `AiDriver.sim`) keeps the
+  `AiDriver`: the AI still picks the target speed and line (profile,
+  rubber band, passing, parking, Hot Pursuit holds and spikes), and a
+  small driver turns them into controls for a sim car through the same
+  *Casual* assists the player's goes through (open question 1 of the
+  vehicle-dynamics spec, answered for now): pure pursuit to a point on
+  the wanted line 7 m + 0.4 s ahead, as a wheel angle plus feedback on
+  the yaw rate it lacks (so a slide is caught with opposite lock),
+  throttle off while the rear axle slips, the handbrake (not the brake,
+  which would select reverse) to stand still. `k.v` is its body view; its
+  `s`, `lat`, `speed` and `lat_vel` are read back from it, so every other
+  driver, the pursuit and the trace see it as before. The collision pass
+  pushes it as it pushes the player's car (velocity, position, spin on the
+  body view), and the sim car takes that back at its next step.
+- **What the kinematic AI could do and a sim car cannot**, made up for in
+  the sim branch only: its own speed profile, `Track::speed_profile_sim`
+  (7.5 m/s² of lateral grip and 8.5 m/s² of braking against the arcade's
+  15.5 and 11, and slow enough over a crest to keep its wheels down, since
+  a car in the air cannot brake: Streets' rivals flew 100 m into a
+  hairpin before this); 0.6 m further off the walls; and a speed it can
+  stop from (5 m/s²) behind any car in its path or its target lane up to
+  120 m ahead, because it cannot swerve round one as a kinematic rival
+  does. Stuck under 1.5 m/s while it wants over 4, or facing more than
+  1.6 rad off the road's heading, for 2.5 s, it is put back on the road
+  5 m behind, as the player's reset does.
+- **Measured** (`mp-sim race --physics all`, autopilot player at 0.67 of
+  the arcade pace): every rival finishes Sierra, Coast, Streets and
+  Desert with 0 to 5 wall impacts and 0 to 2 re-placements each, most of
+  them in the opening pack; the field on the sim model runs at about
+  33 000 ticks a second natively against 200 000 all arcade (some 25 µs a
+  tick for six sim cars). Seaside's rivals are still racing when the
+  player finishes.
+- **Drawing**: a car with a `Vehicle.pose` is drawn from its chassis's
+  quaternion (slerped between ticks; the model's +Z nose is the body's
+  +x) instead of the road frame, and its pitch and roll springs are held
+  at zero, since the chassis pitches and rolls on its own suspension.

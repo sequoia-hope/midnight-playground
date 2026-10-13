@@ -19,15 +19,45 @@
 //! its next update: small changes as impulses on the rigid body, a jump as
 //! a re-placement (SPEC 4.7).
 
-use mp_math::{clamp, kernel, smoothstep};
+use mp_math::{clamp, kernel, smoothstep, wrap_angle};
 use mp_track::Track;
 use mp_vdyn::cars::vento_gt;
 use mp_vdyn::{Controls, Ground, Quat, Vec3, VehicleDef};
 
 use crate::ground::TrackGround;
 use crate::input::{Input, InputFrame, SHIFT_DOWN, SHIFT_UP};
-use crate::physics::{ANALOG_LOCK, CarPhysics, PhysEvent};
+use crate::kinematic::Kinematic;
+use crate::physics::{ANALOG_LOCK, CarPhysics, PhysEvent, car_spec};
 use crate::vehicle::{SimPose, Vehicle, WheelPose};
+
+/// Which cars of a race the sim model moves (the "Handling" setting).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Physics {
+    /// Every car on the arcade model, as the game has always been.
+    #[default]
+    Arcade,
+    /// The player's car on the sim model, the rivals arcade.
+    Player,
+    /// The player's car and every rival on the sim model.
+    All,
+}
+
+impl Physics {
+    pub const ALL: [Physics; 3] = [Physics::Arcade, Physics::Player, Physics::All];
+
+    /// The setting's and the address's word for it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Physics::Arcade => "arcade",
+            Physics::Player => "player",
+            Physics::All => "all",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Physics> {
+        Physics::ALL.into_iter().find(|p| p.name() == s)
+    }
+}
 
 /// The model that moves a player's car.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -139,6 +169,17 @@ impl SimCar {
         }
     }
 
+    /// Grip-scaled lock: full steering asks a little more than the front
+    /// tyres hold at `speed` (the arcade's ANALOG_LOCK idea). Radians.
+    pub fn steer_max(&self, speed: f64) -> f64 {
+        let a0 = &self.def.axles[0];
+        let mu_g = a0.tyre.mu0 * mp_vdyn::vehicle::G;
+        let v = speed.abs().max(1.0);
+        let peak_slip = 3.0 * a0.tyre.mu0 * a0.tyre.fz0 / a0.tyre.stiffness();
+        let want = ANALOG_LOCK * self.def.wheelbase() * mu_g / (v * v) + peak_slip;
+        clamp(want, 0.0, a0.steer_lock)
+    }
+
     /// The *Casual* assists: the race's controls to the vehicle's.
     fn controls(&mut self, phys: &CarPhysics, inp: &Input, frame: &InputFrame) -> Controls {
         let car = &mut self.car;
@@ -172,15 +213,8 @@ impl SimCar {
             throttle = 0.0;
             brake = 1.0;
         }
-        // Grip-scaled lock: full steering asks a little more than the front
-        // tyres hold at this speed (the arcade's ANALOG_LOCK idea).
-        let a0 = &self.def.axles[0];
-        let lock = a0.steer_lock;
-        let mu_g = a0.tyre.mu0 * mp_vdyn::vehicle::G;
-        let v = speed.abs().max(1.0);
-        let peak_slip = 3.0 * a0.tyre.mu0 * a0.tyre.fz0 / a0.tyre.stiffness();
-        let want = ANALOG_LOCK * self.def.wheelbase() * mu_g / (v * v) + peak_slip;
-        let steer_max = clamp(want, 0.0, lock);
+        let lock = self.def.axles[0].steer_lock;
+        let steer_max = self.steer_max(speed);
         let boost = if inp.nitro && phys.nitro > 0.0 && speed > 4.0 && inp.throttle > 0.1 {
             NITRO_BOOST
         } else {
@@ -379,4 +413,179 @@ impl SimCar {
 pub fn use_sim(p: &mut crate::race::PlayerCar, t: &Track) {
     let def = sim_def(p.v.kind, p.spec.mass);
     p.model = VehicleModel::Sim(Box::new(SimCar::new(def, &p.v, t)));
+}
+
+/// Puts the cars `physics` names on the sim model, where they stand (on
+/// the grid, when the race is built).
+pub fn use_physics(st: &mut crate::race::SimState, t: &Track, physics: Physics) {
+    if physics == Physics::Arcade {
+        return;
+    }
+    for p in st.players.iter_mut() {
+        use_sim(p, t);
+    }
+    if physics == Physics::All {
+        for a in st.rivals.iter_mut() {
+            a.sim = Some(Box::new(SimRival::new(&a.k.v, t)));
+        }
+    }
+}
+
+/// How far a sim rival's pace may fall below the profile before it counts
+/// as stuck, and how long it may stay so before it is put back on the road
+/// (s).
+const STUCK_SPEED: f64 = 1.5;
+/// A sim rival's wheel angle (rad) per rad/s of yaw rate it lacks.
+const YAW_GAIN: f64 = 0.1;
+const STUCK_SECS: f64 = 2.5;
+
+/// A rival on the sim model: the AI picks its speed and line as it does for
+/// a kinematic rival (`AiDriver::update`), and this drives a sim car to
+/// them through the same *Casual* assists the player's goes through. The
+/// rival's `Kinematic` stays its body view: `k.v` is what the sim writes,
+/// and `k.s`, `k.lat`, `k.speed` and `k.lat_vel` are read back from it
+/// for the drivers that look at it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SimRival {
+    pub car: SimCar,
+    /// The readouts the sim car writes (gear, rpm, drift, ...).
+    pub phys: CarPhysics,
+    /// Seconds spent stuck (`STUCK_SPEED`), or facing back up the road.
+    stuck: f64,
+    /// For the headless runs: wall impacts, and times put back on the road
+    /// (not in the hash: nothing reads them).
+    pub impacts: u32,
+    pub resets: u32,
+}
+
+impl SimRival {
+    pub fn new(v: &Vehicle, t: &Track) -> SimRival {
+        let spec = car_spec(v.kind)
+            .or_else(|| car_spec("sports"))
+            .expect("a car in CAR_SPECS");
+        SimRival {
+            car: SimCar::new(sim_def(v.kind, v.mass), v, t),
+            phys: CarPhysics::new(v, spec),
+            stuck: 0.0,
+            impacts: 0,
+            resets: 0,
+        }
+    }
+
+    /// One tick: steer for `lat_t` a little ahead, hold `v_t` (m/s), and
+    /// write the body view back into `k`. Before the start the car is held
+    /// on its brakes.
+    #[allow(clippy::too_many_arguments)]
+    pub fn drive(
+        &mut self,
+        k: &mut Kinematic,
+        t: &Track,
+        dt: f64,
+        v_t: f64,
+        lat_t: f64,
+        nitro: bool,
+        spiked: f64,
+        started: bool,
+    ) {
+        let v = &k.v;
+        let speed = v.speed;
+        let mut inp = Input::default();
+        if started {
+            // Steering: at a point on the wanted line a little ahead.
+            // The arc through it (pure pursuit) asks a wheel angle and a
+            // yaw rate; the yaw rate's error is fed back, so a sliding car
+            // is caught with opposite lock.
+            let la = 7.0 + speed.abs() * 0.4;
+            let p = t.point_at(k.s + la, lat_t);
+            let dx = p.x - v.x;
+            let dz = p.z - v.z;
+            let want = kernel::atan2(dz, dx);
+            let err = wrap_angle(want - v.yaw);
+            let dist = (dx * dx + dz * dz).sqrt().max(1.0);
+            let curv = 2.0 * kernel::sin(err) / dist;
+            let wheel = self.car.def.wheelbase() * curv + YAW_GAIN * (speed * curv - v.yaw_rate);
+            inp.steer = clamp(wheel / self.car.steer_max(speed), -1.0, 1.0);
+            inp.analog = true;
+            // Speed: throttle up to it, brake past it. To stand still, the
+            // handbrake: the brake held at a standstill would reverse.
+            let dv = v_t - speed;
+            if v_t < 0.5 && speed < 1.0 {
+                inp.handbrake = true;
+            } else if dv > 0.0 {
+                // Off the power while the rear steps out.
+                let slide = clamp(1.0 - (self.phys.slip.abs() - 0.06) * 8.0, 0.2, 1.0);
+                inp.throttle = clamp(dv * 0.5, 0.0, 1.0) * slide;
+            } else if dv < -1.0 {
+                inp.brake = clamp(-dv * 0.4, 0.0, 1.0);
+            }
+            inp.nitro = nitro;
+        }
+        self.phys.locked = !started;
+        self.phys.nitro = if nitro { 1.0 } else { 0.0 };
+        self.phys.spiked = spiked;
+        self.car.update(
+            &mut k.v,
+            &mut self.phys,
+            t,
+            dt,
+            &inp,
+            &InputFrame::default(),
+        );
+        // Nobody listens for a rival's shifts and knocks.
+        self.impacts += self
+            .phys
+            .events
+            .iter()
+            .filter(|e| matches!(e, PhysEvent::Impact { .. }))
+            .count() as u32;
+        self.phys.events.clear();
+        read_back(k, t);
+
+        // Stuck against something, or turned round: back on the road a
+        // little behind, facing along it, as the player's reset puts them.
+        let f = k.f;
+        let facing = wrap_angle(k.v.yaw - kernel::atan2(f.fz, f.fx)).abs();
+        if started && ((v_t > 4.0 && k.speed < STUCK_SPEED) || facing > 1.6) {
+            self.stuck += dt;
+        } else {
+            self.stuck = 0.0;
+        }
+        if self.stuck > STUCK_SECS {
+            self.stuck = 0.0;
+            self.resets += 1;
+
+            let s = if t.is_loop {
+                t.wrap(k.s - 5.0)
+            } else {
+                (k.s - 5.0).max(t.start_s)
+            };
+            let hw = t.frame(s).hw;
+            k.s = s;
+            k.lat = clamp(lat_t, -hw * 0.5, hw * 0.5);
+            k.speed = 0.0;
+            k.lat_vel = 0.0;
+            k.write_pos(t);
+            k.v.yaw_rate = 0.0;
+            self.car = SimCar::new(self.car.def.clone(), &k.v, t);
+        }
+    }
+
+    /// Appends the sim state's bits for the race's hash.
+    pub fn hash_into(&self, out: &mut Vec<u8>) {
+        self.car.hash_into(out);
+        out.extend_from_slice(&self.stuck.to_bits().to_le_bytes());
+    }
+}
+
+/// A sim rival's track coordinates from its body view (after the sim's
+/// step, and after the collision pass moved it).
+pub fn read_back(k: &mut Kinematic, t: &Track) {
+    let p = t.project(k.v.x, k.v.z, k.v.s);
+    k.v.s = p.s;
+    k.v.lat = p.lat;
+    k.s = p.s;
+    k.lat = p.lat;
+    let f = k.frame(t);
+    k.speed = k.v.vx * f.fx + k.v.vz * f.fz;
+    k.lat_vel = k.v.vx * f.rx + k.v.vz * f.rz;
 }
