@@ -29,18 +29,32 @@ const SCENERY: [&str; 9] = [
 const CARS: [&str; 5] = ["sports", "muscle", "super", "electric", "rally"];
 
 #[test]
-fn the_menu_lists_six_levels_with_unique_ids_in_order() {
+fn the_menu_lists_the_six_levels_and_the_corridor_with_unique_ids_in_order() {
     let ls = levels();
     let ids: Vec<_> = ls.iter().map(|l| l.id).collect();
     assert_eq!(
         ids,
-        ["coast", "sierra", "streets", "desert", "seaside", "cruise"]
+        [
+            "coast",
+            "sierra",
+            "streets",
+            "desert",
+            "seaside",
+            "cruise",
+            "southcoast"
+        ]
     );
     let nums: Vec<_> = ls.iter().map(|l| l.num).collect();
     assert_eq!(
         nums,
         [
-            "LEVEL 1", "LEVEL 2", "LEVEL 3", "LEVEL 4", "LEVEL 5", "ENDLESS"
+            "LEVEL 1",
+            "LEVEL 2",
+            "LEVEL 3",
+            "LEVEL 4",
+            "LEVEL 5",
+            "ENDLESS",
+            "THE PENINSULA"
         ]
     );
 }
@@ -82,6 +96,11 @@ fn required_fields() {
                 assert!(l.laps.unwrap() >= 1, "laps");
                 assert!(!l.rivals.is_empty(), "a race has rivals");
                 assert!(l.police.is_none(), "no Hot Pursuit on a closed circuit");
+            }
+            Mode::Race if l.is_path() => {
+                // A corridor from the atlas: its path brings the heights.
+                assert!(!l.rivals.is_empty(), "a race has rivals");
+                assert!(l.start_height.is_none(), "a path brings its own heights");
             }
             Mode::Race => {
                 assert!(!l.segments().unwrap().is_empty(), "a race has segments");

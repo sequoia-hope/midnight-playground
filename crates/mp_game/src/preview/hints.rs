@@ -105,6 +105,7 @@ fn add(w: &mut World) {
     let seed = match id {
         "sierra" => 101,
         "coast" => 202,
+        "southcoast" => 212,
         "streets" => 303,
         "desert" => 404,
         "seaside" => 505,
@@ -120,7 +121,7 @@ fn add(w: &mut World) {
     let mut out = Out::default();
     match id {
         "sierra" => sierra(&mut c, &mut out),
-        "coast" => coast(&mut c, &mut out),
+        "coast" | "southcoast" => coast(&mut c, &mut out),
         "streets" => streets(&mut c, &mut out),
         "desert" => desert(&mut c, &mut out),
         "seaside" => seaside(&mut c, &mut out),

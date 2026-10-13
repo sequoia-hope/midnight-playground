@@ -61,7 +61,7 @@ and carry on with the option that best preserves parity.
 | The Rust page's console when a build does not come up | `node tools/parity/web-console.mjs --backend webgl2` |
 | A headless race (results, `--trace`, `--state-at`, `bench`) | `cargo run --release -p mp_sim --bin mp-sim -- race --level sierra` |
 | Native client | `cargo run -p mp_game` |
-| The open world's plan, measured (`resolve` rewrites what the planner draws) | `cargo run --release -p mp_atlas -- report` |
+| The open world's plan, measured (`resolve` rewrites what the planner draws; `corridor <id>` writes a route's road for a level, `docs/vision/peninsula.md`) | `cargo run --release -p mp_atlas -- report` |
 | Rebuild the atlas from real data (python3 with numpy, Pillow, shapely, pyarrow) | `python3 tools/atlas/build.py` |
 | JS unit tests | `npm run test:unit` (and `npm run test:unit:kernel`, with the parity kernel) |
 | Rebuild and check the parity kernel | `cargo xtask kernel` (CI: `cargo xtask kernel --check`) |

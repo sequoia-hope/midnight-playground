@@ -1,5 +1,6 @@
-//! The six levels as data, and Seaside Raceway's survey data loader (port of
-//! `src/levels/`, SPEC 4.4).
+//! The six levels as data, the open world's first corridor
+//! ([`south_coast`], docs/vision/peninsula.md), and Seaside Raceway's survey
+//! data loader (port of `src/levels/`, SPEC 4.4).
 //!
 //! Each level module returns a [`Level`]; [`levels`] lists them in menu order
 //! and [`level_by_id`] finds one as `levelById` does. Seaside Raceway needs
@@ -92,6 +93,7 @@ pub mod cruise;
 pub mod desert;
 pub mod seaside;
 pub mod sierra;
+pub mod south_coast;
 pub mod streets;
 pub mod survey;
 pub mod world;
@@ -100,7 +102,8 @@ pub use survey::SeasideData;
 
 /// Everything the menu offers, in order. Coast Highway comes first, which
 /// starts in the dark and drives into sunrise, then Sierra (the owner,
-/// 2026-10-06; D1102); the JS lists Sierra first.
+/// 2026-10-06; D1102); the JS lists Sierra first. The open world's first
+/// corridor comes last, after the six levels.
 pub fn levels() -> Vec<Level> {
     vec![
         coast::level(),
@@ -109,6 +112,7 @@ pub fn levels() -> Vec<Level> {
         desert::level(),
         seaside::level(),
         cruise::level(),
+        south_coast::level(),
     ]
 }
 

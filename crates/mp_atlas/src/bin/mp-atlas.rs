@@ -3,11 +3,12 @@
 //!   cargo run -p mp_atlas -- report [world]        the plan, measured, as text
 //!   cargo run -p mp_atlas -- resolve [world]       writes assets/atlas/<world>/resolved.json
 //!   cargo run -p mp_atlas -- profile <id> [world]  a route's or event's profile as CSV
+//!   cargo run -p mp_atlas -- corridor <id> [world] writes assets/atlas/<world>/corridors/<id>.txt
 //!
 //! The world defaults to `peninsula`.
 
-use mp_atlas::Atlas;
 use mp_atlas::report::{json, measure, text};
+use mp_atlas::{Atlas, corridor};
 use std::process::ExitCode;
 
 fn run(args: &[String]) -> Result<(), String> {
@@ -51,8 +52,32 @@ fn run(args: &[String]) -> Result<(), String> {
             }
             Ok(())
         }
+        "corridor" => {
+            let id = args.get(1).ok_or("corridor needs a route or event id")?;
+            let dir = Atlas::dir(world_at(2));
+            let a = Atlas::load(&dir)?;
+            let m = measure(&a)?;
+            let r = m
+                .routes
+                .iter()
+                .find(|r| r.id == *id)
+                .ok_or_else(|| format!("no route or event `{id}`"))?;
+            let c = corridor::corridor(r, &a.terrain);
+            let out_dir = dir.join("corridors");
+            std::fs::create_dir_all(&out_dir).map_err(|e| format!("{}: {e}", out_dir.display()))?;
+            let out = out_dir.join(format!("{id}.txt"));
+            std::fs::write(&out, corridor::text(&c))
+                .map_err(|e| format!("{}: {e}", out.display()))?;
+            eprintln!(
+                "wrote {} ({} samples, {:.1} km of game road)",
+                out.display(),
+                c.samples.len(),
+                c.real_length * c.scale / 1000.0
+            );
+            Ok(())
+        }
         other => Err(format!(
-            "unknown command `{other}`: report, resolve or profile <id> [world]"
+            "unknown command `{other}`: report, resolve, profile <id> or corridor <id> [world]"
         )),
     }
 }

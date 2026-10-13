@@ -18,7 +18,7 @@ use mp_track::{Level, Mode, Route, road_type};
 fn fingerprint(l: &Level) -> String {
     let route = match &l.route {
         Route::Segments(s) => format!("{s:?}"),
-        Route::Loop(spec) => format!("{spec:?} roads {:?}", spec.roads),
+        Route::Loop(spec) | Route::Path(spec) => format!("{spec:?} roads {:?}", spec.roads),
     };
     format!(
         "{} {:?} {} {} {} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {} {:?} {:?} {:?} {:?} {:?} {route}",
@@ -103,14 +103,24 @@ fn titles_and_descriptions_are_distinct_and_read_as_text() {
 }
 
 #[test]
-fn the_endless_cruise_is_the_only_cruise_and_comes_last() {
+fn the_endless_cruise_is_the_only_cruise_and_follows_the_numbered_levels() {
+    // The six levels as they were, then the open world's corridors
+    // (docs/vision/peninsula.md, stage 1).
     let ls = levels();
     let cruises: Vec<_> = ls.iter().filter(|l| l.mode == Mode::Cruise).collect();
     assert_eq!(cruises.len(), 1);
-    assert_eq!(ls.last().unwrap().mode, Mode::Cruise);
-    assert_eq!(ls.last().unwrap().num, "ENDLESS");
-    for (k, l) in ls.iter().filter(|l| l.mode == Mode::Race).enumerate() {
+    let numbered: Vec<_> = ls
+        .iter()
+        .take_while(|l| l.mode == Mode::Race && !l.is_path())
+        .collect();
+    for (k, l) in numbered.iter().enumerate() {
         assert_eq!(l.num, format!("LEVEL {}", k + 1));
+    }
+    let cruise = &ls[numbered.len()];
+    assert_eq!(cruise.mode, Mode::Cruise);
+    assert_eq!(cruise.num, "ENDLESS");
+    for l in &ls[numbered.len() + 1..] {
+        assert!(l.is_path(), "{}: after the cruise come the corridors", l.id);
     }
 }
 
@@ -321,7 +331,8 @@ fn every_start_grid_spot_is_on_the_tarmac() {
 #[test]
 fn a_point_to_point_road_starts_where_its_level_says() {
     for (l, t) in common::tracks() {
-        if t.is_loop {
+        // A path (a corridor from the atlas) starts where its data says.
+        if t.is_loop || l.is_path() {
             continue;
         }
         let (x, z) = (l.start_x.unwrap_or(0.0), l.start_z.unwrap_or(0.0));

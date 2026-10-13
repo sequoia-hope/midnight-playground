@@ -216,7 +216,8 @@ impl Track {
         let is_loop = level.is_loop();
         let mut tags = Vec::new();
         let raw = match &level.route {
-            Route::Loop(spec) => build_loop(level, spec, &mut tags)?,
+            Route::Loop(spec) => build_loop(level, spec, &mut tags, true)?,
+            Route::Path(spec) => build_loop(level, spec, &mut tags, false)?,
             Route::Segments(segs) => walk_segments(level, segs, &mut tags),
         };
         Ok(build(level, is_loop, raw, tags))
@@ -587,25 +588,42 @@ fn walk_segments(level: &Level, segs: &[Segment], tags: &mut Vec<Tag>) -> Raw {
     }
 }
 
+/// A loop's path resampled to a metre (`closed`), or an open path's
+/// (`Route::Path`): the same, with no edge from the last point back to the
+/// first, n samples over n - 1 metres, and nothing wrapped.
 fn build_loop(
     _level: &Level,
     spec: &crate::level::LoopSpec,
     tags: &mut Vec<Tag>,
+    closed: bool,
 ) -> Result<Raw, String> {
     // path() gives the closed centreline, and optionally surveyed heights,
     // camber, half-widths and barrier distances at the same points.
     let p = (spec.path)()?;
     let (xs, zs) = (&p.x, &p.z);
     let m = xs.len();
-    // Cumulative arc length around the closed polyline.
-    let mut cum = vec![0f64; m + 1];
-    for k in 0..m {
+    if !closed && m < 2 {
+        return Err("a path needs at least two points".to_owned());
+    }
+    // Cumulative arc length around the closed polyline (or along the open
+    // one: its last edge is absent).
+    let edges = if closed { m } else { m - 1 };
+    let mut cum = vec![0f64; edges + 1];
+    for k in 0..edges {
         let j = (k + 1) % m;
         cum[k + 1] = cum[k] + kernel::hypot(xs[j] - xs[k], zs[j] - zs[k]);
     }
-    let total = cum[m];
-    let n = js::round(total) as usize;
-    let step = total / n as f64;
+    let total = cum[edges];
+    let n = if closed {
+        js::round(total) as usize
+    } else {
+        js::round(total) as usize + 1
+    };
+    let step = if closed {
+        total / n as f64
+    } else {
+        total / (n - 1) as f64
+    };
     let mut px = vec![0f32; n];
     let mut pz = vec![0f32; n];
     // The extras that the path carries, in the JS's order: y, bank, hw,
@@ -627,8 +645,8 @@ fn build_loop(
     }
     let mut seg = 0usize;
     for i in 0..n {
-        let d = i as f64 * step;
-        while cum[seg + 1] < d {
+        let d = js::min(i as f64 * step, total);
+        while seg + 1 < edges && cum[seg + 1] < d {
             seg += 1;
         }
         let t = (d - cum[seg]) / (cum[seg + 1] - cum[seg]);
@@ -673,7 +691,11 @@ fn build_loop(
             });
             let mut s = s0 - ramp;
             while s <= s1 + ramp {
-                let k = (((s % nf) + nf) % nf) as usize;
+                let k = if closed {
+                    (((s % nf) + nf) % nf) as usize
+                } else {
+                    clamp(s, 0.0, nf - 1.0) as usize
+                };
                 let up = smoothstep(s0 - ramp, s0, s);
                 let down = 1.0 - smoothstep(s1, s1 + ramp, s);
                 y_raw[k] = (y_raw[k] as f64 + elevated * js::min(up, down)) as f32;
@@ -699,7 +721,11 @@ fn build_loop(
     for r in &spec.roads {
         let ni = n as i64;
         for s in r.s0..r.s1 {
-            road_type[(((s % ni) + ni) % ni) as usize] = road_index(r.road) as u8;
+            if closed {
+                road_type[(((s % ni) + ni) % ni) as usize] = road_index(r.road) as u8;
+            } else if (0..ni).contains(&s) {
+                road_type[s as usize] = road_index(r.road) as u8;
+            }
         }
     }
     Ok(Raw {
@@ -774,11 +800,10 @@ fn build(level: &Level, is_loop: bool, raw: Raw, tags: Vec<Tag>) -> Track {
         rx[k] = -dz as f32;
         rz[k] = dx as f32;
     }
-    // Loops get their curvature from the geometry.
-    if is_loop {
+    // Loops and paths get their curvature from the geometry.
+    if is_loop || level.is_path() {
         for k in 0..n {
-            let a = (k + n - 1) % n;
-            let b = (k + 1) % n;
+            let (a, b) = (prev(k), next(k));
             let h0 = kernel::atan2(fz[a] as f64, fx[a] as f64);
             let h1 = kernel::atan2(fz[b] as f64, fx[b] as f64);
             let mut d = h1 - h0;

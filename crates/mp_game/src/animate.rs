@@ -59,7 +59,7 @@ use std::sync::{Arc, Mutex};
 pub fn generated(level: &str) -> bool {
     matches!(
         level,
-        "sierra" | "seaside" | "cruise" | "desert" | "streets" | "coast"
+        "sierra" | "seaside" | "cruise" | "desert" | "streets" | "coast" | "southcoast"
     )
 }
 
@@ -178,7 +178,9 @@ fn new_build(level: &str, draws: bool) -> Build {
                 crate::levels::streets::scenery,
                 extra_modules,
             ),
-            "coast" => level_jobs_with(
+            // The open world's first corridor is built with the Coast
+            // Highway's kits (docs/vision/peninsula.md, stage 1).
+            "coast" | "southcoast" => level_jobs_with(
                 level_stages(setup),
                 crate::levels::coast::scenery,
                 extra_modules,

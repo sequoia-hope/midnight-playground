@@ -10658,3 +10658,44 @@ fingers colliding."
     the slider's right edge, the panels on screen); `stickHome` puts a
     thumb on the stick's centre.
 - The sim race's pinned hash in `sim_model.rs` moved.
+
+## D1207. The open world starts: the first corridor from the atlas
+
+2026-10-13. The owner asked to start building out the open world, keeping
+the levels as they are (they need not connect to the world; abstract,
+holodeck-like levels are welcome later), and chose the plan's scale of
+0.5. `docs/vision/peninsula.md` is the design: five stages, each
+playable, from a corridor off the atlas to events at places. Stage 1 is
+built:
+
+- **`Route::Path`** in `mp_track`: an open road given as a path, beside
+  `Segments` and `Loop`. `build_loop` gained a `closed` flag: open, there
+  is no edge from the last point to the first, n samples over n − 1
+  metres, tags and road types by metres clamped instead of wrapped, and
+  the curvature comes from the geometry as a loop's does (the ends use
+  the one neighbour they have). `loop_spec()` answers for a path too;
+  `is_path()` tells them apart. A race on a path runs as one on segments
+  (finish at length − runoff; `start_s` from the spec, 120 by default).
+- **`mp-atlas corridor <id>`** writes `assets/atlas/peninsula/corridors/<id>.txt`:
+  the route or event resolved over the real roads and profiled over the
+  real ground, the profile smoothed with a triangular window of ±60 real
+  metres (the planning grid is 50 m cells), compressed about the world's
+  origin by the plan's scale horizontally and vertically alike (so grades
+  stay true), a sample every 10 real metres (5 game metres) with the
+  land cover beside it. Text, `x z y cover` a line, 60 kB, in git; a
+  test fails when it is stale, as `resolved.json`'s does.
+- **The level** `southcoast` ("Midnight on the Coast", `THE PENINSULA`,
+  `mp_levels::south_coast`): the corridor file included at compile time
+  and parsed with `split_whitespace` (no new dependency), splined with an
+  open Catmull-Rom (the ends clamped) to a metre, the coast kit's cliff
+  road for the bluffs and the beach kit from where the longest run of
+  urban cover begins (the town, computed from the data), a night sky
+  with the moon over the sea, Coast Highway's traffic, police and
+  rivals. Seventh in the menu, after the cruise: the six levels keep
+  their order and numbers. The land round the road is still the kit's
+  landform; the real ground is stage 2. The client builds it with the
+  Coast Highway's scenery and preview hints.
+- Tests: the levels' invariants accept a path (no `start_height`, no
+  segments, no JS golden: `track_golden`, `world_data` skip it); the
+  menu-order test says the corridors follow the cruise. Level ids are
+  lower-case letters only (saved settings, `?level=`), so `southcoast`.

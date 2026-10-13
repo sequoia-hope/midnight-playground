@@ -239,11 +239,11 @@ The levels stay as they are until a remix is chosen. The proposal:
 
 1. **Look at the planner with the owner** and settle the scale and the
    regions.
-2. **A corridor from the atlas:** generate the first race's road from the
-   real route (its line compressed to the scale, its heights from the
-   real profile, the farms and scrub from the real cover) through the
-   existing coast generator. This is where `mp_atlas` meets
-   `mp_worldgen`.
+2. **A corridor from the atlas:** done 2026-10-13 (`docs/vision/peninsula.md`
+   stage 1, D1207): `mp-atlas corridor first-race` writes the road
+   compressed to the scale, and `mp_levels::south_coast` is the level
+   built from it through the coast and beach kits. The scale is 0.5 (the
+   owner, 2026-10-13).
 3. **The level viewer** (god mode) shows a corridor's place on the atlas.
 4. Finer data where a corridor needs it: the cache's 15 m terrain, and
    the full road detail (residential streets, tracks) for Half Moon Bay
