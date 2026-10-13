@@ -108,6 +108,8 @@ pub struct Frame {
     pub rx: f64,
     pub rz: f64,
     pub hw: f64,
+    /// The drawn shoulder past the paved edge (the road type's; Rust only).
+    pub margin: f64,
     pub bank: f64,
     pub grade: f64,
     pub kappa: f64,
@@ -152,6 +154,16 @@ struct Raw {
     run_r: Option<Vec<f32>>,
 }
 
+/// An open level's shoulder past the paved edge where the land still sits
+/// on the road's plane (m), the band over which it returns to the ground,
+/// the power of the return, and how far the road stands above the land:
+/// the coast landform's near-road shaping, shared with world generation so
+/// the simulation's ground is the drawn ground.
+pub const OPEN_R0: f64 = 2.2;
+pub const OPEN_BAND: f64 = 30.0;
+pub const OPEN_POW: f64 = 0.7;
+pub const OPEN_DROP: f64 = 0.3;
+
 #[derive(Clone)]
 pub struct Track {
     pub level: Level,
@@ -184,6 +196,9 @@ pub struct Track {
     /// run-off, which drives like the road), 1 dirt or grass (slows the car).
     /// None: all of it is loose.
     pub loose_at: Option<GroundFn>,
+    /// An open level's ground under the whole box (`level.ground` when
+    /// `level.open`): the car may leave the road onto it ([`Track::ground_y`]).
+    pub open_ground: Option<GroundFn>,
     pub elevated: Vec<u8>,
     /// Collision limits either side of the centreline (positive distances).
     pub wall_l: Vec<f32>,
@@ -297,6 +312,7 @@ impl Track {
         out.rx = -out.fz;
         out.rz = out.fx;
         out.hw = l(&self.hw);
+        out.margin = l(&self.margin);
         out.bank = l(&self.bank);
         out.grade = l(&self.grade);
         out.kappa = l(&self.k_smooth);
@@ -328,6 +344,40 @@ impl Track {
             f.y - lat * f.bank
         };
         f
+    }
+
+    /// The ground under (x, z) on an open level, projected at (s, lat): the
+    /// road's own surface out to the shoulder, then the ground, with the
+    /// road blended into it as world generation blends it (the terrain's
+    /// near field: `OPEN_R0`, `OPEN_BAND`, `OPEN_POW`, `OPEN_DROP`), so the
+    /// car sits on the drawn land. On any other level, [`Track::surface_y`].
+    pub fn ground_y(&self, x: f64, z: f64, s: f64, lat: f64) -> f64 {
+        let Some(g) = &self.open_ground else {
+            return self.surface_y(s, lat);
+        };
+        let (i, t, j, _) = self.locate(s);
+        let l = |a: &[f32]| a[i] as f64 + (a[j] as f64 - a[i] as f64) * t;
+        let hw = l(&self.hw);
+        let edge = hw + l(&self.margin);
+        let a = lat.abs();
+        if a <= edge {
+            return self.surface_y(s, lat);
+        }
+        // The terrain's near field: the road's plane (less the drop the
+        // road stands above the land) out to the shoulder, then the ground
+        // takes over across the band.
+        let road = self.surface_y(s, clamp(lat, -hw, hw)) - OPEN_DROP;
+        let k = 1.0
+            - kernel::pow(
+                smoothstep(hw + OPEN_R0, hw + OPEN_R0 + OPEN_BAND, a),
+                OPEN_POW,
+            );
+        let land = g(x, z);
+        let blend = land + (road - land) * k;
+        // Off the shoulder the surface steps down to the land over a metre.
+        let w = smoothstep(edge, edge + 1.0, a);
+        let plane = self.surface_y(s, lat);
+        plane + (blend - plane) * w
     }
 
     pub fn surface_y(&self, s: f64, lat: f64) -> f64 {
@@ -918,6 +968,11 @@ fn build(level: &Level, is_loop: bool, raw: Raw, tags: Vec<Tag>) -> Track {
         run_l: raw.run_l,
         run_r: raw.run_r,
         loose_at: level.loose_ground.clone(),
+        open_ground: if level.open {
+            level.ground.clone()
+        } else {
+            None
+        },
         elevated: elev_raw,
         wall_l,
         wall_r,

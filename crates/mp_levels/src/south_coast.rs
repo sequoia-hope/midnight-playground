@@ -7,16 +7,31 @@
 //! The road is `assets/atlas/peninsula/corridors/first-race.txt`, written
 //! by `cargo run -p mp_atlas -- corridor first-race` and included here at
 //! compile time (a sample every 5 game metres: x, z, y and the real land
-//! cover beside the road). The land round it is still the coast kit's own;
-//! the real ground arrives with stage 2.
+//! cover beside the road). The ground under the whole box is real too
+//! (stage 2): `first-race.ground.bin`, written by `tools/atlas/ground.py`
+//! from the terrain tiles, 12 game metres a cell, which the level is open
+//! onto: the car may leave the road, and world generation shapes the land
+//! from it instead of the kit's landform.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
+use crate::ground::HeightGrid;
 use crate::{police, zone};
 use mp_track::{Level, LoopPath, LoopRoad, LoopSpec, LoopTag, Mode, Route};
 
 /// The corridor file.
 pub const CORRIDOR: &str = include_str!("../../../assets/atlas/peninsula/corridors/first-race.txt");
+/// The ground file (341 kB, zlib): inflated once, the first time the level
+/// is made.
+pub const GROUND: &[u8] =
+    include_bytes!("../../../assets/atlas/peninsula/corridors/first-race.ground.bin");
+
+/// The ground under the box, decoded once.
+pub fn ground() -> Arc<HeightGrid> {
+    static GRID: OnceLock<Arc<HeightGrid>> = OnceLock::new();
+    GRID.get_or_init(|| Arc::new(HeightGrid::parse(GROUND).expect("the committed ground parses")))
+        .clone()
+}
 
 /// A corridor's samples: game metres and the land cover beside the road.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -181,8 +196,12 @@ pub fn level() -> Level {
             zones: Some(vec![0., town]),
         }),
         elevation: None,
-        ground: None,
+        ground: Some({
+            let g = ground();
+            Arc::new(move |x, z| g.height(x, z))
+        }),
         loose_ground: None,
+        open: true,
         sea_y: Some(0.),
         zones: vec![
             zone(

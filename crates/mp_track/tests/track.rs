@@ -46,6 +46,7 @@ fn level(route: Route, zones: usize) -> Level {
         elevation: None,
         ground: None,
         loose_ground: None,
+        open: false,
         sea_y: None,
         zones: KEYS[..zones].iter().map(|k| zone(k)).collect(),
         sky: Vec::new(),
@@ -1098,4 +1099,58 @@ fn a_full_turn_segment_integrates_to_a_full_turn() {
     near(turned, 360.0 * DEG, 1e-4, "");
     let peak = t.kappa.iter().fold(0f32, |a, &k| a.max(k)) as f64;
     near(peak, 360.0 * DEG / (400.0 * 0.78), 1e-6, "k_peak");
+}
+
+/// An open level (docs/vision/peninsula.md, stage 2): the road's own
+/// surface out to the shoulder, a metre's step down onto the land blended
+/// with the road, and the land itself past the band.
+#[test]
+fn an_open_levels_ground_leaves_the_road_at_the_shoulder() {
+    let mut l = segments(vec![seg(600.0, 0.0, 0.0).zone(0).road("coastal")]);
+    l.start_height = Some(50.0);
+    l.open = true;
+    // The land: 20 m below the road everywhere.
+    l.ground = Some(Arc::new(|_x, _z| 30.0));
+    let t = Track::new(&l).unwrap();
+    assert!(t.open_ground.is_some());
+    let s = 300.0;
+    let f = t.frame(s);
+    let edge = f.hw + f.margin;
+    let at = |lat: f64| {
+        let p = t.point_at(s, lat);
+        t.ground_y(p.x, p.z, s, lat)
+    };
+    // On the road and its shoulder: the surface.
+    for lat in [0.0, 2.0, -edge, edge] {
+        near(at(lat), t.surface_y(s, lat), 1e-9, "the road");
+    }
+    // Just off the shoulder: within the step down.
+    let step = at(edge + 1.0);
+    assert!(
+        step < at(edge) && step > at(edge) - OPEN_DROP - 0.1,
+        "the step: {step} from {}",
+        at(edge)
+    );
+    // Across the band the surface falls monotonically to the land.
+    let mut prev = step;
+    let mut lat = edge + 1.0;
+    while lat < OPEN_R0 + OPEN_BAND + f.hw + 5.0 {
+        let h = at(lat);
+        assert!(h <= prev + 1e-9, "falls: {h} after {prev} at lat {lat}");
+        prev = h;
+        lat += 0.5;
+    }
+    near(at(200.0), 30.0, 1e-9, "the land");
+    near(at(-200.0), 30.0, 1e-9, "the land");
+    // A closed level keeps the road's plane.
+    l.open = false;
+    let t = Track::new(&l).unwrap();
+    assert!(t.open_ground.is_none());
+    let p = t.point_at(s, 200.0);
+    near(
+        t.ground_y(p.x, p.z, s, 200.0),
+        t.surface_y(s, 200.0),
+        1e-9,
+        "closed",
+    );
 }

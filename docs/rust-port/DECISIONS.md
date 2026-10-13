@@ -10699,3 +10699,41 @@ built:
   segments, no JS golden: `track_golden`, `world_data` skip it); the
   menu-order test says the corridors follow the cruise. Level ids are
   lower-case letters only (saved settings, `?level=`), so `southcoast`.
+
+## D1208. The open world's ground: an open level the car may leave the road on
+
+2026-10-13, peninsula.md stage 2. The first corridor now drives on the
+real ground under its whole box, and the car may leave the road.
+
+- **The data:** `tools/atlas/ground.py first-race` resamples the
+  Terrarium tiles (zoom 13) onto 12 game-metre cells over the corridor's
+  box plus 1.5 km, heights scaled with the plan, as `first-race.ground.bin`
+  (`MPGROUND`: a header, then zlib i16 decimetres; 341 kB). It is
+  included in `mp_levels` at compile time and inflated once
+  (`south_coast::ground`), rather than fetched like Seaside's survey:
+  one include against eight places that special-case Seaside's download
+  (the page, the loader, the menu's sections, the host, the smoke race).
+  The wasm grows by the file; moving it to a fetched asset is a packaging
+  choice for the owner.
+- **`Level::open`** and **`Track::open_ground`**: an open level's `ground`
+  is the land under the whole box. `Track::ground_y(x, z, s, lat)` is the
+  road's surface out to the drawn shoulder (`hw + margin`; `Frame` gained
+  `margin`), then a metre's step down onto the land with the road blended
+  in by the near-field law the terrain uses (k = 1 − smoothstep(hw + r0,
+  hw + r0 + band, |lat|)^pow, the road less its 0.3 m drop), then the
+  land. The constants (`OPEN_R0` 2.2, `OPEN_BAND` 30, `OPEN_POW` 0.7,
+  `OPEN_DROP` 0.3, the coast landform's) live in `mp_track` and the
+  terrain's `near_sample` takes them on an open level, and `landform_at`
+  returns the level's ground for every zone, so the simulation's ground
+  and the drawn ground agree: `mp_worldgen/tests/open_ground.rs` holds
+  them within 0.75 m beside the road and equal past the band.
+- **The arcade car:** on an open level `collide_walls` is skipped, the
+  vertical follows `ground_y`, and past the shoulder `off` rises to 1
+  over 1.5 m (the circuit run-off's drag and the sim car's lower grip).
+  `TrackGround` (the sim car) reads `ground_y` and offers no wall planes.
+  `mp_sim/tests/open_ground.rs`: full lock from 600 m in takes the car
+  well off the road onto the land; the same on Coast Highway stays
+  between the walls.
+- The kits still colour and plant over the real shape; the coast kit's
+  own cliff and sea-stack placement can land on dry ground; progress is
+  still the nearest ribbon point. Noted in peninsula.md for stage 3.

@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use mp_math::{Noise2D, clamp, fbm, js, kernel, lerp, ridged, ridged_with, smoothstep};
 use mp_track::level::GroundFn;
-use mp_track::{Level, RUNOFF_FLAT, Track};
+use mp_track::{Level, OPEN_BAND, OPEN_POW, OPEN_R0, RUNOFF_FLAT, Track};
 
 const FAR: f64 = 32.0; // far-field cell size (m)
 const NEAR: f64 = 4.0; // near-field node spacing (m)
@@ -315,6 +315,10 @@ pub struct Terrain {
     pub desert_rail: Option<DesertRail>,
     /// `level.ground`.
     pub ground: Option<GroundFn>,
+    /// An open level (`level.open`): `ground` is the land under the whole
+    /// box, every zone's landform, and the road is blended into it with the
+    /// shaping the Track's `ground_y` uses, so the car sits on what is drawn.
+    pub open_level: bool,
     /// `level.groundColor` (the colouriser's raceway landform).
     pub ground_color: Option<ColorFn>,
     far: FarField,
@@ -420,6 +424,7 @@ impl Terrain {
             channels,
             desert_rail: None,
             ground: level.ground.clone(),
+            open_level: level.open,
             ground_color: None,
             far: FarField::default(),
             near_tiles: Vec::new(),
@@ -654,6 +659,13 @@ impl Terrain {
             band += w * self.lf[z].band;
             k_pow += w * self.lf[z].pow;
         }
+        if self.open_level {
+            // The Track's own law (`ground_y`), so the simulation's ground
+            // is the drawn one whichever kit dresses the zone.
+            r0 = hw + OPEN_R0;
+            band = OPEN_BAND;
+            k_pow = OPEN_POW;
+        }
         let (r_l, r_r) = if corridor {
             (
                 f64::from(t.wall_l[i]) + r0 - hw,
@@ -858,6 +870,11 @@ impl Terrain {
 
     /// `landform(x, z, F)` with the far-field sample given.
     pub fn landform_at(&self, x: f64, z: f64, f: &FarSample) -> f64 {
+        if self.open_level
+            && let Some(g) = &self.ground
+        {
+            return g(x, z);
+        }
         let w = self.zone_weights(x);
         let detail = fbm(&self.noise2, x / 90.0, z / 90.0, 3) * 3.0;
         let mut h = 0.0;

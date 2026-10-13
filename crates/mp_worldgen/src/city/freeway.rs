@@ -131,6 +131,7 @@ impl FwPath {
                 rx: b.rx,
                 rz: b.rz,
                 hw: HALF,
+                margin: 0.0,
                 bank: 0.0,
                 grade: 0.0,
                 kappa: 0.0,

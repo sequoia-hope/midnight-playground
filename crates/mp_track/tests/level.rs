@@ -114,6 +114,7 @@ fn level(route: Route) -> Level {
         elevation: None,
         ground: None,
         loose_ground: None,
+        open: false,
         sea_y: None,
         zones: Vec::new(),
         sky: Vec::new(),

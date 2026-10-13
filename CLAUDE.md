@@ -63,6 +63,7 @@ and carry on with the option that best preserves parity.
 | Native client | `cargo run -p mp_game` |
 | The open world's plan, measured (`resolve` rewrites what the planner draws; `corridor <id>` writes a route's road for a level, `docs/vision/peninsula.md`) | `cargo run --release -p mp_atlas -- report` |
 | Rebuild the atlas from real data (python3 with numpy, Pillow, shapely, pyarrow) | `python3 tools/atlas/build.py` |
+| The ground under a corridor (stage 2 of `docs/vision/peninsula.md`) | `python3 tools/atlas/ground.py first-race` |
 | JS unit tests | `npm run test:unit` (and `npm run test:unit:kernel`, with the parity kernel) |
 | Rebuild and check the parity kernel | `cargo xtask kernel` (CI: `cargo xtask kernel --check`) |
 | JS browser tests | `npm run test:e2e` (headless Chrome on the GPU, ~3 min) |
