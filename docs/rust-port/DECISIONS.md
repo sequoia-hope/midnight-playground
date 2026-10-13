@@ -11258,3 +11258,55 @@ a garage in Half Moon Bay).
   (CI's only failure on beeb471, and about one run in three here). The
   tests now wait for the server's own "listening" line, and take another
   port if it couldn't bind (`tests/common`).
+
+## D1221. The Loft, the city's club station, and Dez, its DJ
+
+2026-10-13, the owner: the game is a fast, exciting one in the Need for
+Speed line, and the stations so far are the slow side of it, the owner's
+own memory lane (the harbour at two in the morning, the farm at dawn, the
+roadhouse); slow sections may come to the world map later, but "the city
+level needs a more exciting radio station and DJ": a gay man in San
+Francisco who goes to the Folsom events and the clubs, makes body
+jewellery and works with textiles (garments, tool belts, utility belts),
+skateboards, rides a BMX, loves flowers and the botanical sites in Golden
+Gate Park and the heron at Stow Lake, does photography, and is fiercely
+defensive of his friends. PG throughout.
+
+- **The Loft 94.9** (key `loft`, seed 949): house 0.35, techno 0.3,
+  garage 0.15, drum & bass 0.2, the fast end of every grammar the dial
+  has. It is the default for `streets` (Downtown Streets) and `cruise`
+  (the Meridian Loop night cruise), which played The Tide before; the
+  other levels keep theirs. It sits last on the dial, so T from The
+  Roadhouse reaches it and the wrap to The Tide moves one step.
+- **Dez** (`tools/dj-voice/lines.json`, 73 lines over the fifteen topics,
+  the same shape as the other four) broadcasts eight to two from a loft
+  south of Market that is also his workshop: a cutting table, two sewing
+  machines, a jeweller's bench, a BMX by the door. The Folsom side is
+  carried by craft, as the owner asked: harnesses, vests, tool belts and
+  utility belts he sews for the crew, the street fair in September as
+  forty vests behind schedule, silver and brass from the bench (an ear
+  cuff shaped like a fern, a heron). The park is his mornings: the
+  botanical garden, the conservatory's glass, the magnolia that flowers
+  for nine days in February ("my church"), and the great blue heron on
+  Stow Lake's west bank, nine hundred photographs from the same bench.
+  Skates the waterfront plazas at midnight, rides the BMX everywhere and
+  defends it. The friends are named (Tomas at the repair shop, Marco,
+  Priya, Rosa at the fabric store) and the defence is the edge: "I won't
+  say what I said. I'll say he's not coming back and the bouncer was
+  very polite about it." Fast talker, "sweetheart" and "baby" to
+  everyone, never cruel; the night and scene lines have him racing the
+  lights down the boulevard on the bike after the show, so the player
+  lines can cheer a driver without the station cheering a race. His
+  banter places the dial as the harbour, the hill, the farm, the bar and
+  the loft, and his `camping` is a friend's couch and the bench by the
+  lake.
+- **Voice**: three VoiceDesign candidates (`dez-bright`, `dez-smooth`,
+  `dez-sharp`), `dez-bright` chosen (a bright, quick, warm tenor, a
+  little camp, the energy of someone about to go out), as Tess's was:
+  nobody here can listen, the owner picks on `tools/dj-voice.html`.
+- **Not recorded yet.** This session has no GPU, so `audio/dj/` has no
+  `dez-*` clips and `index.json` does not list them: the director finds
+  nothing for him and the station plays music only, as The Roadhouse did
+  between D1183 and D1184. `python tools/dj-voice/design.py` then
+  `render.py --only dez --takes 1` (and the Whisper check) on a machine
+  with the model records him; commit the clips and `index.json`.

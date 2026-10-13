@@ -96,6 +96,22 @@ pub const STATIONS: &[Station] = &[
         genres: &[("country", 0.85), ("chicha", 0.15)],
         seed: 1017,
     },
+    // The city's club station (D1221): fast house, techno, garage and drum
+    // & bass from a loft south of Market. Dez is its DJ. The city levels'
+    // default: the others' slow DJs don't fit downtown at speed.
+    Station {
+        key: "loft",
+        name: "The Loft",
+        freq: "94.9",
+        dj: Some("dez"),
+        genres: &[
+            ("house", 0.35),
+            ("techno", 0.3),
+            ("garage", 0.15),
+            ("dnb", 0.2),
+        ],
+        seed: 949,
+    },
 ];
 
 /// A station by key.
@@ -109,7 +125,8 @@ pub fn level_station(level: &str) -> &'static str {
     match level {
         "coast" | "seaside" => "tide",
         "sierra" => "ridgeline",
-        "streets" => "tide",
+        // Downtown and the night cruise: the city's club station.
+        "streets" | "cruise" => "loft",
         // The old highway, the freight train, the dry lake bed: country.
         "desert" => "roadhouse",
         _ => "tide",

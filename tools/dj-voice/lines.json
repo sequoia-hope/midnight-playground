@@ -1,5 +1,5 @@
 {
- "about": "Sample DJ chatter for three stations, to hear whether radio talk lands before any of it goes in the game. Each DJ's lines are grouped by topic; a clip's id is <dj>-<topic>-<n> (n from 1, in the order below). A blank line inside a text (\\n\\n) splits it into parts that are recorded separately and joined with a short pause, for the long ones. Lines under 'player' are templates: the bracketed slots in 'template' are what the game would fill from what this player actually did; the text is one filled-in example.",
+ "about": "Sample DJ chatter for five stations, to hear whether radio talk lands before any of it goes in the game. Each DJ's lines are grouped by topic; a clip's id is <dj>-<topic>-<n> (n from 1, in the order below). A blank line inside a text (\\n\\n) splits it into parts that are recorded separately and joined with a short pause, for the long ones. Lines under 'player' are templates: the bracketed slots in 'template' are what the game would fill from what this player actually did; the text is one filled-in example.",
  "topics": {
   "ident": "Station IDs",
   "music": "Song intros and back-announces",
@@ -516,6 +516,131 @@
      "The garden doesn't need me at night. The chickens are in. The goats are quiet. That's when I drive. Everything's handled. That's the point.",
      "Whatever somebody told you tonight about how you should've done it: they weren't driving. You were. Go home easy.",
      "It's two in the morning and this is a recording. I'm home, the truck's cooling in the yard, and the dog's asleep. Night. Mind the deer."
+    ]
+   }
+  },
+  "dez": {
+   "name": "Dez",
+   "station": "The Loft, 94.9 FM",
+   "about": "The city's club station, broadcasting from a loft south of Market that is also his workshop: a long cutting table, two sewing machines, a jeweller's bench by the window, bolts of canvas and nylon on the wall, a BMX by the door. House, techno, garage and drum & bass, fast, for people on their way to somewhere. Twenty-nine, gay, out on every dance floor south of Market and at the street fair every September with the crew he sews for: harnesses, utility belts, tool belts, vests, anything with pockets and straps, and silver and brass body jewellery from the bench, which he will tell you about at length. Skates the plazas, rides a BMX everywhere, and spends his mornings in Golden Gate Park: the botanical garden, the conservatory, and the great blue heron at Stow Lake, which he photographs with a long lens from the same bench every week. Talks fast, laughs easily, calls everyone sweetheart, and is immovable the moment someone comes for his friends. Eight to two, then he rides home down Market with the lights timed.",
+   "lines": {
+    "ident": [
+     "The Loft, ninety-four nine. House, techno, garage, drum and bass, from a sewing room south of Market. I'm Dez. The machines are off, the music's on, let's go.",
+     "Ninety-four point nine, The Loft. If you can hear a sewing machine under this, that's not a drum machine, sweetheart, that's a rush order.",
+     "You're on The Loft with Dez, eight to two, every night the city's awake. Which is every night. Let's go.",
+     "The Loft, ninety-four nine, broadcasting from the fourth floor above a tyre shop south of Market. The elevator's broken. The bass isn't.",
+     "This is Dez. This is The Loft. The dial's got a harbour, a hill, a farm and a bar. We're the city. We're the fast one. Keep up."
+    ],
+    "music": [
+     "Four on the floor, one twenty-eight, and the hi-hats open on the off-beat. That's the whole recipe. That's why it works. Go.",
+     "Techno now. The nice kind. Okay, the medium kind. Okay, it's going to look at you, but it's going to look at you with love.",
+     "Garage next, sweetheart. Skippy hats, the bass on the two-step, and a vocal chopped up like somebody's heart. Lovely. Drive to it.",
+     "This one's drum and bass, one seventy-four, and the break's going to drop right where the bridge starts if you've timed it right. Time it right.",
+     "That was a filter sweep. Low-pass, opening over sixteen bars, which is exactly as long as it takes to decide you're going out after all.",
+     "Here's a big one. The breakdown's a minute long and then it all comes back at once. Don't change the station in the breakdown. Trust me. Trust the build."
+    ],
+    "morning": [
+     "Good morning, city. It's six, I'm on a bench at Stow Lake with a long lens and a coffee, and the heron's just landed. This is a recording. Nobody move.",
+     "Morning. The Loft is a night show, but if you're up this early you're either a baker, a skater or a bird person, and I love all three of you.",
+     "Good morning from Golden Gate Park. The conservatory doesn't open till ten, so I'm outside the glass looking at a water lily like it owes me money.\n\nTonight I'm on from eight. Right now I'm on a bike. Here's something to pedal to.",
+     "Morning. Rode out to the park at dawn, fog on the lake, heron on the far bank, and three runners who all said hi. Good city. Good morning."
+    ],
+    "weather": [
+     "Fog's coming over Twin Peaks like it's late for something. Downtown's clear. The bridge is not. Low beams past the tunnel, sweetheart.",
+     "Clear tonight, and warm, which happens about four nights a year here, so everybody is out, and everybody is wearing less, and I have never been prouder of this city.",
+     "Wind off the bay tonight. The loft windows are rattling, the fabric's off the hooks and on the floor, and I'm not getting up. Here's a tune.",
+     "Rain. Actual rain. The streets are glass. Slow down on the painted lines and the tram tracks, both of them want you to fall over.",
+     "It's that hour where the fog sits on the hills and the city under it is lit up like a circuit board. Go up and look. Then come down fast. Not too fast. Fast."
+    ],
+    "places": [
+     "Golden Gate Park, the botanical garden, the far end past the redwoods: the magnolias are out and nobody's there at nine a.m. Nobody. Go.",
+     "Stow Lake. There's a great blue heron who stands on the west bank most mornings like he pays rent. He does not pay rent. Bring a long lens and sit still.",
+     "The waterfront plazas at midnight: the smoothest ground in the city. I skate it. The cops don't mind if you're nice. Be nice.",
+     "The fabric district, three blocks of it, closing at six. Canvas, webbing, buckles, the good thread. Ask for Rosa. Tell her Dez sent you. She'll roll her eyes. That's love.",
+     "The hill above the park, by the tower: fog comes through the gap there first. Watch it arrive. Then it's dark and you're cold and you remember you came on a BMX."
+    ],
+    "scene": [
+     "The scanner says three units on the waterfront tonight and nothing on the hills. I'm not telling you anything. I'm reading a scanner. Out loud. For fun.",
+     "Somebody ran the whole length of the boulevard at two this morning and caught every green. Every green. I was on a BMX behind you. I did not catch every green.",
+     "The meet's under the freeway tonight, apparently, by the skate spot. If you're coming, don't park on the ramp, and don't scuff my ledge.",
+     "Word is the downtown loop record went last week to somebody nobody knows. I love that. I love a nobody. Come up to the loft, nobody, I'll make you a belt.",
+     "Somebody asked if I street race. Sweetheart, I ride a bicycle with twenty-inch wheels. I race the lights. I usually win. That's my whole career."
+    ],
+    "player": [
+     {
+      "template": "Who is in the [colour] [car]? You just took the [road] record and I screamed so loud I bent a needle. That's on you. Here's a song.",
+      "text": "Who is in the orange Lancer? You just took the downtown loop record and I screamed so loud I bent a needle. That's on you. Here's a song."
+     },
+     {
+      "template": "The [colour] [car] is back. [detail]. In the city. At this hour. Sweetheart. Icon. This one's yours.",
+      "text": "The white Evo is back. Gold wheels. In the city. At this hour. Sweetheart. Icon. This one's yours."
+     },
+     {
+      "template": "Lost the cops on the [road], huh? I'm not allowed to say nice. I'm going to say gorgeous and play something at one seventy-four.",
+      "text": "Lost the cops on the waterfront, huh? I'm not allowed to say nice. I'm going to say gorgeous and play something at one seventy-four."
+     },
+     {
+      "template": "Still out there? Me too, till two. Then I'm on the bike and you're on your own. Here's one for the lights.",
+      "text": "Still out there? Me too, till two. Then I'm on the bike and you're on your own. Here's one for the lights."
+     },
+     {
+      "template": "Last week [rival] had you. Tonight you had them. Don't let anyone tell you that wasn't clean. I saw it. It was clean. Go.",
+      "text": "Last week the black Supra had you. Tonight you had them. Don't let anyone tell you that wasn't clean. I saw it. It was clean. Go."
+     }
+    ],
+    "raves": [
+     "Warehouse thing Saturday, south of the tracks, the one with the two rooms. I'm sewing for the door crew all week. If your harness fits, you're welcome.",
+     "The street fair's in September and I'm already behind. Forty vests. Forty. My friends have a lot of friends. It's a wonderful problem.",
+     "Went to the forest party up Kit's way. Danced till four. Rode the BMX down the hill at dawn. Do not do that. I'm fine. Do not do that.",
+     "Best thing at the club last night was a guy in a tool belt I made in April, full of glow sticks. Sweetheart. That's not what the pockets are for. That's exactly what the pockets are for."
+    ],
+    "tired": [
+     "I'm tired. Forty utility belts, a jewellery order, two skate sessions and the heron didn't even show. This one's slow. For me. You keep driving.",
+     "If I sound slow it's because I rode to the top of the city and back before the show because somebody said I couldn't. I could. I'm wrecked. Worth it.",
+     "Sewing all day, DJing all night, botanical garden at dawn. People ask when I sleep. Sweetheart, I'm a heron. I sleep standing up. Here's a tune.",
+     "Not tired. Fabulous and sitting down. Different thing. Here's a big one so you can tell."
+    ],
+    "camping": [
+     "Camping spot of the week: my friend Tomas's couch, two blocks from the club, with a cat on your face by six. Five stars.",
+     "You want camping? The park, dawn, a thermos, a bench by the lake, and a heron who's been there longer than the city. That's camping. That's the whole trip.",
+     "Rode out to the beach to sleep in the dunes once. Fog came in, the bike rusted, I got a cold, the sunrise was unbelievable. Would recommend. Would not repeat."
+    ],
+    "offair": [
+     "Spent the morning at the jeweller's bench. Silver, a little brass, an ear cuff shaped like a fern. It's for Tomas. He doesn't know yet. Don't tell him.",
+     "I make harnesses, vests, tool belts, utility belts, anything with straps and pockets. People ask what for. For carrying things, sweetheart. What's your bag for.",
+     "The heron at Stow Lake was there again. Same bank, same bench, same me. I've got nine hundred photos of that bird. Nine hundred and one now. He blinked.",
+     "I ride a BMX everywhere. People say get a real bike. This is a real bike. It fits in the elevator. It fits in the club. It goes down stairs. Yours doesn't.",
+     "Skated the plaza till the sun came up with the crew, then rode to the botanical garden and looked at a tree fern for twenty minutes. Balance. That's balance.",
+     "Somebody said something about my friend Marco in the club. I won't say what I said. I'll say he's not coming back and the bouncer was very polite about it.",
+     "Twenty-nine, single, booked solid, and the happiest I've been. The friends are the point. The belts are how I say it.",
+     "There's a magnolia in the park that flowers for about nine days in February. I take the morning off for it every year. It's not optional. It's my church."
+    ],
+    "callers": [
+     "This one's for Tomas, who's closing the shop with the door open and the radio on. Lock it this time, baby. Please. Love you.",
+     "Somebody called to ask about the heron. The heron's fine. The heron is thriving. Thank you for asking about the heron. Nobody asks about me.",
+     "Caller says: Dez, you sound like you've had too much coffee. Sweetheart, I've had the right amount of coffee. This is the right amount. Here's a tune.",
+     "Shout-out to the kid who fixed my chain at the skate spot and didn't say a word about my bike. That's grace. That's the whole thing. This one's yours.",
+     "For Marco, for Priya, for Tomas, for the whole crew in the second room right now: I can hear you from here. Turn it up. I'm coming after the show."
+    ],
+    "ads": [
+     "The Loft is brought to you by The Loft, the sewing room. Harnesses, vests, belts, anything with straps, cut to you. Come up. Elevator's broken. Worth it.",
+     "Rosa's Fabric, in the district, closing at six. Canvas, webbing, buckles, the good thread. She will not sell you the wrong thing. She will tell you.",
+     "Tomas's Repair, at the skate spot. Bikes, boards, trucks, bearings. Open late. Honest. Cute. I'm allowed to say cute. He's my friend.",
+     "Silver from the bench. Ear cuffs, rings, the fern, the heron. One of a kind, because I can't make the same thing twice. That's a feature."
+    ],
+    "banter": [
+     "Marisol on eighty-eight one is playing something slow for the harbour. Marisol. Sweetheart. The harbour can wait. The city cannot.",
+     "Kit's up on the ridge in a van going a hundred and seventy a minute. Kit, baby, we're going one twenty-eight down here and we have an elevator. It's broken. Come anyway.",
+     "Tess at The Roadhouse says she doesn't dance. Tess. I have seen you dance. In the redwoods. At four. You were efficient. I respect it.",
+     "The harbour, the hill, the farm, the bar and the loft. Five stations. The others go to bed. We're on till two. Then I ride home."
+    ],
+    "night": [
+     "The city at two in the morning is the most honest thing I know. All the lights are for nobody. Drive like they're for you.",
+     "After the show I ride down the boulevard with the lights timed. Twelve greens in a row if you hit it right. I'm not racing. I'm dancing, slowly, on a bicycle.",
+     "There's an hour when the clubs let out and the whole street is people holding each other up. That's my favourite hour. That's why the show ends at two.",
+     "Nobody needs a reason to be out this late. You need a working front light and a friend who'll text back. I've got both. Here's a tune.",
+     "Whatever somebody said tonight about you, about your car, about your friends: they're not here. You are. I am. Go home loud.",
+     "It's three in the morning and this is a recording. I'm home, the bike's by the door, the needle's threaded for tomorrow. Night, city. Mind the tram tracks."
     ]
    }
   }

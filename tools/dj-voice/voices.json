@@ -36,6 +36,15 @@
     "tess-husky": "A thirty-two-year-old woman with a slightly husky, warm alto, speaking close to the microphone in a quiet back room at night. Calm and sure of herself, wry, kind, a faint rural American lilt, no drawl, never rushed.",
     "tess-sunny": "A warm, friendly woman around thirty with a bright mid-range voice and an easy laugh in it, hosting an evening country show from a roadhouse. Plain-spoken and confident, quick to tease, a light West Coast rural accent, clear diction."
    }
+  },
+  "dez": {
+   "chosen": "dez-bright",
+   "ref_text": "The Loft, ninety-four point nine. It's a little after ten, the city's lit up, the fog's on the hills, and I've got a rush order on the cutting table I'm ignoring. I'm Dez. Four on the floor, sweetheart. Let's go.",
+   "candidates": {
+    "dez-bright": "A gay man in his late twenties with a bright, quick, warm tenor voice, a club radio DJ broadcasting from a loft in the city at night. Fast and animated, laughs easily, affectionate and a little camp, a crisp urban American West Coast accent, the energy of someone about to go out.",
+    "dez-smooth": "A man around thirty with a smooth, confident mid-range voice and a grin in it, hosting a late-night dance music show in a big city. Quick but clear, playful, warm, teasing, the pace of a club MC who never shouts, a casual Californian accent.",
+    "dez-sharp": "An upbeat young American man, about twenty-nine, with a sharp, clear, slightly high voice and plenty of attitude, a nightlife radio host: rapid-fire, witty, generous, dropping into a softer register for his friends, a city accent with nothing lazy in it."
+   }
   }
  }
 }
