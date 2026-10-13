@@ -9,7 +9,7 @@
 //! for another car when its rounded value changes. The engine is built on
 //! the first block, where the sample rate is known.
 
-use mp_exhaust::{Engine, ORDER, State, preset};
+use mp_exhaust::{Engine, ORDER, Response, State, preset};
 use web_audio_api::worklet::{AudioParamValues, AudioWorkletGlobalScope, AudioWorkletProcessor};
 use web_audio_api::{AudioParamDescriptor, AutomationRate};
 
@@ -20,7 +20,10 @@ pub const SEED: u32 = 12345;
 pub fn engine(index: usize, state: State, sample_rate: f64) -> Engine {
     let key = ORDER.get(index).copied().unwrap_or(ORDER[0]);
     let p = preset(key).expect("ORDER names presets");
-    Engine::new(p, state, SEED, sample_rate)
+    let mut e = Engine::new(p, state, SEED, sample_rate);
+    // The game's answer to the pedal, not the lab's (D1201).
+    e.response = Response::GAME;
+    e
 }
 
 /// An engine for preset `index` as a new node starts it: idling (the

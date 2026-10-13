@@ -228,6 +228,9 @@ pub struct Engine {
     last_thr_t: f64,
     /// Psychoacoustic bass amount (0 = off).
     pub psycho: f64,
+    /// How the model follows the throttle; the lab's by default
+    /// ([`Response::LAB`]).
+    pub response: Response,
     gain: f64,
     gain_t: f64,
     cycle_pos: f64,
@@ -272,6 +275,36 @@ pub struct Engine {
     tick_kick: f64,
     lift_burst: f64,
     comp_env: f64,
+}
+
+/// The two slow parts of the model's answer to the throttle: the exhaust
+/// gas warming with load (the pipes' speed of sound, so their resonances),
+/// and the bus compressor's release. The lab's are physical and slow, and
+/// the sound keeps moving for most of a second after a throttle change; a
+/// game wants it to answer the pedal.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Response {
+    /// The gas temperature's rate toward the load (1/s).
+    pub heat_rate: f64,
+    /// The compressor's release, per sample, on its energy envelope.
+    pub comp_release: f64,
+}
+
+impl Response {
+    /// The engine lab's: a 0.5 s warm-up, a ~150 ms (energy) release.
+    pub const LAB: Response = Response {
+        heat_rate: 2.0,
+        comp_release: 0.00014,
+    };
+    /// The game's (DECISIONS D1201): the gas warms in ~80 ms and the
+    /// compressor lets go in ~30 ms, so a lift is heard within ~50 ms
+    /// instead of ~400 ms, and a press's change of tone within ~20 ms
+    /// instead of ~200 ms (the Vento's flat V8 at 3500 rpm; the
+    /// `throttle_step` example measures it).
+    pub const GAME: Response = Response {
+        heat_rate: 12.0,
+        comp_release: 0.0007,
+    };
 }
 
 impl Engine {
@@ -319,6 +352,7 @@ impl Engine {
             load_slow: 0.0,
             last_thr_t: 0.0,
             psycho: 0.0,
+            response: Response::LAB,
             gain: 0.0,
             gain_t: 1.0,
             cycle_pos: 0.0,
@@ -610,7 +644,7 @@ impl Engine {
         let sr = self.sr;
         let nb = n_block as f64;
         // Per-block control work.
-        self.load_slow += (self.thr - self.load_slow) * (nb / sr) * 2.0;
+        self.load_slow += (self.thr - self.load_slow) * (nb / sr) * self.response.heat_rate;
         self.retune();
         let kc = 1.0 - (-1.0 / (0.008 * sr)).exp();
         let kt = 1.0 - (-1.0 / (0.012 * sr)).exp();
@@ -672,6 +706,7 @@ impl Engine {
             1.0,
         );
 
+        let comp_release = self.response.comp_release;
         for i in 0..n_block {
             self.rpm += (self.rpm_t - self.rpm) * kc;
             self.thr += (self.thr_t - self.thr) * kt;
@@ -903,8 +938,12 @@ impl Engine {
             }
             // Bus compressor: RMS-ish detector, soft ratio.
             let lev = (l * l + rr * rr) * 0.5;
-            self.comp_env +=
-                (lev - self.comp_env) * if lev > self.comp_env { 0.0042 } else { 0.00014 };
+            self.comp_env += (lev - self.comp_env)
+                * if lev > self.comp_env {
+                    0.0042
+                } else {
+                    comp_release
+                };
             let env_db = 10.0 * (self.comp_env + 1e-12).log10();
             let over = env_db - self.p.comp_thresh;
             let cg = if over > 0.0 {

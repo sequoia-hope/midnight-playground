@@ -10320,3 +10320,45 @@ does nothing, so no picture changes.
 
 What still does not run against the Rust build is the three skips in
 `tools/parity/e2e/js-suites.mjs`, each with its reason.
+
+## D1201. The exhaust model answers the pedal at the game's pace, not the lab's
+
+**Date:** 2026-10-12. The owner, on an iPhone 16 Pro Max: the Vento GT's
+and the Brawler's engine "lag behind the throttle press and the car's
+tilt, a few hundred ms". Both cars play on the exhaust model (D1110).
+
+- **The path to the model is not it.** A probe in the exhaust worklet
+  (headless Chrome, Sierra, ArrowUp) saw the throttle 8 to 11 ms of
+  context time after the key went down, every press: the input reaches
+  the simulation, the audio's `update` and the worklet's params within the
+  frame. Nothing in the client smooths the throttle, and the arcade's rpm
+  glides as the JS game's always has (55 ms). WebKit ignores
+  `latencyHint`; with a worklet it renders on the worklet thread through a
+  FIFO that drains itself (`AudioDestinationResampler`, `PushPullFIFO`),
+  so it adds a buffer, not hundreds of ms.
+- **The model's own tails are.** Rendered offline at a steady 3500 rpm,
+  the lab's model keeps changing for most of a second after a throttle
+  step, from two slow parts: the exhaust gas warms with load at 2/s (a
+  0.5 s glide of the pipes' speed of sound, so of their resonances), and
+  the bus compressor, 20 dB into compression, releases at 0.00014 a
+  sample on its energy (about 150 ms, so ~0.7 s to recover 20 dB). After a
+  lift the level dips and swells back for 400 ms (flat V8) to 700 ms
+  (cross V8); after a press the tone glides for 200 ms (flat V8) to 700 ms
+  (cross V8). A phone's speaker plays little of the firing fundamental and
+  mostly those resonances, so it is the glide the owner hears.
+- **The fix.** `mp_exhaust::Response` holds the two rates; `Engine::new`
+  keeps the lab's (`Response::LAB`, so the goldens against the lab are
+  untouched) and the game's engines, the web worklet's (`mpx_new`) and the
+  native node's (`wa::exhaust::engine`), take `Response::GAME`: the gas
+  at 12/s (~80 ms) and the release at 0.0007 (~30 ms). Measured
+  (`cargo run --release -p mp_exhaust --example throttle_step -- PRESET
+  RPM [HEAT RELEASE]`, six seeds): the flat V8's level settles 40 ms after
+  a lift instead of 400, its tone 13 ms after a press instead of 193; the
+  cross V8's lift 290 ms instead of 690 (the rest is the lift's designed
+  pop burst, 0.35 s), its press tone 153 ms instead of 690. The cars sit
+  within 1 dB of where they did against their wavetable engines
+  (`exhaust_game`'s table).
+- **Still to check on the phone.** If the engine still trails, try
+  *Classic engine sound* (no worklet): if the classic engine lags as much,
+  the lag is the output's (Bluetooth headphones add 150 to 250 ms; the
+  speaker does not), not the model's.
