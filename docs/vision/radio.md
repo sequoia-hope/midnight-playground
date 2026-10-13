@@ -152,7 +152,7 @@ in a row, a long night drive in the cruise mode.
 | **R1.5. Favourites** | Each station's rotation (section 8): curated `(genre, seed)` songs woven into the schedule; the DJ's lines about them, pre-rendered per song; "keep" and "skip" on the Radio page to build the lists | Most of what a station plays has been heard by someone; a DJ names a song and means it |
 | **R2. Context** | Tags; lines chosen by level, mode and event; cooldowns and history; reception (Ridgeline's static on the far side of the ridge, tunnels) | Lines feel like they belong where they're heard |
 | **R3. Memory** | Player templates pre-rendered for every combination; records and rivals feed them | The owner hears a line about their own run and it lands |
-| **R4. More stations** | Country (The Roadhouse with Tess, 2026-10-10) and classical stations when their grammars exist (sound.md 3.5), each with its own DJ | vision ROADMAP M16's gate |
+| **R4. More stations** | Country (The Roadhouse with Tess, 2026-10-10), the city's club station (The Loft with Dez, 2026-10-13) and classical stations when their grammars exist (sound.md 3.5), each with its own DJ | vision ROADMAP M16's gate |
 
 R1 was first planned over the seven arranged songs; the owner
 (2026-10-08) made the generated music the foundation instead, so R1 and
@@ -210,11 +210,14 @@ so that tuning to a station catches its song wherever it happens to be.
   | Ridgeline Radio | Kit | techno, psytrance, trance, eurobeat, roller drum & bass |
   | Radio Pacífico, 104.3 | Teo | chicha, with some house and garage |
   | The Roadhouse, 101.7 | Tess | country (honky-tonk, the shuffle, bluegrass, outlaw), a little chicha |
+  | The Loft, 94.9 | Dez | house, techno, garage, drum & bass: the fast end of each |
 
   The Roadhouse (2026-10-10, D1183) is the coast country station; it is
   Desert Run's default. Tess (D1184) runs it seven to midnight from the
-  back room of the roadhouse itself. Classical gets a station when its
-  grammar exists (sound.md 3.5.2).
+  back room of the roadhouse itself. The Loft (2026-10-13, D1221) is the
+  city's club station and the default downtown and on the night cruise;
+  Dez runs it eight to two from a sewing loft south of Market. Classical
+  gets a station when its grammar exists (sound.md 3.5.2).
 - **Controls.** T and the pause screen's button ("Next station") step
   round the dial: the stations in order, then the Playlist (the old music,
   one stop on the dial; its own next track is the menu's picker), then

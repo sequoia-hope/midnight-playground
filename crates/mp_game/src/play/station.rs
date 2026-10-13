@@ -310,14 +310,17 @@ mod tests {
         assert_eq!(resolve("auto", "sierra"), Some(1));
         assert_eq!(resolve("pacifico", "coast"), Some(2));
         assert_eq!(resolve("auto", "desert"), Some(3));
+        assert_eq!(resolve("auto", "streets"), Some(4));
+        assert_eq!(resolve("auto", "cruise"), Some(4));
         assert_eq!(resolve("nope", "coast"), None);
         assert_eq!(step_setting("playlist", "coast", 1), "tide");
         assert_eq!(step_setting("tide", "coast", 1), "ridgeline");
         assert_eq!(step_setting("auto", "sierra", 1), "pacifico");
         assert_eq!(step_setting("pacifico", "coast", 1), "roadhouse");
+        assert_eq!(step_setting("roadhouse", "coast", 1), "loft");
         // Round the stations, never off.
-        assert_eq!(step_setting("roadhouse", "coast", 1), "tide");
-        assert_eq!(step_setting("tide", "coast", -1), "roadhouse");
+        assert_eq!(step_setting("loft", "coast", 1), "tide");
+        assert_eq!(step_setting("tide", "coast", -1), "loft");
         assert_eq!(radio_on_setting("playlist"), "auto");
         assert_eq!(radio_on_setting("ridgeline"), "ridgeline");
         assert_eq!(radio_on_setting("kzzz"), "auto");
