@@ -6,7 +6,7 @@
 //! calls [`mpx_process`], which renders 128 frames into the engine's own
 //! buffer (left then right) and returns its address in linear memory.
 
-use crate::{Engine, ORDER, State, preset};
+use crate::{Engine, ORDER, Response, State, preset};
 
 /// The worklet's block.
 pub const BLOCK: usize = 128;
@@ -24,7 +24,7 @@ pub extern "C" fn mpx_new(index: u32, sample_rate: f64, seed: u32) -> *mut Workl
     let key = ORDER.get(index as usize).copied().unwrap_or(ORDER[0]);
     let p = preset(key).expect("ORDER names presets");
     let idle = p.idle;
-    let engine = Engine::new(
+    let mut engine = Engine::new(
         p,
         State {
             rpm: idle,
@@ -33,6 +33,8 @@ pub extern "C" fn mpx_new(index: u32, sample_rate: f64, seed: u32) -> *mut Workl
         seed,
         sample_rate,
     );
+    // The game's answer to the pedal, not the lab's (D1201).
+    engine.response = Response::GAME;
     Box::into_raw(Box::new(Worklet {
         engine,
         buf: [0.0; 2 * BLOCK],

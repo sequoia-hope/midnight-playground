@@ -123,7 +123,7 @@ fn strict_mode_panics_on_an_unknown_preset() {
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 mod native {
     use mp_audio::wa::native::offline_context;
-    use mp_exhaust::{Engine, ORDER, State, preset};
+    use mp_exhaust::{Engine, ORDER, Response, State, preset};
 
     const SR: f32 = 48000.0;
     const BLOCK: usize = 128;
@@ -170,6 +170,7 @@ mod native {
             12345,
             SR as f64,
         );
+        e.response = Response::GAME;
         let (mut l, mut r) = (vec![0.0; blocks * BLOCK], vec![0.0; blocks * BLOCK]);
         for b in 0..blocks {
             e.set_state(
@@ -239,6 +240,7 @@ mod native {
             speed: 0.0,
         };
         let mut e = Engine::new(p, s, 12345, SR as f64);
+        e.response = Response::GAME;
         let (mut l, mut r) = (vec![0.0; BLOCK * 4], vec![0.0; BLOCK * 4]);
         for b in 0..4 {
             e.set_state(s, false);
