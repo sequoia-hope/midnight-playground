@@ -5,22 +5,23 @@
 //! same way the keyboard does.
 //!
 //! Steering ([`Steering`], `mode`) is one of:
-//! - 'stick': an analogue thumb stick. A thumb put down anywhere on the
-//!   left of the screen sets the centre there (never so near the edge that
-//!   full left lock is out of reach), and sliding it left or right steers in
-//!   proportion. Slide past full lock and the centre follows, so coming
-//!   back steers the other way at once.
+//! - 'stick': an analogue thumb stick that stays where it is, bottom left.
+//!   A thumb put down anywhere on the left of the screen steers by how far
+//!   it is left or right of the stick's centre; full lock is as far as the
+//!   stick goes (D1206; the JS centred it under the thumb and moved it past
+//!   full lock).
 //! - 'buttons': ◂ ▸ pads, which Input ramps like keys.
 //! - 'tilt': a [`TiltSteer`](super::tilt::TiltSteer) (as `.tilt`), with a
 //!   wheel showing the lock; the stick stands in until the sensor answers.
 //!
 //! Pedals ([`PedalKind`], `pedals`) are one of:
-//! - 'slider': one vertical slider for the right thumb. From the bottom:
-//!   BRAKE (full at the bottom, lighter going up), a gap to coast in, GAS
-//!   (light just above the gap, flat out from about two thirds up) and N₂O
-//!   at the top. DRIFT is a strip beside it in the same touch space: slide
-//!   the thumb right onto it for the handbrake, still on the gas. A thumb
-//!   that starts on the slider keeps working it until it lifts.
+//! - 'slider': one vertical slider for the right thumb, at the right edge
+//!   of the screen. From the bottom: BRAKE (full at the bottom, lighter
+//!   going up), a gap to coast in, GAS (light just above the gap, flat out
+//!   from about two thirds up) and N₂O at the top. A thumb that starts on
+//!   the slider keeps working it until it lifts. (The JS had a DRIFT strip
+//!   to its right; D1206 dropped it, and the handbrake is on the pedal
+//!   buttons only.)
 //! - 'buttons': GAS, BRAKE, DRIFT and N₂O pads.
 //!
 //! Fingers on the pads are hit-tested against every pad on each move, so a
@@ -282,12 +283,11 @@ pub struct Layout {
     pub knob: f64,
     /// The stick's resting centre (`.t-stick` while it waits).
     pub stick_home: (f64, f64),
-    /// `.t-pedal`: the slider and the drift strip together.
+    /// `.t-pedal`: the slider's touch space (the slider itself since
+    /// D1206).
     pub panel: Rect,
     /// `.t-slider`.
     pub track: Rect,
-    /// `.t-drift-strip`.
-    pub drift: Rect,
     /// `.t-util`'s buttons: reset, camera, pause.
     pub taps: [Rect; 3],
     /// `.t-steer`'s ◂ ▸ pads ([`DIRS`]).
@@ -334,28 +334,18 @@ impl Layout {
             clamp(66.0 * vmin, 200.0, 320.0)
         };
         let stick_r = stick_range(w, h);
-        // .t-pedal: right: --inR; bottom: --inB; the slider (.95 b), a 6 px
-        // gap, the drift strip (.7 b).
+        // .t-pedal: right: --inR; bottom: --inB; the slider (.95 b) at the
+        // right edge (D1206: the JS's drift strip, .7 b and a 6 px gap,
+        // stood there, and put the brake that much nearer the stick).
         let bottom = h - in_b;
         let top = bottom - pedal_h;
-        let drift = Rect {
-            left: w - in_r - 0.7 * pb,
+        let track = Rect {
+            left: w - in_r - 0.95 * pb,
             top,
             right: w - in_r,
             bottom,
         };
-        let track = Rect {
-            left: drift.left - 6.0 - 0.95 * pb,
-            top,
-            right: drift.left - 6.0,
-            bottom,
-        };
-        let panel = Rect {
-            left: track.left,
-            top,
-            right: drift.right,
-            bottom,
-        };
+        let panel = track;
         // .t-util: top: max(8px, safe top) + 96px; left: --inL; 44 px
         // buttons 10 px apart.
         let ty = ins.top.max(8.0) + 96.0;
@@ -413,7 +403,6 @@ impl Layout {
             stick_home: (in_l + stick_r + 32.0, h - in_b - 0.6 * b),
             panel,
             track,
-            drift,
             taps: [tap(0.0), tap(1.0), tap(2.0)],
             dirs: [dir(0.0), dir(1.0)],
             pedals: [round(c1), round(c2), tall(c1), tall(c2)],
@@ -451,7 +440,6 @@ pub struct Slide {
     pub throttle: f64,
     pub brake: f64,
     pub nitro: bool,
-    pub drift: bool,
     /// The first thumb's height on the track.
     pub u: Option<f64>,
 }
@@ -637,12 +625,8 @@ impl TouchControls {
             && self.stick.is_none()
             && x < self.layout.w * STICK_ZONE
         {
-            self.stick = Some(Stick {
-                id,
-                x0: x.max(self.layout.stick_r + 4.0),
-                y0: y,
-                x,
-            });
+            let (x0, y0) = self.layout.stick_home;
+            self.stick = Some(Stick { id, x0, y0, x });
             return None;
         } else if self.pedals == PedalKind::Slider && self.layout.panel.hit(x, y, SLOP) {
             self.sliding.push((id, x, y));
@@ -657,9 +641,7 @@ impl TouchControls {
     /// `onMove`.
     pub fn moved(&mut self, id: u64, x: f64, y: f64) {
         if let Some(s) = self.stick.as_mut().filter(|s| s.id == id) {
-            let r = self.layout.stick_r;
-            s.x = x;
-            s.x0 = clamp(s.x0, s.x - r, s.x + r); // past full lock, the centre follows
+            s.x = x; // the centre stays put (D1206)
             return;
         }
         let map = if self.sliding.iter().any(|p| p.0 == id) {
@@ -711,7 +693,6 @@ impl TouchControls {
             h.throttle |= s.throttle > 0.0;
             h.brake |= s.brake > 0.0;
             h.nitro |= s.nitro;
-            h.handbrake |= s.drift;
             self.amount_throttle = self.amount_throttle.max(s.throttle);
             self.amount_brake = self.amount_brake.max(s.brake);
         }
@@ -719,17 +700,16 @@ impl TouchControls {
     }
 
     /// Every thumb on the slider: its height sets the pedals (the hardest
-    /// wins if there are two), and past the slider's right edge is DRIFT.
+    /// wins if there are two).
     fn read_slider(&self) -> Slide {
         let r = self.layout.track;
         let mut out = Slide::default();
-        for &(_, x, y) in &self.sliding {
+        for &(_, _, y) in &self.sliding {
             let u = clamp((r.bottom - y) / r.height(), 0.0, 1.0);
             let p = slider_at(u);
             out.throttle = out.throttle.max(p.throttle);
             out.brake = out.brake.max(p.brake);
             out.nitro |= p.nitro;
-            out.drift |= x > r.right + 3.0;
             out.u = out.u.or(Some(u));
         }
         out
@@ -757,9 +737,6 @@ impl TouchControls {
         }
         if s.nitro {
             v.push("nitro");
-        }
-        if s.drift {
-            v.push("drift");
         }
         v
     }
@@ -902,16 +879,12 @@ mod tests {
         // The JS's: b 72.8, the slider 241.8 tall and 126.1 wide, full
         // lock 58.5 px, the knob 56.
         assert!(side.b > 80.0 && side.panel.height() > 255.0 && side.stick_r > 66.0);
-        // Sideways the slider is as wide as the JS's and in the same lane
-        // (D1085).
+        // Sideways the slider is as wide as the JS's (D1085), at the right
+        // edge (D1206).
         let js_b = 12.0 * 3.9 + 26.0;
-        near(
-            side.track.left,
-            844.0 - 16.0 - 0.7 * js_b - 6.0 - 0.95 * js_b,
-            1e-9,
-        );
+        near(side.track.left, 844.0 - 16.0 - 0.95 * js_b, 1e-9);
         near(side.panel.right, 844.0 - 16.0, 1e-9);
-        assert!(up.panel.height() > 300.0 && up.panel.width() > 140.0);
+        assert!(up.panel.height() > 300.0 && up.panel.width() > 80.0);
         assert!(up.stick_r > 72.0 && up.knob >= 72.0);
         assert!(
             up.pedals[2].height() > 1.3 * 72.8 * 1.3,
@@ -926,6 +899,12 @@ mod tests {
             }
         }
         assert!(up.stick_box().right < up.panel.left);
+        // Full right lock with the knob's edge leaves a thumb's width before
+        // the brake, both ways up (D1206).
+        for lay in [side, up] {
+            let reach = lay.stick_home.0 + lay.stick_r + lay.knob / 2.0;
+            assert!(lay.track.left - reach > 50.0, "{}", lay.track.left - reach);
+        }
     }
 
     #[test]
@@ -979,7 +958,7 @@ mod tests {
     }
 
     /// A phone sideways: thumbs on the stick and the slider drive the
-    /// input layer; DRIFT past the slider's edge; taps post actions.
+    /// input layer; taps post actions.
     #[test]
     fn thumbs_drive_the_input_layer() {
         let lay = Layout::new(915.0, 412.0, Insets::default());
@@ -989,20 +968,32 @@ mod tests {
         assert_eq!(t.down(1, 200.0, 300.0), None);
         assert!(t.stick.is_none());
         t.show(true);
-        // Left thumb: the stick, centred where it lands.
-        t.down(1, 200.0, 300.0);
-        t.moved(1, 200.0 + lay.stick_r, 300.0);
+        // Left thumb: the stick, which stays where it is: a thumb on its
+        // centre steers nowhere, one a lock to the right is full right.
+        let (cx0, cy0) = lay.stick_home;
+        t.down(1, cx0, 300.0);
+        assert_eq!((t.stick.unwrap().x0, t.stick.unwrap().y0), (cx0, cy0));
         let s = input.update(1.0 / 120.0, Some(&mut t));
         assert!(s.analog);
-        assert_eq!(s.steer, 1.0, "full right lock");
-        // Past full lock the centre follows: coming back steers left at once.
-        t.moved(1, 200.0 + 2.0 * lay.stick_r, 300.0);
-        t.moved(1, 200.0 + lay.stick_r * 0.5, 300.0);
-        assert!(input.update(1.0 / 120.0, Some(&mut t)).steer < 0.0);
-        // Never so near the edge that full left lock is out of reach.
+        assert_eq!(s.steer, 0.0);
+        t.moved(1, cx0 + lay.stick_r, 300.0);
+        assert_eq!(
+            input.update(1.0 / 120.0, Some(&mut t)).steer,
+            1.0,
+            "full right lock"
+        );
+        // Past full lock it stays full lock, and coming back steers less
+        // right, not left: the centre never moves.
+        t.moved(1, cx0 + 2.0 * lay.stick_r, 300.0);
+        t.moved(1, cx0 + lay.stick_r * 0.5, 300.0);
+        assert_eq!(t.stick.unwrap().x0, cx0);
+        let s = input.update(1.0 / 120.0, Some(&mut t)).steer;
+        assert!(s > 0.0 && s < 1.0, "{s}");
+        // A thumb landing left of the centre steers left at once.
         t.up(1);
         t.down(2, 3.0, 300.0);
-        assert_eq!(t.stick.unwrap().x0, lay.stick_r + 4.0);
+        assert_eq!(t.stick.unwrap().x0, cx0);
+        assert!(input.update(1.0 / 120.0, Some(&mut t)).steer < 0.0);
         t.up(2);
         assert_eq!(input.update(1.0 / 120.0, Some(&mut t)).steer, 0.0);
         // Right thumb on the slider: flat out near the top of the gas band.
@@ -1016,14 +1007,15 @@ mod tests {
             (1.0, 0.0, false, false)
         );
         assert_eq!(t.panel_classes(), ["active", "gas"]);
-        // Slide down into the brake band, then right onto DRIFT.
+        // Slide down into the brake band; off the right edge, still the
+        // brake and no handbrake (the JS's DRIFT strip was there).
         t.moved(3, cx, at(0.03));
         let s = input.update(1.0 / 120.0, Some(&mut t));
         assert_eq!(s.throttle, 0.0);
         assert_eq!(s.brake, 1.0);
-        t.moved(3, lay.drift.left + 10.0, at(0.5));
+        t.moved(3, r.right + 10.0, at(0.03));
         let s = input.update(1.0 / 120.0, Some(&mut t));
-        assert!(s.handbrake && s.throttle > 0.0);
+        assert!(!s.handbrake && s.brake == 1.0);
         // Wandering off to the left: still the pedal thumb.
         t.moved(3, r.left - 70.0, at(0.72));
         let s = input.update(1.0 / 120.0, Some(&mut t));

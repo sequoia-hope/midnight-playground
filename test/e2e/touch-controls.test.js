@@ -7,7 +7,7 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, openGame } from './harness.js';
+import { launch, openGame, TARGET } from './harness.js';
 import { sleep, simWait, startRace, car, placeCar, cameraRight, pad, press, lift } from './controls-helpers.js';
 
 let browser;
@@ -239,8 +239,9 @@ test('phone: the reset, camera and pause pads', async () => {
 });
 
 // The buttons, and the defaults: the stick's resting place and the pedal
-// slider with its DRIFT strip stand in for the pads they replace.
-const PANELS = { stick: '#touch .t-stick', slider: '#touch .t-slider', drift: '#touch .t-drift-strip' };
+// slider (with its DRIFT strip in the JS game) stand in for the pads they
+// replace.
+const PANELS = { stick: '#touch .t-stick', slider: '#touch .t-slider', ...(TARGET === 'rust' ? {} : { drift: '#touch .t-drift-strip' }) };
 for (const [device, kind] of [['phone', 'buttons'], ['phonePortrait', 'buttons'], ['phone', 'analog'], ['phonePortrait', 'analog']]) {
   test(`${device}, ${kind}: every control is on screen, uncovered, and answers at its centre`, async () => {
     const buttons = kind === 'buttons';

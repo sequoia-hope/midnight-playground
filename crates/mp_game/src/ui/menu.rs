@@ -782,7 +782,7 @@ fn touch_help(p: &mut ChildSpawnerCommands, bp: &Bp) {
         &[
             ("Steer", true),
             (
-                ": put your left thumb down anywhere and slide it \u{b7} or \u{2190} \u{2192} buttons, or tilt the phone like a wheel",
+                ": left thumb on the stick, bottom left \u{b7} or \u{2190} \u{2192} buttons, or tilt the phone like a wheel",
                 false,
             ),
         ],
@@ -794,9 +794,7 @@ fn touch_help(p: &mut ChildSpawnerCommands, bp: &Bp) {
             ("GAS", true),
             (" above, ", false),
             ("N2O", true),
-            (" at the top \u{b7} slide right onto ", false),
-            ("DRIFT", true),
-            (" for the handbrake", false),
+            (" at the top", false),
         ],
         &[
             ("DRIFT", true),

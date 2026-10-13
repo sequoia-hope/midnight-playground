@@ -727,7 +727,6 @@ fn publish(
         add("stick", stick, steering == Steering::Stick);
         add("wheel", lay.wheel, steering == Steering::Tilt);
         add("slider", lay.track, slider);
-        add("drift", lay.drift, slider);
         add("pedal", lay.panel, slider);
     }
     *FULLSCREEN.lock().unwrap_or_else(|e| e.into_inner()) =

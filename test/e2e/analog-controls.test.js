@@ -6,8 +6,8 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, openGame } from './harness.js';
-import { sleep, simWait, startRace, car, placeCar, cameraRight, press, lift, choose, stickDown, stickTo, sliderPoint } from './controls-helpers.js';
+import { launch, openGame, TARGET } from './harness.js';
+import { sleep, simWait, startRace, car, placeCar, cameraRight, press, lift, choose, stickDown, stickHome, stickTo, sliderPoint } from './controls-helpers.js';
 import { stickSteer, sliderAt } from '../../src/game/TouchControls.js';
 
 let browser;
@@ -36,7 +36,7 @@ async function slideTo(game, u, opts) {
   return car(game);
 }
 
-test('phone: the thumb stick is the default, steers in proportion, and re-centres past full lock', async () => {
+test('phone: the thumb stick is the default, steers in proportion, and re-centres past full lock', { skip: TARGET === 'rust' && 'the Rust stick stays put (D1206)' }, async () => {
   const game = await openGame(browser, { device: 'phone', query: Q });
   try {
     assert.equal(await game.eval(() => document.getElementById('opt-steer').value), 'stick');
@@ -98,6 +98,49 @@ test('phone: the thumb stick is the default, steers in proportion, and re-centre
   } finally { await game.close(); }
 });
 
+// The Rust game's stick stays where it is (D1206): a thumb anywhere on the
+// left steers by where it is against the stick's centre.
+test('phone: the thumb stick is the default, stays put, and steers by where the thumb is against its centre', { skip: TARGET !== 'rust' && 'the JS stick follows the thumb' }, async () => {
+  const game = await openGame(browser, { device: 'phone', query: Q });
+  try {
+    assert.equal(await game.eval(() => document.getElementById('opt-steer').value), 'stick');
+    await startRace(game);
+    assert.equal(await game.eval(shown, '#touch .t-stick'), true, 'the stick waits bottom-left');
+    await placeCar(game, { speed: 15 });
+    const home = await stickHome(game);
+    const p = await stickDown(game);
+    await sleep(80);
+    let st = await stick(game);
+    const R = st.R;
+    assert.ok(R >= 44 && R <= 84, `full lock at ${R} px`);
+    assert.equal(st.steer, 0, 'a thumb on the centre steers nowhere');
+    assert.equal(st.active, true);
+    near(st.s.x0, home, 1, 'the stick stays where it was');
+
+    await stickTo(game, p, R * 0.5);
+    await sleep(80);
+    near((await stick(game)).steer, stickSteer(0.5), 0.03, 'half travel right');
+    await stickTo(game, p, R * 2);
+    await sleep(80);
+    st = await stick(game);
+    assert.equal(st.steer, 1, 'full lock');
+    assert.equal(st.lock, true);
+    await stickTo(game, p, R * 0.5);
+    await sleep(80);
+    near((await stick(game)).steer, stickSteer(0.5), 0.03, 'back to half: the centre did not follow');
+    await lift(game);
+    await sleep(80);
+    assert.equal((await stick(game)).steer, 0, 'lifting centres the steering');
+
+    // A thumb landing left of the centre steers left at once.
+    await stickDown(game, { x: Math.max(4, Math.round(home - R)) });
+    await sleep(80);
+    assert.ok((await stick(game)).steer < -0.8, 'landing a lock to the left: full left');
+    await lift(game);
+    assert.deepEqual(game.errors, []);
+  } finally { await game.close(); }
+});
+
 test('phone: the stick turns the car the way the thumb goes, with the gas under the other thumb', async () => {
   const game = await openGame(browser, { device: 'phone', query: Q });
   try {
@@ -109,7 +152,7 @@ test('phone: the stick turns the car the way the thumb goes, with the gas under 
       const right = await cameraRight(game);
       const R = (await stick(game)).R;
       const vw = await game.eval('innerWidth'), vh = await game.eval('innerHeight');
-      const p = { x: Math.round(vw * 0.2), y: Math.round(vh * 0.7), id: 0 }, q = await sliderPoint(game, 0.72, { id: 1 });
+      const p = { x: await stickHome(game), y: Math.round(vh * 0.7), id: 0 }, q = await sliderPoint(game, 0.72, { id: 1 });
       await game.touch('touchStart', [p, q]);
       await stickTo(game, p, dir * R * 0.7, [q]);
       await simWait(game, 0.3);
@@ -215,15 +258,27 @@ test('phone: slide right onto DRIFT for the handbrake, still on the pedals; the 
     await startRace(game);
     await placeCar(game, { speed: 20 });
     await press(game, await sliderPoint(game, 0.72));
-    let c = await slideTo(game, 0.72, { drift: true });
-    assert.equal(c.held.handbrake, true, 'DRIFT');
-    assert.equal(c.inp.handbrake, true);
-    assert.equal(c.inp.throttle, 1, 'still flat out');
-    assert.ok((await panel(game)).classes.includes('drift'));
-    c = await slideTo(game, 0.02, { drift: true });
-    assert.ok(c.inp.handbrake && c.inp.brake === 1, 'DRIFT low down: handbrake and brake');
-    c = await slideTo(game, 0.72);
-    assert.equal(c.inp.handbrake, false, 'back on the slider: no handbrake');
+    let c;
+    if (TARGET === 'rust') {
+      // No DRIFT strip (D1206): the slider is at the right edge, and a
+      // thumb off its edge is still on the pedals.
+      const vw = await game.eval('innerWidth');
+      const r = await sliderPoint(game, 0.02);
+      await game.touch('touchMove', [{ x: Math.min(vw - 1, r.x + 50), y: r.y, id: 0 }]);
+      await sleep(80);
+      c = await car(game);
+      assert.ok(!c.inp.handbrake && c.inp.brake === 1, 'off the right edge: the brake, no handbrake');
+    } else {
+      c = await slideTo(game, 0.72, { drift: true });
+      assert.equal(c.held.handbrake, true, 'DRIFT');
+      assert.equal(c.inp.handbrake, true);
+      assert.equal(c.inp.throttle, 1, 'still flat out');
+      assert.ok((await panel(game)).classes.includes('drift'));
+      c = await slideTo(game, 0.02, { drift: true });
+      assert.ok(c.inp.handbrake && c.inp.brake === 1, 'DRIFT low down: handbrake and brake');
+      c = await slideTo(game, 0.72);
+      assert.equal(c.inp.handbrake, false, 'back on the slider: no handbrake');
+    }
 
     // Wandering off to the left, or off the top, it's still the pedal thumb.
     const q = await sliderPoint(game, 0.72);
