@@ -7,3 +7,4 @@ parity/cache/
 recordings/
 tools/atlas/cache/
 tools/stream-probe/probe-log.jsonl
+__pycache__/
