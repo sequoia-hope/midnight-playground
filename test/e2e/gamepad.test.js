@@ -108,18 +108,34 @@ test('a slider and a drop-down: A to adjust, ◂ ▸ to change, A when done', as
   try {
     await game.waitFor(() => document.body.classList.contains('pad'));
     await press(game, 'down'); // show the highlight on Race
-    await press(game, 'down'); // into the options row, under Race: Track
-    assert.match((await focused(game)).text, /^Track/);
-    // Not adjusting: ◂ ▸ move along the row.
-    await press(game, 'left');
-    assert.match((await focused(game)).text, /^SFX/);
-    await press(game, 'right');
+    if (game.target === 'rust') {
+      // The Rust menu keeps the options on its Settings screen (D1196), a
+      // column under the menu's buttons: down to Settings, A opens it, and
+      // down runs Music, SFX, Track.
+      for (let i = 0; i < 4 && (await focused(game))?.id !== 'btn-settings'; i++) await press(game, 'down');
+      assert.equal((await focused(game))?.id, 'btn-settings');
+      await press(game, 'A');
+      await game.waitFor(() => window.__mp.screen === 'settings', { what: 'the Settings screen' });
+      for (let i = 0; i < 4 && !/^Track/.test((await focused(game))?.text ?? ''); i++) await press(game, 'down');
+      assert.match((await focused(game)).text, /^Track/);
+      await press(game, 'up');
+      assert.match((await focused(game)).text, /^SFX/);
+      await press(game, 'down');
+    } else {
+      await press(game, 'down'); // into the options row, under Race: Track
+      assert.match((await focused(game)).text, /^Track/);
+      // Not adjusting: ◂ ▸ move along the row.
+      await press(game, 'left');
+      assert.match((await focused(game)).text, /^SFX/);
+      await press(game, 'right');
+    }
     await press(game, 'A');
     assert.equal((await focused(game)).edit, true, 'adjusting the track');
     await press(game, 'right');
     assert.equal(await stored(game, 'track'), await game.eval(() => document.getElementById('opt-track').options[1].value));
     await press(game, 'A');
-    await press(game, 'left'); await press(game, 'left');
+    const back = game.target === 'rust' ? 'up' : 'left';
+    await press(game, back); await press(game, back);
     assert.match((await focused(game)).text, /^Music/);
     await press(game, 'A');
     assert.equal((await focused(game)).edit, true, 'adjusting the volume');
@@ -127,9 +143,15 @@ test('a slider and a drop-down: A to adjust, ◂ ▸ to change, A when done', as
     await press(game, 'right');
     assert.equal(await stored(game, 'musicVol'), 0.6);
     await press(game, 'B');
-    assert.equal((await focused(game)).edit, false, 'B: done, still on the menu');
-    await expectScreen(game, 'menu');
-    await press(game, 'right');
+    if (game.target === 'rust') {
+      assert.equal((await focused(game)).edit, false, 'B: done, still on Settings');
+      assert.equal(await game.eval(() => window.__mp.screen), 'settings');
+      await press(game, 'down');
+    } else {
+      assert.equal((await focused(game)).edit, false, 'B: done, still on the menu');
+      await expectScreen(game, 'menu');
+      await press(game, 'right');
+    }
     assert.match((await focused(game)).text, /^SFX/);
   } finally { await game.close(); }
 });

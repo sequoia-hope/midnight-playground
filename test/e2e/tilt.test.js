@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { launch, openGame } from './harness.js';
 import { sleep, simWait, startRace, car, placeCar, cameraRight, press, lift, choose, stickDown, stickTo, sliderPoint } from './controls-helpers.js';
 import { pose } from '../unit/support/pose.js';
+import { showOptions } from './flow-helpers.js';
 
 let browser;
 before(async () => { browser = await launch(); });
@@ -44,6 +45,7 @@ async function tiltTurn(game, turn, secs, angle = 90) {
 test('phone: tilt is a Steering choice; picked, it saves, shows the slider, and says when there is no sensor', async () => {
   const game = await openGame(browser, { device: 'phone', query: Q });
   try {
+    await showOptions(game);
     assert.equal(await game.eval(() => document.getElementById('opt-steer').value), 'stick', 'the thumb stick by default');
     assert.equal(await game.eval(shown, '#tilt-sens-row'), false, 'no slider without tilt');
     assert.equal(await game.eval(shown, '#tilt-note'), false);
