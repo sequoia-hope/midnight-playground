@@ -24,14 +24,19 @@ pub const TICK: f64 = 1.0 / 120.0;
 /// pressure follows the error (per second per unit of slip ratio).
 const ABS_TARGET: f64 = -0.1;
 const ABS_GAIN: f64 = 60.0;
-/// Traction control: the driven wheels' slip ratio it allows in a straight
-/// line, falling to `TC_TARGET_LAT` as the lateral acceleration nears the
+/// Traction control: the driven wheels' slip ratio it allows, falling from
+/// `TC_TARGET` to `TC_TARGET_LAT` as the lateral acceleration nears the
 /// front tyres' peak (the brush tyre has no hump: at a tenth of slip ratio
 /// it holds nine tenths of its peak force, so any cornering on top of that
 /// tipped the rear axle into a full slide), and how fast it cuts the
-/// throttle past the target and gives it back below.
+/// throttle past the target and gives it back below. Going straight it
+/// allows `TC_TARGET_STRAIGHT`, the extra fading out by `TC_STRAIGHT_LAT`
+/// of the peak: at 0.06 the car with it took 0.3 s longer to 30 m/s than
+/// the car spinning its wheels without it.
 const TC_TARGET: f64 = 0.06;
 const TC_TARGET_LAT: f64 = 0.03;
+const TC_TARGET_STRAIGHT: f64 = 0.1;
+const TC_STRAIGHT_LAT: f64 = 0.25;
 const TC_CUT: f64 = 40.0;
 const TC_RESTORE: f64 = 4.0;
 
@@ -677,7 +682,10 @@ impl Vehicle {
                     let ay = rot.inv_rotate(self.accel).z.abs();
                     let ay_max = def.axles[0].tyre.mu0 * G;
                     let lat = clamp(ay / ay_max, 0.0, 1.0);
-                    let target = TC_TARGET + (TC_TARGET_LAT - TC_TARGET) * lat;
+                    let straight = clamp(1.0 - lat / TC_STRAIGHT_LAT, 0.0, 1.0);
+                    let target = TC_TARGET
+                        + (TC_TARGET_LAT - TC_TARGET) * lat
+                        + (TC_TARGET_STRAIGHT - TC_TARGET) * straight;
                     es.tc = if slip > target {
                         (es.tc - h * TC_CUT * (slip - target)).max(0.0)
                     } else {

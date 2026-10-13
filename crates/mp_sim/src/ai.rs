@@ -10,7 +10,7 @@ use mp_track::{Frame, Track};
 
 use crate::body::{AgentView, Body};
 use crate::kinematic::Kinematic;
-use crate::model::{SimRival, read_back};
+use crate::model::{self, SimRival, read_back};
 use crate::park::Park;
 use crate::vehicle::Vehicle;
 
@@ -113,11 +113,51 @@ impl AiDriver {
         }
     }
 
+    /// Where a stuck sim rival is put back across the road (`SimRival::
+    /// drive`, 5 m behind): its line if that is clear of every car there,
+    /// else the first clear of a few lines across the road, starting on
+    /// the side away from the nearest car. Two rivals stuck together were
+    /// put back on top of each other, on their own lines, and stayed stuck.
+    /// The views are this tick's, with the rivals before it already moved.
+    fn replace_lat(&self, t: &Track, ctx: &AiCtx, lat_t: f64) -> f64 {
+        let back = model::replace_s(t, self.k.s);
+        let lim = t.frame(back).hw * 0.5;
+        let me = &self.k.v;
+        let near = |o: &AgentView| t.ds(back, o.s).abs() < me.half_l + o.half_l + 2.0;
+        let others = || {
+            ctx.cars
+                .iter()
+                .enumerate()
+                .filter(|&(i, o)| Some(i) != ctx.me && near(o))
+                .map(|(_, o)| o)
+        };
+        let clear = |l: f64| others().all(|o| (o.lat - l).abs() > me.half_w + o.half_w + 0.4);
+        let side = others()
+            .min_by(|a, b| {
+                (a.lat - self.k.lat)
+                    .abs()
+                    .total_cmp(&(b.lat - self.k.lat).abs())
+            })
+            .map_or(1.0, |o| if self.k.lat < o.lat { -1.0 } else { 1.0 });
+        [
+            lat_t,
+            side * lim,
+            side * lim * 0.5,
+            0.0,
+            -side * lim * 0.5,
+            -side * lim,
+        ]
+        .into_iter()
+        .map(|l| clamp(l, -lim, lim))
+        .find(|&l| clear(l))
+        .unwrap_or(clamp(lat_t, -lim, lim))
+    }
+
     pub fn update(&mut self, t: &Track, dt: f64, ctx: &AiCtx, rng: &mut dyn Rng) {
         let f = self.k.frame(t);
         if !ctx.started {
             match &mut self.sim {
-                Some(sim) => sim.drive(&mut self.k, t, dt, 0.0, 0.0, false, 0.0, false),
+                Some(sim) => sim.drive(&mut self.k, t, dt, 0.0, 0.0, 0.0, 0.0, false, 0.0, false),
                 None => self.k.write_pos(t),
             }
             return;
@@ -167,6 +207,10 @@ impl AiDriver {
             self.spiked -= dt;
             v_t *= 0.75;
         }
+
+        // What the road asks for, before the other cars: a sim rival held
+        // still below it for long is stuck (`SimRival::drive`).
+        let want = v_t;
 
         // Racing line (or the lane we're parking in).
         let mut lat_t = match park {
@@ -252,7 +296,15 @@ impl AiDriver {
             } else {
                 js::max(lat_t, room)
             };
-            if ds > -1.0 && (dl.abs() < clear - 0.3 || room.abs() > lim) {
+            // Two sim cars stopped side by side would each drop back for the
+            // other for good (a sim car cannot slip sideways out of it as a
+            // kinematic one does): only the one clearly behind gives way.
+            let both_still = self.sim.is_some()
+                && speed < model::STUCK_SPEED
+                && o.speed_along < model::STUCK_SPEED;
+            if ds > if both_still { 0.5 } else { -1.0 }
+                && (dl.abs() < clear - 0.3 || room.abs() > lim)
+            {
                 v_t = js::min(v_t, o.speed_along - 2.0);
             }
         }
@@ -294,8 +346,21 @@ impl AiDriver {
             }
             self.throttle = if v_t > speed { 1.0 } else { 0.0 };
             self.nitro_active = nitroing;
+            let want = if self.hold > 0.0 { 0.0 } else { want };
+            let place = self.replace_lat(t, ctx, lat_t);
             let sim = self.sim.as_mut().expect("a sim rival");
-            sim.drive(&mut self.k, t, dt, v_t, lat_t, nitroing, self.spiked, true);
+            sim.drive(
+                &mut self.k,
+                t,
+                dt,
+                v_t,
+                want,
+                lat_t,
+                place,
+                nitroing,
+                self.spiked,
+                true,
+            );
             if !self.finished && self.k.s >= t.finish_s {
                 self.finished = true;
                 self.finish_time = Some(ctx.time);
