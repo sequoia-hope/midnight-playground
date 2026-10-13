@@ -24,9 +24,14 @@ pub const TICK: f64 = 1.0 / 120.0;
 /// pressure follows the error (per second per unit of slip ratio).
 const ABS_TARGET: f64 = -0.1;
 const ABS_GAIN: f64 = 60.0;
-/// Traction control: the driven wheels' slip ratio it allows, and how fast
-/// it cuts the throttle past it and gives it back below.
-const TC_TARGET: f64 = 0.1;
+/// Traction control: the driven wheels' slip ratio it allows in a straight
+/// line, falling to `TC_TARGET_LAT` as the lateral acceleration nears the
+/// front tyres' peak (the brush tyre has no hump: at a tenth of slip ratio
+/// it holds nine tenths of its peak force, so any cornering on top of that
+/// tipped the rear axle into a full slide), and how fast it cuts the
+/// throttle past the target and gives it back below.
+const TC_TARGET: f64 = 0.06;
+const TC_TARGET_LAT: f64 = 0.03;
 const TC_CUT: f64 = 40.0;
 const TC_RESTORE: f64 = 4.0;
 
@@ -667,8 +672,14 @@ impl Vehicle {
                             slip = slip.max((info.roll_speed.abs() - info.ground_speed.abs()) / v);
                         }
                     }
-                    es.tc = if slip > TC_TARGET {
-                        (es.tc - h * TC_CUT * (slip - TC_TARGET)).max(0.0)
+                    // Less slip allowed the harder the car corners (the
+                    // lateral acceleration, which the electronics measure).
+                    let ay = rot.inv_rotate(self.accel).z.abs();
+                    let ay_max = def.axles[0].tyre.mu0 * G;
+                    let lat = clamp(ay / ay_max, 0.0, 1.0);
+                    let target = TC_TARGET + (TC_TARGET_LAT - TC_TARGET) * lat;
+                    es.tc = if slip > target {
+                        (es.tc - h * TC_CUT * (slip - target)).max(0.0)
                     } else {
                         (es.tc + h * TC_RESTORE).min(1.0)
                     };

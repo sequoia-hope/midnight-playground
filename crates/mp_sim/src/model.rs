@@ -27,7 +27,7 @@ use mp_vdyn::{Controls, Ground, Quat, Vec3, VehicleDef};
 use crate::ground::TrackGround;
 use crate::input::{Input, InputFrame, SHIFT_DOWN, SHIFT_UP};
 use crate::kinematic::Kinematic;
-use crate::physics::{ANALOG_LOCK, CarPhysics, PhysEvent, car_spec};
+use crate::physics::{CarPhysics, PhysEvent, car_spec};
 use crate::vehicle::{SimPose, Vehicle, WheelPose};
 
 /// Which cars of a race the sim model moves (the "Handling" setting).
@@ -114,6 +114,9 @@ const NITRO_BOOST: f64 = 0.35;
 const NITRO_SECS: f64 = 6.0;
 /// The arcade's idle, for the countdown's revs.
 const IDLE: f64 = 900.0;
+/// Full steering asks the front tyres for this share of their peak force
+/// (`SimCar::steer_max`).
+const LOCK_FORCE: f64 = 0.9;
 
 impl SimCar {
     /// A sim car where the body view `v` is, at its speed.
@@ -169,15 +172,32 @@ impl SimCar {
         }
     }
 
-    /// Grip-scaled lock: full steering asks a little more than the front
-    /// tyres hold at `speed` (the arcade's ANALOG_LOCK idea). Radians.
+    /// Grip-scaled lock (the arcade's ANALOG_LOCK idea): full steering asks
+    /// the front tyres for `LOCK_FORCE` of their peak at `speed`, so the
+    /// whole travel steers and a tap does not throw the car into a slide.
+    /// The wheel angle is the steady state's: the kinematic angle for that
+    /// lateral acceleration plus the front axle's slip angle, less the
+    /// rear's carrying its share (the brush curve inverted). The old lock
+    /// added the full-slide slip angle (7.7°) at every speed, so at speed
+    /// the first third of the stick already slid all four tyres. Radians.
     pub fn steer_max(&self, speed: f64) -> f64 {
-        let a0 = &self.def.axles[0];
-        let mu_g = a0.tyre.mu0 * mp_vdyn::vehicle::G;
+        let def = &self.def;
+        let loads = def.static_axle_loads();
         let v = speed.abs().max(1.0);
-        let peak_slip = 3.0 * a0.tyre.mu0 * a0.tyre.fz0 / a0.tyre.stiffness();
-        let want = ANALOG_LOCK * self.def.wheelbase() * mu_g / (v * v) + peak_slip;
-        clamp(want, 0.0, a0.steer_lock)
+        let g = mp_vdyn::vehicle::G;
+        // The slip angle at which an axle's tyres give `f` of their peak:
+        // the brush force is `1 − (1−λ)³` of the peak at `λ`, and `λ = 1`
+        // is the slip of the full slide, `3μFz/C`.
+        let slip = |i: usize, f: f64| {
+            let t = &def.axles[i].tyre;
+            let fz = loads[i] / 2.0;
+            let l = 1.0 - kernel::pow(1.0 - clamp(f, 0.0, 1.0), 1.0 / 3.0);
+            kernel::atan(l * 3.0 * t.mu_at(fz) * fz / t.stiffness())
+        };
+        let ay = LOCK_FORCE * def.axles[0].tyre.mu_at(loads[0] / 2.0) * g;
+        let f_rear = ay / (def.axles[1].tyre.mu_at(loads[1] / 2.0) * g);
+        let want = def.wheelbase() * ay / (v * v) + slip(0, LOCK_FORCE) - slip(1, f_rear);
+        clamp(want, 0.0, def.axles[0].steer_lock)
     }
 
     /// The *Casual* assists: the race's controls to the vehicle's.
