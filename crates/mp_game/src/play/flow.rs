@@ -1126,4 +1126,49 @@ pub(crate) mod tests {
         assert!(race.hush_pads);
         assert_eq!(race.springs.len(), slots(&race.session.curr).count());
     }
+
+    /// The open world as a cruise (the menu's Cruise, `?cruise=1`, D1211):
+    /// the simulation's cruise mode with nobody on the grid but the
+    /// player, no pursuit, and no finish line to cross.
+    #[test]
+    fn the_south_coast_cruises() {
+        let level = crate::play::cruise_level(mp_levels::level_by_id("southcoast"), true);
+        assert_eq!(level.mode, mp_track::Mode::Cruise);
+        assert!(level.rivals.is_empty());
+        // A drawn level is never a cruise this way.
+        assert_eq!(
+            crate::play::cruise_level(mp_levels::level_by_id("sierra"), true).mode,
+            mp_track::Mode::Race
+        );
+        let opts = RaceOpts {
+            car: "sports",
+            seed: 1,
+            pursuit: true,
+            heat: 1.0,
+            physics: mp_sim::model::Physics::Arcade,
+        };
+        let lr = LevelRuntime::new(level).unwrap();
+        let mut st = SimState::new(&lr, opts);
+        assert!(st.race.cruise);
+        assert!(!st.race.pursuit_on);
+        assert!(st.rivals.is_empty());
+        assert!(!st.traffic.cars.is_empty(), "the level's traffic stays");
+        let mut ev = Vec::new();
+        for _ in 0..120 * 60 {
+            let mut inp = SimInput::default();
+            autopilot(&mut inp, &st.players[0].v, &lr.track);
+            step(&lr, &mut st, &[InputFrame::quantise(&inp)], &mut ev);
+        }
+        let p = &st.players[0];
+        assert!(!p.rules.finished);
+        assert_eq!(st.race.state, mp_sim::race::RaceStateKind::Racing);
+        assert!(
+            p.v.s > lr.track.start_s + 300.0,
+            "drove on: s {} from {}",
+            p.v.s,
+            lr.track.start_s
+        );
+        assert!(p.rules.score > 0.0, "scored: {}", p.rules.score);
+        assert!(p.v.x.is_finite() && p.v.y.is_finite());
+    }
 }

@@ -61,6 +61,13 @@ pub struct Car {
     pub vz: f64,
     pub s: f64,
     pub lat: f64,
+    /// The road of the level's network under the car and the car's place
+    /// on it (`Vehicle::road`, `road_s`, `road_lat`): on a branch `s` and
+    /// `lat` are the car's place on the level's road, hundreds of metres
+    /// off, which is no floor for the camera (D1211).
+    pub road: usize,
+    pub road_s: f64,
+    pub road_lat: f64,
 }
 
 impl Car {
@@ -75,6 +82,9 @@ impl Car {
             vz: v.vz,
             s: v.s,
             lat: v.lat,
+            road: v.road,
+            road_s: v.road_s,
+            road_lat: v.road_lat,
         }
     }
 
@@ -101,6 +111,19 @@ impl Car {
                 l(a.s, b.s)
             },
             lat: l(a.lat, b.lat),
+            // Across a junction the car changes road between ticks: the
+            // new road's place, whole.
+            road: b.road,
+            road_s: if a.road == b.road {
+                l(a.road_s, b.road_s)
+            } else {
+                b.road_s
+            },
+            road_lat: if a.road == b.road {
+                l(a.road_lat, b.road_lat)
+            } else {
+                b.road_lat
+            },
         }
     }
 }
@@ -162,8 +185,10 @@ impl CameraRig {
 
     /// `update(dt, car, { lookBack, nitro })`; `aspect` is the screen's.
     /// Terrain: the JS also keeps the camera above `terrain.heightAt`; the
-    /// client has no terrain heights yet, so only the road counts
-    /// (DECISIONS D434).
+    /// drawn levels have no terrain heights on the client, so only the
+    /// road counts there (DECISIONS D434). An open level's ground is in
+    /// its Track ([`Track::ground_y`]), so there the floor is the land or
+    /// road under the eye, on the road the car is on (D1211).
     pub fn update(
         &mut self,
         dt: f64,
@@ -247,7 +272,7 @@ impl CameraRig {
             self.pos.y += (desired.y - self.pos.y) * ky;
         }
         // Keep above the ground and the road.
-        let g = track.surface_y(v.s, v.lat) + if bumper { 0.3 } else { 0.9 };
+        let g = floor(track, v, self.pos.x, self.pos.z) + if bumper { 0.3 } else { 0.9 };
         if self.pos.y < g {
             self.pos.y = g;
         }
@@ -318,6 +343,21 @@ impl CameraRig {
     }
 }
 
+/// The surface under (x, z) the camera must stay above: on a drawn level
+/// the road's plane at the car's place (the JS; the camera is a few
+/// metres behind the car, on the same stretch); on an open level the land
+/// or road under the eye itself, projected onto the road the car is on,
+/// since on a branch or off the road the level's road is far away and its
+/// plane, banked, is nowhere near the ground (D1211).
+fn floor(track: &Track, v: &Car, x: f64, z: f64) -> f64 {
+    if track.open_ground.is_none() {
+        return track.surface_y(v.s, v.lat);
+    }
+    let r = track.road(v.road.min(track.branches.len()));
+    let p = r.project(x, z, v.road_s);
+    r.ground_y(x, z, p.s, p.lat)
+}
+
 /// `x || 1`.
 fn or1(x: f64) -> f64 {
     if x == 0.0 || x.is_nan() { 1.0 } else { x }
@@ -375,6 +415,62 @@ mod tests {
         assert!((v.eye.z - (car.z + fz * 1.2)).abs() < 1e-9);
         rig.cycle();
         assert_eq!(rig.mode, 0);
+    }
+
+    /// On a branch the camera's floor is the branch under the eye, not the
+    /// level's road: a car 1.5 km up Highway 84 is hundreds of metres off
+    /// Highway 1, whose banked plane is no height to hold the camera at
+    /// (the owner's "weird camera angle" on 84, D1211).
+    #[test]
+    fn the_floor_follows_the_road_under_the_car() {
+        let lr = LevelRuntime::new(mp_levels::level_by_id("southcoast")).unwrap();
+        let t = &lr.track;
+        let b = t.road(1);
+        let f = b.frame(1500.0);
+        let mut v = Vehicle::new(
+            mp_sim::dims::dims("sports").unwrap(),
+            "sports",
+            1200.0,
+            "You",
+            0xffffff,
+        );
+        v.x = f.x;
+        v.z = f.z;
+        v.y = f.y;
+        v.yaw = kernel::atan2(f.fz, f.fx);
+        v.road = 1;
+        v.road_s = 1500.0;
+        v.project_onto(t);
+        assert_eq!(v.road, 1);
+        let car = Car::of(&v);
+        assert!(car.lat.abs() > 100.0, "off the level's road: {}", car.lat);
+        let mut rig = CameraRig::default();
+        let mut view = rig.update(1.0 / 60.0, t, &car, false, false, 1.6);
+        for _ in 0..120 {
+            view = rig.update(1.0 / 60.0, t, &car, false, false, 1.6);
+        }
+        let up = view.eye.y - car.y;
+        assert!(
+            (1.5..3.5).contains(&up),
+            "the eye sits {up} m above the car"
+        );
+        // And off the road, on the land: the floor is the ground there.
+        let (rx, rz) = (f.rx, f.rz);
+        v.x = f.x + rx * 40.0;
+        v.z = f.z + rz * 40.0;
+        v.project_onto(t);
+        v.y = t.road(v.road).ground_y(v.x, v.z, v.road_s, v.road_lat);
+        let car = Car::of(&v);
+        let mut rig = CameraRig::default();
+        let mut view = rig.update(1.0 / 60.0, t, &car, false, false, 1.6);
+        for _ in 0..120 {
+            view = rig.update(1.0 / 60.0, t, &car, false, false, 1.6);
+        }
+        let up = view.eye.y - car.y;
+        assert!(
+            (1.0..6.0).contains(&up),
+            "off the road the eye sits {up} m above the car"
+        );
     }
 
     /// The intro starts in front of the car and ends where the chase is.

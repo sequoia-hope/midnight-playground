@@ -158,6 +158,12 @@ from the real road through the existing coast generator.
   (the car drives off its end onto the land); the branch's own s is not
   shown anywhere.
 - **Gate:** turn off Highway 1 onto 84 and drive up to La Honda.
+- 2026-10-14 (D1211): the camera's floor follows the road under the car
+  (it had been the level's road's plane, which on 84 is far off and
+  banked); and the level card offers **Cruise** beside Race and Hot
+  Pursuit: the corridor with no race on it, the Night City Cruise's
+  score, no rivals, the level's traffic. The owner's "light night city
+  cruise but the new map".
 
 ### Stage 4. Streaming
 

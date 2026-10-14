@@ -16,10 +16,21 @@ use bevy::prelude::*;
 use bevy::text::{Justify, TextLayout};
 use mp_track::{Level, level::Mode as LevelMode};
 
-/// `levelStats(l)`.
-pub fn level_stats(l: &Level) -> String {
+/// `levelStats(l)`; `cruise` is the card's mode switch on Cruise (the open
+/// world driven with no race on it, D1211).
+pub fn level_stats(l: &Level, cruise: bool) -> String {
     if l.mode == LevelMode::Cruise {
         return "Endless loop · heavy traffic · score attack".into();
+    }
+    if let Some(len) = route_length(l) {
+        // An open road from the atlas: its length is the path's.
+        let km = w::to_fixed(len / 1000.0, 1);
+        let mi = w::to_fixed(len / 1609.34, 1);
+        return if cruise {
+            format!("{km} km · {mi} mi · open road · light traffic · score attack")
+        } else {
+            format!("{km} km · {mi} mi · {} rivals · traffic", l.rivals.len())
+        };
     }
     if let (Some(laps), Some(len)) = (l.laps, l.lap_length) {
         return format!(
@@ -39,9 +50,23 @@ pub fn level_stats(l: &Level) -> String {
     )
 }
 
+/// The length of a road given as a path (`Route::Path`): the race's, from
+/// its start to the finish line, less the runoff.
+fn route_length(l: &Level) -> Option<f64> {
+    let mp_track::Route::Path(spec) = &l.route else {
+        return None;
+    };
+    let p = (spec.path)().ok()?;
+    let mut len = 0.0;
+    for k in 1..p.x.len() {
+        len += mp_math::kernel::hypot(p.x[k] - p.x[k - 1], p.z[k] - p.z[k - 1]);
+    }
+    Some(len - spec.start_s.unwrap_or(0.0) - l.finish_runoff.unwrap_or(180.0))
+}
+
 /// The level card's best line (`#lvl-best`).
 pub fn level_best(store: &Store, l: &Level) -> String {
-    let cruise = l.mode == LevelMode::Cruise;
+    let cruise = l.mode == LevelMode::Cruise || store::mode_for(store, l) == "cruise";
     let best = if cruise {
         store.num_or_null(&format!("bestScore.{}", l.id))
     } else {
@@ -69,9 +94,10 @@ pub fn level_best(store: &Store, l: &Level) -> String {
 
 /// The Race button's label.
 pub fn start_label(store: &Store, l: &Level, forced: Option<bool>) -> &'static str {
-    if l.mode == LevelMode::Cruise {
+    let mode = store::mode_for(store, l);
+    if l.mode == LevelMode::Cruise || (mode == "cruise" && forced.is_none()) {
         "Cruise"
-    } else if l.police.is_some() && forced.unwrap_or(store::mode_for(store, l) == "pursuit") {
+    } else if l.police.is_some() && forced.unwrap_or(mode == "pursuit") {
         "Hot Pursuit"
     } else {
         "Race"
@@ -318,7 +344,7 @@ pub fn menu(
             ..default()
         };
         place(&bp, &mut n, (1, 2), (3, 3));
-        let stats = level_stats(&level);
+        let stats = level_stats(&level, store::mode_for(store, &level) == "cruise");
         let best = level_best(store, &level);
         p.spawn((
             n,
@@ -412,12 +438,19 @@ pub fn menu(
                     Control::named("lvl-best", Value::Text(best.clone())),
                 ));
             });
-            if level.police.is_some() {
-                let m = if forced.unwrap_or(store::mode_for(store, &level) == "pursuit") {
-                    "pursuit"
-                } else {
-                    "race"
+            if level.police.is_some() || level.open {
+                let m = match (forced, store::mode_for(store, &level)) {
+                    (Some(true), _) => "pursuit",
+                    (Some(false), "pursuit") => "race",
+                    (_, m) => m,
                 };
+                let mut modes = vec![("race", "Race")];
+                if level.police.is_some() {
+                    modes.push(("pursuit", "Hot Pursuit"));
+                }
+                if level.open {
+                    modes.push(("cruise", "Cruise"));
+                }
                 p.spawn((
                     Node {
                         margin: UiRect::top(bp.px(if bp.compact { 6.0 } else { 10.0 })),
@@ -432,7 +465,7 @@ pub fn menu(
                     Control::named("mode-pick", Value::Text(m.into())),
                 ))
                 .with_children(|p| {
-                    for (mode, label) in [("race", "Race"), ("pursuit", "Hot Pursuit")] {
+                    for (mode, label) in modes {
                         let sel = mode == m;
                         let id = format!("mode-{mode}");
                         let focused = cx.f(&id);
@@ -457,6 +490,15 @@ pub fn menu(
                                     w::shadow(
                                         &bp,
                                         &[(0.0, 4.0, 16.0, 0.0, w::rgba(0x2f6bff, 0.3))],
+                                    ),
+                                ));
+                            } else if mode == "cruise" {
+                                // The night's blues: a drive, not a race.
+                                e.insert((
+                                    w::hgrad(w::rgb(0x1ab8c4), w::rgb(0x4a5cff)),
+                                    w::shadow(
+                                        &bp,
+                                        &[(0.0, 4.0, 16.0, 0.0, w::rgba(0x1ab8c4, 0.3))],
                                     ),
                                 ));
                             } else {
