@@ -319,6 +319,9 @@ pub struct Terrain {
     pub desert_rail: Option<DesertRail>,
     /// `level.ground`.
     pub ground: Option<GroundFn>,
+    /// An open level's land cover (`Level::cover`): the crop cells are
+    /// painted as fields (stage 4d).
+    pub cover: Option<mp_track::CoverFn>,
     /// An open level (`level.open`): `ground` is the land under the whole
     /// box, every zone's landform, and the road is blended into it with the
     /// shaping the Track's `ground_y` uses, so the car sits on what is drawn.
@@ -435,6 +438,7 @@ impl Terrain {
             channels,
             desert_rail: None,
             ground: level.ground.clone(),
+            cover: level.cover.clone(),
             open_level: level.open,
             ground_color: None,
             far: FarField::default(),

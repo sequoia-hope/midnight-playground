@@ -959,7 +959,7 @@ fn show(world: &mut World, k: usize, before: Option<usize>) {
         world.insert_resource(index);
     }
     let t = world.resource::<Opts>().o.t;
-    let mut sky = SkyState::new(&level, track.is_loop, track.length);
+    let mut sky = SkyState::new(&level, track.is_loop, track.length).with_zones(&track);
     sky.override_p = t;
     let start = track.start_s + CAMERA_FROM;
     world.resource_mut::<Opts>().o.level = level.id.to_owned();

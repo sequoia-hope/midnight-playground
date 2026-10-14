@@ -187,3 +187,116 @@ fn a_packed_section_reads_back_with_its_animators() {
         }
     }
 }
+
+/// Stage 4d: the branches are sections of their own road, the ring
+/// crosses a junction, each road's end is closed unless it is open onto
+/// another road, and the crop land is fenced.
+#[test]
+fn branches_stream_as_their_own_sections_and_the_road_ends_are_closed() {
+    let p = planned();
+    let t = p.track.clone();
+    let rs = p.road_sections();
+    assert_eq!(rs.len(), 3, "the loop and its two branches");
+    let (tf, tn) = rs[1];
+    let (sf, sn) = rs[2];
+    assert!(tn >= 7 && sn >= 5, "{rs:?}");
+    assert_eq!(p.sections(), rs[0].1 + tn + sn);
+    assert_eq!(p.road_of(tf + 2), (1, 2));
+    assert_eq!(p.section(tf + 2).road, 1);
+
+    // The ring at Tunitas's mouth holds the branch's first two sections;
+    // on the branch's first section it holds the parent's round the
+    // mouth; at its far end, Skyline's round where it meets it.
+    let tun = &t.branches[0];
+    let mouth = p.section_of(0, tun.s);
+    let r = p.ring(mouth, 1, 2);
+    assert!(r.contains(&tf) && r.contains(&(tf + 1)), "{r:?}");
+    let r = p.ring(tf, 1, 2);
+    assert!(r.contains(&mouth) && r.contains(&(tf + 1)), "{r:?}");
+    let far = p.section_of(0, tun.end.expect("meets Skyline"));
+    let r = p.ring(tf + tn - 1, 1, 2);
+    assert!(r.contains(&far), "{r:?}");
+    // A place on the branch is the branch's section.
+    let f = tun.track.frame(2500.0);
+    assert_eq!(p.section_under(f.x, f.z), Some(tf + 2));
+
+    // The branch's section builds its own road and nothing of the loop's,
+    // and the mouth's two sections share nothing.
+    let b2 = built(&p, p.section(tf + 2));
+    let ds = section::drawables(&b2);
+    let sec = p.section(tf + 2);
+    assert!(
+        ds.iter().filter(|(n, _)| n == "road").count() >= 2,
+        "the branch's road"
+    );
+    for (name, c) in &ds {
+        assert!(
+            sec.owns(&t, c[0], c[2]),
+            "{name} at ({:.0}, {:.0})",
+            c[0],
+            c[2]
+        );
+    }
+    let m = built(&p, p.section(mouth));
+    let b0 = built(&p, p.section(tf));
+    let key = |c: &[f64; 3]| [c[0].round() as i64, c[2].round() as i64];
+    let mk: Vec<(String, [i64; 2])> = section::drawables(&m)
+        .into_iter()
+        .map(|(n, c)| (n, key(&c)))
+        .collect();
+    for (n, c) in section::drawables(&b0) {
+        assert!(
+            !mk.contains(&(n.clone(), key(&c))),
+            "{n} at {:?} is in both",
+            key(&c)
+        );
+    }
+    assert!(
+        section::drawables(&b0).iter().any(|(n, _)| n == "road"),
+        "the branch's first section has its mouth"
+    );
+
+    // Stage Road ends at Pescadero: its last section bars the road.
+    // Tunitas meets Skyline: no bar.
+    let last = built(&p, p.section(sf + sn - 1));
+    assert!(
+        section::drawables(&last).iter().any(|(n, _)| n == "closed"),
+        "Stage Road's end is closed"
+    );
+    let tl = built(&p, p.section(tf + tn - 1));
+    assert!(
+        !section::drawables(&tl).iter().any(|(n, _)| n == "closed"),
+        "Tunitas runs onto Skyline"
+    );
+
+    // Crop land by a road is fenced: the first section whose verge is crop.
+    let cover = p.level.cover.as_ref().expect("cover");
+    let mut crop_s = None;
+    let mut s = 0.0;
+    while s < t.length && crop_s.is_none() {
+        let f = t.frame(s);
+        let off = f.hw + f.margin + 2.2;
+        for side in [-1.0, 1.0] {
+            if mp_track::Cover::of(cover(f.x + f.rx * off * side, f.z + f.rz * off * side))
+                == mp_track::Cover::Crop
+            {
+                crop_s = Some(s);
+            }
+        }
+        s += 50.0;
+    }
+    let crop_s = crop_s.expect("crop beside the loop");
+    let c = built(&p, p.section(p.section_of(0, crop_s)));
+    let posts = c
+        .graph
+        .log
+        .iter()
+        .find_map(|l| {
+            l.strip_prefix("Land: ")
+                .and_then(|l| l.split(", ").find(|w| w.ends_with("fence posts")))
+                .and_then(|w| w.split(' ').next())
+                .and_then(|n| n.parse::<usize>().ok())
+        })
+        .expect("the land's log");
+    assert!(posts > 10, "{posts} posts at s {crop_s:.0}");
+}

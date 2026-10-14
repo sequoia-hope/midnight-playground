@@ -80,6 +80,7 @@ fn level() -> Level {
             color: "#000000",
             blend: None,
             blend_offset: None,
+            fog: None,
         }],
         sky: Vec::new(),
         sun_azimuth: 0.0,

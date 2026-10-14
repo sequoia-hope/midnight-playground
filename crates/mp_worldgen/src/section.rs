@@ -54,6 +54,10 @@ pub struct Section {
     pub partition: bool,
     /// The horizon layer: coarse tiles, sky and sea only.
     pub base: bool,
+    /// The road of the network the stretch is on: 0 the level's road, k
+    /// its (k - 1)th branch (`Track::road`; stage 4d). A partitioned
+    /// section owns what is nearer its road than any other.
+    pub road: usize,
 }
 
 impl Default for Section {
@@ -66,6 +70,7 @@ impl Default for Section {
             scenery: true,
             partition: false,
             base: false,
+            road: 0,
         }
     }
 }
@@ -78,13 +83,23 @@ const NEAR_ROAD: f64 = 900.0;
 const STEP: f64 = 10.0;
 
 impl Section {
+    /// The road the stretch is on, of the level's network.
+    pub fn track<'a>(&self, track: &'a Track) -> &'a Track {
+        track.road(self.road.min(track.branches.len()))
+    }
+
     /// The stretch as points (x, z) every [`STEP`] m.
     pub fn points(&self, track: &Track) -> Vec<[f64; 2]> {
+        let t = self.track(track);
         let n = ((self.s1 - self.s0) / STEP).ceil().max(1.0) as usize;
         (0..=n)
             .map(|k| {
                 let s = self.s0 + (self.s1 - self.s0) * k as f64 / n as f64;
-                let f = track.frame(if track.is_loop { track.wrap(s) } else { s });
+                let f = t.frame(if t.is_loop {
+                    t.wrap(s)
+                } else {
+                    s.min(t.length)
+                });
                 [f.x, f.z]
             })
             .collect()
@@ -95,26 +110,48 @@ impl Section {
         self.s1 - self.s0
     }
 
-    /// Whether `s` (metres along the level's road) lies on the stretch,
+    /// Whether `s` (metres along the section's road) lies on the stretch,
     /// round a loop's wrap.
     pub fn holds(&self, track: &Track, s: f64) -> bool {
-        let d = if track.is_loop {
-            track.wrap(s - self.s0)
+        self.holds_on(self.track(track), s)
+    }
+
+    /// [`Section::holds`] on the given road's own track.
+    pub fn holds_on(&self, t: &Track, s: f64) -> bool {
+        let d = if t.is_loop {
+            t.wrap(s - self.s0)
         } else {
             s - self.s0
         };
         d >= 0.0 && d < self.len()
     }
 
-    /// The place of (x, z) along the level's road, when a road is near.
-    pub fn s_of(track: &Track, x: f64, z: f64) -> Option<f64> {
-        track.distance_to_road(x, z, NEAR_ROAD).s
+    /// The place of (x, z) in the level's network: the nearest road within
+    /// [`NEAR_ROAD`] and the metres along it.
+    pub fn s_of(track: &Track, x: f64, z: f64) -> Option<(usize, f64)> {
+        let mut best: Option<(usize, f64, f64)> = None;
+        for (r, t) in track.roads().enumerate() {
+            let d = t.distance_to_road(x, z, NEAR_ROAD);
+            let Some(s) = d.s else { continue };
+            // The distance to the place itself: beyond an open road's end
+            // the lateral distance from its last segment says nothing.
+            let f = t.frame(if t.is_loop {
+                t.wrap(s)
+            } else {
+                s.clamp(0.0, t.length)
+            });
+            let dd = mp_math::kernel::hypot(x - f.x, z - f.z);
+            if dd <= NEAR_ROAD && best.is_none_or(|b| dd < b.2) {
+                best = Some((r, s, dd));
+            }
+        }
+        best.map(|(r, s, _)| (r, s))
     }
 
     /// Whether the point (x, z) belongs to the stretch: its nearest place
-    /// on the road does.
+    /// in the network is on the section's road, on the stretch.
     pub fn owns(&self, track: &Track, x: f64, z: f64) -> bool {
-        Self::s_of(track, x, z).is_some_and(|s| self.holds(track, s))
+        Self::s_of(track, x, z).is_some_and(|(r, s)| r == self.road && self.holds(track, s))
     }
 
     /// The parts of the range `[a, b]` of the road that lie on the
@@ -255,6 +292,12 @@ pub fn builds_module(w: &World, name: &str) -> bool {
     };
     if !sec.scenery || sec.base {
         return false;
+    }
+    // The Land kit plants by land cover wherever a road is, whatever the
+    // zone, as a whole build has it do, and fences the crop land (stage
+    // 4d): it builds in every section of an open level.
+    if name == "Land" && w.level.open {
+        return true;
     }
     let zones: Vec<usize> = w
         .level

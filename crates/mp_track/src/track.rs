@@ -183,6 +183,10 @@ pub struct BranchTrack {
     /// (+1 right, -1 left).
     pub s: f64,
     pub side: f64,
+    /// Where on the parent the branch's far end meets it again, when it
+    /// does (a road from one road of the network to another: Tunitas Creek
+    /// Road from Highway 1 to Skyline); its track is then `open_end`.
+    pub end: Option<f64>,
     /// Metres along the branch to the parent's shoulder: before it the
     /// branch lies under the parent's road; and to the parent's paved
     /// edge, where the branch's own surface begins.
@@ -228,6 +232,9 @@ pub struct Track {
     /// The roads leaving this one at junctions (`level.branches`); road 0
     /// is this track, road k is `branches[k - 1]` ([`Track::road`]).
     pub branches: Vec<BranchTrack>,
+    /// A branch whose far end lies on another road of the network: no end
+    /// of the road there (the car carries on onto the other road).
+    pub open_end: bool,
     pub elevated: Vec<u8>,
     /// Collision limits either side of the centreline (positive distances).
     pub wall_l: Vec<f32>,
@@ -304,9 +311,17 @@ impl Track {
         if self.branches.is_empty() {
             return (0, p);
         }
-        // How far past a road's shoulder a projection lies (negative: held).
+        // How far past a road's shoulder a projection lies (negative:
+        // held); past the open far end of a branch, how far beyond it, so
+        // a car driving straight off the branch's end onto the road it
+        // meets is held by that road, not by the end it has left.
         let over = |t: &Track, p: &Projection| {
-            p.lat.abs() - f64::from(t.hw[p.i]) - f64::from(t.margin[p.i])
+            let mut o = p.lat.abs() - f64::from(t.hw[p.i]) - f64::from(t.margin[p.i]);
+            if t.open_end && p.s >= t.n as f64 - 1.5 {
+                let e = t.frame(p.s);
+                o = o.max((x - e.x) * e.fx + (z - e.z) * e.fz);
+            }
+            o
         };
         let mut best = (road, p, over(cur, &p));
         if best.2 <= 0.0 {
@@ -339,7 +354,7 @@ impl Track {
 
     /// How far along a point-to-point road a car can go, runout included.
     pub fn road_end(&self) -> f64 {
-        if self.is_loop {
+        if self.is_loop || self.open_end {
             f64::INFINITY
         } else {
             self.length + self.runout
@@ -978,6 +993,40 @@ fn build_branch(parent: &Track, level: &Level, b: &Branch) -> Result<BranchTrack
             t.py[k] = (f64::from(t.py[k]) + delta * w) as f32;
         }
     }
+    // The far end on another road of the network (within its pavement):
+    // the heights fitted to it the same way, and the end left open.
+    let last = t.n - 1;
+    let far = parent.distance_to_road(f64::from(t.px[last]), f64::from(t.pz[last]), 400.0);
+    let mut end = None;
+    if let Some(s_e) = far.s
+        && {
+            let ef = parent.frame(s_e);
+            far.d <= ef.hw + ef.margin
+        }
+    {
+        let ef = parent.frame(s_e);
+        let clear_e = ef.hw + ef.margin + 1.0;
+        let mut hint = s_e;
+        let mut delta = 0.0;
+        for k in (0..t.n).rev() {
+            let s = (last - k) as f64;
+            let x = f64::from(t.px[k]);
+            let z = f64::from(t.pz[k]);
+            if s <= clear_e {
+                let q = parent.project(x, z, hint);
+                hint = q.s;
+                let lift = BRANCH_LIFT * (1.0 - smoothstep(clear_e - 1.0, clear_e + 15.0, s));
+                let fitted = parent.surface_y(q.s, q.lat) + lift;
+                delta = fitted - f64::from(t.py[k]);
+                t.py[k] = fitted as f32;
+            } else {
+                let w = 1.0 - smoothstep(clear_e, clear_e + BRANCH_FIT, s);
+                t.py[k] = (f64::from(t.py[k]) + delta * w) as f32;
+            }
+        }
+        t.open_end = true;
+        end = Some(s_e);
+    }
     t.grade = grade_of(&t.py, false);
     build_racing_line(&mut t);
     // One zone, the branch's, the whole way.
@@ -1000,9 +1049,61 @@ fn build_branch(parent: &Track, level: &Level, b: &Branch) -> Result<BranchTrack
         track: t,
         s: s_j,
         side,
+        end,
         clear,
         under: jf.hw,
     })
+}
+
+/// The fog where the car is: a zone with fog of its own replaces the sky
+/// key's density `base`, blended over each boundary's width (the zone's
+/// `blend`, else `FOG_BLEND`); the drift is blended the same way. The
+/// zones are a track's (`Track::zones`); on a loop the last runs into the
+/// first at the wrap.
+pub fn zone_fog(zones: &[TrackZone], is_loop: bool, length: f64, s: f64, base: f64) -> (f64, f64) {
+    let of = |z: &TrackZone| z.zone.fog.map_or((base, 0.0), |f| (f.density, f.drift));
+    let Some(first) = zones.first() else {
+        return (base, 0.0);
+    };
+    let s = if is_loop { s.rem_euclid(length) } else { s };
+    let (mut d, mut drift) = if is_loop {
+        of(zones.last().unwrap_or(first))
+    } else {
+        of(first)
+    };
+    let mut apply = |s0: f64, z: &TrackZone| {
+        let b = z.zone.blend.unwrap_or(FOG_BLEND).max(1.0);
+        let w = smoothstep(s0 - b / 2.0, s0 + b / 2.0, s);
+        let (zd, zr) = of(z);
+        d = d + (zd - d) * w;
+        drift = drift + (zr - drift) * w;
+    };
+    for z in zones {
+        apply(z.s0, z);
+    }
+    if is_loop {
+        apply(length, first);
+    }
+    (d, drift)
+}
+
+/// How far either side of a zone boundary its fog blends (m), where the
+/// zone sets no `blend`.
+pub const FOG_BLEND: f64 = 400.0;
+
+/// How a zone's fog drifts: a slow wander of the density by the zone's
+/// drift fraction, two sines that never repeat together, so banks come
+/// and go over a minute or two.
+pub fn fog_drift(time: f64, drift: f64) -> f64 {
+    1.0 + drift * (0.6 * kernel::sin(time * 0.11) + 0.4 * kernel::sin(time * 0.047 + 1.3))
+}
+
+impl Track {
+    /// The fog density and its drift fraction at `s` on this road, from
+    /// the sky key's `base` and the zones' own ([`zone_fog`]).
+    pub fn fog_at(&self, s: f64, base: f64) -> (f64, f64) {
+        zone_fog(&self.zones, self.is_loop, self.length, s, base)
+    }
 }
 
 fn build(level: &Level, is_loop: bool, raw: Raw, tags: Vec<Tag>) -> Track {
@@ -1178,6 +1279,7 @@ fn build(level: &Level, is_loop: bool, raw: Raw, tags: Vec<Tag>) -> Track {
             None
         },
         branches: Vec::new(),
+        open_end: false,
         elevated: elev_raw,
         wall_l,
         wall_r,

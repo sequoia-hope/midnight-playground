@@ -16,7 +16,7 @@ use std::sync::{Arc, OnceLock};
 use crate::ground::{CoverGrid, HeightGrid};
 use crate::south_coast::{CREST_WITHIN, Corridor};
 use crate::zone;
-use mp_track::{Level, LoopPath, LoopRoad, LoopSpec, LoopTag, Mode, Route};
+use mp_track::{Branch, Level, LoopPath, LoopRoad, LoopSpec, LoopTag, Mode, Route};
 
 /// The loop's corridors in lap order: each ends where the next begins.
 pub const CORRIDORS: [(&str, &str); 4] = [
@@ -37,8 +37,15 @@ pub const CORRIDORS: [(&str, &str); 4] = [
         include_str!("../../../assets/atlas/peninsula/corridors/hwy-84.txt"),
     ),
 ];
-/// The ground under the loop's box (660 kB, zlib) and its land cover
-/// (15 kB): inflated once, the first time a level asks.
+/// The roads that leave the loop (stage 4d): Tunitas Creek Road from
+/// Highway 1 up through the redwoods to Skyline (a road from one road of
+/// the loop to another: its far end is open), and Stage Road from
+/// Highway 84 at San Gregorio south to Pescadero, where it ends.
+pub const TUNITAS: &str = include_str!("../../../assets/atlas/peninsula/corridors/tunitas.txt");
+pub const STAGE_ROAD: &str =
+    include_str!("../../../assets/atlas/peninsula/corridors/stage-road.txt");
+/// The ground under the loop's and its branches' box (805 kB, zlib) and
+/// its land cover (17 kB): inflated once, the first time a level asks.
 pub const GROUND: &[u8] =
     include_bytes!("../../../assets/atlas/peninsula/corridors/peninsula.ground.bin");
 pub const COVER: &[u8] =
@@ -282,7 +289,33 @@ pub fn level() -> Level {
             Arc::new(move |x, z| c.class(x, z))
         }),
         open: true,
-        branches: vec![],
+        branches: vec![
+            Branch {
+                id: "tunitas",
+                name: "Tunitas Creek Road",
+                path: {
+                    let c =
+                        Arc::new(Corridor::parse(TUNITAS).expect("the committed corridor parses"));
+                    Arc::new(move || Ok(crate::south_coast::path(&c)))
+                },
+                road: "mountain",
+                zone: 3,
+                elevation_smooth: None,
+            },
+            Branch {
+                id: "stage",
+                name: "Stage Road",
+                path: {
+                    let c = Arc::new(
+                        Corridor::parse(STAGE_ROAD).expect("the committed corridor parses"),
+                    );
+                    Arc::new(move || Ok(crate::south_coast::path(&c)))
+                },
+                road: "valley",
+                zone: 0,
+                elevation_smooth: None,
+            },
+        ],
         sea_y: Some(0.),
         zones: vec![
             zone(
@@ -302,6 +335,9 @@ pub fn level() -> Level {
                 "#e0b45a",
             )
             .blend(350.),
+            // The fog thickens over the hill and drips on the ridge
+            // (stage 4d): the zones' own densities over the sky key's
+            // 0.00038, drifting so banks come and go.
             zone(
                 "hill",
                 "OVER THE HILL",
@@ -310,7 +346,8 @@ pub fn level() -> Level {
                 "Land",
                 "#7a9a4a",
             )
-            .blend(300.),
+            .blend(300.)
+            .fog(0.0007, 0.25),
             zone(
                 "skyline",
                 "SKYLINE",
@@ -319,7 +356,8 @@ pub fn level() -> Level {
                 "Land",
                 "#4a6a3a",
             )
-            .blend(300.),
+            .blend(300.)
+            .fog(0.0013, 0.4),
         ],
         // Night the whole way round: the moon on the sea from the coast,
         // the fog on the ridge.
@@ -438,6 +476,42 @@ mod tests {
         let c = lv.cover.as_ref().unwrap();
         let f = t.frame(t.zones[3].s0 + 2000.0);
         assert_eq!(mp_track::Cover::of(c(f.x, f.z)), mp_track::Cover::Forest);
+    }
+
+    /// Tunitas Creek Road leaves Highway 1 and meets Skyline, so its far
+    /// end is open and fitted to the ridge road; Stage Road leaves 84 at
+    /// San Gregorio and ends at Pescadero.
+    #[test]
+    fn the_branches_leave_the_loop_and_tunitas_meets_skyline() {
+        let lv = level();
+        let t = mp_track::Track::new(&lv).unwrap();
+        assert_eq!(t.branches.len(), 2);
+        let tun = &t.branches[0];
+        assert_eq!(tun.id, "tunitas");
+        assert!(tun.track.open_end, "Tunitas ends on Skyline");
+        let end = tun.end.expect("meets the loop");
+        assert_eq!(t.frame(end).zone, 3, "on Skyline (s {end:.0})");
+        assert_eq!(t.frame(tun.s).zone, 0, "leaves Highway 1 (s {:.0})", tun.s);
+        assert!(tun.track.length > 7000.0 && tun.track.length < 8000.0);
+        // Its last metre sits on Skyline's surface.
+        let n = tun.track.n - 1;
+        let (x, z) = (f64::from(tun.track.px[n]), f64::from(tun.track.pz[n]));
+        let q = t.project(x, z, end);
+        assert!((f64::from(tun.track.py[n]) - t.surface_y(q.s, q.lat)).abs() < 0.05);
+        assert_eq!(tun.track.road_end(), f64::INFINITY);
+        let stage = &t.branches[1];
+        assert_eq!(stage.id, "stage");
+        assert!(!stage.track.open_end && stage.end.is_none());
+        assert!(stage.track.road_end().is_finite());
+        assert!(stage.track.length > 5000.0 && stage.track.length < 6500.0);
+        // The fog: the sky key's on the coast, the ridge's on Skyline,
+        // blended between.
+        let (coast, _) = t.fog_at(t.zones[0].s0 + 2000.0, 0.00038);
+        let (ridge, drift) = t.fog_at(t.zones[3].s0 + 3000.0, 0.00038);
+        assert_eq!(coast, 0.00038);
+        assert_eq!((ridge, drift), (0.0013, 0.4));
+        let (mid, _) = t.fog_at(t.zones[3].s0, 0.00038);
+        assert!(mid > 0.0007 && mid < 0.0013, "{mid}");
     }
 
     #[test]

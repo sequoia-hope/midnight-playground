@@ -308,6 +308,9 @@ pub struct RoadCtx<'a> {
     /// (`Section::clip`, docs/vision/peninsula.md stage 4b): `None` builds
     /// it whole.
     pub clip: Option<crate::section::Section>,
+    /// Which road of the network this is (0 the level's, k its (k - 1)th
+    /// branch): a partitioned section builds only its own road's metres.
+    pub road: usize,
 }
 
 /// `new Road(track, terrain)` and what `build()` leaves on it.
@@ -386,6 +389,7 @@ impl RoadCtx<'_> {
     /// The parts of `[a, b]` this build makes.
     fn pieces(&self, a: f64, b: f64) -> Vec<[f64; 2]> {
         match &self.clip {
+            Some(sec) if sec.partition && sec.road != self.road => Vec::new(),
             Some(sec) => sec.clip(self.track, a, b),
             None => vec![[a, b]],
         }
@@ -408,7 +412,9 @@ impl RoadCtx<'_> {
     /// Whether the metre ending at `s` is this build's.
     fn wants(&self, s: f64) -> bool {
         match &self.clip {
-            Some(sec) if sec.partition => sec.holds(self.track, s - 0.5),
+            Some(sec) if sec.partition => {
+                sec.road == self.road && sec.holds_on(self.track, s - 0.5)
+            }
             _ => true,
         }
     }

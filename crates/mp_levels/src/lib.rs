@@ -78,6 +78,7 @@ pub(crate) fn zone(
         color,
         blend: None,
         blend_offset: None,
+        fog: None,
     }
 }
 

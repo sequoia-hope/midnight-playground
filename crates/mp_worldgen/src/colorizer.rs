@@ -197,6 +197,11 @@ impl<'a> Colorizer<'a> {
         fbm(&self.t.noise2, x, y, octaves)
     }
 
+    /// The land cover under (x, z) on an open level, when it has one.
+    pub fn cover_at(&self, x: f64, z: f64) -> Option<mp_track::Cover> {
+        self.t.cover.as_ref().map(|c| mp_track::Cover::of(c(x, z)))
+    }
+
     /// Valley field patchwork: a rotated grid of parcels, each its own crop.
     pub fn field_color(&self, x: f64, z: f64, out: &mut Rgb) -> f64 {
         let a: f64 = 0.38; // grid rotation

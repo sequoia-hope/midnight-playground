@@ -208,6 +208,7 @@ pub fn straight_level(length: f64, road: &'static str) -> Level {
             color: "",
             blend: None,
             blend_offset: None,
+            fog: None,
         }],
         sky: Vec::new(),
         sun_azimuth: 0.0,

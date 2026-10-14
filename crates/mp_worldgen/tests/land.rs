@@ -65,7 +65,10 @@ fn skyline_is_planted_with_conifers_clear_of_the_road() {
             n += 1;
         }
     }
-    assert_eq!(n, c.conifers + c.far_conifers + c.oaks + c.scrub);
+    assert_eq!(
+        n,
+        c.conifers + c.far_conifers + c.oaks + c.scrub + c.posts + c.rails
+    );
 }
 
 #[test]
