@@ -11044,3 +11044,77 @@ peninsula.md stage 4c, over D1213 and D1214.
   then) are WebGL2 pipeline compiles for a material and mesh-layout
   combination a new section brings, with or without the worker: the
   warm-up covers only what the start's ring has.
+
+## D1216 (2026-10-14): the branches streamed, the road ends closed, fields on crop, the ridge's fog
+
+peninsula.md stage 4d, over D1215.
+
+- **The branches.** `mp-atlas corridor` wrote `tunitas` (Tunitas Creek
+  Road, Highway 1 to Skyline, 7.6 km) and `stage-road` (Stage Road,
+  Highway 84 at San Gregorio to Pescadero, 5.7 km); the loop level has
+  them as `Branch`es (zone 3 "mountain" and zone 0 "valley"). Pescadero
+  lies south of the loop's box, so `ground.py` re-covered the six
+  corridors' box: `peninsula.ground.bin` is 805 kB (was 660), the cover
+  17 kB, in both wasms (D1208's packing stands; the owner may want the
+  ground outside the wasm one day).
+- **A branch onto another road** (`BranchTrack::end`, `Track::open_end`):
+  where a branch's far end lies on the parent's pavement, its heights are
+  fitted there as at its start, the end is open (`road_end` is infinite,
+  so nothing stops the car) and `project_road`'s hold past the branch's
+  last metre measures how far beyond the end the car is, so driving
+  straight off Tunitas onto Skyline lands on Skyline. Only at an open far
+  end: at a branch's start and at a closed end the old rule stands (the
+  junction race test turned the car onto 84 with s 0 otherwise).
+- **Sections per road.** `Section::road` names the road a stretch is on;
+  `Planned::road_sections` numbers the level's road's sections first,
+  then each branch's; `section_of(road, s)`, `section_under(x, z)` (the
+  nearest road, by the true distance to the projected place: the lateral
+  distance from a road's end segment misled a kilometre off Stage Road's
+  start), `road_of(k)` and `ring(k, behind, ahead)`: along the section's
+  road, plus across a junction the other road's two sections beside it
+  (a branch's first two when the ring covers its mouth; the parent's
+  round the mouth, and round the far end of an open branch, when the
+  ring is at the branch's end). `Section::owns` goes by the nearest road;
+  `RoadCtx::road` and `pieces`/`wants` build only the section's road's
+  metres, and the road stage skips the other branches of a partitioned
+  section. The client's ring follows the player's car once the race is
+  on and stays round the start until then (the camera cuts about before
+  the start and the first frames of it). The Land kit builds in every
+  section of an open level, as a whole build has it plant by cover
+  everywhere (its sections were gated to its zones before, an
+  inconsistency).
+- **The road ends closed** (`mp_worldgen::closure`): on an open level,
+  every road that ends (not a loop, not open onto another road) gets
+  three sawhorses across the lanes a metre short of its end (the
+  pursuit's roadblock prop, `pursuit_props`) and a ROAD CLOSED board on
+  the shoulder, under a group `closed`; the arcade already stops the car
+  three metres short. The south coast level's two ends and Stage Road's
+  get it; Tunitas does not.
+- **Fields and fences on crop.** The terrain carries the level's cover
+  (`Terrain::cover`); `terrain_mesh` paints a crop cell with the valley's
+  field patchwork (`Colorizer::field_color`, parcels and furrows) over
+  the landform's colour. The Land kit fences it: posts every 4 m with two
+  rails along the road's edge where the verge is crop (`FENCE_OFF` past
+  the margin), and field boundaries out from the road every `FIELD`
+  (190 m, placed by a hash of the window) up to 240 m while the land is
+  crop, each post and rail the cell's whose centre holds it, so a fence
+  is the same whichever section walks it (`land::fence_line`).
+- **The ridge's fog** (`Zone::fog`, `ZoneFog { density, drift }`,
+  `mp_track::zone_fog` and `fog_drift`): a loop pins the sky's time at
+  the middle of its keys, so the fog could not follow the route by key;
+  a zone sets its own density instead, blended over each boundary (the
+  zone's `blend`, else 400 m): the hill 0.0007 drifting a quarter,
+  Skyline 0.0013 drifting 0.4, over the key's 0.00038 elsewhere; the
+  drift is two slow sines of the sky's clock. The client's `SkyState`
+  (with `with_zones`) applies it to the fog, the dome's `Sky` to its
+  haze. The fog is looked up at the car's `s` on the level's road, which
+  on Tunitas climbs from the coast's to Skyline's as the road does.
+- Tests: `mp_levels` (Tunitas is open-ended on Skyline and fitted within
+  5 cm, Stage Road ends, the fog blends), `mp_worldgen tests/stream.rs`
+  (the ring across the Tunitas junction, a branch section builds only
+  its road, the mouth's two sections share nothing, Stage Road's last
+  section is barred and Tunitas's is not, a crop section is fenced),
+  `tests/land.rs` counts the fences. Driven on the web: the loop, up
+  Tunitas to the ridge (the branch's sections arriving as it climbs) and
+  Stage Road to Pescadero. Branches are still on no minimap, and traffic,
+  rivals and police keep to the level's road.

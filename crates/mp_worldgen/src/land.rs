@@ -16,6 +16,12 @@
 //! cell's planting is a function of the cell alone (what streaming, stage
 //! 4b, builds and drops a cell at a time), and each cell's instances of a
 //! template are one `InstancedMesh`.
+//!
+//! On crop (stage 4d) the land is fields (the terrain paints the parcels,
+//! `terrain_mesh`), and the kit fences them: a post-and-rail line along
+//! the road's edge wherever the verge is crop, and field boundaries
+//! running out from the road every [`FIELD`] metres or so, each post and
+//! rail belonging to the cell its centre is in.
 
 use mp_math::{Mulberry32, fbm, js, kernel, lerp, smoothstep};
 use mp_scene::three;
@@ -45,6 +51,14 @@ const CLEAR: f64 = 2.0;
 const CLEAR_TREE: f64 = 4.5;
 /// The kit's seed; a cell's is mixed from it and the cell's coordinates.
 const SEED: u32 = 4042;
+/// Fence posts this far apart (m), and the rail between two.
+const POST: f64 = 4.0;
+/// A field boundary fence leaves the road about every this many metres.
+const FIELD: f64 = 190.0;
+/// How far from the road a field boundary runs at most (m).
+const FIELD_DEPTH: f64 = 240.0;
+/// The road-edge fence stands this far outside the road's margin (m).
+const FENCE_OFF: f64 = 2.2;
 /// The JS kits write a random yaw as `6.3`, not 2π.
 const TURN: f64 = 6.3;
 const DOUBLE_SIDE: f64 = three::DOUBLE_SIDE as f64;
@@ -70,9 +84,11 @@ enum Template {
     Oak,
     OakFar,
     Scrub,
+    Post,
+    Rail,
 }
 
-const TEMPLATES: [Template; 7] = [
+const TEMPLATES: [Template; 9] = [
     Template::Fir,
     Template::Spruce,
     Template::SpruceMid,
@@ -80,6 +96,8 @@ const TEMPLATES: [Template; 7] = [
     Template::Oak,
     Template::OakFar,
     Template::Scrub,
+    Template::Post,
+    Template::Rail,
 ];
 
 /// What the kit planted, for the log and the tests.
@@ -90,6 +108,9 @@ pub struct Counts {
     pub far_conifers: usize,
     pub oaks: usize,
     pub scrub: usize,
+    /// Fence posts, and the rails between them.
+    pub posts: usize,
+    pub rails: usize,
     pub meshes: usize,
 }
 
@@ -140,6 +161,87 @@ fn oak_geometry(seed: u32, lod: usize) -> BufferGeometry {
         crown
     };
     merge_geometries(&[&trunk, &crown], false).expect("trunk and crown share their attributes")
+}
+
+/// A fence post: a weathered square post, its foot at the origin.
+fn post_geometry() -> BufferGeometry {
+    let mut g = crate::three_geom::box_geometry(0.13, 1.25, 0.13, 1.0, 1.0, 1.0);
+    g.translate(0.0, 0.62, 0.0);
+    crate::coast::kit::colorize(g.to_non_indexed(), 0x6e5a44)
+}
+
+/// Two rails between posts, along +Z, [`POST`] long.
+fn rail_geometry() -> BufferGeometry {
+    let mut a = crate::three_geom::box_geometry(0.05, 0.07, POST, 1.0, 1.0, 1.0);
+    a.translate(0.0, 1.05, 0.0);
+    let mut b = crate::three_geom::box_geometry(0.05, 0.07, POST, 1.0, 1.0, 1.0);
+    b.translate(0.0, 0.6, 0.0);
+    let a = crate::coast::kit::colorize(a.to_non_indexed(), 0x7a6650);
+    let b = crate::coast::kit::colorize(b.to_non_indexed(), 0x7a6650);
+    merge_geometries(&[&a, &b], false).expect("two boxes share their attributes")
+}
+
+/// A fence line's posts and rails that fall in the cell `[x0, x0 + CELL)
+/// × [z0, z0 + CELL)`: the line is walked from `from` along `dir` (unit)
+/// in steps of [`POST`] while `keep` allows, a post at each step and a
+/// rail between two; each goes in by its own centre, so the line is the
+/// same whichever cell walks it.
+#[allow(clippy::too_many_arguments)]
+fn fence_line(
+    from: [f64; 2],
+    dir: [f64; 2],
+    max_len: f64,
+    x0: f64,
+    z0: f64,
+    surf: &mut SurfaceSampler,
+    keep: &mut dyn FnMut(f64, f64) -> bool,
+    posts: &mut Vec<Item>,
+    rails: &mut Vec<Item>,
+) {
+    let inside = |x: f64, z: f64| x >= x0 && x < x0 + CELL && z >= z0 && z < z0 + CELL;
+    let near = |x: f64, z: f64| {
+        x >= x0 - POST && x < x0 + CELL + POST && z >= z0 - POST && z < z0 + CELL + POST
+    };
+    let ry = kernel::atan2(dir[0], dir[1]);
+    let mut prev: Option<[f64; 3]> = None;
+    let mut d = 0.0;
+    while d <= max_len {
+        let (x, z) = (from[0] + dir[0] * d, from[1] + dir[1] * d);
+        d += POST;
+        if !keep(x, z) {
+            prev = None;
+            continue;
+        }
+        if !near(x, z) {
+            prev = None;
+            continue;
+        }
+        let sv = surf.sample(x, z);
+        if sv.slope > 1.2 {
+            prev = None;
+            continue;
+        }
+        let here = [x, sv.h, z];
+        if inside(x, z) {
+            posts.push(Item {
+                ry,
+                ..Item::at(x, sv.h - 0.05, z, 1.0, 1.0, 1.0)
+            });
+        }
+        if let Some(p) = prev {
+            let (mx, mz) = ((p[0] + x) / 2.0, (p[2] + z) / 2.0);
+            if inside(mx, mz) {
+                let my = (p[1] + sv.h) / 2.0;
+                let rx = kernel::atan2(p[1] - sv.h, POST);
+                rails.push(Item {
+                    ry,
+                    rx,
+                    ..Item::at(mx, my - 0.05, mz, 1.0, 1.0, 1.0)
+                });
+            }
+        }
+        prev = Some(here);
+    }
 }
 
 /// A cell's seed: the kit's mixed with the cell's coordinates (a plain
@@ -269,6 +371,11 @@ impl Scenery for Land {
                 .set("side", DOUBLE_SIDE),
         );
         let scrub_mat = graph.add_material(foliage_material(&[("side", Param::Num(FRONT_SIDE))]));
+        let wood_mat = graph.add_material(
+            Material::lambert()
+                .set("vertexColors", true)
+                .set("side", FRONT_SIDE),
+        );
         let geos: Vec<(Template, GeoId, MaterialId, bool)> = vec![
             (
                 Template::Fir,
@@ -310,6 +417,18 @@ impl Scenery for Land {
                 Template::Scrub,
                 graph.add_geometry(shrub_geometry(36, 1.0)),
                 scrub_mat,
+                false,
+            ),
+            (
+                Template::Post,
+                graph.add_geometry(post_geometry()),
+                wood_mat,
+                true,
+            ),
+            (
+                Template::Rail,
+                graph.add_geometry(rail_geometry()),
+                wood_mat,
                 false,
             ),
         ];
@@ -395,6 +514,8 @@ impl Scenery for Land {
                                     ..Item::at(px, sv.h - 0.25, pz, sx, sy, sx)
                                 }
                             }
+                            // The fences are not planted by the walk.
+                            Template::Post | Template::Rail => continue,
                             Template::Scrub => {
                                 let sc = lerp(0.6, 1.9, kernel::pow(rng.next_f64(), 1.3));
                                 let sx = sc * lerp(0.8, 1.3, rng.next_f64());
@@ -415,6 +536,116 @@ impl Scenery for Land {
                     }
                     x += SPACING;
                 }
+                // The fences of the crop land: along every road's edge
+                // where the verge is crop, and field boundaries out from
+                // the road.
+                {
+                    let kp = TEMPLATES
+                        .iter()
+                        .position(|&p| p == Template::Post)
+                        .expect("a template");
+                    let kr = kp + 1;
+                    let (mut posts, mut rails) = (Vec::new(), Vec::new());
+                    let crop_at = |x: f64, z: f64| Cover::of(cover(x, z)) == Cover::Crop;
+                    for (ri, road) in t.roads().enumerate() {
+                        let mut s = 0.0;
+                        while s < road.length {
+                            let f = road.frame(s);
+                            // Only the road near the cell matters.
+                            let pad = FIELD_DEPTH + 40.0;
+                            if f.x < x0 - pad
+                                || f.x > x0 + CELL + pad
+                                || f.z < z0 - pad
+                                || f.z > z0 + CELL + pad
+                            {
+                                s += POST * 8.0;
+                                continue;
+                            }
+                            let off = f.hw + f.margin + FENCE_OFF;
+                            for side in [-1.0, 1.0] {
+                                let (x, z) = (f.x + f.rx * off * side, f.z + f.rz * off * side);
+                                let inside = x >= x0 && x < x0 + CELL && z >= z0 && z < z0 + CELL;
+                                let crop = crop_at(x, z) && terrain.far(x, z).d >= off - 0.5;
+                                if !crop {
+                                    continue;
+                                }
+                                let sv = surf.sample(x, z);
+                                if sv.h < sea_y + 1.0 || sv.slope > 1.2 {
+                                    continue;
+                                }
+                                let ry = kernel::atan2(f.fx, f.fz);
+                                if inside {
+                                    posts.push(Item {
+                                        ry,
+                                        ..Item::at(x, sv.h - 0.05, z, 1.0, 1.0, 1.0)
+                                    });
+                                }
+                                // The rail back to the post before.
+                                let fp = road.frame((s - POST).max(0.0));
+                                let (px, pz) =
+                                    (fp.x + fp.rx * off * side, fp.z + fp.rz * off * side);
+                                let (mx, mz) = ((px + x) / 2.0, (pz + z) / 2.0);
+                                if s >= POST
+                                    && mx >= x0
+                                    && mx < x0 + CELL
+                                    && mz >= z0
+                                    && mz < z0 + CELL
+                                    && crop_at(px, pz)
+                                {
+                                    let ph = surf.sample(px, pz);
+                                    if ph.slope <= 1.2 {
+                                        rails.push(Item {
+                                            ry,
+                                            rx: kernel::atan2(ph.h - sv.h, POST),
+                                            ..Item::at(
+                                                mx,
+                                                (ph.h + sv.h) / 2.0 - 0.05,
+                                                mz,
+                                                1.0,
+                                                1.0,
+                                                1.0,
+                                            )
+                                        });
+                                    }
+                                }
+                                // A field boundary out from the road, every
+                                // FIELD or so (where in each window is the
+                                // window's own draw), while the land is crop.
+                                let win = (s / FIELD).floor();
+                                let at = win * FIELD
+                                    + mp_math::hash2(win, ri as f64 + side, 11.0)
+                                        * (FIELD - POST * 2.0)
+                                    + POST;
+                                if s < at || s - POST >= at {
+                                    continue;
+                                }
+                                let dir = [f.rx * side, f.rz * side];
+                                let from = [x + dir[0] * POST, z + dir[1] * POST];
+                                let mut keep = |qx: f64, qz: f64| {
+                                    crop_at(qx, qz)
+                                        && terrain.far(qx, qz).d >= off - 0.5
+                                        && terrain.height_at(qx, qz) >= sea_y + 1.0
+                                };
+                                fence_line(
+                                    from,
+                                    dir,
+                                    FIELD_DEPTH,
+                                    x0,
+                                    z0,
+                                    &mut surf,
+                                    &mut keep,
+                                    &mut posts,
+                                    &mut rails,
+                                );
+                            }
+                            s += POST;
+                        }
+                    }
+                    counts.posts += posts.len();
+                    counts.rails += rails.len();
+                    items[kp].extend(posts);
+                    items[kr].extend(rails);
+                }
                 let mut planted = false;
                 for (k, list) in items.iter().enumerate() {
                     if list.is_empty() {
@@ -432,6 +663,7 @@ impl Scenery for Land {
                         }
                         Template::Oak | Template::OakFar => counts.oaks += list.len(),
                         Template::Scrub => counts.scrub += list.len(),
+                        Template::Post | Template::Rail => {}
                     }
                 }
                 if planted {
@@ -441,12 +673,13 @@ impl Scenery for Land {
         }
         graph.add(*root, group);
         graph.log.push(format!(
-            "Land: {} cells, {} conifers ({} far), {} oaks, {} scrub, {} meshes",
+            "Land: {} cells, {} conifers ({} far), {} oaks, {} scrub, {} fence posts, {} meshes",
             counts.cells,
             counts.conifers,
             counts.far_conifers,
             counts.oaks,
             counts.scrub,
+            counts.posts,
             counts.meshes
         ));
         self.counts = counts;

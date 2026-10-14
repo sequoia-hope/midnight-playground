@@ -143,6 +143,16 @@ pub fn build_tile_geometry(
             let x = x0 + i as f64 * step;
             let z = z0 + j as f64 * step;
             let (mut tmp, paved) = colorizer.color(x, h, z, ny);
+            // An open level's crop cells are fields: the valley's parcels
+            // and furrows over the landform's colour (stage 4d).
+            if colorizer.cover_at(x, z) == Some(mp_track::Cover::Crop) {
+                let mut fc = tmp;
+                colorizer.field_color(x, z, &mut fc);
+                let w = 0.85 * (1.0 - paved);
+                for k in 0..3 {
+                    tmp[k] += (fc[k] - tmp[k]) * w;
+                }
+            }
             // Crease shading: ground lower than its neighbours (gullies, the foot of
             // a cutting) darkens, crests lighten a touch. Measured in grade over one
             // node step so it reads alike on fine and coarse tiles.

@@ -23,6 +23,7 @@ fn zone(key: &'static str) -> Zone {
         color: "#000",
         blend: None,
         blend_offset: None,
+        fog: None,
     }
 }
 

@@ -168,6 +168,7 @@ fn zone_builders_set_their_blend() {
         color: "",
         blend: None,
         blend_offset: None,
+        fog: None,
     };
     let b = z.clone().blend(120.0).blend_offset(-30.0);
     assert_eq!((b.blend, b.blend_offset), (Some(120.0), Some(-30.0)));

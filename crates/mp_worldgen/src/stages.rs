@@ -72,12 +72,21 @@ pub fn road_stage() -> StageFn {
             no_marks,
             branch_from: None,
             clip: section.clone(),
+            road: 0,
         });
         graph.add(*root, group);
         // The branches of the level's road (an open level's network): each
-        // its own road, begun at the parent's paved edge.
+        // its own road, begun at the parent's paved edge. A streamed
+        // section builds only its own road's stretch (stage 4d): the
+        // branch's sections hold the branch.
         let mut branches = Vec::new();
-        for b in &track.branches {
+        for (j, b) in track.branches.iter().enumerate() {
+            if let Some(sec) = section
+                && sec.partition
+                && sec.road != j + 1
+            {
+                continue;
+            }
             let mut br = Road::new(graph, textures);
             let group = br.build(&mut RoadCtx {
                 track: &b.track,
@@ -86,11 +95,13 @@ pub fn road_stage() -> StageFn {
                 textures,
                 no_marks: &[],
                 branch_from: Some(b.under - 0.3),
-                clip: None,
+                clip: section.clone(),
+                road: j + 1,
             });
             graph.add(*root, group);
             branches.push(br);
         }
+        crate::closure::build(graph, *root, track, terrain, section.as_ref());
         w.add_night(road.material("markings"), "emissiveIntensity", 0.0, 0.06);
         w.add_night(road.material("chevron"), "emissiveIntensity", 0.12, 0.9);
         // Dew on the tarmac after dark: lamps and headlights glint off it.

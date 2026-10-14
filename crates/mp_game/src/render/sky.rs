@@ -120,6 +120,9 @@ pub struct SkyState {
     pub night: f64,
     /// `?t=`: a fixed fraction of the route.
     pub override_p: Option<f64>,
+    /// The route's zones, for the fog a zone sets of its own (the open
+    /// world's ridge, stage 4d; `Track::fog_at`).
+    pub zones: Vec<mp_track::TrackZone>,
 }
 
 impl SkyState {
@@ -134,7 +137,14 @@ impl SkyState {
             time: 0.0,
             night: 0.0,
             override_p: None,
+            zones: Vec::new(),
         }
+    }
+
+    /// With the track's zones, for their fog.
+    pub fn with_zones(mut self, track: &mp_track::Track) -> SkyState {
+        self.zones = track.zones.clone();
+        self
     }
 
     /// The route fraction the sky shows at `s` (`Sky.update`'s `p`).
@@ -179,7 +189,10 @@ impl SkyState {
     pub fn update(&mut self, dt: f64, s: f64, focus: DVec3, out: &mut Lighting) -> Sampled {
         self.time += dt;
         let p = self.progress(s);
-        let k = self.sample(p);
+        let mut k = self.sample(p);
+        // A zone's own fog where the car is, drifting (stage 4d).
+        let (fd, drift) = mp_track::zone_fog(&self.zones, self.is_loop, self.length, s, k.fog_d);
+        k.fog_d = fd * mp_track::fog_drift(self.time, drift);
         self.night = k.night;
         let sun_scale = clamp(k.sun_i / 2.5, 0.25, 1.2) * (1.0 - k.night * 0.8);
         let el = (k.sun_el * std::f64::consts::PI) / 180.0;
@@ -324,7 +337,7 @@ mod tests {
             };
             let scene = mp_scene::read(&bytes).expect("scene");
             let track = mp_track::Track::new(&level).expect("track");
-            let mut sky = SkyState::new(&level, track.is_loop, track.length);
+            let mut sky = SkyState::new(&level, track.is_loop, track.length).with_zones(&track);
             let mut out = Lighting::default();
             sky.update(0.0, 0.0, DVec3::ZERO, &mut out);
             let dome = scene

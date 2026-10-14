@@ -88,10 +88,37 @@ impl Planned {
         })
     }
 
-    /// The section of the route `k` sections along (`SECTION_LEN` each,
-    /// from s 0): what the client streams.
+    /// Each road's sections as (first index, count): the level's road
+    /// first, then its branches in order, `SECTION_LEN` of road each (the
+    /// last of a road may be short).
+    pub fn road_sections(&self) -> Vec<(i64, i64)> {
+        let mut out = Vec::new();
+        let mut first = 0;
+        for t in self.track.roads() {
+            let n = ((t.length / SECTION_LEN).ceil() as i64).max(1);
+            out.push((first, n));
+            first += n;
+        }
+        out
+    }
+
+    /// The road section `k` is on, and which of that road's it is.
+    pub fn road_of(&self, k: i64) -> (usize, i64) {
+        let rs = self.road_sections();
+        for (r, &(first, n)) in rs.iter().enumerate() {
+            if k < first + n {
+                return (r, (k - first).max(0));
+            }
+        }
+        let r = rs.len() - 1;
+        (r, rs[r].1 - 1)
+    }
+
+    /// Section `k` (`SECTION_LEN` of its road, from s 0): what the client
+    /// streams.
     pub fn section(&self, k: i64) -> Section {
-        let s0 = k as f64 * SECTION_LEN;
+        let (road, i) = self.road_of(k);
+        let s0 = i as f64 * SECTION_LEN;
         Section {
             s0,
             s1: s0 + SECTION_LEN,
@@ -100,7 +127,83 @@ impl Planned {
             scenery: true,
             partition: true,
             base: false,
+            road,
         }
+    }
+
+    /// The section a place `s` on road `road` is in.
+    pub fn section_of(&self, road: usize, s: f64) -> i64 {
+        let rs = self.road_sections();
+        let (first, n) = rs[road.min(rs.len() - 1)];
+        let t = self.track.road(road.min(rs.len() - 1));
+        let s = if t.is_loop { t.wrap(s) } else { s.max(0.0) };
+        first + ((s / SECTION_LEN).floor() as i64).min(n - 1)
+    }
+
+    /// The section under (x, z): the nearest road's, when one is near.
+    pub fn section_under(&self, x: f64, z: f64) -> Option<i64> {
+        Section::s_of(&self.track, x, z).map(|(r, s)| self.section_of(r, s))
+    }
+
+    /// The sections kept up round `k`: `behind` and `ahead` along its road
+    /// (wrapped on a loop, clamped at a branch's ends), and at a junction
+    /// the other road's two sections beside it, so the car turns off onto
+    /// a road that is already there: a branch's first two where the ring
+    /// covers its mouth on the parent, the parent's round the mouth (and
+    /// round the far end, where the branch meets the parent again) when
+    /// the ring is at the branch's end.
+    pub fn ring(&self, k: i64, behind: i64, ahead: i64) -> Vec<i64> {
+        let rs = self.road_sections();
+        let (road, i) = self.road_of(k);
+        let mut out: Vec<i64> = Vec::new();
+        let push = |out: &mut Vec<i64>, k: i64| {
+            if !out.contains(&k) {
+                out.push(k);
+            }
+        };
+        let along = |r: usize, i: i64, behind: i64, ahead: i64, out: &mut Vec<i64>| {
+            let (first, n) = rs[r];
+            let t = self.track.road(r);
+            for j in i - behind..=i + ahead {
+                let idx = if t.is_loop {
+                    j.rem_euclid(n)
+                } else {
+                    j.clamp(0, n - 1)
+                };
+                push(out, first + idx);
+            }
+        };
+        along(road, i, behind, ahead, &mut out);
+        for (bi, b) in self.track.branches.iter().enumerate() {
+            let br = bi + 1;
+            let (bf, bn) = rs[br];
+            let mouth = self.section_of(0, b.s);
+            let far = b.end.map(|e| self.section_of(0, e));
+            if road == 0 {
+                if out.contains(&mouth) {
+                    push(&mut out, bf);
+                    push(&mut out, bf + 1.min(bn - 1));
+                }
+                if let Some(fe) = far
+                    && out.contains(&fe)
+                {
+                    push(&mut out, bf + bn - 1);
+                    push(&mut out, bf + (bn - 2).max(0));
+                }
+            } else if road == br {
+                if i <= 1 {
+                    let (_, m) = self.road_of(mouth);
+                    along(0, m, 1, 1, &mut out);
+                }
+                if let Some(fe) = far
+                    && i >= bn - 2
+                {
+                    let (_, m) = self.road_of(fe);
+                    along(0, m, 1, 1, &mut out);
+                }
+            }
+        }
+        out
     }
 
     /// The horizon layer.
@@ -115,20 +218,14 @@ impl Planned {
         }
     }
 
-    /// How many sections the route has (the last may be short; on a loop
-    /// the wrap belongs to it).
+    /// How many sections the network has: every road's.
     pub fn sections(&self) -> i64 {
-        (self.track.length / SECTION_LEN).ceil() as i64
+        self.road_sections().iter().map(|r| r.1).sum()
     }
 
-    /// The section a place on the route is in.
+    /// The section a place on the level's road is in.
     pub fn section_at(&self, s: f64) -> i64 {
-        let s = if self.track.is_loop {
-            self.track.wrap(s)
-        } else {
-            s.max(0.0)
-        };
-        ((s / SECTION_LEN).floor() as i64).min(self.sections() - 1)
+        self.section_of(0, s)
     }
 
     /// The build of one section (or the base) over the plan: its jobs run

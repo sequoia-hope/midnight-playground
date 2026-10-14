@@ -115,6 +115,8 @@ pub struct SkyParams {
     pub moon_dir: Vector3,
     pub is_loop: bool,
     pub length: f64,
+    /// The route's zones, for the fog a zone sets of its own (stage 4d).
+    pub zones: Vec<mp_track::TrackZone>,
 }
 
 /// `prepKeys(keys)`.
@@ -142,6 +144,7 @@ impl SkyParams {
             moon_dir: Vector3::new(m[0], m[1], m[2]).normalize(),
             is_loop: track.is_loop,
             length: track.length,
+            zones: track.zones.clone(),
         }
     }
 
@@ -390,7 +393,18 @@ impl Sky {
         out: &mut Vec<Edit>,
     ) -> SkyFrame {
         self.time += dt;
-        let k = self.params.frame_at(s, self.override_p);
+        let mut k = self.params.frame_at(s, self.override_p);
+        // A zone's own fog, drifting (the ridge's; stage 4d): the dome's
+        // haze follows it as the client's fog does.
+        let (fd, drift) = mp_track::zone_fog(
+            &self.params.zones,
+            self.params.is_loop,
+            self.params.length,
+            s,
+            k.fog_density,
+        );
+        k.fog_density = fd * mp_track::fog_drift(self.time, drift);
+        k.haze = clamp(k.fog_density / 0.00032, 0.45, 1.0) * 0.85;
         self.night = k.night;
         let m = Handle::Material(self.material);
         let col = |prop: &'static str, c: Color| Edit {

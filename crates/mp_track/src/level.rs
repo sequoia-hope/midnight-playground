@@ -233,6 +233,17 @@ pub struct Zone {
     pub color: &'static str,
     pub blend: Option<f64>,
     pub blend_offset: Option<f64>,
+    /// The zone's own fog, in place of the sky key's where the car is in
+    /// it (the open world's ridge; docs/vision/peninsula.md stage 4d).
+    pub fog: Option<ZoneFog>,
+}
+
+/// A zone's fog: its `FogExp2` density, and how far it drifts (a fraction
+/// of the density, slowly, so banks come and go) while the car is there.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ZoneFog {
+    pub density: f64,
+    pub drift: f64,
 }
 
 impl Zone {
@@ -242,6 +253,10 @@ impl Zone {
     }
     pub fn blend_offset(mut self, b: f64) -> Self {
         self.blend_offset = Some(b);
+        self
+    }
+    pub fn fog(mut self, density: f64, drift: f64) -> Self {
+        self.fog = Some(ZoneFog { density, drift });
         self
     }
 }

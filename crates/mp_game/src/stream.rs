@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use bevy::math::DVec3;
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
-use mp_worldgen::section::{self, CutStats, Section};
+use mp_worldgen::section::{self, CutStats};
 use mp_worldgen::stages::LevelSetup;
 use mp_worldgen::stream::Planned;
 use mp_worldgen::terrain_mesh::TerrainSetup;
@@ -270,23 +270,15 @@ fn run(mut b: Build, t: Option<f64>) -> Result<(WorldBuild, CutStats), String> {
     Ok(section::finish(b))
 }
 
-/// The level's section under the camera's focus.
+/// The network's section under the camera's focus.
 fn section_under(p: &Planned, focus: DVec3) -> Option<i64> {
-    Section::s_of(&p.track, focus.x, focus.z).map(|s| p.section_at(s))
+    p.section_under(focus.x, focus.z)
 }
 
-/// The ring of sections wanted round `k` (wrapped on a loop).
+/// The ring of sections wanted round `k` (`Planned::ring`: along its
+/// road, and across a junction).
 fn ring(p: &Planned, k: i64, behind: i64, ahead: i64) -> Vec<i64> {
-    let n = p.sections();
-    (k - behind..=k + ahead)
-        .map(|j| {
-            if p.track.is_loop {
-                j.rem_euclid(n)
-            } else {
-                j.clamp(0, n - 1)
-            }
-        })
-        .collect::<Vec<_>>()
+    p.ring(k, behind, ahead)
 }
 
 /// Plans, builds the base, then keeps the ring of sections.
@@ -298,6 +290,7 @@ pub fn drive(
     opts: Res<Opts>,
     state: Res<State<AppState>>,
     cs: Res<CameraState>,
+    play: Option<Res<crate::play::Play>>,
     status: Res<Status>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ThreeMaterial>>,
@@ -439,9 +432,28 @@ pub fn drive(
     }
     let Some(p) = st.planned.clone() else { return };
 
-    // The ring round the camera.
-    if let Some(k) = section_under(&p, cs.focus) {
+    // The ring round the player's car once the race is on (the camera
+    // cuts about before and at the start); round the start until then.
+    let car = play.as_ref().and_then(|pl| {
+        let r = pl.race.as_ref()?;
+        let st = &r.session.curr;
+        if st.race.state == mp_sim::race::RaceStateKind::Countdown {
+            return None;
+        }
+        st.players.first().map(|pl| (pl.v.x, pl.v.z))
+    });
+    let under = match car {
+        Some((x, z)) => p.section_under(x, z),
+        None => Some(p.section_at(p.track.start_s)),
+    };
+    let _ = (&cs, section_under);
+    if let Some(k) = under {
         if st.at != Some(k) {
+            info!(
+                "stream: the ring moves to section {k} (road {}, car {:?})",
+                p.road_of(k).0,
+                car.map(|(x, z)| [x.round(), z.round()])
+            );
             st.at = Some(k);
             st.wanted = ring(&p, k, BEHIND, AHEAD);
         }
@@ -875,10 +887,10 @@ mod tests {
     #[test]
     fn the_ring_wraps_round_the_loop() {
         let p = plan(mp_levels::level_by_id("peninsula")).unwrap();
-        let n = p.sections();
+        let (_, n) = p.road_sections()[0];
         assert!(n >= 34);
-        assert_eq!(ring(&p, 0, 1, 2), vec![n - 1, 0, 1, 2]);
-        assert_eq!(ring(&p, n - 1, 1, 2), vec![n - 2, n - 1, 0, 1]);
+        assert_eq!(ring(&p, 0, 1, 2)[..4], [n - 1, 0, 1, 2]);
+        assert_eq!(ring(&p, n - 1, 1, 2)[..4], [n - 2, n - 1, 0, 1]);
         let k = p.section_at(p.track.start_s);
         assert_eq!(k, 1);
         assert_eq!(

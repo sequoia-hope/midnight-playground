@@ -237,7 +237,7 @@ fn make_track(mut tr: ResMut<TrackRes>, mut sky: ResMut<SkyRes>, opts: Res<Opts>
             // as the JS one does.
             t.runout = mp_levels::world::world_data(level.id).runout;
             info!("track {id}: {:.0} m", t.length);
-            let mut s = SkyState::new(&level, t.is_loop, t.length);
+            let mut s = SkyState::new(&level, t.is_loop, t.length).with_zones(&t);
             s.override_p = opts.o.t;
             sky.sky = Some(s);
             tr.track = Some(t);

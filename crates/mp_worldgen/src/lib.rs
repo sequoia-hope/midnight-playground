@@ -8,6 +8,7 @@ pub mod beach;
 pub mod builder;
 pub mod car_model;
 pub mod city;
+pub mod closure;
 pub mod coast;
 pub mod color;
 pub mod color_builder;

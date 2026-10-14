@@ -75,6 +75,7 @@ fn main() {
                 scenery: env("SCENERY").is_none_or(|v| v != 0.0),
                 partition: env("PARTITION").is_some_and(|v| v != 0.0),
                 base: false,
+                road: 0,
             });
         }
         let base = NOW.load(Ordering::Relaxed);
