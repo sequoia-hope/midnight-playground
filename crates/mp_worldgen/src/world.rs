@@ -666,7 +666,7 @@ pub struct Stages {
     pub sea: Option<StageFn>,
 }
 
-fn run_stage(stage: Option<StageFn>, w: &mut World) -> Result<Vec<Job>, String> {
+pub(crate) fn run_stage(stage: Option<StageFn>, w: &mut World) -> Result<Vec<Job>, String> {
     match stage {
         Some(f) => f(w),
         None => Ok(Vec::new()),
@@ -707,25 +707,7 @@ pub fn level_jobs_with(
     });
     let shape = Job::serial("Shaping the land", 0.06, move |w| {
         let mut out = run_stage(terrain, w)?;
-        let mut modules: Vec<Box<dyn Scenery>> = Vec::new();
-        for info in scenery_modules(&w.level) {
-            match scenery(&info) {
-                Some(s) => modules.push(s),
-                None => w.graph.log.push(format!("{} scenery missing", info.name)),
-            }
-        }
-        // Scenery may carve creeks or flatten building pads before heights are
-        // final. A broken scenery module logs and is skipped rather than
-        // stopping the level from loading.
-        // The level's own modules, then the extra ones (`true`).
-        let n_own = modules.len();
-        let mut kept = Vec::new();
-        for (k, mut s) in modules.into_iter().chain(extra(&w.level)).enumerate() {
-            match s.plan(w) {
-                Ok(()) => kept.push((s, k >= n_own)),
-                Err(e) => w.graph.log.push(format!("{}.plan failed {e}", s.name())),
-            }
-        }
+        let kept = plan_modules(w, &scenery, &extra);
         out.extend(run_stage(fields, w)?);
 
         out.push(Job::serial("Sculpting terrain", 0.1, move |w| {
@@ -741,28 +723,66 @@ pub fn level_jobs_with(
                 run_stage(sea, w)
             }));
         }
-        let n = kept.iter().filter(|(_, extra)| !extra).count();
-        for (k, (mut s, extra)) in kept.into_iter().enumerate() {
-            let label = s.label().unwrap_or("Building scenery").to_string();
-            let frac = if extra {
-                0.985
-            } else {
-                0.72 + (k as f64 / n as f64) * 0.26
-            };
-            out.push(Job::serial(&label, frac, move |w| {
-                // A section builds only the modules near it (D741); the
-                // extra modules decide for themselves.
-                if !extra && !crate::section::builds_module(w, s.name()) {
-                    return Ok(Vec::new());
-                }
-                if let Err(e) = s.build(w) {
-                    w.graph.log.push(format!("{}.build failed {e}", s.name()));
-                }
-                Ok(Vec::new())
-            }));
-        }
+        out.extend(build_jobs(kept));
         out.push(Job::serial("Ready", 1.0, |_| Ok(Vec::new())));
         Ok(out)
     });
     vec![survey, shape]
+}
+
+/// The scenery modules the level names, made and planned (flattens,
+/// carves, fence gaps) in the level's order, then the extra ones (`true`):
+/// what "Shaping the land" does before the fields. A module that cannot
+/// be made or whose plan fails is logged and left out. The same for a
+/// streamed section (`crate::stream`), whose modules plan afresh.
+pub(crate) fn plan_modules(
+    w: &mut World,
+    scenery: &dyn Fn(&SceneryInfo) -> Option<Box<dyn Scenery>>,
+    extra: &dyn Fn(&Level) -> Vec<Box<dyn Scenery>>,
+) -> Vec<(Box<dyn Scenery>, bool)> {
+    let mut modules: Vec<Box<dyn Scenery>> = Vec::new();
+    for info in scenery_modules(&w.level) {
+        match scenery(&info) {
+            Some(s) => modules.push(s),
+            None => w.graph.log.push(format!("{} scenery missing", info.name)),
+        }
+    }
+    // Scenery may carve creeks or flatten building pads before heights are
+    // final. A broken scenery module logs and is skipped rather than
+    // stopping the level from loading.
+    let n_own = modules.len();
+    let mut kept = Vec::new();
+    for (k, mut s) in modules.into_iter().chain(extra(&w.level)).enumerate() {
+        match s.plan(w) {
+            Ok(()) => kept.push((s, k >= n_own)),
+            Err(e) => w.graph.log.push(format!("{}.plan failed {e}", s.name())),
+        }
+    }
+    kept
+}
+
+/// Each planned module's `build()` as a job with its label and fraction,
+/// in order; a section builds only the modules near it (D741), the extra
+/// modules decide for themselves.
+pub(crate) fn build_jobs(kept: Vec<(Box<dyn Scenery>, bool)>) -> Vec<Job> {
+    let n = kept.iter().filter(|(_, extra)| !extra).count();
+    let mut out = Vec::new();
+    for (k, (mut s, extra)) in kept.into_iter().enumerate() {
+        let label = s.label().unwrap_or("Building scenery").to_string();
+        let frac = if extra {
+            0.985
+        } else {
+            0.72 + (k as f64 / n as f64) * 0.26
+        };
+        out.push(Job::serial(&label, frac, move |w| {
+            if !extra && !crate::section::builds_module(w, s.name()) {
+                return Ok(Vec::new());
+            }
+            if let Err(e) = s.build(w) {
+                w.graph.log.push(format!("{}.build failed {e}", s.name()));
+            }
+            Ok(Vec::new())
+        }));
+    }
+    out
 }

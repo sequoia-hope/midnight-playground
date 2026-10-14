@@ -41,6 +41,7 @@ fn a_section_is_the_level_near_its_stretch() {
         terrain_radius: 1000.0,
         scenery_radius: 300.0,
         scenery: true,
+        ..Section::default()
     };
     let whole = build(None);
     let part = build(Some(sec.clone()));

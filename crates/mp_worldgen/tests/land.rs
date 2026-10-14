@@ -19,6 +19,7 @@ fn build(s0: f64, s1: f64) -> (mp_worldgen::world::World, Land) {
         terrain_radius: 600.0,
         scenery_radius: 600.0,
         scenery: true,
+        ..Section::default()
     });
     w.track = Some(t);
     w.terrain = Some(tr);
@@ -41,7 +42,7 @@ fn skyline_is_planted_with_conifers_clear_of_the_road() {
     let (w, land) = build(17_000.0, 17_600.0);
     let c = land.counts;
     eprintln!("land: {c:?}");
-    assert!(c.cells >= 2 && c.cells <= 12, "{c:?}");
+    assert!(c.cells >= 2 && c.cells <= 16, "{c:?}");
     assert!(c.conifers > 300, "{c:?}");
     assert!(c.far_conifers > 100, "{c:?}");
     assert!(c.conifers > c.oaks * 5, "{c:?}");

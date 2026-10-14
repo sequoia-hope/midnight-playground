@@ -304,6 +304,10 @@ pub struct RoadCtx<'a> {
     /// its surface, paint and barriers begin this far along it (the
     /// parent's paved edge), and it has no start or finish line.
     pub branch_from: Option<f64>,
+    /// A streamed section builds exactly its stretch of the road
+    /// (`Section::clip`, docs/vision/peninsula.md stage 4b): `None` builds
+    /// it whole.
+    pub clip: Option<crate::section::Section>,
 }
 
 /// `new Road(track, terrain)` and what `build()` leaves on it.
@@ -376,6 +380,38 @@ fn instances(graph: &mut SceneGraph, im: NodeId) -> &mut Instances {
         .instances
         .as_mut()
         .expect("an instanced mesh")
+}
+
+impl RoadCtx<'_> {
+    /// The parts of `[a, b]` this build makes.
+    fn pieces(&self, a: f64, b: f64) -> Vec<[f64; 2]> {
+        match &self.clip {
+            Some(sec) => sec.clip(self.track, a, b),
+            None => vec![[a, b]],
+        }
+    }
+
+    /// Bundles of ranges, each clipped to this build's stretch (an empty
+    /// bundle is dropped).
+    fn clip_runs(&self, groups: Vec<Vec<[f64; 2]>>) -> Vec<Vec<[f64; 2]>> {
+        groups
+            .into_iter()
+            .map(|g| {
+                g.into_iter()
+                    .flat_map(|r| self.pieces(r[0], r[1]))
+                    .collect::<Vec<_>>()
+            })
+            .filter(|g| !g.is_empty())
+            .collect()
+    }
+
+    /// Whether the metre ending at `s` is this build's.
+    fn wants(&self, s: f64) -> bool {
+        match &self.clip {
+            Some(sec) if sec.partition => sec.holds(self.track, s - 0.5),
+            _ => true,
+        }
+    }
 }
 
 impl Road {
@@ -642,7 +678,11 @@ impl Road {
         for z in &t.zones {
             let s0 = js::max(from, z.s0 - 1.0);
             let s1 = js::min(t.length, z.s1 + 1.0);
-            for r in chunks(s0, s1, 560.0) {
+            let pieces: Vec<[f64; 2]> = chunks(s0, s1, 560.0)
+                .into_iter()
+                .flat_map(|r| c.pieces(r[0], r[1]))
+                .collect();
+            for r in pieces {
                 // Asphalt UVs in metres / 4 both ways, so the aggregate isn't
                 // stretched along the road; the shader recovers metres from them.
                 let mut surf = extrude(
@@ -828,6 +868,11 @@ impl Road {
         let mut s = from + 1.0;
         while s <= t.length {
             let cur = lines_at(s);
+            if !c.wants(s) {
+                prev = cur;
+                s += 1.0;
+                continue;
+            }
             for a in &prev.l {
                 let Some(b) = cur.l.iter().find(|x| x.k == a.k) else {
                     continue;
@@ -911,6 +956,9 @@ impl Road {
             vec![t.start_s, t.finish_s]
         };
         for s in list {
+            if c.pieces(s - 1.2, s + 1.2).is_empty() {
+                continue;
+            }
             let mut g = extrude(
                 t,
                 &[[s - 1.2, s + 1.2]],
@@ -968,7 +1016,7 @@ impl Road {
             let w = move |f: &Frame| if side < 0.0 { f.wall_l } else { f.wall_r };
             // Guardrail W-beam: a vertical band.
             let gr = runs(|s| arr[t.idx(s)] == 2, 2.0, from, t.length);
-            for r in group_runs(&gr, 560.0) {
+            for r in c.clip_runs(group_runs(&gr, 560.0)) {
                 // f.hw + (wall - f.hw), as the JS writes it.
                 let out = move |f: &Frame| f.hw + (w(f) - f.hw);
                 let prof = [
@@ -994,7 +1042,7 @@ impl Road {
                 from,
                 t.length,
             );
-            for r in group_runs(&fr, 560.0) {
+            for r in c.clip_runs(group_runs(&fr, 560.0)) {
                 for h in [0.55, 1.0] {
                     let mut prof = vec![
                         pt(move |f| side * (w(f) + 0.25), h - 0.07, 0.0),
@@ -1016,7 +1064,7 @@ impl Road {
 
             // Jersey barrier: extruded profile.
             let jr = runs(|s| arr[t.idx(s)] == 4, 2.0, from, t.length);
-            for r in group_runs(&jr, 560.0) {
+            for r in c.clip_runs(group_runs(&jr, 560.0)) {
                 let mut prof = vec![
                     pt(move |f| side * (w(f) - 0.02), 0.0, 0.0),
                     pt(move |f| side * (w(f) + 0.02), 0.25, 0.2),
@@ -1047,7 +1095,7 @@ impl Road {
                     .set("roughness", 0.45)
                     .set("side", DOUBLE_SIDE)
             });
-            for r in group_runs(&rr, 560.0) {
+            for r in c.clip_runs(group_runs(&rr, 560.0)) {
                 let mut kerb = vec![
                     pt(move |f| side * (w(f) - 0.05), 0.0, 0.0),
                     pt(move |f| side * (w(f) - 0.05), 0.22, 0.3),
@@ -1140,6 +1188,10 @@ impl Road {
         let mut last = -100.0;
         let mut s = c.branch_from.unwrap_or(0.0);
         while s < t.length {
+            if !c.wants(s) {
+                s += 1.0;
+                continue;
+            }
             let k = f64::from(t.k_smooth[t.idx(s)]);
             let key = road_type_at(t, t.idx(s)).key;
             let skip = [
@@ -1210,7 +1262,7 @@ impl Road {
             Material::standard().set("map", map).set("roughness", 0.9)
         });
         let ranges = runs(elevated, 2.0, 0.0, t.length);
-        for r in group_runs(&ranges, 560.0) {
+        for r in c.clip_runs(group_runs(&ranges, 560.0)) {
             let g = extrude(
                 t,
                 &r,
