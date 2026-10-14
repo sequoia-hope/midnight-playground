@@ -219,7 +219,9 @@ pub fn assist_need(v: &Vehicle, t: &Track) -> f64 {
 /// wrong way).
 pub fn steer_assist(inp: &mut Input, v: &Vehicle, ph: &CarPhysics, t: &Track, a: Assist) {
     // The road under the car: a branch of the level's road, or the road.
-    let t = t.road(v.road);
+    // `t` stays the level's track: the helpers pick the road themselves
+    // (a branch has no branches to pick from).
+    let road = t.road(v.road);
     let k = a.strength();
     if k <= 0.0 {
         return;
@@ -228,7 +230,7 @@ pub fn steer_assist(inp: &mut Input, v: &Vehicle, ph: &CarPhysics, t: &Track, a:
     if speed < 4.0 || !v.on_ground || ph.locked {
         return;
     }
-    let f = t.frame(v.road_s);
+    let f = road.frame(v.road_s);
     if wrap_angle(v.yaw - kernel::atan2(f.fz, f.fx)).abs() > 1.2 {
         return;
     }
