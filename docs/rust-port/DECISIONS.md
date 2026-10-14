@@ -10800,3 +10800,31 @@ Gregorio and climbs to La Honda; the car turns off one road onto the other.
   surface within 8 cm), and the level's own.
 - Not yet: traffic, rivals and police stay on the level's road; the
   branch has no scenery; a road's end is open.
+
+## D1210 (2026-10-13): the junction freeze, and the radio's script
+
+- **The freeze.** The owner turned left onto Highway 84 and the game
+  stopped. The steering assist (on by default on a phone) rebound its
+  track to the road under the car and handed that road to `assist_need`
+  and `line_steer`, which asked it for the road under the car again: a
+  branch has no branches, so `Track::road` indexed out of bounds, the
+  wasm trapped and the frame loop ended. The sim tick never runs the
+  assist (the client applies it to the controls before the tick), which
+  is why the headless drive, the module traces and the junction test all
+  passed. `steer_assist` now keeps the level's track and lets the helpers
+  pick the road. `mp_sim/tests/junction_race.rs` drives the whole race
+  state onto 84 with the assist on, under every physics model;
+  `junction_fuzz.rs` throws sixty random placements, headings, speeds
+  and controls at the mouth, assist on, and wants every tick finite and
+  quick. `tools/parity/drive-branch.mjs` drives the web client with the
+  keyboard along the corridors (a route of samples, aim 25 m ahead),
+  watching the console, the tick counter and the frame time: it is how
+  the freeze was found (`--phone`, `--query "touch=1&assist=2"`).
+- **The radio's script** is the Rust game's levels now: `cargo run -p
+  mp_audio --example radio_lines` lists every clip, and
+  `tools/radio-voice/render.py` reads it instead of the JS game's
+  `lines.mjs` (deleted), whose levels are frozen. The south coast's two
+  zones ("The South Coast", "Half Moon Bay") needed 18 clips, recorded
+  with Qwen3-TTS and checked word for word with Whisper; CI's
+  `audio_radio_has_every_take_of_every_clip_and_index_json_lists_them`
+  had been failing since stage 1 for want of them.

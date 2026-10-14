@@ -499,7 +499,7 @@ Run with `npm test`. Unit tests: `node --test 'test/unit/*.test.js'`. E2E tests:
 - `car-test.html`: browser lineup of every vehicle kind with `?view=` lineup, close, side, rear, chase, front or orbit, plus car, kinds, lod, noenv, noshadow, lights, brake, spin, solo, night, steer, siren and t parameters. It exposes `__tris` and `__ready`.
 - `city-view.html`: city-zone scenery preview with a fly camera.
 - `audio-test.html`: Web Audio test page.
-- `radio-voice.html` and `radio-voice/` (design.py, render.py, lines.mjs, voices.json): police radio voice design, recording and audition (Qwen3-TTS).
+- `radio-voice.html` and `radio-voice/` (design.py, render.py, voices.json; the lines come from `cargo run -p mp_audio --example radio_lines`): police radio voice design, recording and audition (Qwen3-TTS).
 - `seaside/build.py`: builds Level 5 data (circuit.js, ground.js, photo.jpg) from OSM and USGS lidar.
 - `install-desktop-entry.sh`: writes the XDG `.desktop` entry.
 

@@ -144,8 +144,9 @@ recording falls back to a synthesised burble.
   tools/radio-voice/render.py` records whatever is missing and rewrites
   `audio/radio/index.json`: `--only <words>` re-records matching clips,
   `--seed N` gives different takes, and switching voices re-records
-  everything. Both need a Python with the `qwen-tts` package, a CUDA GPU
-  with about 5 GB free, node and ffmpeg.
+  everything. The lines are the Rust game's (`cargo run -p mp_audio
+  --example radio_lines`). Both need a Python with the `qwen-tts` package,
+  a CUDA GPU with about 5 GB free, cargo and ffmpeg.
 
 ## How Seaside Raceway was built
 

@@ -1,7 +1,7 @@
 """Record the police radio lines in the designed voice (Qwen3-TTS voice clone).
 
-Lists every line the game can say (lines.mjs, from
-src/game/audio/radioLines.js), clones the voice chosen in voices.json from
+Lists every line the game can say (`cargo run -p mp_audio --example
+radio_lines`: the Rust game's levels, since the JS game's are frozen), clones the voice chosen in voices.json from
 its reference clip (voices/<name>.flac, made by design.py) with the
 Qwen3-TTS Base model, and writes audio/radio/<clip>.mp3 (<clip>.2.mp3 for a
 second take): trimmed, levelled, 16 kHz mono, since the game's radio bus
@@ -14,7 +14,7 @@ the new words are recorded; a different voice re-records everything.
     python tools/radio-voice/render.py --force         # re-record everything
 
 Needs a Python with qwen-tts (https://github.com/QwenLM/Qwen3-TTS), a CUDA
-GPU (about 5 GB free), node and ffmpeg.
+GPU (about 5 GB free), cargo and ffmpeg.
 """
 import argparse
 import json
@@ -73,7 +73,9 @@ def main():
 
     cfg = json.loads((HERE / 'voices.json').read_text())
     voice = cfg['voice']
-    clips = json.loads(subprocess.run(['node', str(HERE / 'lines.mjs')], capture_output=True, check=True, text=True).stdout)
+    clips = json.loads(subprocess.run(
+        ['cargo', 'run', '-q', '--release', '-p', 'mp_audio', '--example', 'radio_lines'],
+        cwd=ROOT, capture_output=True, check=True, text=True).stdout)
     OUT.mkdir(parents=True, exist_ok=True)
     index_path = OUT / 'index.json'
     old = json.loads(index_path.read_text()) if index_path.exists() else {}
