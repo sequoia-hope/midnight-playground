@@ -50,6 +50,7 @@ pub mod recording;
 pub mod render;
 pub mod stations;
 pub mod status;
+pub mod stream;
 pub mod ui;
 pub mod viewer;
 pub mod warmup;
@@ -253,6 +254,8 @@ fn receive_scene(
     mut status: ResMut<Status>,
     mut next: ResMut<NextState<AppState>>,
     shared: Res<SharedImages>,
+    stream: Res<stream::Stream>,
+    opts: Res<Opts>,
 ) {
     let Some(r) = inbox().scene.take() else {
         return;
@@ -267,7 +270,12 @@ fn receive_scene(
                 scene.textures.len()
             );
             status.state = "building";
-            commands.insert_resource(Build::new(scene, shared.clone()));
+            let mut b = Build::new(scene, shared.clone());
+            // A streamed level's sections share the base's images (D1214).
+            if stream::streamed(&opts.o) {
+                b = b.with_image_cache(stream.image_cache.clone());
+            }
+            commands.insert_resource(b);
             next.set(AppState::Building);
         }
         Err(e) => {
@@ -588,6 +596,7 @@ pub fn app(o: Options, (hq, scale): (bool, f64)) -> App {
     ui::plugin(&mut app);
     viewer::plugin(&mut app);
     animate::plugin(&mut app);
+    stream::plugin(&mut app);
     levels::plugin(&mut app);
     debug_overlay::plugin(&mut app);
     recording::plugin(&mut app);

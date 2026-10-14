@@ -10951,3 +10951,44 @@ next.
   and sea; a near tile stands within 400 m of every point of the
   stretches. `section::drawables` (each drawable's group and centre) is
   for such tests.
+
+## D1214 (2026-10-14): streaming's client side: the base drawn, the sections round the player
+
+peninsula.md stage 4b, the client's half (`mp_game::stream`), over D1213.
+
+- **A streamed level** is an open level the client builds (`stream::
+  streamed`; `?stream=0` builds it whole as before). `animate::drive_build`
+  leaves it alone; `stream::drive` plans it (`Planned::new`: on the build
+  thread natively, inline on the web behind the loading screen), builds
+  the base (the coarse tiles, the sky, the sea) and makes that the drawn
+  scene as a level's build would (`inbox().scene`, `animate::set_ready`
+  for its world and sky), then keeps a ring of sections round the
+  camera's focus: the section it is in, one behind, two ahead (`AHEAD`,
+  `BEHIND`), built one at a time (the thread; stepped on the web with
+  30 ms a frame behind the loading screen and 6 ms running), spawned
+  under a root of their own as the menu's views are (`loader::
+  step_section`, 40 ms a frame loading and 5 ms running, one section a
+  frame), their entities gathered by node for their animators, and
+  dropped a section past the ring (`SLACK`). `ready` lets go once the
+  start's ring is up (2.2 s natively for the loop, against the whole
+  level's build) and the race starts on it.
+- **Several scenes at once.** `animate::run_animators` is split: the
+  main world's sky and animators as before, then `apply_edits` (the
+  edit application, now a function over an `Apply` system param) for
+  the main scene and for every streamed section's world and index
+  (`Stream::animated`). The level's own entities are told from the
+  sections' by having no parent (`LevelNodes`). A material finds its
+  animation block through the block map by its scene index, so each
+  streamed scene's materials are numbered from a base of their own in
+  the map (`loader::Build::with_material_base`, `SceneIndex::
+  material_base`; `Stream::take_base` keeps the ranges, first fit, the
+  base scene's first), and a dropped section's blocks go back on a free
+  list (`AnimBlocks::free`, `animate::release_blocks`), since the map
+  holds 512 materials and the blocks 128. A section's textures are the
+  level's own generated ones, the same in every section, so a streamed
+  level's scenes share images by the hash of their pixels
+  (`loader::ImageCache`; the base's go in first).
+- Not yet: on the web the kits' builds are single jobs, so a section
+  can hitch a frame while it builds (stage 4c, a worker); the route
+  bar's zone labels crowd with four zones; the menu's views still build
+  their sections the old way.

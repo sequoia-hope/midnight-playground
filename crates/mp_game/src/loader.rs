@@ -26,7 +26,7 @@ use bevy::prelude::*;
 use bevy::render::batching::NoAutomaticBatching;
 use mp_scene::{MaterialKind, NodeType, Scene};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Everything spawned from a scene, for teardown.
 #[derive(Component)]
@@ -113,6 +113,33 @@ pub struct Build {
     /// The scene's textures already converted, by index (a menu section's,
     /// on its build thread); empty when they are converted here.
     converted: Vec<Option<Image>>,
+    /// Where this scene's materials start in the animation block map (a
+    /// streamed section's scene sits beside the others', D1214).
+    material_base: u32,
+    /// Images shared between the scenes of a streamed level, by the
+    /// pixels' hash: a section's textures are the level's own generated
+    /// ones, the same in every section (D1214).
+    image_cache: Option<ImageCache>,
+}
+
+/// Images by the hash of their pixels, shared between a streamed level's
+/// scenes.
+pub type ImageCache = Arc<Mutex<HashMap<u64, Handle<Image>>>>;
+
+/// A texture's identity: its pixels, size, channels and flip.
+fn texture_hash(scene: &Scene, t: &mp_scene::TextureDesc) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    if let Some(b) = scene.buffers.get(t.pixels as usize)
+        && let mp_scene::BufferData::U8(px) = &b.data
+    {
+        px.hash(&mut h);
+    }
+    (
+        t.width, t.height, t.channels, t.flip_y, t.format, t.wrap_s, t.wrap_t,
+    )
+        .hash(&mut h);
+    h.finish()
 }
 
 impl Build {
@@ -161,6 +188,8 @@ impl Build {
             hidden: Vec::new(),
             parent: None,
             converted: Vec::new(),
+            material_base: 0,
+            image_cache: None,
             step: Step::Textures,
             cursor: 0,
             scene,
@@ -178,6 +207,46 @@ impl Build {
     pub fn with_images(mut self, converted: Vec<Option<Image>>) -> Build {
         self.converted = converted;
         self
+    }
+
+    /// The scene's materials numbered from `base` in the animation block
+    /// map (a streamed section's scene, D1214).
+    pub fn with_material_base(mut self, base: u32) -> Build {
+        self.material_base = base;
+        self
+    }
+
+    /// Textures looked up by their pixels' hash before conversion, and
+    /// kept for the scenes that follow (a streamed level's, D1214).
+    pub fn with_image_cache(mut self, cache: ImageCache) -> Build {
+        self.image_cache = Some(cache);
+        self
+    }
+
+    /// A texture's image: from the cache by its pixels, else converted
+    /// (and kept, when there is a cache).
+    fn image(&mut self, k: usize, images: &mut Assets<Image>) -> Option<Handle<Image>> {
+        let t = self.scene.textures.get(k)?;
+        let key = self
+            .image_cache
+            .as_ref()
+            .map(|_| texture_hash(&self.scene, t));
+        if let (Some(c), Some(key)) = (&self.image_cache, key)
+            && let Some(h) = c.lock().ok().and_then(|m| m.get(&key).cloned())
+        {
+            return Some(h);
+        }
+        let img = match self.converted.get_mut(k) {
+            Some(img) => img.take(),
+            None => convert::build_image(&self.scene, t),
+        };
+        let h = img.map(|i| images.add(i));
+        if let (Some(c), Some(key), Some(h)) = (&self.image_cache, key, &h)
+            && let Ok(mut m) = c.lock()
+        {
+            m.insert(key, h.clone());
+        }
+        h
     }
 
     /// Fraction done, for the loading bar.
@@ -230,8 +299,9 @@ impl Build {
         let emissive = m.color("emissive").unwrap_or([0.0; 3]);
         let h = three_material(scene, m, images, shared, instance_color).map(|mut m| {
             m.key.instanced = instanced;
-            // Its index, for its animation block (`animate`, D490).
-            m.params.slots.z = index as f32 + 1.0;
+            // Its index, for its animation block (`animate`, D490), from
+            // the scene's base in the map (D1214).
+            m.params.slots.z = (self.material_base + index) as f32 + 1.0;
             if let Some(p) = night {
                 let w = m.params.emissive.w;
                 m.params.emissive = Vec4::new(
@@ -708,8 +778,8 @@ pub fn build_step(
     while t0.elapsed().as_millis() < BUDGET_MS {
         match b.step {
             Step::Textures => {
-                if let Some(t) = b.scene.textures.get(b.cursor) {
-                    let img = convert::build_image(&b.scene, t).map(|i| images.add(i));
+                if b.cursor < b.scene.textures.len() {
+                    let img = b.image(b.cursor, &mut images);
                     b.images.push(img);
                     b.cursor += 1;
                 } else {
@@ -829,12 +899,9 @@ pub fn step_section(
     while t0.elapsed().as_millis() < budget_ms {
         match b.step {
             Step::Textures => {
-                if let Some(t) = b.scene.textures.get(b.cursor) {
-                    let img = match b.converted.get_mut(b.cursor) {
-                        Some(img) => img.take(),
-                        None => convert::build_image(&b.scene, t),
-                    };
-                    b.images.push(img.map(|i| images.add(i)));
+                if b.cursor < b.scene.textures.len() {
+                    let img = b.image(b.cursor, images);
+                    b.images.push(img);
                     b.cursor += 1;
                 } else {
                     b.step = Step::Nodes;
@@ -876,7 +943,8 @@ pub fn finish_section(
         .sky_noise()
         .or_else(|| crate::render::sky::noise_image().map(|i| images.add(i)));
     let warm_up = b.combos.spawn_each(commands, meshes);
-    let index = crate::animate::SceneIndex::new(&b.scene, &b.meshes, &b.offset, &b.materials);
+    let index = crate::animate::SceneIndex::new(&b.scene, &b.meshes, &b.offset, &b.materials)
+        .with_material_base(b.material_base);
     SectionScene {
         loaded: b.out.clone(),
         index,
