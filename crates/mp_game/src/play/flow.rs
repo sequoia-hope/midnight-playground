@@ -497,7 +497,8 @@ impl Race {
                 );
             }
             SimEvent::WrongWay { .. } => {
-                if self.hud.center_timer <= 0.0 {
+                // A cruise has no way to go (D1217).
+                if self.hud.center_timer <= 0.0 && !self.session.curr.race.cruise {
                     self.hud.center("WRONG WAY", 1.0);
                 }
             }

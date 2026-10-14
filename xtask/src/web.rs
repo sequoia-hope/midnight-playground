@@ -103,8 +103,9 @@ pub fn run(args: &[String]) -> Result {
 
     build_worklet(release, &out, &EXHAUST_WORKLET)?;
     build_worklet(release, &out, &MUSIC_WORKLET)?;
-    build_worker(release, &out)?;
+    // The page's files first: the worker's build precompresses its script.
     copy_dir(&root.join("crates/mp_game/web"), &out)?;
+    build_worker(release, &out)?;
     copy_runtime_files(&root, &out)?;
     // Where the page finds the scene exports: the parity cache of this JS
     // tree, relative to dist/next/ (the registered server serves the repo

@@ -369,8 +369,12 @@ fn draw(
     };
     let s = &race.session;
     let p0 = &s.curr.players[s.me];
-    let on =
-        mode != GuideMode::Off && race.mode != Mode::Results && !p0.rules.finished && play.started;
+    // A cruise has no line to drive (D1217).
+    let on = mode != GuideMode::Off
+        && !s.curr.race.cruise
+        && race.mode != Mode::Results
+        && !p0.rules.finished
+        && play.started;
     let Ok((mut tf, mut vis)) = q.get_mut(d.entity) else {
         return;
     };

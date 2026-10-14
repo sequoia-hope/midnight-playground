@@ -199,6 +199,19 @@ impl Build {
     /// Spawns the scene under `parent` (a menu section's root, D742).
     pub fn under(mut self, parent: Entity) -> Build {
         self.parent = Some(parent);
+        // A section is in the world's own places, never the models' grid:
+        // a section's scene has no environment and may have one root,
+        // which `layout_models` would take for a models scene and move
+        // each group to a grid cell (the open world's road 7 m off its
+        // track, D1217).
+        self.offset.iter_mut().for_each(|o| *o = Vec3::ZERO);
+        if self.out.fixed_bounds {
+            self.out = Loaded {
+                min: Vec3::splat(f32::INFINITY),
+                max: Vec3::splat(f32::NEG_INFINITY),
+                ..Loaded::default()
+            };
+        }
         self
     }
 

@@ -11118,3 +11118,34 @@ peninsula.md stage 4d, over D1215.
   Tunitas to the ridge (the branch's sections arriving as it climbs) and
   Stage Road to Pescadero. Branches are still on no minimap, and traffic,
   rivals and police keep to the level's road.
+
+## D1217 (2026-10-14): streamed sections in their own places; grip on the land; a cruise without hints
+
+The owner, on the build after D1216: "the roads are no longer separated
+from scenery. trees and hills cover roads. cars drive on scenery in lanes
+offset from road render position. also give me more grip on scenery. one
+wrong turn and i slide forever. also remove "wrong way" indicator and
+speed/turn hint arrows on cruise mode".
+
+- **The offset.** `loader::layout_models` lays a models scene (no
+  environment, one root) out in a grid of 7 m by 12 m cells, a cell per
+  child of the root. A streamed section's scene has no environment, and
+  since D1216 it can have a single root, so the loader moved each of its
+  groups (road, terrain, each kit) to a grid cell: the road was drawn
+  metres off the track the simulation drives, and one group's ground lay
+  over another's road. Whole builds have an environment and were right;
+  the section builds themselves were right (measured natively). A scene
+  spawned `under` a parent (a streamed or menu section) now keeps its
+  own places and bounds.
+- **Grip on the land.** On an open level (not a circuit's run-off) the
+  arcade's lateral grip off the shoulder blends to at least 0.9 of its
+  normal (non-drift) grip, so a slide that leaves the tarmac scrubs out;
+  the sim car's surface `mu` there is 0.9 (`OPEN_LAND_GRIP`) instead of
+  0.7. The plough drag is unchanged, and circuits keep their run-off.
+  `open_ground`'s swerve test now waits for the car to land if the stop
+  falls on a hop over a crest.
+- **Cruise.** No WRONG WAY call and no guide chevrons while
+  `race.cruise`, whatever the line setting.
+- **CI.** `xtask web --release` copies the page's files before the
+  worker's build precompresses `builder-worker.js` (Pages failed on that
+  since D1215), and the wasm build's clippy has the `Built` alias.
