@@ -130,7 +130,7 @@ impl Neg for Vector2 {
 
 // ── Vector3 ─────────────────────────────────────────────────────────────
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Vector3 {
     pub x: f64,
     pub y: f64,

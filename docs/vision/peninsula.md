@@ -218,9 +218,11 @@ and the client's (D1214: `mp_game::stream`, the ring round the camera,
 several scenes' animators at once, shared images, `?stream=0` for the
 whole build).
 
-**4c.** The web build off the main thread: a worker running the builder
-as its own wasm (as `mp_exhaust` and `mp_music` are), scene data
-transferred as the loader takes it.
+**4c. The web build off the main thread** (built 2026-10-14, D1215): a
+worker running the builder as its own wasm (`mp_builder`, as `mp_exhaust`
+and `mp_music` are), each section handed back packed with its animators
+as data (`mp_worldgen::anim`), read and spawned by the client; `?worker=0`
+keeps the stepped build.
 
 **4d.** Skyline's dripping fog; fields and fence lines on crop; the
 branches (Tunitas Creek Road, Stage Road); the far ends of roads closed.

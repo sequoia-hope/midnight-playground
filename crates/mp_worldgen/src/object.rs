@@ -32,19 +32,27 @@ use crate::textures::{Cached, Texture};
 use crate::three_geom::{BufferGeometry, Matrix4, Quaternion, Sphere, Vector3};
 
 /// An object in a [`SceneGraph`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct NodeId(pub u32);
 
 /// A geometry in a [`SceneGraph`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct GeoId(pub u32);
 
 /// A material in a [`SceneGraph`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct MaterialId(pub u32);
 
 /// A texture in a [`SceneGraph`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct TextureId(pub u32);
 
 /// An `InstancedMesh`'s per-instance data.
@@ -248,7 +256,7 @@ pub struct NightMaterial {
 
 /// Handle → index in the assembled scene; `None` for what no root
 /// reaches.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HandleMap {
     pub nodes: Vec<Option<u32>>,
     pub meshes: Vec<Option<u32>>,

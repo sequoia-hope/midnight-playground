@@ -51,6 +51,20 @@ pub const PORTED: &[(&str, MakeScenery)] = &[
     ("Land", |info| Box::new(crate::land::Land::new(info))),
 ];
 
+/// The open world's scenery (docs/vision/peninsula.md): the Land kit and
+/// the Coast Highway's three, named rather than taken from [`PORTED`] so
+/// a build of the open world alone (the web's worker, `mp_builder`) links
+/// no other kit (D498's rule).
+pub fn open_world(info: &SceneryInfo) -> Option<Box<dyn Scenery>> {
+    match info.name {
+        "Land" => Some(Box::new(crate::land::Land::new(info))),
+        "Coast" => Some(Box::new(crate::coast::Coast::new(info))),
+        "Beach" => Some(Box::new(crate::beach::Beach::new(info))),
+        "Harbor" => Some(Box::new(crate::harbor::Harbor::new(info))),
+        _ => None,
+    }
+}
+
 /// The ported module of that name, made as `loadScenery` makes it.
 pub fn ported(info: &SceneryInfo) -> Option<Box<dyn Scenery>> {
     PORTED

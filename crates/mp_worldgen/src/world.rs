@@ -39,6 +39,7 @@ use mp_levels::world::WorldData;
 use mp_scene::{NightParam, Scene};
 use mp_track::{Level, Track};
 
+use crate::anim::AnimatorDesc;
 use crate::object::{Bases, GeoId, HandleMap, MaterialId, NodeId, SceneGraph, TextureId};
 use crate::road::{MarkGap, Road};
 use crate::sea::Sea;
@@ -202,6 +203,9 @@ pub struct World {
     pub root: NodeId,
     /// `world.updaters`.
     pub animators: Vec<Box<dyn Animator>>,
+    /// The animators that are data (`anim`), among `animators`: what a
+    /// section built in a worker hands over (D1215).
+    pub descs: Vec<AnimatorDesc>,
     /// The texture module's cache (`world/textures.js`).
     pub textures: TextureCache,
     pub sim_data: SimWorldData,
@@ -245,6 +249,7 @@ impl World {
             graph,
             root,
             animators: Vec::new(),
+            descs: Vec::new(),
             textures: TextureCache::new(),
             sim_data: WorldData {
                 runout: 0.0,
@@ -291,6 +296,12 @@ impl World {
         self.animators.push(Box::new(a));
     }
 
+    /// Adds an animator that is data: it runs, and its description is
+    /// kept for a packed section (`anim`, D1215).
+    pub fn animate(&mut self, d: AnimatorDesc) {
+        crate::anim::push(&mut self.animators, &mut self.descs, d);
+    }
+
     /// Merges a part built by a parallel job: its roots go under `parent`
     /// (the world root if `None`), its animators after the world's.
     pub fn merge(&mut self, part: Part, parent: Option<NodeId>) {
@@ -313,6 +324,7 @@ impl World {
         WorldBuild {
             scene,
             animators: self.animators,
+            descs: self.descs,
             sim_data: self.sim_data,
             handles,
             log: self.graph.log,
@@ -335,6 +347,8 @@ pub struct Part {
 pub struct WorldBuild {
     pub scene: Scene,
     pub animators: Vec<Box<dyn Animator>>,
+    /// The animators that are data, among `animators` (`anim`, D1215).
+    pub descs: Vec<AnimatorDesc>,
     pub sim_data: SimWorldData,
     /// Handles of the build → indices in `scene`.
     pub handles: HandleMap,

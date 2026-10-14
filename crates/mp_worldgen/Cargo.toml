@@ -14,6 +14,9 @@ mp_levels.workspace = true
 # Material parameters are JSON values in the scene (mp_scene::MaterialDesc),
 # in the JS order.
 serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
+# The animators that are data (`anim::AnimatorDesc`), so a section built
+# in a worker can hand its animators over with its scene (D1215).
+serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 # The goldens (JSON numbers parsed exactly, D55) and the texture gate's

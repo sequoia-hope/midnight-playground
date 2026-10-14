@@ -94,11 +94,11 @@ pub fn road_stage() -> StageFn {
         w.add_night(road.material("markings"), "emissiveIntensity", 0.0, 0.06);
         w.add_night(road.material("chevron"), "emissiveIntensity", 0.12, 0.9);
         // Dew on the tarmac after dark: lamps and headlights glint off it.
-        w.add_animator(road.dew_animator());
+        w.animate(road.dew_animator());
         for br in &branches {
             w.add_night(br.material("markings"), "emissiveIntensity", 0.0, 0.06);
             w.add_night(br.material("chevron"), "emissiveIntensity", 0.12, 0.9);
-            w.add_animator(br.dew_animator());
+            w.animate(br.dew_animator());
         }
         w.road = Some(road);
         w.branch_roads = branches;

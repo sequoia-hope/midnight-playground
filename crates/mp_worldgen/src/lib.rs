@@ -3,6 +3,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod anim;
 pub mod beach;
 pub mod builder;
 pub mod car_model;

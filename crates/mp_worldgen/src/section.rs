@@ -22,10 +22,11 @@
 //! With no section set ([`World::section`] `None`) nothing here runs, and
 //! a build is the level's.
 
-use crate::object::{NodeId, SceneGraph};
+use crate::anim::AnimatorDesc;
+use crate::object::{HandleMap, NodeId, SceneGraph};
 use crate::terrain::Tile;
 use crate::three_geom::math::{Matrix4, Vector3};
-use crate::world::World;
+use crate::world::{World, WorldBuild};
 use mp_track::Track;
 
 /// A stretch of the route and how far around it the section reaches.
@@ -448,4 +449,89 @@ pub fn finish(b: crate::world::Build) -> (crate::world::WorldBuild, CutStats) {
     let mut w = b.world;
     let stats = cut(&mut w);
     (w.finish(), stats)
+}
+
+/// The packed form's magic.
+const PACK_MAGIC: &[u8; 8] = b"MPSECT01";
+
+/// What a packed section carries beside its scene.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Packed {
+    descs: Vec<AnimatorDesc>,
+    handles: HandleMap,
+    log: Vec<String>,
+    kept: usize,
+    cut: usize,
+}
+
+/// A built section as bytes, for a worker to hand to the client (stage
+/// 4c, D1215): the scene as a `.mrscene`, and beside it the animators
+/// that are data, the handle map, the log and the cut's counts. An
+/// animator that is a closure cannot be packed; the log says how many
+/// were lost. The sim data is not carried: the plan's base has it.
+pub fn pack(wb: &WorldBuild, stats: CutStats) -> Result<Vec<u8>, String> {
+    let mut log = wb.log.clone();
+    let lost = wb.animators.len().saturating_sub(wb.descs.len());
+    if lost > 0 {
+        log.push(format!("{lost} animators are not data; lost in the pack"));
+    }
+    let extra = serde_json::to_vec(&Packed {
+        descs: wb.descs.clone(),
+        handles: wb.handles.clone(),
+        log,
+        kept: stats.kept,
+        cut: stats.cut,
+    })
+    .map_err(|e| format!("packing a section: {e}"))?;
+    let scene = mp_scene::write(&wb.scene)?;
+    let mut out = Vec::with_capacity(16 + extra.len() + scene.len());
+    out.extend_from_slice(PACK_MAGIC);
+    out.extend_from_slice(&(extra.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(scene.len() as u32).to_le_bytes());
+    out.extend_from_slice(&extra);
+    out.extend_from_slice(&scene);
+    Ok(out)
+}
+
+/// A packed section read back: its scene, its animators made from their
+/// descriptions, and the cut's counts.
+pub fn unpack(bytes: &[u8]) -> Result<(WorldBuild, CutStats), String> {
+    if bytes.len() < 16 || &bytes[..8] != PACK_MAGIC {
+        return Err("not a packed section (bad magic)".into());
+    }
+    let extra_len = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+    let scene_len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+    let extra = bytes
+        .get(16..16 + extra_len)
+        .ok_or("a packed section ends inside its header")?;
+    let scene = bytes
+        .get(16 + extra_len..16 + extra_len + scene_len)
+        .ok_or("a packed section ends inside its scene")?;
+    let p: Packed = serde_json::from_slice(extra).map_err(|e| format!("a packed section: {e}"))?;
+    let scene = mp_scene::read(scene)?;
+    let animators = p
+        .descs
+        .iter()
+        .cloned()
+        .map(AnimatorDesc::into_animator)
+        .collect();
+    Ok((
+        WorldBuild {
+            scene,
+            animators,
+            descs: p.descs,
+            sim_data: mp_levels::world::WorldData {
+                runout: 0.0,
+                opposite_carriageway: None,
+            },
+            handles: p.handles,
+            log: p.log,
+            sky: None,
+            on_countdown: None,
+        },
+        CutStats {
+            kept: p.kept,
+            cut: p.cut,
+        },
+    ))
 }

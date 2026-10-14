@@ -10992,3 +10992,55 @@ peninsula.md stage 4b, the client's half (`mp_game::stream`), over D1213.
   can hitch a frame while it builds (stage 4c, a worker); the route
   bar's zone labels crowd with four zones; the menu's views still build
   their sections the old way.
+
+## D1215 (2026-10-14): streaming off the main thread: the builder's worker, and animators as data
+
+peninsula.md stage 4c, over D1213 and D1214.
+
+- **The builder as its own wasm.** `mp_builder` (rlib and cdylib, no
+  wasm-bindgen, as `mp_exhaust` and `mp_music` are) plans an open level
+  (`Planned::new` with `scenery::open_world` and the living world's
+  modules: what the client plans) and builds its sections to the end,
+  cut, and packed (`section::pack`). Its `worker` feature's C-ABI exports
+  (`mpb_plan`, `mpb_build`, the output's pointer and length, `mpb_log`
+  imported from the shim for a panic's message) are what
+  `crates/mp_game/web/builder-worker.js` calls in a web worker; `cargo
+  xtask web` builds `mp_builder.wasm` optimised for speed (`-O3`, the
+  `release` profile even for a debug build, as the worklets). It carries
+  its own copy of the peninsula's ground and cover (D1208's packing) and
+  the kits it links: 6.4 MB unoptimised, fetched only when a streamed
+  level is first asked for.
+- **The client** (`mp_game::worker`, wasm only): one worker for the page's
+  life, started on the first streamed level, asked to plan with the
+  stream's generation and then for each section the ring wants, one at a
+  time as the thread is asked natively; its answers (`Msg`) are collected
+  by `stream::drive` each frame. A built section comes back as a
+  transferred buffer, read with `section::unpack` (9 to 35 ms on the main
+  thread for 5 to 14 MB) and spawned as before. The client plans the same
+  level inline meanwhile (it needs the track and the sim data) and builds
+  the base itself; the plan is deterministic from the level, so the
+  worker's sections are the ones the client would have built. `?worker=0`,
+  a worker that cannot start, a failed plan or a trap in the builder fall
+  back to the stepped build of D1214, and the sections waiting on the
+  worker are built there.
+- **Animators as data** (`mp_worldgen::anim::AnimatorDesc`): a closure
+  cannot leave the thread that built it, so the open world's animators
+  are described as data and made into animators again on the other side:
+  the road's dew (`uWet`), the coast's surf clock, the lighthouse, the
+  night-scaled colours (the string lights, the reflectors) and the fishing
+  boats, and Seabright's `Animate` (its Ferris wheel, coaster, surf,
+  pools and signals), each keeping its state (clock, angle) with its
+  handles. `World::animate` registers one (it runs as an animator and its
+  description is kept in `World::descs` and `WorldBuild::descs`); a
+  packed section carries the descriptions, the handle map, the log and
+  the cut's counts beside its `.mrscene`, and notes in the log how many
+  animators were closures and lost. `tests/stream.rs` packs the coast's
+  first section and reads it back: the same scene and handles, and every
+  animator data, writing the same edits for three frames.
+- Measured (the desktop, a debug web build, WebGL2 emulating a phone): a
+  section 0.4 to 0.7 s in the worker, the start's four sections up 13 s
+  after the level was asked against 22 s stepped; frame times while
+  driving mean 5 ms. The spikes left (a frame of 200 to 700 ms now and
+  then) are WebGL2 pipeline compiles for a material and mesh-layout
+  combination a new section brings, with or without the worker: the
+  warm-up covers only what the start's ring has.
