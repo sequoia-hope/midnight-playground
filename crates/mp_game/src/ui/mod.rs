@@ -138,6 +138,8 @@ pub enum Act {
     SettingsDone,
     Resume,
     EndRun,
+    /// From an event at a place's results back to the cruise.
+    Continue,
     Restart,
     Quit,
     NextTrack,
@@ -202,6 +204,8 @@ pub struct ResultsView {
     pub best: String,
     /// A multiplayer race: back to the lobby, not Race again.
     pub online: bool,
+    /// An event at a place: back to the cruise, not Race again.
+    pub event: bool,
 }
 
 /// The front end's state.
@@ -813,6 +817,9 @@ fn show_results(
         }
     };
     let mut v = ResultsView::default();
+    if let Some(r) = &race.event_result {
+        return event_results(store, id, race, r);
+    }
     if st.race.cruise {
         let res = cruise_results(st);
         let key = format!("bestScore.{id}");
@@ -938,6 +945,88 @@ fn show_results(
             ));
         }
     }
+    v
+}
+
+/// An event at a place's results (docs/vision/peninsula.md, stage 5): a
+/// race's table, a trial's time against the time to beat, a delivery's
+/// against the time it had; the best time kept per event.
+fn event_results(
+    store: &mut Store,
+    id: &str,
+    race: &crate::play::flow::Race,
+    r: &mp_sim::event::EventResult,
+) -> ResultsView {
+    use mp_track::EventKind;
+    let lr = &race.session.lr;
+    let e = &lr.level.events[r.index];
+    let mut v = ResultsView {
+        event: true,
+        ..ResultsView::default()
+    };
+    let line = |name: &str, value: String| ResRow {
+        place: String::new(),
+        name: name.into(),
+        color: None,
+        value,
+        me: false,
+    };
+    v.title = match (e.kind, r.made_it) {
+        (EventKind::Race, true) => "You win!".into(),
+        (EventKind::Race, false) => format!("{} place", ordinal(r.place)),
+        (EventKind::TimeTrial, true) => "Time beaten!".into(),
+        (EventKind::TimeTrial, false) => "Too slow".into(),
+        (EventKind::Delivery, true) => "Delivered!".into(),
+        (EventKind::Delivery, false) => "Out of time".into(),
+    };
+    match e.kind {
+        EventKind::Race => {
+            v.rows = r
+                .rows
+                .iter()
+                .map(|row| ResRow {
+                    place: row.place.to_string(),
+                    name: row.name.to_string(),
+                    color: Some(row.color),
+                    value: format!(
+                        "{}{}",
+                        if row.estimated { "~" } else { "" },
+                        fmt_time(Some(row.time))
+                    ),
+                    me: row.human == Some(0),
+                })
+                .collect();
+        }
+        EventKind::TimeTrial => {
+            v.rows = vec![
+                line("Your time", fmt_time(Some(r.time))),
+                line(
+                    "To beat",
+                    fmt_time(Some(mp_sim::event::time_of(&lr.track, e))),
+                ),
+            ];
+        }
+        EventKind::Delivery => {
+            v.rows = vec![
+                line("Your time", fmt_time(Some(r.time))),
+                line("Time allowed", fmt_time(Some(e.time))),
+            ];
+        }
+    }
+    // A best time per event, set by a race won, a trial beaten or a
+    // delivery made.
+    let key = format!("bestEvent.{id}.{}", e.id);
+    if r.made_it
+        && store
+            .num_or_null(&key)
+            .is_none_or(|b| b == 0.0 || r.time < b)
+    {
+        store.set_num(&key, r.time);
+    }
+    v.best = match store.num_or_null(&key) {
+        Some(b) if b != 0.0 => format!("{}: best {}", e.name, fmt_time(Some(b))),
+        _ => e.name.to_string(),
+    };
     v
 }
 
@@ -1213,6 +1302,7 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
             | Act::Mode(_)
             | Act::Resume
             | Act::EndRun
+            | Act::Continue
             | Act::Quit
             | Act::Menu
             | Act::PadSetup
@@ -1414,6 +1504,11 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
         Act::Resume => {
             if let Some(r) = ctx.play.race.as_mut() {
                 r.pause(false);
+            }
+        }
+        Act::Continue => {
+            if let Some(r) = ctx.play.race.as_mut() {
+                r.continue_cruise();
             }
         }
         Act::EndRun => {
@@ -2368,6 +2463,84 @@ pub(crate) mod tests {
             time,
             estimated: false,
         }
+    }
+
+    /// An event at a place's results (stage 5): a trial against its time,
+    /// a delivery out of time; back to the cruise, the best kept per event.
+    #[test]
+    fn event_results_say_how_it_went_and_go_back_to_the_cruise() {
+        use mp_sim::event::EventResult;
+        use mp_track::EventKind;
+        let lr = mp_sim::race::LevelRuntime::new(crate::play::cruise_level(
+            mp_levels::level_by_id("peninsula"),
+            true,
+        ))
+        .unwrap();
+        let mut race = crate::play::flow::Race::new(
+            lr,
+            crate::play::flow::Setup {
+                opts: mp_sim::race::RaceOpts {
+                    car: "sports",
+                    seed: 1,
+                    pursuit: false,
+                    heat: 1.0,
+                    physics: mp_sim::model::Physics::Arcade,
+                },
+                autodrive: false,
+                touch: false,
+            },
+            crate::play::touch::TouchControls::default(),
+        );
+        let ev = |kind| {
+            race.session
+                .lr
+                .level
+                .events
+                .iter()
+                .position(|e| e.kind == kind)
+                .unwrap()
+        };
+        let (trial, delivery) = (ev(EventKind::TimeTrial), ev(EventKind::Delivery));
+        let mut store = Store::memory();
+        let settings = Settings::load(&store, false);
+        race.event_result = Some(EventResult {
+            index: trial,
+            kind: EventKind::TimeTrial,
+            time: 250.0,
+            place: 1,
+            rows: Vec::new(),
+            made_it: true,
+        });
+        let v = show_results(
+            &mut store,
+            &settings,
+            "peninsula",
+            &race,
+            &NetView::default(),
+        );
+        assert!(v.event);
+        assert_eq!(v.title, "Time beaten!");
+        assert_eq!(v.rows[0].value, "4:10.00");
+        assert_eq!(v.rows[1].name, "To beat");
+        assert_eq!(v.best, "Skyline at Dawn: best 4:10.00");
+        race.event_result = Some(EventResult {
+            index: delivery,
+            kind: EventKind::Delivery,
+            time: 380.0,
+            place: 1,
+            rows: Vec::new(),
+            made_it: false,
+        });
+        let v = show_results(
+            &mut store,
+            &settings,
+            "peninsula",
+            &race,
+            &NetView::default(),
+        );
+        assert_eq!(v.title, "Out of time");
+        assert_eq!(v.best, "The Store Run");
+        assert_eq!(store.num_or_null("bestEvent.peninsula.store-run"), None);
     }
 
     /// Online: the humans' lobby names, this player's row marked (as the

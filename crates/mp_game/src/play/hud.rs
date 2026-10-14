@@ -162,11 +162,13 @@ pub(super) struct HudState {
     model: Option<model::Hud>,
     key: Option<Key>,
     root: Option<Entity>,
-    /// The race start the model is for.
+    /// The race start the model is for, and its event at a place.
     starts: u32,
+    legs: u32,
     /// `race.hud`'s call counts already passed on.
     centers: u32,
     toasts: u32,
+    cards: u32,
     /// When the centre pop and the zone card last started (real time), and
     /// the counts they started at.
     center_t0: f64,
@@ -2112,7 +2114,8 @@ pub(super) fn update(
 
     // A new race: a new `HUD` (`race.hud.mph = settings.mph`,
     // `race.hud.bestScore = store.get('bestScore.' + level, 0)`).
-    if hs.model.is_none() || hs.starts != race.starts {
+    let new_race = hs.model.is_none() || hs.starts != race.starts;
+    if new_race || hs.legs != race.legs {
         let mut m = model::Hud::new(st.race.cruise, colors.len());
         if st.race.cruise {
             let k = format!("bestScore.{}", track.level.id);
@@ -2120,8 +2123,13 @@ pub(super) fn update(
         }
         hs.model = Some(m);
         hs.starts = race.starts;
-        hs.centers = 0;
-        hs.toasts = 0;
+        hs.legs = race.legs;
+        // A new leg of the same race keeps the calls already passed on.
+        if new_race {
+            hs.centers = 0;
+            hs.toasts = 0;
+            hs.cards = 0;
+        }
         hs.toast = Fade::default();
         hs.center_t0 = f64::NEG_INFINITY;
         hs.zone_t0 = f64::NEG_INFINITY;
@@ -2181,6 +2189,10 @@ pub(super) fn update(
         if let Some(t) = &h.toast {
             model.toast(t, h.toast_timer + dt);
         }
+    }
+    if h.cards != hs.cards {
+        hs.cards = h.cards;
+        model.card(&h.card.0, &h.card.1);
     }
     // Dispatch: each line said this frame, up as long as it takes to say
     // (`hud.radio(line.text, Math.max(3, line.text.length / 14))`).

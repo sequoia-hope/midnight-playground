@@ -224,5 +224,6 @@ pub fn level() -> Level {
             rival!("Nina", "rally", 0xff7a1a, 0.945, 495),
             rival!("Duke", "muscle", 0x30343b, 0.93, 530),
         ],
+        events: Vec::new(),
     }
 }

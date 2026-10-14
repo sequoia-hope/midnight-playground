@@ -89,6 +89,7 @@ fn level() -> Level {
         traffic: Vec::new(),
         police: None,
         rivals: Vec::new(),
+        events: Vec::new(),
     }
 }
 

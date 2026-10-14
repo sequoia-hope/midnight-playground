@@ -552,6 +552,28 @@ pub fn results(p: &mut ChildSpawnerCommands, cx: &mut Cx, ui: &UiState) -> Entit
             );
             return;
         }
+        if v.event {
+            // An event at a place: the cruise went on behind the results.
+            let f = cx.f("btn-continue");
+            w::button(
+                p,
+                &bp,
+                Control::act("btn-continue", Act::Continue),
+                "Keep cruising",
+                true,
+                f,
+            );
+            let f = cx.f("btn-menu");
+            w::button(
+                p,
+                &bp,
+                Control::act("btn-menu", Act::Menu),
+                "Main menu",
+                false,
+                f,
+            );
+            return;
+        }
         let f = cx.f("btn-again");
         w::button(
             p,

@@ -306,6 +306,40 @@ pub struct RivalDef {
     pub power: f64,
 }
 
+/// What an event at a place is (docs/vision/peninsula.md, stage 5).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EventKind {
+    /// Against the level's rivals, start to finish.
+    Race,
+    /// Alone against the clock, start to finish.
+    TimeTrial,
+    /// To a point by any road, inside a time.
+    Delivery,
+}
+
+/// An event at a place on an open level: a marked start on the level's
+/// road where a cruising car that stops and holds gas and brake begins it
+/// (docs/vision/peninsula.md, stage 5).
+#[derive(Clone, Debug, PartialEq)]
+pub struct EventSpot {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub kind: EventKind,
+    /// Where it starts: metres along the level's road (road 0). A race's
+    /// grid forms behind it.
+    pub s: f64,
+    /// A race's or a trial's finish: metres along the road the lap's way
+    /// from `s` (wrapping round a loop).
+    pub finish: f64,
+    /// A delivery's drop: the point to reach, by any road.
+    pub drop: Option<[f64; 2]>,
+    /// Where the drop is, for the HUD ("SAN GREGORIO STORE").
+    pub place: &'static str,
+    /// A delivery's time, seconds (a trial's time to beat is the road's
+    /// speed profile's, which the simulation measures).
+    pub time: f64,
+}
+
 #[derive(Clone)]
 pub struct Level {
     pub id: &'static str,
@@ -350,6 +384,9 @@ pub struct Level {
     pub traffic: Vec<TrafficRule>,
     pub police: Option<Police>,
     pub rivals: Vec<RivalDef>,
+    /// An open level's events at places (stage 5): the rivals above race
+    /// its races.
+    pub events: Vec<EventSpot>,
 }
 
 impl Level {

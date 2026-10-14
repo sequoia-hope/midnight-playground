@@ -7,6 +7,7 @@
 
 use mp_sim::assist::{Assist, steer_assist};
 use mp_sim::autopilot::autopilot;
+use mp_sim::event::{self, EventResult};
 use mp_sim::input::{AWAY, InputFrame, RESET};
 use mp_sim::physics::PhysEvent;
 use mp_sim::pursuit::PursuitEvent;
@@ -20,6 +21,7 @@ use super::input::Input;
 use super::pose::Springs;
 use super::session::Session;
 use super::touch::TouchControls;
+use mp_track::EventKind;
 
 /// `fmtTime`: m:ss.cc, rounded to hundredths first (59.996 s reads
 /// 1:00.00), `--:--.--` for a missing time.
@@ -32,6 +34,29 @@ pub fn fmt_time(t: Option<f64>) -> String {
     let s = (cs - m * 6000.0) / 100.0;
     format!("{m}:{:0>5.2}", s)
 }
+
+/// Whole seconds as m:ss (a delivery's time).
+pub fn fmt_clock(t: f64) -> String {
+    let t = t.max(0.0).ceil() as i64;
+    format!("{}:{:02}", t / 60, t % 60)
+}
+
+/// "HALF MOON BAY" as "Half Moon Bay".
+fn title_case(s: &str) -> String {
+    s.split(' ')
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                Some(f) => f.to_string() + &c.as_str().to_lowercase(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// A start's card shows when the car comes this near it (metres).
+const NEAR: f64 = 150.0;
 
 /// "1st", "2nd", "3rd", "4th", …
 pub fn ordinal(n: usize) -> String {
@@ -56,6 +81,10 @@ pub struct Hud {
     /// or toast (`play::hud`).
     pub centers: u32,
     pub toasts: u32,
+    /// A card in the zone card's place (an event at a place: its name and
+    /// what it is), and a count of them.
+    pub card: (String, String),
+    pub cards: u32,
 }
 
 impl Hud {
@@ -69,6 +98,11 @@ impl Hud {
         self.toast = Some(text.into());
         self.toast_timer = dur;
         self.toasts += 1;
+    }
+
+    pub fn card(&mut self, name: impl Into<String>, sub: impl Into<String>) {
+        self.card = (name.into(), sub.into());
+        self.cards += 1;
     }
 
     pub fn tick(&mut self, dt: f64) {
@@ -167,6 +201,13 @@ pub struct Race {
     pub assist: Assist,
     was_nitro: bool,
     offroad: f64,
+    /// The last event at a place, while its results are up.
+    pub event_result: Option<EventResult>,
+    /// Events at places begun and ended on this race: the HUD is built
+    /// afresh for each (a race's furniture, then the cruise's).
+    pub legs: u32,
+    /// The start the car last came near (its card shows once a visit).
+    near: Option<usize>,
 }
 
 /// `new PursuitView(race, { cops, flash })`: the units' cap (`?cops=N`, 6
@@ -265,6 +306,9 @@ impl Race {
             assist: Assist::Off,
             was_nitro: false,
             offroad: 0.0,
+            event_result: None,
+            legs: 0,
+            near: None,
         }
     }
 
@@ -295,6 +339,17 @@ impl Race {
         self.was_nitro = false;
         self.radio = Default::default();
         self.starts = next_start();
+        self.event_result = None;
+        self.near = None;
+    }
+
+    /// From an event's results back to the cruise, which went on behind
+    /// them.
+    pub fn continue_cruise(&mut self) {
+        self.event_result = None;
+        self.mode = Mode::Race;
+        self.input.pressed.clear();
+        self.hush_pads = true;
     }
 
     pub fn state(&self) -> RaceStateKind {
@@ -426,6 +481,7 @@ impl Race {
         self.log = events;
         self.rumble();
         self.stuck_hint();
+        self.event_hint();
         self.hud.tick(dt);
     }
 
@@ -461,6 +517,19 @@ impl Race {
             SimEvent::Go => {
                 self.hud.center("GO!", 1.0);
                 self.kicks.push((0.3, 0.6, 200.0));
+                let lr = &self.session.lr;
+                if let Some(e) = event::running(lr, &self.session.curr) {
+                    match e.kind {
+                        EventKind::TimeTrial => self.hud.toast(
+                            format!("BEAT {}", fmt_time(Some(event::time_of(&lr.track, e)))),
+                            3.0,
+                        ),
+                        EventKind::Delivery => self
+                            .hud
+                            .toast(format!("{} IN {}", e.place, fmt_clock(e.time)), 3.0),
+                        EventKind::Race => {}
+                    }
+                }
             }
             SimEvent::PerfectStart { .. } => self.hud.toast("PERFECT START", 1.6),
             SimEvent::Bonus {
@@ -503,12 +572,39 @@ impl Race {
                 }
             }
             SimEvent::Finished { place, .. } => {
-                let t = if *place == 1 {
-                    "WINNER!".to_string()
-                } else {
-                    format!("{} PLACE", ordinal(*place))
+                let st = &self.session.curr;
+                let t = match st.race.event.as_ref().map(|e| (e.kind, e.delivered)) {
+                    Some((EventKind::Delivery, true)) => "DELIVERED".to_string(),
+                    Some((EventKind::Delivery, false)) => "OUT OF TIME".to_string(),
+                    Some((EventKind::TimeTrial, _)) => "FINISH".to_string(),
+                    _ if *place == 1 => "WINNER!".to_string(),
+                    _ => format!("{} PLACE", ordinal(*place)),
                 };
                 self.hud.center(t, 2.0);
+            }
+            SimEvent::EventStart { index } => {
+                self.legs += 1;
+                let lr = &self.session.lr;
+                let e = &lr.level.events[*index];
+                let sub = match e.kind {
+                    EventKind::Race => format!("Race to {}", title_case(e.place)),
+                    EventKind::TimeTrial => format!(
+                        "Time trial to {}: beat {}",
+                        title_case(e.place),
+                        fmt_time(Some(event::time_of(&lr.track, e)))
+                    ),
+                    EventKind::Delivery => format!(
+                        "Deliver to {} in {}",
+                        title_case(e.place),
+                        fmt_clock(e.time)
+                    ),
+                };
+                self.hud.card(e.name, sub);
+            }
+            SimEvent::EventEnd(r) => {
+                self.legs += 1;
+                self.event_result = Some(r.clone());
+                self.mode = Mode::Results;
             }
             SimEvent::Results => {
                 self.results = Some(results(&self.session.curr));
@@ -619,7 +715,14 @@ impl Race {
             .pv
             .as_ref()
             .is_some_and(|pv| pv.held() || pv.pursuit.bust > 0.0);
-        if p.rules.stuck.is_some_and(|s| s > 3.0) && self.hud.toast_timer <= 0.0 && !held {
+        // Stopped on a start is waiting to begin it, not stuck.
+        let on_start = st.race.cruise
+            && event::at_start(&self.session.lr.track, &self.session.lr.level, &p.v).is_some();
+        if p.rules.stuck.is_some_and(|s| s > 3.0)
+            && self.hud.toast_timer <= 0.0
+            && !held
+            && !on_start
+        {
             let t = if self.setup.touch {
                 "STUCK? TAP R TO RESET".to_string()
             } else {
@@ -631,6 +734,67 @@ impl Race {
                 )
             };
             self.hud.toast(t, 2.0);
+        }
+    }
+}
+
+impl Race {
+    /// Events at places: a start's card as the car comes near it, how to
+    /// begin it on its marker (and the hold filling), and a delivery's
+    /// distance and time left.
+    fn event_hint(&mut self) {
+        let lr = &self.session.lr;
+        let st = &self.session.curr;
+        if lr.level.events.is_empty() || self.mode != Mode::Race || st.players.len() != 1 {
+            return;
+        }
+        let t = &lr.track;
+        let p = &st.players[0];
+        if st.race.cruise {
+            let near = event::nearest(t, &lr.level, p.v.x, p.v.z, NEAR).map(|(i, _)| i);
+            if near != self.near {
+                if let Some(i) = near {
+                    let e = &lr.level.events[i];
+                    let kind = match e.kind {
+                        EventKind::Race => "Race",
+                        EventKind::TimeTrial => "Time trial",
+                        EventKind::Delivery => "Delivery",
+                    };
+                    self.hud.card(
+                        e.name,
+                        format!("{kind}: stop on the light, hold gas and brake"),
+                    );
+                }
+                self.near = near;
+            }
+            let slow = mp_math::kernel::hypot(p.v.vx, p.v.vz) < 8.0;
+            if slow && event::at_start(t, &lr.level, &p.v).is_some() {
+                let text = match st.race.hold {
+                    Some((_, held)) => format!(
+                        "HOLD {}%",
+                        ((held / event::HOLD) * 100.0).floor().clamp(0.0, 100.0)
+                    ),
+                    None => "HOLD GAS + BRAKE TO START".to_string(),
+                };
+                self.hud.toast(text, 0.3);
+            }
+            return;
+        }
+        if let Some(e) = event::running(lr, st)
+            && e.kind == EventKind::Delivery
+            && st.race.state == RaceStateKind::Racing
+            && !p.rules.finished
+            && self.hud.toast_timer <= 0.05
+            && let Some([dx, dz]) = e.drop
+        {
+            let d = mp_math::kernel::hypot(dx - p.v.x, dz - p.v.z);
+            let far = if d >= 1000.0 {
+                format!("{:.1} km", d / 1000.0)
+            } else {
+                format!("{} m", (d / 10.0).round() * 10.0)
+            };
+            let left = fmt_clock(e.time - st.race.time);
+            self.hud.toast(format!("{} {far} · {left}", e.place), 0.5);
         }
     }
 }
@@ -1128,6 +1292,83 @@ pub(crate) mod tests {
         assert_eq!(race.springs.len(), slots(&race.session.curr).count());
     }
 
+    /// An event at a place through the client's flow (stage 5): the
+    /// start's card, how to begin it, the hold, the event's card and its
+    /// countdown, its results, and the cruise again behind them.
+    #[test]
+    fn an_event_at_a_place_from_the_cruise_and_back() {
+        let lr = LevelRuntime::new(crate::play::cruise_level(
+            mp_levels::level_by_id("peninsula"),
+            true,
+        ))
+        .unwrap();
+        let mut race = Race::new(
+            lr,
+            Setup {
+                opts: RaceOpts {
+                    car: "sports",
+                    seed: 1,
+                    pursuit: false,
+                    heat: 1.0,
+                    physics: mp_sim::model::Physics::Arcade,
+                },
+                autodrive: false,
+                touch: false,
+            },
+            TouchControls::default(),
+        );
+        let dt = 1.0 / 60.0;
+        let mut toasts = Vec::new();
+        let frames = |race: &mut Race, n: usize, toasts: &mut Vec<String>| {
+            for _ in 0..n {
+                race.frame(dt);
+                if let Some(t) = &race.hud.toast
+                    && toasts.last() != Some(t)
+                {
+                    toasts.push(t.clone());
+                }
+            }
+        };
+        frames(&mut race, 300, &mut toasts);
+        assert_eq!(race.hud.card.0, "Midnight on the Coast", "the start's card");
+        assert!(
+            toasts.iter().any(|t| t == "HOLD GAS + BRAKE TO START"),
+            "{toasts:?}"
+        );
+        race.input.key_down("ArrowUp", false);
+        race.input.key_down("ArrowDown", false);
+        frames(&mut race, 70, &mut toasts);
+        assert!(
+            toasts
+                .iter()
+                .any(|t| t.starts_with("HOLD ") && t.ends_with('%')),
+            "{toasts:?}"
+        );
+        assert_eq!(race.legs, 1, "the event began");
+        assert!(race.hud.card.1.starts_with("Race to Half Moon Bay"));
+        assert_eq!(race.session.curr.rivals.len(), 5);
+        assert_eq!(race.session.curr.race.state, RaceStateKind::Countdown);
+        race.input.key_up("ArrowUp");
+        race.input.key_up("ArrowDown");
+        // To the finish on the autopilot.
+        race.setup.autodrive = true;
+        let mut n = 0;
+        while race.mode == Mode::Race && n < 60 * 600 {
+            frames(&mut race, 60, &mut toasts);
+            n += 60;
+        }
+        assert_eq!(race.mode, Mode::Results);
+        let r = race.event_result.clone().expect("the event's results");
+        assert_eq!(r.rows.len(), 6);
+        assert_eq!(race.legs, 2);
+        assert!(race.session.curr.race.cruise, "the cruise goes on behind");
+        assert!(race.session.curr.rivals.is_empty());
+        race.continue_cruise();
+        assert_eq!(race.mode, Mode::Race);
+        assert!(race.event_result.is_none());
+        frames(&mut race, 60, &mut toasts);
+    }
+
     /// The open world as a cruise (the menu's Cruise, `?cruise=1`, D1211):
     /// the simulation's cruise mode with nobody on the grid but the
     /// player, no pursuit, and no finish line to cross.
@@ -1135,7 +1376,7 @@ pub(crate) mod tests {
     fn the_south_coast_cruises() {
         let level = crate::play::cruise_level(mp_levels::level_by_id("southcoast"), true);
         assert_eq!(level.mode, mp_track::Mode::Cruise);
-        assert!(level.rivals.is_empty());
+        assert!(!level.rivals.is_empty(), "kept for its events at places");
         let lap = crate::play::cruise_level(mp_levels::level_by_id("peninsula"), true);
         assert_eq!(lap.laps, None, "a cruise round the loop is endless");
         assert!(mp_sim::race::LevelRuntime::new(lap).unwrap().track.laps == 0);

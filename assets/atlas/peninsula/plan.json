@@ -14,6 +14,8 @@
       "note": "Alice's Restaurant: motorbikes, sports cars, Sunday mornings. A car meet." },
     { "id": "la-honda", "name": "La Honda", "kind": "town", "at": [37.3192, -122.2742] },
     { "id": "san-gregorio-store", "name": "San Gregorio General Store", "kind": "landmark", "at": [37.3271, -122.3866] },
+    { "id": "hmb-garage", "name": "The garage in Half Moon Bay", "kind": "landmark", "at": [37.4562, -122.4330],
+      "note": "On Highway 1 in town: where the jobs start. The first is a run to the store at San Gregorio." },
     { "id": "tunitas-creek", "name": "Tunitas Creek Road leaves Highway 1", "kind": "junction", "at": [37.35881, -122.39764] },
     { "id": "kings-mountain", "name": "Kings Mountain: Skyline at Tunitas Creek Road", "kind": "junction", "at": [37.42495, -122.3139] },
     { "id": "pumpkin-row", "name": "The pumpkin patches on 92", "kind": "landmark", "at": [37.47364, -122.41973],
@@ -104,7 +106,9 @@
     { "id": "coast-north", "name": "Highway 1: Half Moon Bay to Pacifica", "roads": ["1"], "from": "hmb-1-92", "via": ["montara", "devils-slide"], "to": "pacifica" },
     { "id": "tunitas", "name": "Tunitas Creek Road: the redwood climb", "names": ["Tunitas Creek Road", "Kings Mountain Road"], "from": "tunitas-creek", "to": "kings-mountain",
       "note": "One lane in places, steep, under redwoods all the way: the Highway 9 character the owner wants, inside the loop." },
-    { "id": "stage-road", "name": "Stage Road: San Gregorio to Pescadero", "names": ["Stage Road"], "from": "san-gregorio-store", "to": "pescadero" }
+    { "id": "stage-road", "name": "Stage Road: San Gregorio to Pescadero", "names": ["Stage Road"], "from": "san-gregorio-store", "to": "pescadero" },
+    { "id": "garage-to-store", "name": "The garage to the store: Highway 1 south, 84 and Stage Road", "roads": ["1", "84"], "names": ["Stage Road"], "from": "hmb-garage", "to": "san-gregorio-store",
+      "note": "The short way for the delivery from Half Moon Bay (docs/vision/peninsula.md, stage 5)." }
   ],
   "circuits": [
     { "id": "the-loop", "name": "The loop: 1, 92, Skyline and 84", "routes": ["coast-south", "hwy-92", "skyline-south", "hwy-84"],
@@ -119,7 +123,9 @@
     { "id": "skyline-dawn", "name": "Skyline at Dawn", "kind": "time trial", "route": "skyline-south", "from": "jct-92-35", "to": "skylonda",
       "light": "dawn, the fog below" },
     { "id": "redwood-descent", "name": "The Redwood Descent", "kind": "time trial", "route": "hwy-84", "from": "skylonda", "to": "jct-84-1",
-      "light": "afternoon under the trees" }
+      "light": "afternoon under the trees" },
+    { "id": "store-run", "name": "The Store Run", "kind": "delivery", "route": "garage-to-store", "from": "hmb-garage", "to": "san-gregorio-store",
+      "light": "night", "note": "From the garage to the San Gregorio General Store inside the time: the short way south down the coast, or the long way round." }
   ],
   "remix": [
     { "level": "coast", "region": "south-coast",

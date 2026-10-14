@@ -233,13 +233,44 @@ fenced along the road and across; Skyline's fog by zone, drifting.
 
 - **Gate (4b):** the owner drives the whole loop without a loading screen.
 
-### Stage 5. Events at places
+### Stage 5. Events at places (built 2026-10-14, D1219)
 
 - The plan's places and events become starts in the world: hold gas and
   brake at a marked intersection, as Burnout Paradise does. Races, time
   trials, a delivery from a garage in Half Moon Bay.
 - **Gate (M18's):** from pressing Drive, the owner finds and plays a
   race, a time trial and a delivery without opening a menu.
+
+**The design.**
+
+- **The events are the level's data** (`Level::events`, `mp_track::
+  EventSpot`): a name, a kind (race, time trial, delivery), where it
+  starts (metres along the loop, road 0), where a race or a trial ends
+  (metres along the loop, the lap's way), or where a delivery goes (a
+  point, reached by any road) and how long it may take. The loop's are
+  the plan's four, at the corridors' joins: Midnight on the Coast (the
+  crest to Half Moon Bay, a race, its start where Cruise begins), Over
+  the Hill (92, a race), Skyline at Dawn (Skyline, a trial) and The
+  Redwood Descent (84, a trial); and a delivery from the garage in
+  town to the San Gregorio General Store at Stage Road's mouth, the
+  short way south down the coast or the long way round. The plan gains
+  the garage, the store's delivery and the kind `delivery`.
+- **The simulation starts them** (`mp_sim::event`), so a recording
+  replays and the rules stay one implementation. While cruising, a car
+  stopped on a start's marker with both pedals down fills a one-second
+  hold; then the race leaves the cruise: the event's rivals join on a
+  grid behind the marker (a race's), the traffic round the grid goes,
+  the countdown runs, and the progress that finishes is the start's
+  plus the event's length, counted as a circuit's is (so rivals finish,
+  park and are placed by the code that does it on a circuit). A
+  delivery ends within 15 m of its point or when its time runs out, and
+  knows no wrong way. At the results the cruise comes back: the rivals
+  go, the cruise's score and multiplier are as they were.
+- **The client shows them**: a beacon of light over each start (and the
+  delivery's drop), a card when the car is near one ("hold gas and
+  brake"), the hold's fill, the race HUD during the event (a delivery's
+  distance and time left), the results, then the cruise. The field's
+  models are rebuilt when the rivals come and go.
 
 ## 3. Decisions
 

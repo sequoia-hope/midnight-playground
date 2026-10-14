@@ -124,5 +124,6 @@ pub fn level() -> Level {
         )],
         police: None,
         rivals: Vec::new(),
+        events: Vec::new(),
     }
 }
