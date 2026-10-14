@@ -1135,6 +1135,9 @@ pub(crate) mod tests {
         let level = crate::play::cruise_level(mp_levels::level_by_id("southcoast"), true);
         assert_eq!(level.mode, mp_track::Mode::Cruise);
         assert!(level.rivals.is_empty());
+        let lap = crate::play::cruise_level(mp_levels::level_by_id("peninsula"), true);
+        assert_eq!(lap.laps, None, "a cruise round the loop is endless");
+        assert!(mp_sim::race::LevelRuntime::new(lap).unwrap().track.laps == 0);
         // A drawn level is never a cruise this way.
         assert_eq!(
             crate::play::cruise_level(mp_levels::level_by_id("sierra"), true).mode,

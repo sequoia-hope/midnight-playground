@@ -632,6 +632,7 @@ pub const SCENERY_LABELS: &[(&str, &str)] = &[
     ("Streets", "Building downtown"),
     ("Desert", "Painting the desert"),
     ("Raceway", "Building the raceway"),
+    ("Land", "Planting the land"),
 ];
 
 /// The label of a scenery class by name.

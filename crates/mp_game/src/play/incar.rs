@@ -421,8 +421,11 @@ mod tests {
                     let pr = t.project(low.x, low.z, v.s);
                     let gap = low.y - t.surface_y(pr.s, pr.lat);
                     let at = format!("{kind} on {}: wheel {k}", level.id);
+                    // The open world's races start on a crest, where the
+                    // car's four contact points straddle the curve.
+                    let under = if level.open { -0.012 } else { -0.005 };
                     assert!(
-                        (-0.005..0.03).contains(&gap),
+                        (under..0.03).contains(&gap),
                         "{at}'s lowest point is {gap:+.4} m off the road"
                     );
                     // How far a pool's plane is over the tyre's lowest
@@ -444,8 +447,11 @@ mod tests {
                     for (c, before) in fx.cars.iter().zip(&level_pools) {
                         if let Some(h) = over(&c.pool) {
                             covered += 1;
+                            // The open world's races start on a crest:
+                            // the road curves away under the flat pool.
+                            let slack = if level.open { 0.015 } else { 0.002 };
                             assert!(
-                                h <= POOL_LIFT + 0.002,
+                                h <= POOL_LIFT + slack,
                                 "{at}: a pool lies {h:.3} m up its tyre"
                             );
                         }

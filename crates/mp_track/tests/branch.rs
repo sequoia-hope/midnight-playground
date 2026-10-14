@@ -57,6 +57,7 @@ fn level() -> Level {
         elevation: None,
         ground: Some(Arc::new(|_, _| 0.0)),
         loose_ground: None,
+        cover: None,
         open: true,
         branches: vec![Branch {
             id: "b",

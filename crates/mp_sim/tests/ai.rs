@@ -96,11 +96,13 @@ fn each_field_drives_the_route_on_the_tarmac() {
         };
         let mut ais = field(&t, &rivals, &mut rng);
         let goal = if t.is_loop { t.length } else { f64::INFINITY }; // once round a loop
+        // The open world's loop is 35 km round: a quarter of an hour.
+        let cap = if level.open { 1500.0 } else { 600.0 };
         let mut dist = vec![0.0; ais.len()];
         let mut prev: Vec<f64> = ais.iter().map(|a| a.k.s).collect();
         let (mut time, mut worst_centre, mut worst_wall, mut wher) =
             (0.0, 0.0f64, f64::NEG_INFINITY, String::new());
-        while time < 600.0 {
+        while time < cap {
             let ps = ais[0].k.s;
             step_field(&mut ais, &t, ps, time, &mut rng);
             resolve_collisions(&mut ais[..], &t, &mut Vec::new());
@@ -168,7 +170,8 @@ fn each_field_drives_the_route_on_the_tarmac() {
                     ais[i].name
                 );
             }
-            assert!(time < 300.0, "{}: a lap in {time:.0} s", level.id);
+            let most = if level.open { 1000.0 } else { 300.0 };
+            assert!(time < most, "{}: a lap in {time:.0} s", level.id);
         }
         assert!(
             worst_centre <= 0.0,

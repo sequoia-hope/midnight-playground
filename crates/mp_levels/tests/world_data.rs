@@ -22,8 +22,8 @@ fn world_data_matches_the_js_world() {
         let id = level.id;
         let want = &g["levels"][id];
         if want.is_null() {
-            // A corridor from the atlas has no JS world to match.
-            assert!(level.is_path(), "{id}: no golden");
+            // The open world's levels have no JS world to match.
+            assert!(level.open, "{id}: no golden");
             continue;
         }
         let w = level_world_data(level, t);

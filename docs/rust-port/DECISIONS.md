@@ -10855,3 +10855,59 @@ Gregorio and climbs to La Honda; the car turns off one road onto the other.
 - The level card's length for a road given as a path is the path's
   (`route_length`): `level_stats` had summed segments, which a path has
   none of, and showed the runoff as a negative length.
+
+## D1212 (2026-10-14): the loop as one road, and planting by land cover
+
+peninsula.md stage 4a: the loop (1, 92, Skyline, 84) as one level, built
+whole for now; its design, and stages 4b to 4d, are in peninsula.md.
+
+- **The data.** `cargo run -p mp_atlas -- corridor` wrote `hwy-92`,
+  `skyline-south` and `hwy-84` (the whole of 84; `hwy-84-lower` stays as
+  the south coast level's branch). The four corridors meet within 4 m and
+  close. `tools/atlas/ground.py` takes `--name`, writes the loop's ground
+  as `peninsula.ground.bin` (633 × 796 cells of 16 m, 660 kB) and, beside
+  it, `peninsula.cover.bin`: the land cover of the same cells from the
+  planning grid (`terrain.bin`, the nearest 50 m cell; 15 kB), one byte a
+  cell, the classes `build.py`'s (`mp_track::Cover` names them). The
+  south coast level drives on the loop's ground now
+  (`coast-south.ground.bin` is gone: one file, +120 kB in the wasm over
+  the old one; D1208's packing choice stands). `Level::cover` carries the
+  cover (`CoverFn`); `mp_levels::ground::CoverGrid` reads the file.
+- **The level** `peninsula`, "The Loop": `mp_levels::peninsula` chains
+  the corridors (`chain`: samples closer than 2.5 m to the one before
+  are one point, which is how the corridors' shared endpoints and the
+  closing join), splines the lap closed (`spline_closed`, Catmull-Rom
+  with the wrap) and builds `Route::Loop` from it: 34.7 km, `laps: 1`,
+  the start at the crest above San Gregorio as the south coast's. Zones
+  by metres into the lap: the coast (the Coast kit), Half Moon Bay (the
+  Beach kit), over the hill (92, the Land kit) and Skyline (35 and 84,
+  the Land kit); road types coastal, boulevard, valley, mountain. No
+  police: Hot Pursuit is not offered on a circuit (the pursuit measures
+  a point-to-point race, and `data.rs` holds the rule), so no radio
+  clips are owed yet; the Cruise option (D1211) is the way to drive it
+  with nothing on. A headless lap (`mp-sim race --level peninsula`) runs
+  to results: the rivals' 885 s to the autopilot's 1106 s.
+- **The Land kit** (`mp_worldgen::land`, "Planting the land"): the open
+  world's planting by land cover, within `REACH` (450 m) of the nearest
+  road (the far field's distance, which takes every road). It walks the
+  land in `CELL`s of 512 m on a grid fixed in the world, each cell seeded
+  from the kit's seed and its coordinates (`cell_seed`), candidates every
+  7 m; `choose` picks by cover and distance from the road: forest gives
+  firs and spruce on the verge (45 m), cheaper spruce behind (180 m) and
+  far quads beyond (about 250, 600 and 900 trees a km of road); shrub
+  gives scrub and a few oaks (an oak is one template: a trunk under
+  `canopy_geometry("shade")`); grass a scattering of both; crop, urban,
+  barren, sand and water nothing. Nothing within the road's half width
+  plus 3.5 m (6 m for a tree), under the sea plus 1.5 m, or on slopes
+  past 1.1 (1.4 for scrub). Each cell's instances of a template are one
+  `InstancedMesh` (a 600 m section on Skyline: 12 cells, 34 meshes, 2.2 k
+  trees and 1.9 k far quads). A section builds only the cells within its
+  scenery radius (`section::wants_box`), so the menu's views and 4b's
+  streaming pay for what they show. `tests/land.rs`: Skyline fills with
+  conifers clear of the road, and a cell plants the same whichever
+  section asks for it.
+- The Sierra's Mountain and Valley kits were considered for 92 and
+  Skyline and are not usable there: they read Sierra's own tags (the
+  valley indexes its bridge tag, the mountain signs "SIERRA PASS").
+- The native build of the whole loop takes 1.5 s on this machine's
+  threads (1425 nodes); the web's and a phone's are what 4b is for.

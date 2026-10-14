@@ -120,7 +120,7 @@ fn the_endless_cruise_is_the_only_cruise_and_follows_the_numbered_levels() {
     assert_eq!(cruise.mode, Mode::Cruise);
     assert_eq!(cruise.num, "ENDLESS");
     for l in &ls[numbered.len() + 1..] {
-        assert!(l.is_path(), "{}: after the cruise come the corridors", l.id);
+        assert!(l.open, "{}: after the cruise comes the open world", l.id);
     }
 }
 
@@ -150,7 +150,9 @@ fn optional_numbers_are_finite_and_plausible() {
         }
         if let Some(len) = l.lap_length {
             assert!(l.laps.is_some(), "{id}: a lap length without laps");
-            assert!(len > 1000.0 && len < 20000.0, "{id}: lapLength {len}");
+            // The open world's loop is 35 km round (peninsula.md, stage 4a).
+            let most = if l.open { 50000.0 } else { 20000.0 };
+            assert!(len > 1000.0 && len < most, "{id}: lapLength {len}");
         }
         if let Some(n) = l.laps {
             assert!((1..=10).contains(&n), "{id}: laps {n}");

@@ -438,8 +438,13 @@ impl Traffic {
                 v_t = js::max(0.0, v_t);
                 let c = &mut self.cars[ci];
                 c.k.speed += clamp(v_t - c.k.speed, -8.0 * dt, 3.0 * dt);
-                // Return to lane after a shove.
-                let la = clamp((c.lane_lat - c.k.lat) * 1.5 - c.k.lat_vel * 2.0, -3.0, 3.0);
+                // Return to lane after a shove; and where the road
+                // narrows under the car (the open world's loop: four lanes
+                // through Half Moon Bay, two over the hill) the lane is
+                // pulled onto the tarmac that is there (D1212).
+                let lim = f64::from(t.hw[t.idx(c.k.s)]) - c.k.half_w() - 0.2;
+                let lane = clamp(c.lane_lat, -lim, lim);
+                let la = clamp((lane - c.k.lat) * 1.5 - c.k.lat_vel * 2.0, -3.0, 3.0);
                 c.k.lat_vel += la * dt;
                 if c.k.stunned > 0.6 {
                     c.crashed = 0.01;

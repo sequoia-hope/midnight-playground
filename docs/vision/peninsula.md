@@ -165,14 +165,63 @@ from the real road through the existing coast generator.
   score, no rivals, the level's traffic. The owner's "light night city
   cruise but the new map".
 
-### Stage 4. Streaming
+### Stage 4. The loop as one world (started 2026-10-14)
 
-- World generation per tile from the atlas and the plan, built in a ring
-  round the player on the build thread, scene data streamed into the
-  client as the existing world builds are.
-- The loop (1, 92, Skyline, 84) as one drivable world; Skyline's
-  dripping fog.
-- **Gate:** the owner drives the whole loop without a loading screen.
+The loop (1, 92, Skyline, 84) as one drivable world, in parts that are
+each playable. The whole-level build the game has (plan, terrain fields,
+tiles, road, scenery, then the scene handed to the client) stays the
+shape of a build; streaming (4b) makes it incremental rather than
+replacing it.
+
+**4a. The loop as one road, and planting by land cover** (built
+2026-10-14, D1212).
+
+- **The data.** Corridors `hwy-92`, `skyline-south` and `hwy-84` (the
+  whole of 84, Skylonda to the sea; `hwy-84-lower` is its last 7 km) join
+  `coast-south`: the four meet within 4 m and close the loop, 34.8 km of
+  game road. `peninsula.ground.bin` is the real ground for the loop's box
+  (16 m cells, 1.2 km margin, 660 kB) and the south coast level drives on
+  it too (`coast-south.ground.bin` is gone; `ground.py --name`). Beside
+  it `peninsula.cover.bin`: the land cover of every ground cell from the
+  atlas's planning grid (ESA WorldCover and Overture's land cover, 50 m
+  real), one byte a cell, read by `mp_levels::ground::CoverGrid`, carried
+  by `Level::cover`. Both still packed into the wasm (D1208's choice).
+- **The level** `peninsula`, "The Loop": `Route::Loop` through the four
+  corridors splined closed; a race is one lap, from the crest above San
+  Gregorio round to the crest; the card offers Cruise (D1211). Zones by
+  metres along the lap: the coast (Highway 1, the Coast kit), Half Moon
+  Bay (the Beach kit), over the hill (92, the Land kit), Skyline (35 and
+  84, the Land kit); road types coastal, boulevard, valley, mountain.
+- **The Land kit** (`mp_worldgen::land`): the open world's planting by
+  land cover, which stages 2 and 3 wanted. Within reach of the roads
+  (the far field's distance) it walks the land in 512 m cells and plants
+  what the cover says: firs and redwood-dark spruce where it is forest
+  (verge, mid and far detail by distance from the road, as the Sierra's
+  forest is built), oaks and scrub where it is shrub, scattered oaks on
+  grass, nothing on crop, urban, barren, sand or water, nothing on the
+  road's clearance, below the sea or on the steepest ground. Every cell
+  is seeded from the level's seed and its coordinates, so a cell's trees
+  are a function of the cell alone: what 4b streams.
+- **Gate:** the owner drives the loop from the menu, built whole behind
+  the loading screen.
+
+**4b. Streaming.** The plan once (the track, the terrain's fields, every
+module's `plan()`), then the tiles, the road's chunks and the kits'
+chunks built in sections round the player (`mp_worldgen::section`,
+cached by section), spawned as they arrive and dropped behind; the level
+starts with the section round the start, so there is no loading screen
+to speak of. Natively on the build thread; on the web stepped on the
+main thread between frames with a small budget (a hitch now and then,
+until 4c).
+
+**4c.** The web build off the main thread: a worker running the builder
+as its own wasm (as `mp_exhaust` and `mp_music` are), scene data
+transferred as the loader takes it.
+
+**4d.** Skyline's dripping fog; fields and fence lines on crop; the
+branches (Tunitas Creek Road, Stage Road); the far ends of roads closed.
+
+- **Gate (4b):** the owner drives the whole loop without a loading screen.
 
 ### Stage 5. Events at places
 

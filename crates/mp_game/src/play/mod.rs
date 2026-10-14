@@ -159,13 +159,17 @@ impl Params {
 /// The level as a cruise, when the open world is driven with no race on
 /// it (the menu's Cruise, `?cruise=1`; D1211): the simulation's cruise
 /// mode (`Mode::Cruise`: no finish, no pursuit, the Night City Cruise's
-/// score for speed and near misses) with no rivals on the grid. The
+/// score for speed and near misses) with no rivals on the grid and, on
+/// the loop, no laps (endless, as the Night City Cruise is). The
 /// level's traffic stays as it is; the world is built from the level by
 /// id, so nothing drawn changes.
 pub fn cruise_level(mut level: mp_track::Level, cruise: bool) -> mp_track::Level {
     if cruise && level.open {
         level.mode = mp_track::Mode::Cruise;
         level.rivals.clear();
+        // A lap of the loop is a race; a cruise goes round and round.
+        level.laps = None;
+        level.lap_length = None;
     }
     level
 }
