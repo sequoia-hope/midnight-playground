@@ -10828,3 +10828,30 @@ Gregorio and climbs to La Honda; the car turns off one road onto the other.
   with Qwen3-TTS and checked word for word with Whisper; CI's
   `audio_radio_has_every_take_of_every_clip_and_index_json_lists_them`
   had been failing since stage 1 for want of them.
+
+## D1211 (2026-10-14): the camera on a branch, and the open world as a cruise
+
+- **The camera on 84.** The owner drove onto Highway 84 and the camera
+  angle went wrong: the chase camera's floor was the level's road's plane
+  at the car's progress point (`surface_y(s, lat)`, the JS's rule), and on
+  a branch `s` and `lat` are the car's place on the level's road, hundreds
+  of metres off, where that plane, banked, is nowhere near the ground
+  (110 m above the car 1.5 km up 84 in the test). `camera::Car` carries
+  the road under the car (`road`, `road_s`, `road_lat`) and on an open
+  level the floor is `ground_y` under the eye itself, projected onto that
+  road: the land or the road, whichever is there. Drawn levels keep the
+  JS rule (they have no terrain heights on the client, D434). Across a
+  junction the interpolated car takes the new road's place whole.
+- **Cruise.** The open world's level card gains a third mode, Cruise,
+  beside Race and Hot Pursuit (`mode.<id>` = `cruise` in the store;
+  `?cruise=1`/`0` forces it, as `?pursuit=` does). It is the Night City
+  Cruise's mode on the corridor: `play::cruise_level` makes the level
+  `Mode::Cruise` with no rivals as the race is built, so the simulation
+  runs its cruise (no finish line, no pursuit, the score for speed and
+  near misses, the cruise HUD and results) and nothing drawn changes (the
+  world is built from the level by id). The level's own traffic stays
+  (lighter than the Night City Cruise's). The road still ends open at
+  Half Moon Bay and La Honda until stage 4 closes the loop.
+- The level card's length for a road given as a path is the path's
+  (`route_length`): `level_stats` had summed segments, which a path has
+  none of, and showed the runoff as a negative length.

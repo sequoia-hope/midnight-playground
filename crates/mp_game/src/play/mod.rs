@@ -74,6 +74,9 @@ pub struct Params {
     pub autodrive: bool,
     pub timescale: f64,
     pub pursuit: bool,
+    /// `?cruise=1`, or the menu's Cruise on the open world: the road with
+    /// no race on it ([`cruise_level`], D1211).
+    pub cruise: bool,
     pub heat: f64,
     /// `?cops=N`: Hot Pursuit's cap on units (6 by default).
     pub cops: f64,
@@ -120,6 +123,7 @@ impl Params {
                 .filter(|t: &f64| *t > 0.0)
                 .unwrap_or(1.0),
             pursuit: get("pursuit") == Some("1"),
+            cruise: get("cruise") == Some("1"),
             heat: get("heat")
                 .and_then(|s| s.parse().ok())
                 .filter(|h: &f64| *h >= 1.0)
@@ -150,6 +154,20 @@ impl Params {
             physics: self.physics,
         }
     }
+}
+
+/// The level as a cruise, when the open world is driven with no race on
+/// it (the menu's Cruise, `?cruise=1`; D1211): the simulation's cruise
+/// mode (`Mode::Cruise`: no finish, no pursuit, the Night City Cruise's
+/// score for speed and near misses) with no rivals on the grid. The
+/// level's traffic stays as it is; the world is built from the level by
+/// id, so nothing drawn changes.
+pub fn cruise_level(mut level: mp_track::Level, cruise: bool) -> mp_track::Level {
+    if cruise && level.open {
+        level.mode = mp_track::Mode::Cruise;
+        level.rivals.clear();
+    }
+    level
 }
 
 /// A seed for a race nobody asked a seed for: the rivals' nitro timing
@@ -323,7 +341,7 @@ fn start(
     // The new field's light setters take their slots afresh (D456).
     lights.values.clear();
     let Some(level) = &tr.level else { return };
-    let lr = match LevelRuntime::new(level.clone()) {
+    let lr = match LevelRuntime::new(cruise_level(level.clone(), play.params.cruise)) {
         Ok(lr) => lr,
         Err(e) => {
             warn!("race: {e}");
@@ -979,7 +997,7 @@ pub fn smoke_race_cli(o: &crate::options::Options) -> Result<(), String> {
         let d = mp_levels::SeasideData::parse(&bytes)?;
         mp_levels::seaside::prepare(&mut level, std::sync::Arc::new(d));
     }
-    let lr = LevelRuntime::new(level)?;
+    let lr = LevelRuntime::new(cruise_level(level, params.cruise))?;
     let opts = RaceOpts {
         seed: params.seed.unwrap_or(1),
         ..params.race_opts()

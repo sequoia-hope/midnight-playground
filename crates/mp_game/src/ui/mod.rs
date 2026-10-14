@@ -369,9 +369,15 @@ pub fn plugin(app: &mut App) {
             play.params.physics =
                 mp_sim::model::Physics::parse(&settings.physics).unwrap_or_default();
         }
-        if o.param("pursuit").is_none() {
+        {
             let level = mp_levels::level_by_id(&o.level);
-            play.params.pursuit = store::mode_for(&store, &level) == "pursuit";
+            let mode = store::mode_for(&store, &level);
+            if o.param("pursuit").is_none() {
+                play.params.pursuit = mode == "pursuit";
+            }
+            if o.param("cruise").is_none() {
+                play.params.cruise = mode == "cruise";
+            }
         }
         // Over the menu's views no field is built at boot (D751): Race
         // builds the level first, then the cars and the sound's graph.
@@ -769,10 +775,12 @@ fn arm(ui: &mut UiState, play: &mut Play, store: &Store, o: &Options) {
         play.params.car = k;
     }
     let level = mp_levels::level_by_id(&s.level);
-    // `?pursuit=1` / `0` forces it.
+    // `?pursuit=1` / `0` forces it; `?cruise=1` / `0` the cruise.
+    let mode = store::mode_for(store, &level);
     let forced = o.param("pursuit").map(|v| v == "1");
-    play.params.pursuit =
-        level.police.is_some() && forced.unwrap_or(store::mode_for(store, &level) == "pursuit");
+    play.params.pursuit = level.police.is_some() && forced.unwrap_or(mode == "pursuit");
+    let forced = o.param("cruise").map(|v| v == "1");
+    play.params.cruise = level.open && forced.unwrap_or(mode == "cruise");
     play.params.flash = s.flash;
     if !play.params.physics_forced {
         play.params.physics = mp_sim::model::Physics::parse(&s.physics).unwrap_or_default();
@@ -1238,7 +1246,12 @@ fn activate(ui: &mut UiState, ctx: &mut ActCtx, controls: &ControlQuery, act: Ac
         }
         Act::Mode(m) => {
             let level = mp_levels::level_by_id(&ui.settings.level);
-            if level.police.is_none() {
+            let offered = match m {
+                "pursuit" => level.police.is_some(),
+                "cruise" => level.open,
+                _ => level.police.is_some() || level.open,
+            };
+            if !offered {
                 return;
             }
             ctx.store.set_str(&format!("mode.{}", level.id), m);

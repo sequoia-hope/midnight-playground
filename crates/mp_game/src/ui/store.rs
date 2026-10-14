@@ -488,11 +488,16 @@ impl Settings {
     }
 }
 
-/// `modeFor(l)`: Race or Hot Pursuit, per level; only levels with police
-/// offer the choice.
+/// `modeFor(l)`: Race, Hot Pursuit or Cruise, per level; only levels with
+/// police offer Hot Pursuit, and only the open world (`level.open`) a
+/// cruise: the road with no race on it, scored as the Night City Cruise
+/// is (D1211).
 pub fn mode_for(store: &Store, level: &mp_track::Level) -> &'static str {
-    if level.police.is_some() && store.string(&format!("mode.{}", level.id), "race") == "pursuit" {
+    let m = store.string(&format!("mode.{}", level.id), "race");
+    if level.police.is_some() && m == "pursuit" {
         "pursuit"
+    } else if level.open && m == "cruise" {
+        "cruise"
     } else {
         "race"
     }
@@ -723,6 +728,14 @@ mod tests {
         let seaside = mp_levels::level_by_id("seaside");
         store.set_str("mode.seaside", "pursuit");
         assert_eq!(mode_for(&store, &seaside), "race");
+        // Only the open world offers a cruise (D1211).
+        store.set_str("mode.seaside", "cruise");
+        assert_eq!(mode_for(&store, &seaside), "race");
+        let sc = mp_levels::level_by_id("southcoast");
+        assert!(sc.open);
+        assert_eq!(mode_for(&store, &sc), "race");
+        store.set_str("mode.southcoast", "cruise");
+        assert_eq!(mode_for(&store, &sc), "cruise");
         assert_eq!(best_key("sierra", false), "best.sierra");
     }
 
