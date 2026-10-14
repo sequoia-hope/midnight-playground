@@ -5,7 +5,6 @@
 mod common;
 
 use std::sync::Arc;
-use std::time::Instant;
 
 use mp_worldgen::section::{self, Section};
 use mp_worldgen::stages::LevelSetup;
@@ -33,7 +32,13 @@ fn planned() -> Planned {
 
 /// Runs a section's build and returns its world, cut.
 fn built(p: &Planned, sec: Section) -> World {
-    let t0 = Instant::now();
+    // No clock in wasm under Node (std's Instant panics there).
+    #[cfg(not(target_arch = "wasm32"))]
+    let t0 = std::time::Instant::now();
+    #[cfg(not(target_arch = "wasm32"))]
+    let secs = || t0.elapsed().as_secs_f64();
+    #[cfg(target_arch = "wasm32")]
+    let secs = || 0.0;
     let mut b = p.build(sec.clone());
     while !b.is_done() {
         b.step().expect("a section's job");
@@ -45,7 +50,7 @@ fn built(p: &Planned, sec: Section) -> World {
         sec.s0,
         sec.s1,
         if sec.base { " (base)" } else { "" },
-        t0.elapsed().as_secs_f64(),
+        secs(),
         stats.kept,
         stats.cut
     );

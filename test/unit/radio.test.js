@@ -84,7 +84,12 @@ test('audio/radio has every take of every clip, and index.json lists them', () =
     }
   }
   assert.deepEqual(missing, [], 'record them with tools/radio-voice/render.py');
-  const extra = fs.readdirSync(RADIO_DIR).filter((f) => f.endsWith('.mp3') && !ids.has(f.replace(/(\.\d)?\.mp3$/, '')));
+  // The Rust game's levels say lines this game never does (its own zone
+  // names); those clips are in index.json, so only an unlisted file is stale.
+  const extra = fs.readdirSync(RADIO_DIR).filter((f) => {
+    const id = f.replace(/(\.\d)?\.mp3$/, '');
+    return f.endsWith('.mp3') && !ids.has(id) && !index.clips[id];
+  });
   assert.deepEqual(extra, [], 'clips no line says any more');
 });
 

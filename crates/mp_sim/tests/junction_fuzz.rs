@@ -77,6 +77,8 @@ fn random_driving_around_the_junction_stays_finite() {
         }
         st.race.countdown = 0.0;
         let mut events = Vec::new();
+        // No clock in wasm under Node (std's Instant panics there).
+        #[cfg(not(target_arch = "wasm32"))]
         let start = std::time::Instant::now();
         let mut inp = Input::default();
         for tick in 0..(20 * 120) {
@@ -106,7 +108,10 @@ fn random_driving_around_the_junction_stays_finite() {
             }
         }
         let v = &st.players[0].v;
+        #[cfg(not(target_arch = "wasm32"))]
         let took = start.elapsed().as_secs_f64();
+        #[cfg(target_arch = "wasm32")]
+        let took = 0.0;
         eprintln!(
             "case {case} {physics:?} pursuit {}: from ({x:.0},{z:.0}) yaw {yaw:.2} speed {speed:.0}: ends road {} s {:.0} lat {:.0} road_s {:.0} in {took:.2} s",
             case % 2 == 0,
