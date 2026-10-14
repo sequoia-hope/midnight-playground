@@ -311,6 +311,9 @@ pub struct RoadCtx<'a> {
     /// Which road of the network this is (0 the level's, k its (k - 1)th
     /// branch): a partitioned section builds only its own road's metres.
     pub road: usize,
+    /// A branch's parent road: where the branch runs onto the parent's
+    /// tarmac (its mouth, and an open far end) it stands nothing there.
+    pub parent: Option<&'a Track>,
 }
 
 /// `new Road(track, terrain)` and what `build()` leaves on it.
@@ -407,6 +410,20 @@ impl RoadCtx<'_> {
             })
             .filter(|g| !g.is_empty())
             .collect()
+    }
+
+    /// Whether the branch's metre at `s` lies on its parent's road, out to
+    /// the parent's margin and a metre more (D1218).
+    fn on_parent(&self, s: f64) -> bool {
+        let Some(p) = self.parent else { return false };
+        let f = self.track.frame(s);
+        let d = p.distance_to_road(f.x, f.z, 60.0);
+        let Some(ps) = d.s else { return false };
+        if !p.is_loop && !(0.0..=p.length).contains(&ps) {
+            return false;
+        }
+        let pf = p.frame(if p.is_loop { p.wrap(ps) } else { ps });
+        d.lat.abs() < pf.hw + pf.margin + f.hw + 1.0
     }
 
     /// Whether the metre ending at `s` is this build's.
@@ -585,13 +602,43 @@ impl Road {
                 }
             }
         }
-        // Nothing across the mouth of a branch.
+        // Nothing across the mouth of a branch, nor where a branch's far
+        // end meets the road again (round a loop's wrap; D1218).
+        let mut clear = |at: f64, w: f64, side: f64| {
+            let (k0, k1) = ((at - w).floor() as i64, (at + w).ceil() as i64);
+            for k in k0..=k1 {
+                let i = if t.is_loop {
+                    k.rem_euclid(n as i64)
+                } else if (0..n as i64).contains(&k) {
+                    k
+                } else {
+                    continue;
+                } as usize;
+                let arr = if side < 0.0 { &mut l } else { &mut r };
+                arr[i] = 0;
+            }
+        };
         for b in &t.branches {
             let w = f64::from(b.track.hw[0]) + f64::from(b.track.margin[0]) + 3.0;
-            let i0 = js::max(0.0, (b.s - w).floor()) as usize;
-            let i1 = js::min((n - 1) as f64, (b.s + w).ceil()) as usize;
-            let arr = if b.side < 0.0 { &mut l } else { &mut r };
-            arr[i0..=i1].fill(0);
+            clear(b.s, w, b.side);
+            if let Some(e) = b.end {
+                let bt = &b.track;
+                let last = bt.n - 1;
+                let w = f64::from(bt.hw[last]) + f64::from(bt.margin[last]) + 3.0;
+                // The side the branch comes in from.
+                let f = bt.frame((bt.length - 30.0).max(0.0));
+                let side = js::sign(t.project(f.x, f.z, e).lat);
+                clear(e, w, side);
+            }
+        }
+        // A branch stands nothing on its parent's tarmac.
+        if c.parent.is_some() {
+            for i in 0..n {
+                if c.on_parent(i as f64) {
+                    l[i] = 0;
+                    r[i] = 0;
+                }
+            }
         }
         self.side_l = l;
         self.side_r = r;
@@ -1199,7 +1246,7 @@ impl Road {
                 "circuitWide",
             ]
             .contains(&key);
-            if !skip && k.abs() > 0.03 && s - last > 11.0 {
+            if !skip && k.abs() > 0.03 && s - last > 11.0 && !c.on_parent(s) {
                 items.push(Item {
                     s,
                     side: if k > 0.0 { -1.0 } else { 1.0 },

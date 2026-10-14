@@ -487,6 +487,116 @@ pub fn drawables(w: &World) -> Vec<(String, [f64; 3])> {
     out
 }
 
+/// Clears the kits' instances off the tarmac of an open level's branches
+/// (D1218): the ported kits know only the level's road and plant across a
+/// branch, at its mouth most of all. An instance whose origin lies on a
+/// branch's paved width, near its surface, is scaled to nothing. The
+/// roads' own furniture, the road-end barricades and the Land kit (which
+/// keeps clear of every road) are left alone.
+pub fn clear_branch_tarmac(w: &mut World) {
+    let Some(track) = &w.track else { return };
+    if !w.level.open || track.branches.is_empty() {
+        return;
+    }
+    // Each branch's paved box, to pass most instances by at once.
+    let boxes: Vec<[f64; 4]> = track
+        .branches
+        .iter()
+        .map(|b| {
+            let mut bx = [
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::NEG_INFINITY,
+            ];
+            let mut s = 0.0;
+            while s <= b.track.length {
+                let f = b.track.frame(s);
+                bx = [
+                    bx[0].min(f.x),
+                    bx[1].min(f.z),
+                    bx[2].max(f.x),
+                    bx[3].max(f.z),
+                ];
+                s += 5.0;
+            }
+            [bx[0] - 20.0, bx[1] - 20.0, bx[2] + 20.0, bx[3] + 20.0]
+        })
+        .collect();
+    let on_branch = |v: &Vector3| {
+        track.branches.iter().zip(&boxes).any(|(b, bx)| {
+            if v.x < bx[0] || v.x > bx[2] || v.z < bx[1] || v.z > bx[3] {
+                return false;
+            }
+            let t = &b.track;
+            let d = t.distance_to_road(v.x, v.z, 20.0);
+            let Some(s) = d.s else { return false };
+            if s < b.under || s > t.length {
+                return false;
+            }
+            let f = t.frame(s);
+            let y = t.surface_y(s, d.lat);
+            d.lat.abs() < f.hw + 0.5 && v.y > y - 2.0 && v.y < y + 6.0
+        })
+    };
+    let g = &w.graph;
+    let mut hits: Vec<(NodeId, Vec<usize>)> = Vec::new();
+    let mut stack: Vec<(NodeId, Matrix4, String)> = g
+        .roots
+        .iter()
+        .map(|&n| (n, Matrix4::IDENTITY, String::new()))
+        .collect();
+    while let Some((id, parent, group)) = stack.pop() {
+        let o = g.get(id);
+        let local = if o.matrix_auto_update {
+            Matrix4::compose(o.position, o.quaternion, o.scale)
+        } else {
+            o.matrix
+        };
+        let world = Matrix4::multiply_matrices(&parent, &local);
+        let group = if o.name.is_empty() {
+            group
+        } else {
+            o.name.clone()
+        };
+        if matches!(group.as_str(), "road" | "closed" | "land") {
+            continue;
+        }
+        if let Some(inst) = &o.instances {
+            let gone: Vec<usize> = (0..inst.count as usize)
+                .filter(|&i| {
+                    let m = inst.get_matrix_at(i);
+                    crate::object::max_scale_on_axis(&m) > 0.0
+                        && on_branch(
+                            &Vector3::new(0.0, 0.0, 0.0)
+                                .apply_matrix4(&m)
+                                .apply_matrix4(&world),
+                        )
+                })
+                .collect();
+            if !gone.is_empty() {
+                hits.push((id, gone));
+            }
+        }
+        for &c in &o.children {
+            stack.push((c, world, group.clone()));
+        }
+    }
+    for (id, gone) in hits {
+        if let Some(inst) = w.graph.get_mut(id).instances.as_mut() {
+            for i in gone {
+                inst.set_matrix_at(
+                    i,
+                    &Matrix4 {
+                        elements: [0.0; 16],
+                    },
+                );
+            }
+        }
+        w.graph.compute_instance_bounding_sphere(id);
+    }
+}
+
 /// A finished section build: [`cut`], then the scene and its animators.
 pub fn finish(b: crate::world::Build) -> (crate::world::WorldBuild, CutStats) {
     let mut w = b.world;
