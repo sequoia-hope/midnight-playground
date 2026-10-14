@@ -2,15 +2,16 @@
 """The ground under a corridor: real heights for the box round it, in game
 metres, for the game (docs/vision/peninsula.md, stage 2).
 
-  python3 tools/atlas/ground.py first-race [--margin 1500] [--step 12] [--refresh]
+  python3 tools/atlas/ground.py coast-south hwy-84-lower [--margin 1500] [--step 12] [--refresh]
 
-Reads assets/atlas/peninsula/corridors/<id>.txt (written by `cargo run -p
-mp_atlas -- corridor <id>`: the road in game metres at the plan's scale),
-takes the box round it with a margin (game metres), fetches the Terrarium
+Reads assets/atlas/peninsula/corridors/<id>.txt for each corridor given
+(written by `cargo run -p mp_atlas -- corridor <id>`: the road in game
+metres at the plan's scale), takes the box round all of them with a margin
+(game metres), fetches the Terrarium
 terrain tiles (zoom 13, about 15 m a pixel; cached in tools/atlas/cache/)
 and resamples them bilinearly onto a grid of `step` game metres, heights
 scaled as the corridor's road is (game metres per real metre, vertically
-too). Writes <id>.ground.bin beside the corridor, which `mp_levels`
+too). Writes <first id>.ground.bin beside the corridors, which `mp_levels`
 includes at compile time:
 
       0  b"MPGROUND"
@@ -88,7 +89,15 @@ def main():
     margin = opt('--margin', 1500.0)
     step = opt('--step', 12.0)
     refresh = '--refresh' in args
-    scale, xs, zs = read_corridor(os.path.join(OUT, f'{cid}.txt'))
+    scale, xs, zs = None, [], []
+    for i in ids:
+        sc, x, z = read_corridor(os.path.join(OUT, f'{i}.txt'))
+        if scale is not None and sc != scale:
+            raise SystemExit(f'{i}: scale {sc} differs from {scale}')
+        scale = sc
+        xs.append(x)
+        zs.append(z)
+    xs, zs = np.concatenate(xs), np.concatenate(zs)
 
     # The box, in game metres, on the grid.
     x0 = math.floor((xs.min() - margin) / step) * step

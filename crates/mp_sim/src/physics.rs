@@ -318,10 +318,10 @@ impl CarPhysics {
                 ..base
             });
         }
-        let p = t.project(v.x, v.z, v.s);
-        v.s = p.s;
-        v.lat = p.lat;
-        let f = t.frame(v.s);
+        // The road under the car (a branch of the level's road, or the
+        // road itself): its frame and surface are what the car drives.
+        let rt = v.project_onto(t);
+        let f = rt.frame(v.road_s);
 
         let mut fx = kernel::cos(v.yaw);
         let mut fz = kernel::sin(v.yaw);
@@ -490,15 +490,15 @@ impl CarPhysics {
             // tarmac the tyres plough through dirt and dry grass. Paved run-off
             // drives like the road.
             // An open level: past the shoulder the car is on the land.
-            let mut off = if t.run_l.is_some() {
-                clamp((v.lat.abs() - f.hw - 0.4) / 1.5, 0.0, 1.0)
-            } else if t.open_ground.is_some() {
-                clamp((v.lat.abs() - f.hw - f.margin) / 1.5, 0.0, 1.0)
+            let mut off = if rt.run_l.is_some() {
+                clamp((v.road_lat.abs() - f.hw - 0.4) / 1.5, 0.0, 1.0)
+            } else if rt.open_ground.is_some() {
+                clamp((v.road_lat.abs() - f.hw - f.margin) / 1.5, 0.0, 1.0)
             } else {
                 0.0
             };
             if off > 0.0
-                && let Some(loose_at) = &t.loose_at
+                && let Some(loose_at) = &rt.loose_at
             {
                 off *= loose_at(v.x, v.z);
             }
@@ -651,19 +651,17 @@ impl CarPhysics {
         v.speed = v.vx * kernel::cos(v.yaw) + v.vz * kernel::sin(v.yaw);
 
         // ── Integrate position ─────────────────────────────────────
-        let prev_ground = t.ground_y(v.x, v.z, v.s, v.lat);
+        let prev_ground = rt.ground_y(v.x, v.z, v.road_s, v.road_lat);
         v.x += v.vx * dt;
         v.z += v.vz * dt;
-        let p = t.project(v.x, v.z, v.s);
-        v.s = p.s;
-        v.lat = p.lat;
+        let rt = v.project_onto(t);
         // An open level has no walls: the car may leave the road.
         if t.open_ground.is_none() {
             self.collide_walls(v, t, dt);
         }
 
         // Vertical: follow the road unless it falls away faster than gravity.
-        let ground = t.ground_y(v.x, v.z, v.s, v.lat);
+        let ground = rt.ground_y(v.x, v.z, v.road_s, v.road_lat);
         let ground_vy = (ground - prev_ground) / dt;
         v.vy -= G * dt;
         let y_new = v.y + v.vy * dt;
@@ -715,6 +713,8 @@ impl CarPhysics {
             v.x -= f.rx * pen;
             v.z -= f.rz * pen;
             v.lat -= pen;
+            // Walls stand only on a closed level, whose one road this is.
+            v.road_lat = v.lat;
             let vn = (v.vx * f.rx + v.vz * f.rz) * sd; // into the wall
             if vn > 0.0 {
                 let e = 0.25;

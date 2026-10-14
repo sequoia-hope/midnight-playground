@@ -300,6 +300,10 @@ pub struct RoadCtx<'a> {
     pub textures: &'a mut TextureCache,
     /// `track.noMarks` (empty where no scenery sets it).
     pub no_marks: &'a [MarkGap],
+    /// A branch of the level's road (docs/vision/peninsula.md, stage 3):
+    /// its surface, paint and barriers begin this far along it (the
+    /// parent's paved edge), and it has no start or finish line.
+    pub branch_from: Option<f64>,
 }
 
 /// `new Road(track, terrain)` and what `build()` leaves on it.
@@ -549,6 +553,14 @@ impl Road {
                 }
             }
         }
+        // Nothing across the mouth of a branch.
+        for b in &t.branches {
+            let w = f64::from(b.track.hw[0]) + f64::from(b.track.margin[0]) + 3.0;
+            let i0 = js::max(0.0, (b.s - w).floor()) as usize;
+            let i1 = js::min((n - 1) as f64, (b.s + w).ceil()) as usize;
+            let arr = if b.side < 0.0 { &mut l } else { &mut r };
+            arr[i0..=i1].fill(0);
+        }
         self.side_l = l;
         self.side_r = r;
     }
@@ -626,8 +638,9 @@ impl Road {
         });
         let colorizer = Colorizer::new(c.terrain);
 
+        let from = c.branch_from.unwrap_or(0.0);
         for z in &t.zones {
-            let s0 = js::max(0.0, z.s0 - 1.0);
+            let s0 = js::max(from, z.s0 - 1.0);
             let s1 = js::min(t.length, z.s1 + 1.0);
             for r in chunks(s0, s1, 560.0) {
                 // Asphalt UVs in metres / 4 both ways, so the aggregate isn't
@@ -810,8 +823,9 @@ impl Road {
             }
             Section { l, f }
         };
-        let mut prev = lines_at(0.0);
-        let mut s = 1.0;
+        let from = c.branch_from.unwrap_or(0.0);
+        let mut prev = lines_at(from);
+        let mut s = from + 1.0;
         while s <= t.length {
             let cur = lines_at(s);
             for a in &prev.l {
@@ -882,7 +896,11 @@ impl Road {
                 .set("polygonOffsetFactor", -3.0)
                 .set("polygonOffsetUnits", -3.0),
         );
-        // A circuit starts and finishes on the same line.
+        // A circuit starts and finishes on the same line; a branch has
+        // neither.
+        if c.branch_from.is_some() {
+            return;
+        }
         let list: Vec<f64> = if t.is_loop {
             if t.laps != 0 {
                 vec![t.start_s]
@@ -940,6 +958,7 @@ impl Road {
                 .set("color", 0xd8d5ce)
         });
 
+        let from = c.branch_from.unwrap_or(0.0);
         for side in [-1.0f64, 1.0] {
             let arr = if side < 0.0 {
                 self.side_l.clone()
@@ -948,7 +967,7 @@ impl Road {
             };
             let w = move |f: &Frame| if side < 0.0 { f.wall_l } else { f.wall_r };
             // Guardrail W-beam: a vertical band.
-            let gr = runs(|s| arr[t.idx(s)] == 2, 2.0, 0.0, t.length);
+            let gr = runs(|s| arr[t.idx(s)] == 2, 2.0, from, t.length);
             for r in group_runs(&gr, 560.0) {
                 // f.hw + (wall - f.hw), as the JS writes it.
                 let out = move |f: &Frame| f.hw + (w(f) - f.hw);
@@ -972,7 +991,7 @@ impl Road {
             let fr = runs(
                 |s| arr[t.idx(s)] == 3 && !gaps.iter().any(|g| s > g.s0 && s < g.s1),
                 1.0,
-                0.0,
+                from,
                 t.length,
             );
             for r in group_runs(&fr, 560.0) {
@@ -996,7 +1015,7 @@ impl Road {
             self.post_instances(c, &fr, side, 3.0, wood, [0.14, 1.2, 0.14], 0.3);
 
             // Jersey barrier: extruded profile.
-            let jr = runs(|s| arr[t.idx(s)] == 4, 2.0, 0.0, t.length);
+            let jr = runs(|s| arr[t.idx(s)] == 4, 2.0, from, t.length);
             for r in group_runs(&jr, 560.0) {
                 let mut prof = vec![
                     pt(move |f| side * (w(f) - 0.02), 0.0, 0.0),
@@ -1119,7 +1138,7 @@ impl Road {
         }
         let mut items = Vec::new();
         let mut last = -100.0;
-        let mut s = 0.0;
+        let mut s = c.branch_from.unwrap_or(0.0);
         while s < t.length {
             let k = f64::from(t.k_smooth[t.idx(s)]);
             let key = road_type_at(t, t.idx(s)).key;

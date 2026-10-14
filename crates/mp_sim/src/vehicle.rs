@@ -34,6 +34,14 @@ pub struct Vehicle {
     pub yaw_rate: f64,
     pub s: f64,
     pub lat: f64,
+    /// The road of the level's network the car is on (0: the level's own
+    /// road; k: its (k - 1)th branch), and its place along and across it.
+    /// On road 0 these are `s` and `lat`; on a branch `s` and `lat` are the
+    /// car's place on the level's road (its progress), as the race, the
+    /// rivals and the HUD measure it.
+    pub road: usize,
+    pub road_s: f64,
+    pub road_lat: f64,
     /// Signed forward speed.
     pub speed: f64,
     pub steer_angle: f64,
@@ -109,6 +117,9 @@ impl Vehicle {
             yaw_rate: 0.0,
             s: 0.0,
             lat: 0.0,
+            road: 0,
+            road_s: 0.0,
+            road_lat: 0.0,
             speed: 0.0,
             steer_angle: 0.0,
             accel_long: 0.0,
@@ -128,6 +139,32 @@ impl Vehicle {
         kernel::cos(self.yaw)
     }
 
+    /// Where to search for the car along the road it is on: `s` on the
+    /// level's road (which the race may set without `road_s`), `road_s`
+    /// on a branch.
+    pub fn road_hint(&self) -> f64 {
+        if self.road == 0 { self.s } else { self.road_s }
+    }
+
+    /// Projects the car onto the level's road network: the road under it
+    /// (`road`, `road_s`, `road_lat`; [`Track::project_road`]) and its
+    /// place on the level's road (`s`, `lat`). Returns the road it is on.
+    pub fn project_onto<'a>(&mut self, t: &'a Track) -> &'a Track {
+        let (road, p) = t.project_road(self.x, self.z, self.road, self.road_hint());
+        self.road = road;
+        self.road_s = p.s;
+        self.road_lat = p.lat;
+        if road == 0 {
+            self.s = p.s;
+            self.lat = p.lat;
+        } else {
+            let q = t.project(self.x, self.z, self.s);
+            self.s = q.s;
+            self.lat = q.lat;
+        }
+        t.road(road)
+    }
+
     pub fn fz(&self) -> f64 {
         kernel::sin(self.yaw)
     }
@@ -140,6 +177,9 @@ impl Vehicle {
         self.z = p.z;
         self.s = s;
         self.lat = lat;
+        self.road = 0;
+        self.road_s = s;
+        self.road_lat = lat;
         self.yaw = kernel::atan2(f.fz, f.fx) + yaw_offset;
         self.vx = 0.0;
         self.vz = 0.0;

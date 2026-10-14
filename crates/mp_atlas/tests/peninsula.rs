@@ -89,19 +89,22 @@ fn tunnels_keep_the_road_level() {
 }
 
 #[test]
-fn the_first_races_corridor_is_up_to_date() {
-    // The game includes the corridor file at compile time (mp_levels), so
-    // it is committed; it must match what the atlas writes now.
+fn the_corridors_are_up_to_date() {
+    // The game includes the corridor files at compile time (mp_levels), so
+    // a change to the plan, the atlas or the writer must be written out.
     let dir = Atlas::dir("peninsula");
     let a = atlas();
     let m = measure(&a).unwrap();
-    let r = m.routes.iter().find(|r| r.id == "first-race").unwrap();
-    let now = mp_atlas::corridor::text(&mp_atlas::corridor::corridor(r, &a.terrain));
-    let file = std::fs::read_to_string(dir.join("corridors/first-race.txt")).unwrap_or_default();
-    assert!(
-        file == now,
-        "assets/atlas/peninsula/corridors/first-race.txt is stale: run `cargo run -p mp_atlas -- corridor first-race`"
-    );
+    for id in ["coast-south", "hwy-84-lower"] {
+        let r = m.routes.iter().find(|r| r.id == id).unwrap();
+        let now = mp_atlas::corridor::text(&mp_atlas::corridor::corridor(r, &a.terrain));
+        let file =
+            std::fs::read_to_string(dir.join(format!("corridors/{id}.txt"))).unwrap_or_default();
+        assert!(
+            now == file,
+            "assets/atlas/peninsula/corridors/{id}.txt is stale: run `cargo run -p mp_atlas -- corridor {id}`"
+        );
+    }
 }
 
 #[test]

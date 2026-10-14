@@ -23,7 +23,7 @@ fn height_is_the_arcades_surface_and_the_normal_follows_bank_and_grade() {
         while s < t.length - 5.0 {
             for lat in [-3.0, 0.0, 2.5] {
                 let p = t.point_at(s, lat);
-                let g = TrackGround::new(&t, s);
+                let g = TrackGround::new(&t, 0, s);
                 let h = g.height(p.x, p.z);
                 let pr = t.project(p.x, p.z, s);
                 assert_eq!(h.y, t.surface_y(pr.s, pr.lat), "{id} s {s}");
@@ -56,7 +56,7 @@ fn signed_distance_and_walls() {
     let t = track("sierra");
     let s = 200.0;
     let p = t.point_at(s, 1.0);
-    let g = TrackGround::new(&t, s);
+    let g = TrackGround::new(&t, 0, s);
     let above = g.sdf(Vec3::new(p.x, p.y + 0.5, p.z));
     let below = g.sdf(Vec3::new(p.x, p.y - 0.2, p.z));
     assert!(above.dist > 0.45 && above.dist <= 0.5, "{}", above.dist);

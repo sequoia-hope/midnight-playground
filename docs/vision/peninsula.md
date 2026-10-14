@@ -78,11 +78,12 @@ from the real road through the existing coast generator.
 
 ### Stage 2. Ground under the whole box (built 2026-10-13)
 
-- **`tools/atlas/ground.py <corridor>`** writes `<corridor>.ground.bin`
-  beside the corridor file: the Terrarium terrain tiles (15 m real, the
+- **`tools/atlas/ground.py <corridor>...`** writes `<corridor>.ground.bin`
+  beside the corridor files: the Terrarium terrain tiles (15 m real, the
   same source as the planning grid, cached in `tools/atlas/cache/`)
-  resampled onto a grid of 12 game metres over the corridor's box plus
-  1.5 km, heights compressed as the road is. 341 kB zlib in git;
+  resampled onto a grid of game metres over the corridors' box plus a
+  margin (16 m and 1.2 km since stage 3; 12 m and 1.5 km before), heights
+  compressed as the road is. 541 kB zlib in git;
   `mp_levels::ground::HeightGrid` reads it (bilinear, clamped) and the
   level includes it at compile time, inflated once when the level is
   first made. Packing it into the wasm rather than fetching it as
@@ -111,12 +112,51 @@ from the real road through the existing coast generator.
   its proper answer.
 - **Gate:** pull off Highway 1 at the crest and drive across a field.
 
-### Stage 3. Two roads meeting
+### Stage 3. Two roads meeting (built 2026-10-13)
 
-- A road network: several corridors sharing junctions, from the atlas's
-  graph. The projection picks the nearest road; traffic and rivals
-  follow a route through the network.
-- The junction surface: where 84 meets Highway 1 at San Gregorio first.
+- **Two corridors.** The level's road is now the whole of `coast-south`
+  (the junction at San Gregorio to Half Moon Bay, 8.7 km); the race
+  still starts at the crest, which the level finds as the highest point
+  of the road's first 2 km. `hwy-84-lower` (a route added to the plan:
+  the junction to La Honda, 7.1 km) is the first branch. The corridor
+  writer now smooths the map's line (a triangular window 30 m either
+  side, real) and writes the samples to the centimetre, so the road is a
+  curve and not the map's chain of segments.
+- **A branch** (`Level::branches`, `mp_track::Branch`): a corridor of its
+  own with a road type and a zone of the level's, starting where it meets
+  the parent. `Track::new` builds each as an open path
+  (`Track::branches`, `BranchTrack`): the path is trimmed to where it
+  leaves the parent's pavement and started on the parent's centreline;
+  over the parent its heights are the parent's surface (lifted 2 cm over
+  the shoulder so the meshes do not fight), and its own again 120 m on;
+  the parent's fences open at the junction. The branch is one zone, its
+  own road type the whole way.
+- **The road under the car** (`Track::project_road`): the road the car
+  was on keeps it while its shoulder holds it; otherwise the road whose
+  shoulder does, or the one it is least far off. `Vehicle` carries
+  `road`, `road_s` and `road_lat` beside `s` and `lat`: on a branch `s`
+  and `lat` are still the car's place on the level's road, so the race,
+  the rivals, the police and the HUD measure progress as before (a car
+  up 84 is stopped at the junction, far off the road, as far as the race
+  is concerned). The arcade physics, the sim car's ground adapter and
+  the steering assists drive the road under the car.
+- **World generation**: the terrain's box covers every road; the far
+  field's distance and road height take every road (the mesh's detail
+  and scenery's road clearance follow 84 too), its s, side and zone stay
+  the level's road's; the near field blends every road into the land, so
+  the junction is one surface (a test holds 84's first metres to Highway
+  1's surface within 8 cm and the drawn ground beside the mouth within
+  0.75 m). On an open level the zones follow the roads, not x
+  (`Terrain::zone_weights_at`: the nearest road sample's zone, blended
+  between the far field's cells), which also puts the crest in the coast
+  zone's colours. The road builder makes a `Road` per branch, begun at
+  the parent's paved edge, with no start or finish line and nothing
+  across its mouth.
+- Not yet: traffic, rivals and police stay on the level's road; the
+  branch has no scenery (the redwoods of 84 are planting by land cover,
+  which the whole open world still wants); the end of a road is open
+  (the car drives off its end onto the land); the branch's own s is not
+  shown anywhere.
 - **Gate:** turn off Highway 1 onto 84 and drive up to La Honda.
 
 ### Stage 4. Streaming

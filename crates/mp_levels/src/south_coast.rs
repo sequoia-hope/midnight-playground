@@ -1,30 +1,40 @@
 //! "Midnight on the Coast": the open world's first corridor
-//! (docs/vision/peninsula.md, stage 1). Highway 1 from the crest above
-//! San Gregorio to Half Moon Bay's big intersection, the real road
-//! compressed to the atlas plan's scale: down off the crest, along the
-//! bluffs past the farms and over the creeks, into the town's lights.
+//! (docs/vision/peninsula.md, stage 1). Highway 1 from the San Gregorio
+//! junction to Half Moon Bay's big intersection, the real road compressed
+//! to the atlas plan's scale; the race starts at the crest above San
+//! Gregorio: down off the crest, along the bluffs past the farms and over
+//! the creeks, into the town's lights.
 //!
-//! The road is `assets/atlas/peninsula/corridors/first-race.txt`, written
-//! by `cargo run -p mp_atlas -- corridor first-race` and included here at
+//! The road is `assets/atlas/peninsula/corridors/coast-south.txt`, written
+//! by `cargo run -p mp_atlas -- corridor coast-south` and included here at
 //! compile time (a sample every 5 game metres: x, z, y and the real land
 //! cover beside the road). The ground under the whole box is real too
-//! (stage 2): `first-race.ground.bin`, written by `tools/atlas/ground.py`
-//! from the terrain tiles, 12 game metres a cell, which the level is open
+//! (stage 2): `coast-south.ground.bin`, written by `tools/atlas/ground.py`
+//! from the terrain tiles, 16 game metres a cell, which the level is open
 //! onto: the car may leave the road, and world generation shapes the land
-//! from it instead of the kit's landform.
+//! from it instead of the kit's landform. Highway 84 leaves Highway 1 at
+//! the junction and climbs to La Honda (stage 3): a branch of the road,
+//! `hwy-84-lower.txt`, that the Track joins to the main road.
 
 use std::sync::{Arc, OnceLock};
 
 use crate::ground::HeightGrid;
 use crate::{police, zone};
-use mp_track::{Level, LoopPath, LoopRoad, LoopSpec, LoopTag, Mode, Route};
+use mp_track::{Branch, Level, LoopPath, LoopRoad, LoopSpec, LoopTag, Mode, Route};
 
-/// The corridor file.
-pub const CORRIDOR: &str = include_str!("../../../assets/atlas/peninsula/corridors/first-race.txt");
-/// The ground file (341 kB, zlib): inflated once, the first time the level
+/// The corridor file: Highway 1 from the junction to Half Moon Bay.
+pub const CORRIDOR: &str =
+    include_str!("../../../assets/atlas/peninsula/corridors/coast-south.txt");
+/// Highway 84 from the junction to La Honda.
+pub const BRANCH_84: &str =
+    include_str!("../../../assets/atlas/peninsula/corridors/hwy-84-lower.txt");
+/// The ground file (541 kB, zlib): inflated once, the first time the level
 /// is made.
 pub const GROUND: &[u8] =
-    include_bytes!("../../../assets/atlas/peninsula/corridors/first-race.ground.bin");
+    include_bytes!("../../../assets/atlas/peninsula/corridors/coast-south.ground.bin");
+/// The race starts at the first crest along the road: the highest point
+/// within this many game metres of the junction.
+pub const CREST_WITHIN: f64 = 2000.0;
 
 /// The ground under the box, decoded once.
 pub fn ground() -> Arc<HeightGrid> {
@@ -72,8 +82,13 @@ impl Corridor {
         if c.x.len() < 2 {
             return Err("corridor: fewer than two samples".to_owned());
         }
-        let (dx, dz) = (c.x[1] - c.x[0], c.z[1] - c.z[0]);
-        c.step = mp_math::kernel::hypot(dx, dz);
+        // The samples' mean spacing (the writer's smoothing moves them a
+        // little along the road).
+        let mut len = 0.0;
+        for k in 1..c.x.len() {
+            len += mp_math::kernel::hypot(c.x[k] - c.x[k - 1], c.z[k] - c.z[k - 1]);
+        }
+        c.step = len / (c.x.len() - 1) as f64;
         Ok(c)
     }
 
@@ -94,6 +109,19 @@ impl Corridor {
             if i - start > best_len {
                 best = start;
                 best_len = i - start;
+            }
+        }
+        best as f64 * self.step
+    }
+
+    /// The crest the race starts on: the highest sample within `within`
+    /// metres of the road's start, in game metres along the road.
+    pub fn crest_within(&self, within: f64) -> f64 {
+        let n = ((within / self.step) as usize).min(self.y.len() - 1);
+        let mut best = 0;
+        for k in 1..=n {
+            if self.y[k] > self.y[best] {
+                best = k;
             }
         }
         best as f64 * self.step
@@ -142,7 +170,9 @@ pub fn path(c: &Corridor) -> LoopPath {
 
 pub fn level() -> Level {
     let c = Arc::new(Corridor::parse(CORRIDOR).expect("the committed corridor parses"));
+    let b84 = Arc::new(Corridor::parse(BRANCH_84).expect("the committed branch parses"));
     let town = c.town_start();
+    let crest = c.crest_within(CREST_WITHIN);
     Level {
         id: "southcoast",
         mode: Mode::Race,
@@ -170,8 +200,8 @@ pub fn level() -> Level {
             tags: vec![
                 LoopTag {
                     tag: "start",
-                    s0: Some(0.),
-                    s1: Some(150.),
+                    s0: Some(crest),
+                    s1: Some(crest + 150.),
                     f0: None,
                     f1: None,
                     elevated: None,
@@ -191,7 +221,7 @@ pub fn level() -> Level {
                 s1: (c.x.len() as f64 * c.step) as i64 + 1,
                 road: "boulevard",
             }],
-            start_s: Some(60.),
+            start_s: Some(crest + 60.),
             elevation_smooth: None,
             zones: Some(vec![0., town]),
         }),
@@ -202,6 +232,19 @@ pub fn level() -> Level {
         }),
         loose_ground: None,
         open: true,
+        // Highway 84 leaves the junction at the road's start and climbs
+        // through the redwoods to La Honda.
+        branches: vec![Branch {
+            id: "hwy84",
+            name: "Highway 84",
+            path: {
+                let c = b84.clone();
+                Arc::new(move || Ok(path(&c)))
+            },
+            road: "mountain",
+            zone: 0,
+            elevation_smooth: None,
+        }],
         sea_y: Some(0.),
         zones: vec![
             zone(
@@ -277,12 +320,28 @@ mod tests {
         let c = Corridor::parse(CORRIDOR).unwrap();
         assert!((c.step - 5.0).abs() < 0.2, "{}", c.step);
         let len = (c.x.len() - 1) as f64 * c.step;
-        assert!(len > 7000.0 && len < 8500.0, "{len}");
+        assert!(len > 8000.0 && len < 9500.0, "{len}");
         let town = c.town_start();
         assert!(town > len - 1500.0 && town < len, "{town} of {len}");
         assert_eq!(c.cover[(town / c.step) as usize], "urban");
-        // Down off the crest, into the town near sea level.
-        assert!(c.y[0] > 60.0 && *c.y.last().unwrap() < 15.0);
+        // Up from the junction near sea level to the crest, then down into
+        // the town near sea level.
+        let crest = c.crest_within(CREST_WITHIN);
+        assert!(crest > 800.0 && crest < 1400.0, "{crest}");
+        assert!(c.y[0] < 20.0 && c.y[(crest / c.step) as usize] > 60.0);
+        assert!(*c.y.last().unwrap() < 15.0);
+    }
+
+    #[test]
+    fn highway_84_starts_at_the_junction_and_climbs_to_la_honda() {
+        let c = Corridor::parse(CORRIDOR).unwrap();
+        let b = Corridor::parse(BRANCH_84).unwrap();
+        let d = mp_math::kernel::hypot(b.x[0] - c.x[0], b.z[0] - c.z[0]);
+        assert!(d < 5.0, "the branch starts {d} m from the junction");
+        let len = (b.x.len() - 1) as f64 * b.step;
+        assert!(len > 6000.0 && len < 8000.0, "{len}");
+        assert!(*b.y.last().unwrap() > 40.0);
+        assert!(b.x.last().unwrap() > &(c.x[0] + 4000.0), "east to La Honda");
     }
 
     #[test]

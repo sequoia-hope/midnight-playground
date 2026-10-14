@@ -148,7 +148,13 @@ const YAW_ASSIST_FULL: f64 = 40.0;
 impl SimCar {
     /// A sim car where the body view `v` is, at its speed.
     pub fn new(def: VehicleDef, v: &Vehicle, t: &Track) -> SimCar {
-        let ground = t.surface_y(v.s, v.lat);
+        // Placed cars carry only `s` and `lat` on the level's road.
+        let (s, lat) = if v.road == 0 {
+            (v.s, v.lat)
+        } else {
+            (v.road_s, v.road_lat)
+        };
+        let ground = t.road(v.road).ground_y(v.x, v.z, s, lat);
         let mut car = mp_vdyn::Vehicle::new(&def, v.x, ground, v.z, v.yaw);
         let rest_height = car.body.pos.y - ground;
         let speed = v.vx * kernel::cos(v.yaw) + v.vz * kernel::sin(v.yaw);
@@ -401,7 +407,7 @@ impl SimCar {
         for w in self.car.wheels.iter_mut() {
             w.tyre.set_grip(grip);
         }
-        let ground = TrackGround::new(t, v.s);
+        let ground = TrackGround::new(t, v.road, v.road_hint());
         self.car.step(&self.def, &ctl, &ground);
         if ctl.boost > 0.0 {
             phys.nitro = (phys.nitro - dt / NITRO_SECS).max(0.0);
@@ -437,9 +443,7 @@ impl SimCar {
         v.vy = b.vel.y;
         v.yaw = car.yaw();
         v.yaw_rate = car.yaw_rate();
-        let p = t.project(v.x, v.z, v.s);
-        v.s = p.s;
-        v.lat = p.lat;
+        v.project_onto(t);
         v.speed = car.speed();
         v.steer_angle = car.steer;
         v.accel_long = tm.accel.x;

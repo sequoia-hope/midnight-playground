@@ -278,6 +278,9 @@ struct FarField {
     fl: Vec<f32>,
     flat: Vec<f32>,
     fopen: Option<Vec<f32>>,
+    /// The zone of the nearest sample of the level's road (open levels:
+    /// zones follow the roads, not x).
+    fzone: Vec<u8>,
 }
 
 /// A typed-array read the JS way: an index outside the array is
@@ -345,7 +348,14 @@ impl Terrain {
     /// `new Terrain(track, level, opts)`. Fails on a landform the JS has no
     /// entry for (where the JS would fail in `buildFields`).
     pub fn new(track: &Track, level: &Level, opts: &TerrainOpts) -> Result<Terrain, String> {
-        let b = track.bounds;
+        // The box round every road of the network.
+        let mut b = track.bounds;
+        for r in track.roads() {
+            b.min_x = js::min(b.min_x, r.bounds.min_x);
+            b.max_x = js::max(b.max_x, r.bounds.max_x);
+            b.min_z = js::min(b.min_z, r.bounds.min_z);
+            b.max_z = js::max(b.max_z, r.bounds.max_z);
+        }
         let margin = opts.margin;
         let min_x = ((b.min_x - margin) / TILE).floor() * TILE;
         let min_z = ((b.min_z - margin) / TILE).floor() * TILE;
@@ -560,6 +570,36 @@ impl Terrain {
         v
     }
 
+    /// The zone weights at a point: by x as the drawn levels blend their
+    /// zones (`zoneWeights(x)`), or, on an open level, the zone of the
+    /// nearest bit of the level's road, blended between the far field's
+    /// cells.
+    pub fn zone_weights_at(&self, x: f64, z: f64) -> ZoneWeights {
+        if !self.open_level || self.far.fzone.is_empty() {
+            return self.zone_weights(x);
+        }
+        let f = &self.far;
+        let gx = clamp((x - self.min_x) / FAR, 0.0, f.fw as f64 - 1.001);
+        let gz = clamp((z - self.min_z) / FAR, 0.0, f.fh as f64 - 1.001);
+        let i = gx.floor();
+        let j = gz.floor();
+        let tx = gx - i;
+        let tz = gz - j;
+        let k00 = j as usize * f.fw + i as usize;
+        let n = self.forms.len();
+        let mut w = [0.0; MAX_ZONES];
+        for (k, wt) in [
+            (k00, (1.0 - tx) * (1.0 - tz)),
+            (k00 + 1, tx * (1.0 - tz)),
+            (k00 + f.fw, (1.0 - tx) * tz),
+            (k00 + f.fw + 1, tx * tz),
+        ] {
+            let zi = (f.fzone[k] as usize).min(n - 1);
+            w[zi] += wt;
+        }
+        ZoneWeights { w, n }
+    }
+
     /// `zoneWeights(x)`.
     pub fn zone_weights(&self, x: f64) -> ZoneWeights {
         let n = self.forms.len();
@@ -588,34 +628,45 @@ impl Terrain {
         let mut fs = vec![0f32; fw * fh];
         let mut fl = vec![0f32; fw * fh];
         let mut flat = vec![0f32; fw * fh]; // signed lateral distance
+        let mut fzone = vec![0u8; fw * fh];
         const R: f64 = 3000.0;
-        let mut i = 0;
-        while i < t.n {
-            let x = f64::from(t.px[i]);
-            let z = f64::from(t.pz[i]);
-            let i0 = js::max(0.0, ((x - R - self.min_x) / FAR).floor()) as i64;
-            let i1 = js::min((fw - 1) as f64, ((x + R - self.min_x) / FAR).ceil()) as i64;
-            let j0 = js::max(0.0, ((z - R - self.min_z) / FAR).floor()) as i64;
-            let j1 = js::min((fh - 1) as f64, ((z + R - self.min_z) / FAR).ceil()) as i64;
-            let (rx, rz) = (f64::from(t.rx[i]), f64::from(t.rz[i]));
-            let py = t.py[i];
-            for j in j0..=j1 {
-                let wz = self.min_z + j as f64 * FAR - z;
-                for ii in i0..=i1 {
-                    let wx = self.min_x + ii as f64 * FAR - x;
-                    let d2 = wx * wx + wz * wz;
-                    let k = j as usize * fw + ii as usize;
-                    if d2 < f64::from(fd[k]) {
-                        fd[k] = d2 as f32;
-                        fy[k] = py;
-                        fs[k] = i as f32;
-                        let lat = wx * rx + wz * rz;
-                        fl[k] = if lat >= 0.0 { 1.0 } else { -1.0 };
-                        flat[k] = lat as f32;
+        // The level's road sets every field; its branches (an open level's
+        // network) only the distance and height of the nearest road, which
+        // the land's shaping, the mesh's detail and scenery placement read.
+        // The field's s, side and zone stay the level's road's.
+        for (ri, t) in t.roads().enumerate() {
+            let main = ri == 0;
+            let mut i = 0;
+            while i < t.n {
+                let x = f64::from(t.px[i]);
+                let z = f64::from(t.pz[i]);
+                let i0 = js::max(0.0, ((x - R - self.min_x) / FAR).floor()) as i64;
+                let i1 = js::min((fw - 1) as f64, ((x + R - self.min_x) / FAR).ceil()) as i64;
+                let j0 = js::max(0.0, ((z - R - self.min_z) / FAR).floor()) as i64;
+                let j1 = js::min((fh - 1) as f64, ((z + R - self.min_z) / FAR).ceil()) as i64;
+                let (rx, rz) = (f64::from(t.rx[i]), f64::from(t.rz[i]));
+                let py = t.py[i];
+                for j in j0..=j1 {
+                    let wz = self.min_z + j as f64 * FAR - z;
+                    for ii in i0..=i1 {
+                        let wx = self.min_x + ii as f64 * FAR - x;
+                        let d2 = wx * wx + wz * wz;
+                        let k = j as usize * fw + ii as usize;
+                        if d2 < f64::from(fd[k]) {
+                            fd[k] = d2 as f32;
+                            fy[k] = py;
+                            if main {
+                                fs[k] = i as f32;
+                                let lat = wx * rx + wz * rz;
+                                fl[k] = if lat >= 0.0 { 1.0 } else { -1.0 };
+                                flat[k] = lat as f32;
+                                fzone[k] = t.zone[i];
+                            }
+                        }
                     }
                 }
+                i += 12;
             }
-            i += 12;
         }
         for v in fd.iter_mut() {
             *v = f64::from(*v).sqrt() as f32;
@@ -629,6 +680,7 @@ impl Terrain {
             fl,
             flat,
             fopen: None,
+            fzone,
         };
         if self.forms.contains(&Form::Mountain) {
             self.open_field(t);
@@ -642,22 +694,26 @@ impl Terrain {
         self.near_index.clear();
         // Circuits: the flat run-off reaches the barriers on each side.
         let corridor = self.lf.iter().all(|f| f.corridor);
-        let mut i = 0;
-        while i < t.n {
-            self.near_sample(t, i, corridor);
-            i += 2;
+        for road in t.roads() {
+            let mut i = 0;
+            while i < road.n {
+                self.near_sample(road, i, corridor);
+                i += 2;
+            }
         }
         self.index_near_tiles();
     }
 
     fn near_sample(&mut self, t: &Track, i: usize, corridor: bool) {
-        let zb = t.zone_blend(i as f64, 150.0);
         let hw = f64::from(t.hw[i]);
         let (mut r0, mut band, mut k_pow) = (hw, 0.0, 0.0);
-        for (z, &w) in zb.iter().enumerate() {
-            r0 += w * self.lf[z].r0;
-            band += w * self.lf[z].band;
-            k_pow += w * self.lf[z].pow;
+        if !self.open_level {
+            let zb = t.zone_blend(i as f64, 150.0);
+            for (z, &w) in zb.iter().enumerate() {
+                r0 += w * self.lf[z].r0;
+                band += w * self.lf[z].band;
+                k_pow += w * self.lf[z].pow;
+            }
         }
         if self.open_level {
             // The Track's own law (`ground_y`), so the simulation's ground

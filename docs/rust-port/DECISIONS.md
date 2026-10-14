@@ -10737,3 +10737,66 @@ real ground under its whole box, and the car may leave the road.
 - The kits still colour and plant over the real shape; the coast kit's
   own cliff and sea-stack placement can land on dry ground; progress is
   still the nearest ribbon point. Noted in peninsula.md for stage 3.
+
+## D1209. The open world's road network: a branch leaves the road at a junction
+
+2026-10-13, peninsula.md stage 3. Highway 84 leaves Highway 1 at San
+Gregorio and climbs to La Honda; the car turns off one road onto the other.
+
+- **The data:** the level's road is the whole of the plan's `coast-south`
+  route (the junction to Half Moon Bay, 8.7 km); the race's start is the
+  crest, found as the highest point of the road's first 2 km
+  (`Corridor::crest_within`). A route `hwy-84-lower` (the junction to La
+  Honda, 7.1 km) is the branch. `ground.py` takes several corridors and
+  covers their box (16 m cells, 1.2 km margin: `coast-south.ground.bin`,
+  541 kB; the delivery choice of D1208 stands). The corridor writer
+  smooths the map's line with a triangular window 30 m either side (real)
+  and writes the samples to the centimetre: the map's road is a chain of
+  straight segments between nodes, and the tenth-of-a-metre rounding at
+  5 m spacing wobbled the road's heading by half a degree a sample, which
+  the owner saw as short segments. `Corridor::parse`'s step is the mean
+  spacing.
+- **A branch** (`Level::branches: Vec<Branch>`, `Track::branches:
+  Vec<BranchTrack>`): a path, a road type and a zone of the level's. The
+  Track trims the path to where it leaves the parent's pavement, starts
+  it on the parent's centreline, builds it as an open path, then fits its
+  heights after the road's smoothing: over the parent (to `clear`, the
+  parent's shoulder plus a metre) the parent's surface plus a 2 cm lift
+  over the shoulder (`BRANCH_LIFT`), and the difference fading over
+  `BRANCH_FIT` (120 m). A branch is one zone and one road type; the
+  parent's fences open at its mouth (a `FenceGap`). Roads are addressed
+  by index: 0 the level's road, k its (k - 1)th branch (`Track::road`,
+  `roads()`).
+- **The road under the car** (`Track::project_road(x, z, road, hint)`):
+  the road the car was on keeps it while its shoulder holds it
+  (hysteresis in the junction, where both do); else the road whose
+  shoulder holds it, else the one it is least far off (each other road
+  found through its spatial hash within 96 m). `Vehicle` gained `road`,
+  `road_s` and `road_lat` (`Vehicle::project_onto`); `s` and `lat` stay
+  the car's place on the level's road, its progress, which on a branch
+  is the nearest point of that road: the race, the rivals, the police,
+  the traffic and the HUD are unchanged. The arcade physics, the sim
+  car's `TrackGround` (now `new(track, road, hint)`), `SimCar::new` and
+  the assists (`line_steer`, `assist_need`, `steer_assist`) read the road
+  under the car. Each road's `ground_y` blends only itself into the land;
+  where two roads' bands overlap the car is on the nearer's, which is
+  what the terrain's near field averages toward.
+- **World generation:** the terrain's box covers every road; the far
+  field's distance and height take every road (mesh detail, scenery
+  clearance), its s, side and zone only the level's road's; the near
+  field takes every road's samples. On an open level
+  `Terrain::zone_weights_at(x, z)` is the nearest road sample's zone
+  blended between far-field cells (the drawn levels' blend by x put the
+  crest in the beach zone); the colouriser and the coast kit's `in_zone`
+  use it. `road_stage` builds a `Road` per branch (`World::branch_roads`)
+  with `RoadCtx::branch_from` at the parent's paved edge less 0.3 m: no
+  surface, paint, barriers or chevrons before it and no start or finish
+  line; `classify_sides` clears the parent's edge across the mouth.
+- Tests: `mp_track/tests/branch.rs` (a synthetic junction: the start, the
+  shared surface, the fence gap, the projection's choices),
+  `mp_sim/tests/junction.rs` (the arcade car turns off Highway 1 onto 84
+  from its mouth and drives 600 m up it on its tarmac),
+  `mp_worldgen/tests/open_ground.rs` (every road, the junction one
+  surface within 8 cm), and the level's own.
+- Not yet: traffic, rivals and police stay on the level's road; the
+  branch has no scenery; a road's end is open.

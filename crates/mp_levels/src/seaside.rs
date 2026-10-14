@@ -138,6 +138,7 @@ pub fn level() -> Level {
         ground: None,
         loose_ground: None,
         open: false,
+        branches: Vec::new(),
         sea_y: None,
         zones: vec![
             zone(

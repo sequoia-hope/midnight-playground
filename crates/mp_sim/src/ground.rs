@@ -18,28 +18,35 @@ pub const SURFACE_RUNOFF: u16 = 1;
 const D_LAT: f64 = 0.05;
 const D_S: f64 = 0.5;
 
-/// The track as ground, near arc length `hint` (where the car is: every
-/// projection searches from there, as the arcade physics does).
+/// The track as ground, near arc length `hint` on road `road` of the
+/// level's network (where the car is: every projection searches from
+/// there, as the arcade physics does).
 pub struct TrackGround<'a> {
     pub track: &'a Track,
+    pub road: usize,
     pub hint: f64,
 }
 
 impl<'a> TrackGround<'a> {
-    pub fn new(track: &'a Track, hint: f64) -> TrackGround<'a> {
-        TrackGround { track, hint }
+    pub fn new(track: &'a Track, road: usize, hint: f64) -> TrackGround<'a> {
+        TrackGround { track, road, hint }
+    }
+
+    /// The road under (x, z) and the projection onto it.
+    fn on(&self, x: f64, z: f64) -> (&'a Track, mp_track::Projection) {
+        let (k, p) = self.track.project_road(x, z, self.road, self.hint);
+        (self.track.road(k), p)
     }
 
     /// How far into loose run-off (x, z) lies at lateral offset `lat` from
     /// the centreline at `hw` half-width: 0 on the road, up to 1 (the
     /// arcade physics' `off`).
-    fn off(&self, x: f64, z: f64, lat: f64, hw: f64) -> f64 {
-        let t = self.track;
+    fn off(&self, t: &Track, x: f64, z: f64, p: &mp_track::Projection, hw: f64) -> f64 {
+        let lat = p.lat;
         let mut off = if t.run_l.is_some() {
             clamp((lat.abs() - hw - 0.4) / 1.5, 0.0, 1.0)
         } else if t.open_ground.is_some() {
             // An open level: past the shoulder the car is on the land.
-            let p = t.project(x, z, self.hint);
             clamp((lat.abs() - hw - t.margin[p.i] as f64) / 1.5, 0.0, 1.0)
         } else {
             0.0
@@ -55,8 +62,7 @@ impl<'a> TrackGround<'a> {
 
 impl Ground for TrackGround<'_> {
     fn height(&self, x: f64, z: f64) -> GroundSample {
-        let t = self.track;
-        let p = t.project(x, z, self.hint);
+        let (t, p) = self.on(x, z);
         let y = t.ground_y(x, z, p.s, p.lat);
         let f = t.frame(p.s);
         // Slopes across and along the road, from the surface itself, so
@@ -71,7 +77,7 @@ impl Ground for TrackGround<'_> {
             -f.fz * g_s - g_lat * f.fx,
         )
         .normalize();
-        let off = self.off(x, z, p.lat, f.hw);
+        let off = self.off(t, x, z, &p, f.hw);
         GroundSample {
             y,
             normal,
@@ -102,10 +108,9 @@ impl Ground for TrackGround<'_> {
     }
 
     fn colliders(&self, aabb: Aabb, out: &mut Vec<Collider>) {
-        let t = self.track;
         let cx = (aabb.min.x + aabb.max.x) / 2.0;
         let cz = (aabb.min.z + aabb.max.z) / 2.0;
-        let p = t.project(cx, cz, self.hint);
+        let (t, p) = self.on(cx, cz);
         let f = t.frame(p.s);
         let y = t.surface_y(p.s, p.lat);
         // The corridor's walls as planes facing the road, from the frame
