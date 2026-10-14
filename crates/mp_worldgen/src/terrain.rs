@@ -293,6 +293,7 @@ fn at(a: &[f32], i: f64) -> f64 {
     }
 }
 
+#[derive(Clone)]
 pub struct Terrain {
     pub noise: Noise2D,
     pub noise2: Noise2D,

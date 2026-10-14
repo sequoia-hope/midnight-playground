@@ -328,6 +328,7 @@ pub fn section_of(track: &Track) -> Section {
         scenery_radius: SCENERY_RADIUS,
         // A simplified view: no scenery module builds (D748).
         scenery: false,
+        ..Section::default()
     }
 }
 

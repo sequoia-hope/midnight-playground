@@ -73,6 +73,8 @@ fn main() {
                 terrain_radius: env("RT").unwrap_or(3000.0),
                 scenery_radius: env("RS").unwrap_or(1500.0),
                 scenery: env("SCENERY").is_none_or(|v| v != 0.0),
+                partition: env("PARTITION").is_some_and(|v| v != 0.0),
+                base: false,
             });
         }
         let base = NOW.load(Ordering::Relaxed);

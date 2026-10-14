@@ -28,6 +28,7 @@ pub mod sea;
 pub mod section;
 pub mod sky;
 pub mod stages;
+pub mod stream;
 pub mod streets;
 pub mod terrain;
 pub mod terrain_mesh;

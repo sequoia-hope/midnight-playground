@@ -58,6 +58,7 @@ pub fn road_stage() -> StageFn {
             terrain,
             no_marks,
             root,
+            section,
             ..
         } = w;
         let track = track.as_ref().ok_or("the route is surveyed first")?;
@@ -70,6 +71,7 @@ pub fn road_stage() -> StageFn {
             textures,
             no_marks,
             branch_from: None,
+            clip: section.clone(),
         });
         graph.add(*root, group);
         // The branches of the level's road (an open level's network): each
@@ -84,6 +86,7 @@ pub fn road_stage() -> StageFn {
                 textures,
                 no_marks: &[],
                 branch_from: Some(b.under - 0.3),
+                clip: None,
             });
             graph.add(*root, group);
             branches.push(br);

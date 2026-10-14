@@ -29,6 +29,13 @@ use crate::world::World;
 use mp_track::Track;
 
 /// A stretch of the route and how far around it the section reaches.
+///
+/// A streamed section (docs/vision/peninsula.md, stage 4b) sets
+/// `partition`: it keeps only what belongs to its stretch, by the centre
+/// of each drawable and tile, so adjacent sections share nothing and
+/// together are the level; the road's chunks are clipped to the stretch
+/// exactly. A `base` section is the horizon under them all: the terrain's
+/// coarse tiles, the sky and the sea, nothing of the road or scenery.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Section {
     /// The stretch, along the route (wrapped on a loop).
@@ -42,7 +49,29 @@ pub struct Section {
     /// menu's simplified views (D748): their `plan()` still runs, so the
     /// land and the road are the level's, but nothing of theirs is built.
     pub scenery: bool,
+    /// Keep by membership of the stretch (streaming), not by radius.
+    pub partition: bool,
+    /// The horizon layer: coarse tiles, sky and sea only.
+    pub base: bool,
 }
+
+impl Default for Section {
+    fn default() -> Self {
+        Section {
+            s0: 0.0,
+            s1: 0.0,
+            terrain_radius: 1000.0,
+            scenery_radius: 600.0,
+            scenery: true,
+            partition: false,
+            base: false,
+        }
+    }
+}
+
+/// How far a point may be from the road and still be looked up on it:
+/// everything a section keeps stands within the kits' reach of a road.
+const NEAR_ROAD: f64 = 900.0;
 
 /// Points of the stretch every this many metres.
 const STEP: f64 = 10.0;
@@ -58,6 +87,56 @@ impl Section {
                 [f.x, f.z]
             })
             .collect()
+    }
+
+    /// The stretch's length along the route.
+    pub fn len(&self) -> f64 {
+        self.s1 - self.s0
+    }
+
+    /// Whether `s` (metres along the level's road) lies on the stretch,
+    /// round a loop's wrap.
+    pub fn holds(&self, track: &Track, s: f64) -> bool {
+        let d = if track.is_loop {
+            track.wrap(s - self.s0)
+        } else {
+            s - self.s0
+        };
+        d >= 0.0 && d < self.len()
+    }
+
+    /// The place of (x, z) along the level's road, when a road is near.
+    pub fn s_of(track: &Track, x: f64, z: f64) -> Option<f64> {
+        track.distance_to_road(x, z, NEAR_ROAD).s
+    }
+
+    /// Whether the point (x, z) belongs to the stretch: its nearest place
+    /// on the road does.
+    pub fn owns(&self, track: &Track, x: f64, z: f64) -> bool {
+        Self::s_of(track, x, z).is_some_and(|s| self.holds(track, s))
+    }
+
+    /// The parts of the range `[a, b]` of the road that lie on the
+    /// stretch (none, one, or two round a loop's wrap), for the road's
+    /// chunks: a partitioned section builds exactly its own metres.
+    pub fn clip(&self, track: &Track, a: f64, b: f64) -> Vec<[f64; 2]> {
+        if !self.partition {
+            return vec![[a, b]];
+        }
+        let mut out = Vec::new();
+        let candidates: &[f64] = if track.is_loop {
+            &[-track.length, 0.0, track.length]
+        } else {
+            &[0.0]
+        };
+        for off in candidates {
+            let (s0, s1) = (self.s0 + off, self.s1 + off);
+            let (lo, hi) = (a.max(s0), b.min(s1));
+            if hi > lo {
+                out.push([lo, hi]);
+            }
+        }
+        out
     }
 
     /// Whether a scenery module that owns these zones (indices into
@@ -127,11 +206,21 @@ pub fn bounds(w: &World) -> Option<[f64; 4]> {
 }
 
 /// The tiles a build meshes: all of them for a level, those near the
-/// stretch for a section.
+/// stretch for a section; for a streamed section the near-road tiles
+/// (4 m) whose centre is on its stretch, for the base every coarser one.
 pub fn keep_tiles(w: &World, tiles: Vec<Tile>) -> Vec<Tile> {
     let (Some(sec), Some(track)) = (&w.section, &w.track) else {
         return tiles;
     };
+    if sec.base {
+        return tiles.into_iter().filter(|t| t.step > 4.0).collect();
+    }
+    if sec.partition {
+        return tiles
+            .into_iter()
+            .filter(|t| t.step <= 4.0 && sec.owns(track, t.x0 + t.size / 2.0, t.z0 + t.size / 2.0))
+            .collect();
+    }
     let pts = sec.points(track);
     let r2 = sec.terrain_radius * sec.terrain_radius;
     tiles
@@ -147,8 +236,11 @@ pub fn wants_box(w: &World, x0: f64, z0: f64, x1: f64, z1: f64) -> bool {
     let (Some(sec), Some(track)) = (&w.section, &w.track) else {
         return true;
     };
-    if !sec.scenery {
+    if !sec.scenery || sec.base {
         return false;
+    }
+    if sec.partition {
+        return sec.owns(track, (x0 + x1) / 2.0, (z0 + z1) / 2.0);
     }
     let pts = sec.points(track);
     box_dist2(&pts, x0, z0, x1, z1) <= sec.scenery_radius * sec.scenery_radius
@@ -160,7 +252,7 @@ pub fn builds_module(w: &World, name: &str) -> bool {
     let (Some(sec), Some(track)) = (&w.section, &w.track) else {
         return true;
     };
-    if !sec.scenery {
+    if !sec.scenery || sec.base {
         return false;
     }
     let zones: Vec<usize> = w
@@ -188,6 +280,10 @@ pub fn cut(w: &mut World) -> CutStats {
     let (Some(sec), Some(track)) = (&w.section, &w.track) else {
         return stats;
     };
+    // The base keeps all it built: the sky and the sea reach everywhere.
+    if sec.base {
+        return stats;
+    }
     let pts = sec.points(track);
     let r = sec.scenery_radius;
     let g = &w.graph;
@@ -209,14 +305,17 @@ pub fn cut(w: &mut World) -> CutStats {
         };
         let world = Matrix4::multiply_matrices(&parent, &local);
         if o.geometry.is_some() {
-            match reach(g, id, &world) {
-                Some((c, radius)) if dist2(&pts, c.x, c.z).sqrt() - radius > r => {
-                    far.push(id);
-                    stats.cut += 1;
-                    continue;
-                }
-                _ => stats.kept += 1,
+            let gone = match reach(g, id, &world) {
+                Some((c, _)) if sec.partition => !sec.owns(track, c.x, c.z),
+                Some((c, radius)) => dist2(&pts, c.x, c.z).sqrt() - radius > r,
+                None => false,
+            };
+            if gone {
+                far.push(id);
+                stats.cut += 1;
+                continue;
             }
+            stats.kept += 1;
         }
         for &c in o.children.iter().rev() {
             stack.push((c, world));
@@ -305,6 +404,43 @@ fn reach(g: &SceneGraph, id: NodeId, world: &Matrix4) -> Option<(Vector3, f64)> 
         Vector3::new((ilo[0] + ihi[0]) / 2.0, 0.0, (ilo[1] + ihi[1]) / 2.0),
         (hx * hx + hz * hz).sqrt() + radius * scale * crate::object::max_scale_on_axis(world),
     ))
+}
+
+/// Every drawable of the world as built: the name of its nearest named
+/// ancestor (its group: `road`, `terrain`, `land`, `coast`...) and the
+/// centre of its reach, for the tests of what a section keeps.
+pub fn drawables(w: &World) -> Vec<(String, [f64; 3])> {
+    let g = &w.graph;
+    let mut out = Vec::new();
+    let mut stack: Vec<(NodeId, Matrix4, String)> = g
+        .roots
+        .iter()
+        .rev()
+        .map(|&n| (n, Matrix4::IDENTITY, String::new()))
+        .collect();
+    while let Some((id, parent, group)) = stack.pop() {
+        let o = g.get(id);
+        let local = if o.matrix_auto_update {
+            Matrix4::compose(o.position, o.quaternion, o.scale)
+        } else {
+            o.matrix
+        };
+        let world = Matrix4::multiply_matrices(&parent, &local);
+        let group = if o.name.is_empty() {
+            group
+        } else {
+            o.name.clone()
+        };
+        if o.geometry.is_some()
+            && let Some((c, _)) = reach(g, id, &world)
+        {
+            out.push((group.clone(), [c.x, c.y, c.z]));
+        }
+        for &c in o.children.iter().rev() {
+            stack.push((c, world, group.clone()));
+        }
+    }
+    out
 }
 
 /// A finished section build: [`cut`], then the scene and its animators.

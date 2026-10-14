@@ -10911,3 +10911,43 @@ whole for now; its design, and stages 4b to 4d, are in peninsula.md.
   valley indexes its bridge tag, the mountain signs "SIERRA PASS").
 - The native build of the whole loop takes 1.5 s on this machine's
   threads (1425 nodes); the web's and a phone's are what 4b is for.
+
+## D1213 (2026-10-14): streaming's world side: the level planned once, built in sections that partition it
+
+peninsula.md stage 4b, the half in `mp_worldgen`; the client's half is
+next.
+
+- **The plan once.** `stream::Planned::new` surveys the route, makes the
+  terrain (the recorded plan applied), runs every module's `plan()` and
+  rasterises the fields, as "Surveying the route" and "Shaping the land"
+  do, and keeps the track, the terrain before the modules' plans (`base`)
+  and after the fields (`terrain`), the paint gaps and the sim data.
+  `Planned::build(section)` makes a `Build` over it: a fresh world on the
+  unplanned terrain, where the modules plan afresh (their state for
+  `build()` comes from `plan()`; the flattens they add there are thrown
+  away with that terrain), then the planned terrain stands in and the
+  section's jobs follow. `world::plan_modules` and `build_jobs` are the
+  shared pieces of `level_jobs_with`. A section of the loop costs 0.4 s
+  of the whole level's 2 s natively (the whole-level scene is 223 MB of
+  buffers, which is why the client must stream).
+- **Partition.** `Section` gains `partition` and `base` (and a `Default`).
+  A partitioned section keeps what belongs to its stretch by the centre
+  of each drawable and tile (`Section::owns`: the nearest place on the
+  level's road, `holds`: on the stretch, round a loop's wrap), so
+  adjacent sections share nothing and together are the level; the
+  kits' chunks (720 m) belong to one section and reach into the next,
+  which the client's ring allows for. The road is clipped to the stretch
+  exactly (`RoadCtx::clip`, `Section::clip`: the surface's and barriers'
+  chunks, the markings and chevrons by the metre, the start line), so the
+  pieces abut without doubling the paint. The Land kit's cells go by
+  their centres (`section::wants_box`). A `base` section is the horizon:
+  the terrain's coarse tiles (step 16 and 32; the 4 m tiles are the
+  sections'), the sky and the sea, nothing of the road or scenery, and
+  nothing cut. Sections are `SECTION_LEN` (1 km) of route from s 0,
+  looked around to `SECTION_RADIUS` (700 m) for the modules that build.
+- `tests/stream.rs`: three sections round the loop's start and the base;
+  every drawable is its section's own and none is in two; each section
+  has its road; the base has no road or scenery and has its tiles, sky
+  and sea; a near tile stands within 400 m of every point of the
+  stretches. `section::drawables` (each drawable's group and centre) is
+  for such tests.
