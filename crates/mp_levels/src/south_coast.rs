@@ -9,16 +9,15 @@
 //! by `cargo run -p mp_atlas -- corridor coast-south` and included here at
 //! compile time (a sample every 5 game metres: x, z, y and the real land
 //! cover beside the road). The ground under the whole box is real too
-//! (stage 2): `coast-south.ground.bin`, written by `tools/atlas/ground.py`
-//! from the terrain tiles, 16 game metres a cell, which the level is open
-//! onto: the car may leave the road, and world generation shapes the land
+//! (stage 2): the loop's `peninsula.ground.bin` (stage 4a), written by
+//! `tools/atlas/ground.py` from the terrain tiles, 16 game metres a cell,
+//! which the level is open onto: the car may leave the road, and world generation shapes the land
 //! from it instead of the kit's landform. Highway 84 leaves Highway 1 at
 //! the junction and climbs to La Honda (stage 3): a branch of the road,
 //! `hwy-84-lower.txt`, that the Track joins to the main road.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
-use crate::ground::HeightGrid;
 use crate::{police, zone};
 use mp_track::{Branch, Level, LoopPath, LoopRoad, LoopSpec, LoopTag, Mode, Route};
 
@@ -28,20 +27,12 @@ pub const CORRIDOR: &str =
 /// Highway 84 from the junction to La Honda.
 pub const BRANCH_84: &str =
     include_str!("../../../assets/atlas/peninsula/corridors/hwy-84-lower.txt");
-/// The ground file (541 kB, zlib): inflated once, the first time the level
-/// is made.
-pub const GROUND: &[u8] =
-    include_bytes!("../../../assets/atlas/peninsula/corridors/coast-south.ground.bin");
+/// The ground is the loop's (`peninsula.ground.bin`, stage 4a), whose box
+/// covers this level's; inflated once, the first time a level asks.
+pub use crate::peninsula::{cover, ground};
 /// The race starts at the first crest along the road: the highest point
 /// within this many game metres of the junction.
 pub const CREST_WITHIN: f64 = 2000.0;
-
-/// The ground under the box, decoded once.
-pub fn ground() -> Arc<HeightGrid> {
-    static GRID: OnceLock<Arc<HeightGrid>> = OnceLock::new();
-    GRID.get_or_init(|| Arc::new(HeightGrid::parse(GROUND).expect("the committed ground parses")))
-        .clone()
-}
 
 /// A corridor's samples: game metres and the land cover beside the road.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -231,6 +222,10 @@ pub fn level() -> Level {
             Arc::new(move |x, z| g.height(x, z))
         }),
         loose_ground: None,
+        cover: Some({
+            let c = cover();
+            Arc::new(move |x, z| c.class(x, z))
+        }),
         open: true,
         // Highway 84 leaves the junction at the road's start and climbs
         // through the redwoods to La Honda.

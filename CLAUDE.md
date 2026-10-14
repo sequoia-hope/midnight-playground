@@ -63,7 +63,8 @@ and carry on with the option that best preserves parity.
 | Native client | `cargo run -p mp_game` |
 | The open world's plan, measured (`resolve` rewrites what the planner draws; `corridor <id>` writes a route's road for a level, `docs/vision/peninsula.md`) | `cargo run --release -p mp_atlas -- report` |
 | Rebuild the atlas from real data (python3 with numpy, Pillow, shapely, pyarrow) | `python3 tools/atlas/build.py` |
-| The ground under the open world's corridors (stage 2 of `docs/vision/peninsula.md`) | `python3 tools/atlas/ground.py coast-south hwy-84-lower --margin 1200 --step 16` |
+| The ground and land cover under the open world's corridors (stages 2 and 4a of `docs/vision/peninsula.md`) | `python3 tools/atlas/ground.py coast-south hwy-92 skyline-south hwy-84 --margin 1200 --step 16 --name peninsula` |
+| Drive the web client round the loop with the keyboard | `node tools/parity/drive-branch.mjs --level peninsula [--phone] [--secs 900]` |
 | Drive the web client along the open world's roads with the keyboard, watching for a hang (console, ticks, frame time) | `node tools/parity/drive-branch.mjs [--phone] [--query "touch=1&assist=2&physics=player"]` |
 | The police radio's script (every clip, for `tools/radio-voice/render.py`) | `cargo run -p mp_audio --example radio_lines` |
 | JS unit tests | `npm run test:unit` (and `npm run test:unit:kernel`, with the parity kernel) |

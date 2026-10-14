@@ -122,3 +122,73 @@ mod tests {
         assert!(HeightGrid::parse(b"MPATLAS1 not this").is_err());
     }
 }
+
+/// The land cover of the same cells (`<id>.cover.bin`, stage 4a): the
+/// nearest planning-grid cell's class ([`mp_track::Cover`] as a byte), row
+/// by row from the north. Little-endian: `b"MPCOVER1"`, u32 width, u32
+/// height, f32 step, f32 x0, f32 z0, u32 zlib length, zlib of u8 classes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CoverGrid {
+    pub x0: f64,
+    pub z0: f64,
+    pub step: f64,
+    pub w: usize,
+    pub h: usize,
+    pub classes: Vec<u8>,
+}
+
+impl CoverGrid {
+    pub fn parse(bytes: &[u8]) -> Result<CoverGrid, String> {
+        if bytes.len() < 32 || &bytes[0..8] != b"MPCOVER1" {
+            return Err("cover: not an MPCOVER1 file".to_owned());
+        }
+        let u32_at =
+            |o: usize| u32::from_le_bytes([bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]]);
+        let f32_at =
+            |o: usize| f32::from_le_bytes([bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]]);
+        let w = u32_at(8) as usize;
+        let h = u32_at(12) as usize;
+        let step = f64::from(f32_at(16));
+        let x0 = f64::from(f32_at(20));
+        let z0 = f64::from(f32_at(24));
+        let len = u32_at(28) as usize;
+        if w < 2
+            || h < 2
+            || step.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater)
+            || w.checked_mul(h).is_none()
+        {
+            return Err("cover: bad grid size".to_owned());
+        }
+        let stream = bytes
+            .get(32..32 + len)
+            .ok_or_else(|| "cover: short file".to_owned())?;
+        let classes = miniz_oxide::inflate::decompress_to_vec_zlib(stream)
+            .map_err(|e| format!("cover: inflating: {e:?}"))?;
+        if classes.len() != w * h {
+            return Err(format!(
+                "cover: {} bytes of classes for {w} x {h} cells",
+                classes.len()
+            ));
+        }
+        Ok(CoverGrid {
+            x0,
+            z0,
+            step,
+            w,
+            h,
+            classes,
+        })
+    }
+
+    /// The class of the cell under (x, z), the edge cells carried on
+    /// outside the grid.
+    pub fn class(&self, x: f64, z: f64) -> u8 {
+        let i = ((x - self.x0) / self.step)
+            .round()
+            .clamp(0.0, self.w as f64 - 1.0) as usize;
+        let j = ((z - self.z0) / self.step)
+            .round()
+            .clamp(0.0, self.h as f64 - 1.0) as usize;
+        self.classes[j * self.w + i]
+    }
+}

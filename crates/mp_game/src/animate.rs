@@ -59,7 +59,14 @@ use std::sync::{Arc, Mutex};
 pub fn generated(level: &str) -> bool {
     matches!(
         level,
-        "sierra" | "seaside" | "cruise" | "desert" | "streets" | "coast" | "southcoast"
+        "sierra"
+            | "seaside"
+            | "cruise"
+            | "desert"
+            | "streets"
+            | "coast"
+            | "southcoast"
+            | "peninsula"
     )
 }
 
@@ -179,12 +186,11 @@ fn new_build(level: &str, draws: bool) -> Build {
                 extra_modules,
             ),
             // The open world's first corridor is built with the Coast
-            // Highway's kits (docs/vision/peninsula.md, stage 1).
-            "coast" | "southcoast" => level_jobs_with(
-                level_stages(setup),
-                crate::levels::coast::scenery,
-                extra_modules,
-            ),
+            // Highway's kits (docs/vision/peninsula.md, stage 1); the loop
+            // with those and the Land kit (stage 4a).
+            "coast" | "southcoast" | "peninsula" => {
+                level_jobs_with(level_stages(setup), open_world_scenery, extra_modules)
+            }
             _ => level_jobs_with(level_stages(setup), level1_scenery, extra_modules),
         },
     )
@@ -232,6 +238,15 @@ pub fn take_world(wg: &mut WorldGen) -> Option<WorldBuild> {
 /// `scenery::PORTED`: the table would link every level's scenery into the
 /// client, over the wasm budget (SPEC 6.6; D498). Every other module is
 /// left out, as `scenery_factory` leaves out an unported one.
+/// The open world's kits: the Coast Highway's, and the Land kit that
+/// plants by land cover (docs/vision/peninsula.md, stage 4a).
+fn open_world_scenery(info: &SceneryInfo) -> Option<Box<dyn Scenery>> {
+    match info.name {
+        "Land" => Some(Box::new(mp_worldgen::land::Land::new(info))),
+        _ => crate::levels::coast::scenery(info),
+    }
+}
+
 fn level1_scenery(info: &SceneryInfo) -> Option<Box<dyn Scenery>> {
     match info.name {
         "Mountain" => Some(Box::new(mp_worldgen::mountain::Mountain::new(info))),

@@ -12,6 +12,46 @@ use std::sync::Arc;
 /// `ground`, `looseGround`).
 pub type GroundFn = Arc<dyn Fn(f64, f64) -> f64 + Send + Sync>;
 
+/// The land cover at (x, z) on an open level ([`Cover`] as a byte), from
+/// the atlas (docs/vision/peninsula.md, stage 4a).
+pub type CoverFn = Arc<dyn Fn(f64, f64) -> u8 + Send + Sync>;
+
+/// A land cover class of the atlas's planning grid (`tools/atlas/build.py`
+/// and `mp_atlas::Cover` number them the same): what grows where on an
+/// open level.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Cover {
+    Sea = 0,
+    Water = 1,
+    Urban = 2,
+    Crop = 3,
+    Grass = 4,
+    Shrub = 5,
+    Forest = 6,
+    Barren = 7,
+    Wetland = 8,
+    Sand = 9,
+}
+
+impl Cover {
+    /// The class of a byte of the cover grid; anything unknown is barren.
+    pub fn of(b: u8) -> Cover {
+        match b {
+            0 => Cover::Sea,
+            1 => Cover::Water,
+            2 => Cover::Urban,
+            3 => Cover::Crop,
+            4 => Cover::Grass,
+            5 => Cover::Shrub,
+            6 => Cover::Forest,
+            8 => Cover::Wetland,
+            9 => Cover::Sand,
+            _ => Cover::Barren,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
     Race,
@@ -275,6 +315,9 @@ pub struct Level {
     pub ground: Option<GroundFn>,
     /// Off the tarmac: 0 on paved run-off, 1 on dirt and grass (Seaside).
     pub loose_ground: Option<GroundFn>,
+    /// An open level's land cover ([`Cover`]), which its planting follows
+    /// (docs/vision/peninsula.md, stage 4a).
+    pub cover: Option<CoverFn>,
     /// An open level: the car may leave the road onto `ground`, which is the
     /// real ground under the whole box (docs/vision/peninsula.md, stage 2).
     /// The Track blends the road into it ([`crate::Track::ground_y`]) and

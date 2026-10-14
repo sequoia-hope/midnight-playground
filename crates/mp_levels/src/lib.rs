@@ -92,6 +92,7 @@ pub mod coast;
 pub mod cruise;
 pub mod desert;
 pub mod ground;
+pub mod peninsula;
 pub mod seaside;
 pub mod sierra;
 pub mod south_coast;
@@ -103,8 +104,8 @@ pub use survey::SeasideData;
 
 /// Everything the menu offers, in order. Coast Highway comes first, which
 /// starts in the dark and drives into sunrise, then Sierra (the owner,
-/// 2026-10-06; D1102); the JS lists Sierra first. The open world's first
-/// corridor comes last, after the six levels.
+/// 2026-10-06; D1102); the JS lists Sierra first. The open world comes
+/// last, after the six levels: its first corridor, then the loop.
 pub fn levels() -> Vec<Level> {
     vec![
         coast::level(),
@@ -114,6 +115,7 @@ pub fn levels() -> Vec<Level> {
         seaside::level(),
         cruise::level(),
         south_coast::level(),
+        peninsula::level(),
     ]
 }
 

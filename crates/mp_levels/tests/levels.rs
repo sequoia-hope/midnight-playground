@@ -23,8 +23,9 @@ const LANDFORMS: [&str; 11] = [
     "mountain", "valley", "city", "coast", "beach", "harbor", "streets", "canyon", "desert",
     "playa", "raceway",
 ];
-const SCENERY: [&str; 9] = [
+const SCENERY: [&str; 10] = [
     "Mountain", "Valley", "City", "Coast", "Beach", "Harbor", "Streets", "Desert", "Raceway",
+    "Land",
 ];
 const CARS: [&str; 5] = ["sports", "muscle", "super", "electric", "rally"];
 
@@ -41,7 +42,8 @@ fn the_menu_lists_the_six_levels_and_the_corridor_with_unique_ids_in_order() {
             "desert",
             "seaside",
             "cruise",
-            "southcoast"
+            "southcoast",
+            "peninsula"
         ]
     );
     let nums: Vec<_> = ls.iter().map(|l| l.num).collect();
@@ -54,6 +56,7 @@ fn the_menu_lists_the_six_levels_and_the_corridor_with_unique_ids_in_order() {
             "LEVEL 4",
             "LEVEL 5",
             "ENDLESS",
+            "THE PENINSULA",
             "THE PENINSULA"
         ]
     );

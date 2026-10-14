@@ -140,6 +140,20 @@ pub fn keep_tiles(w: &World, tiles: Vec<Tile>) -> Vec<Tile> {
         .collect()
 }
 
+/// Whether a box of land (`[x0, z0, x1, z1]`) is within the section's
+/// scenery radius: always for a level. The Land kit plants a cell only
+/// when it is (D1212).
+pub fn wants_box(w: &World, x0: f64, z0: f64, x1: f64, z1: f64) -> bool {
+    let (Some(sec), Some(track)) = (&w.section, &w.track) else {
+        return true;
+    };
+    if !sec.scenery {
+        return false;
+    }
+    let pts = sec.points(track);
+    box_dist2(&pts, x0, z0, x1, z1) <= sec.scenery_radius * sec.scenery_radius
+}
+
 /// Whether the scenery module `name` builds: always for a level; for a
 /// section, when one of the zones that name it reaches the stretch.
 pub fn builds_module(w: &World, name: &str) -> bool {
