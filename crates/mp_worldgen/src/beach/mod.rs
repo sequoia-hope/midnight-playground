@@ -296,6 +296,7 @@ impl Scenery for Beach {
             textures,
             root,
             animators,
+            descs,
             ..
         } = world;
         let track = track.as_ref().ok_or("the route is surveyed first")?;
@@ -397,7 +398,7 @@ impl Scenery for Beach {
         for (mat, day, nt) in night {
             graph.add_night(mat, "emissiveIntensity", day, nt);
         }
-        animators.push(Box::new(anim));
+        crate::anim::push(animators, descs, crate::anim::AnimatorDesc::Beach(anim));
         self.palm_count = palms;
         self.car_count = cars;
         self.boat_count = boats;
@@ -515,7 +516,8 @@ impl Lot {
 }
 
 /// The Ferris wheel's moving parts (`this.ferris`).
-struct Ferris {
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Ferris {
     wheel: NodeId,
     gondolas: NodeId,
     r: f64,
@@ -524,7 +526,8 @@ struct Ferris {
 }
 
 /// The coaster and its train (`this.coaster`).
-struct Coaster {
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Coaster {
     curve: CatmullRomCurve3,
     train: NodeId,
     u: f64,
@@ -3716,7 +3719,8 @@ fn gondola_matrices(f: &Ferris) -> Vec<Matrix4> {
 /// `animate(dt, night)`: the wheel turns and its gondolas hang level, the
 /// coaster's train runs, the surf washes in and out, the light pools fade
 /// in after dusk and the traffic lights cycle.
-struct Animate {
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Animate {
     time: f64,
     ferris: Option<Ferris>,
     coaster: Option<Coaster>,

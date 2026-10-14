@@ -4360,6 +4360,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mp_builder"
+version = "0.1.0"
+dependencies = [
+ "mp_levels",
+ "mp_track",
+ "mp_worldgen",
+]
+
+[[package]]
 name = "mp_canvas"
 version = "0.1.0"
 dependencies = [
@@ -4517,6 +4526,7 @@ dependencies = [
  "mp_sim",
  "mp_track",
  "png",
+ "serde",
  "serde_json",
  "sha2",
  "wasm-bindgen-test",

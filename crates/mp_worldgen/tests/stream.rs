@@ -139,3 +139,51 @@ fn sections_partition_the_loop_and_the_base_is_the_horizon() {
     }
     let _ = SECTION_LEN;
 }
+
+/// A section packed and read back (the worker's hand-over, D1215) is the
+/// same scene, and its animators are data that write the same edits.
+#[test]
+fn a_packed_section_reads_back_with_its_animators() {
+    use mp_worldgen::world::UpdateCtx;
+    let p = planned();
+    // The coast's first section: the surf, the lighthouse's and the
+    // boats' animators.
+    let k = p.section_at(p.track.start_s);
+    let mut b = p.build(p.section(k));
+    while !b.is_done() {
+        b.step().expect("a section's job");
+    }
+    let (mut wb, stats) = section::finish(b);
+    assert!(!wb.animators.is_empty(), "the coast animates");
+    assert_eq!(wb.animators.len(), wb.descs.len(), "every animator is data");
+    let bytes = section::pack(&wb, stats).expect("packs");
+    let (mut back, stats2) = section::unpack(&bytes).expect("reads back");
+    assert_eq!((stats.kept, stats.cut), (stats2.kept, stats2.cut));
+    assert_eq!(back.scene, wb.scene);
+    assert_eq!(back.handles, wb.handles);
+    assert_eq!(back.animators.len(), wb.animators.len());
+    assert!(
+        !back.log.iter().any(|l| l.contains("lost")),
+        "{:?}",
+        back.log
+    );
+    let u = UpdateCtx {
+        dt: 1.0 / 60.0,
+        night: 0.7,
+        camera: None,
+        s: 100.0,
+    };
+    for _ in 0..3 {
+        let (mut a, mut c) = (Vec::new(), Vec::new());
+        for x in wb.animators.iter_mut() {
+            x.update(&u, &mut a);
+        }
+        for x in back.animators.iter_mut() {
+            x.update(&u, &mut c);
+        }
+        assert_eq!(a.len(), c.len());
+        for (e, f) in a.iter().zip(&c) {
+            assert_eq!(format!("{e:?}"), format!("{f:?}"));
+        }
+    }
+}

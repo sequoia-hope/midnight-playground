@@ -764,7 +764,7 @@ pub trait Curve3 {
 }
 
 /// `CatmullRomCurve3`'s `curveType`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CurveType {
     Centripetal,
     Chordal,
@@ -773,12 +773,14 @@ pub enum CurveType {
 
 /// `CatmullRomCurve3(points, closed, curveType, tension)`; three's
 /// defaults `[], false, 'centripetal', 0.5`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct CatmullRomCurve3 {
     pub points: Vec<Vector3>,
     pub closed: bool,
     pub curve_type: CurveType,
     pub tension: f64,
+    /// The arc lengths, made again after a read.
+    #[serde(skip)]
     cache: OnceLock<Vec<f64>>,
 }
 

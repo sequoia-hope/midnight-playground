@@ -61,6 +61,8 @@ pub(crate) mod bridge;
 pub mod native;
 #[cfg(target_arch = "wasm32")]
 mod web;
+#[cfg(target_arch = "wasm32")]
+pub mod worker;
 
 use bevy::camera::{Hdr, PerspectiveProjection, Projection};
 use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};

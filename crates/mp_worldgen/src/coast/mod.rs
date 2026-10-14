@@ -34,6 +34,7 @@ use mp_math::{Mulberry32, Noise2D, clamp, fbm, js, kernel, lerp, smoothstep};
 use mp_scene::{MaterialKind, NodeType, three};
 use mp_track::Track;
 
+use crate::anim::AnimatorDesc;
 use crate::car_model::{self, BuildOpts, Lod};
 use crate::color::Color;
 use crate::material::{Material, color_value, num};
@@ -537,6 +538,7 @@ impl Scenery for Coast {
             road,
             root,
             animators,
+            descs,
             ..
         } = world;
         let track = track.as_ref().ok_or("the route is surveyed first")?;
@@ -608,31 +610,16 @@ impl Scenery for Coast {
 
         // Surf and foam brighten with the dawn; everything animates off one
         // clock.
-        let mut time = 0.0;
-        b.animators
-            .push(Box::new(move |u: &UpdateCtx, out: &mut Vec<Edit>| {
-                time += u.dt;
-                for m in [foam_mat, ring_mat] {
-                    out.push(Edit {
-                        target: Handle::Material(m),
-                        change: Change::Number {
-                            prop: "uTime",
-                            value: time,
-                        },
-                    });
-                    out.push(Edit {
-                        target: Handle::Material(m),
-                        change: Change::Number {
-                            prop: "uBright",
-                            value: lerp(1.0, 0.32, u.night),
-                        },
-                    });
-                }
-            }));
+        b.animators.push(AnimatorDesc::Surf {
+            mats: vec![foam_mat, ring_mat],
+            time: 0.0,
+        });
 
         let new_animators = std::mem::take(&mut b.animators);
         graph.add(*root, group);
-        animators.extend(new_animators);
+        for d in new_animators {
+            crate::anim::push(animators, descs, d);
+        }
         self.group = Some(group);
         Ok(())
     }
@@ -654,7 +641,7 @@ struct Build<'a> {
     graph: &'a mut SceneGraph,
     textures: &'a mut TextureCache,
     group: NodeId,
-    animators: Vec<Box<dyn Animator>>,
+    animators: Vec<AnimatorDesc>,
     foam_mat: MaterialId,
     ring_mat: MaterialId,
     rock_mat: MaterialId,
@@ -1824,43 +1811,14 @@ impl Build<'_> {
         }
         self.add(pivot);
         self.add(glow);
-        let mut ry = 0.0;
-        self.animators
-            .push(Box::new(move |u: &UpdateCtx, out: &mut Vec<Edit>| {
-                ry += u.dt * 0.9;
-                let q = Quaternion::from_euler(&Euler::new(0.0, ry, 0.0));
-                out.push(Edit {
-                    target: Handle::Node(pivot),
-                    change: Change::Transform {
-                        position: [pivot_pos.x, pivot_pos.y, pivot_pos.z],
-                        quaternion: [q.x, q.y, q.z, q.w],
-                        scale: [1.0, 1.0, 1.0],
-                    },
-                });
-                out.push(Edit {
-                    target: Handle::Material(beam_mat),
-                    change: Change::Number {
-                        prop: "uStrength",
-                        value: 0.03 + 0.32 * smoothstep(0.2, 0.8, u.night),
-                    },
-                });
-                out.push(Edit {
-                    target: Handle::Material(glow_mat),
-                    change: Change::Number {
-                        prop: "opacity",
-                        value: 0.25 + 0.75 * u.night,
-                    },
-                });
-                let sc = 6.0 + 8.0 * u.night;
-                out.push(Edit {
-                    target: Handle::Node(glow),
-                    change: Change::Transform {
-                        position: [pivot_pos.x, pivot_pos.y, pivot_pos.z],
-                        quaternion: [0.0, 0.0, 0.0, 1.0],
-                        scale: [sc, sc, sc],
-                    },
-                });
-            }));
+        self.animators.push(AnimatorDesc::Lighthouse {
+            pivot,
+            pos: [pivot_pos.x, pivot_pos.y, pivot_pos.z],
+            beam_mat,
+            glow_mat,
+            glow,
+            ry: 0.0,
+        });
     }
 
     // ── Start gantry: HOLLOW POINT ──────────────────────────────────────
@@ -2121,18 +2079,12 @@ impl Build<'_> {
             bulbs.push(Item::at(bx + v.x, y + v.y, bz + v.z, 1.0, 1.0, 1.0));
         }
         let bulb_mat = self.mat(Material::basic().set("color", Color::new(3.5, 2.4, 1.2)));
-        self.animators
-            .push(Box::new(move |u: &UpdateCtx, out: &mut Vec<Edit>| {
-                let mut c = Color::new(0.0, 0.0, 0.0);
-                c.set_rgb(3.5, 2.4, 1.2).multiply_scalar(0.25 + u.night);
-                out.push(Edit {
-                    target: Handle::Material(bulb_mat),
-                    change: Change::Color {
-                        prop: "color",
-                        rgb: [c.r, c.g, c.b],
-                    },
-                });
-            }));
+        self.animators.push(AnimatorDesc::NightColor {
+            mat: bulb_mat,
+            rgb: [3.5, 2.4, 1.2],
+            a: 0.25,
+            b: 1.0,
+        });
         let bgeo = self.geo(icosahedron_geometry(0.09, 0.0));
         self.add_instanced(bgeo, bulb_mat, &bulbs, false, false);
 
@@ -2748,17 +2700,12 @@ impl Build<'_> {
         }
         // Reflectors: bright at blue hour (headlights would catch them).
         let rm = self.mat(Material::basic().set("color", 0xffffff));
-        self.animators
-            .push(Box::new(move |u: &UpdateCtx, out: &mut Vec<Edit>| {
-                let v = 0.6 + 1.6 * u.night;
-                out.push(Edit {
-                    target: Handle::Material(rm),
-                    change: Change::Color {
-                        prop: "color",
-                        rgb: [v, v, v],
-                    },
-                });
-            }));
+        self.animators.push(AnimatorDesc::NightColor {
+            mat: rm,
+            rgb: [1.0, 1.0, 1.0],
+            a: 0.6,
+            b: 1.6,
+        });
         let rg = self.geo(boxg(0.07, 0.16, 0.02));
         self.add_instanced(rg, rm, &refl, false, false);
     }
@@ -2914,13 +2861,13 @@ impl Build<'_> {
                 _ => {}
             }
         }
-        self.animators.push(Box::new(anim));
+        self.animators.push(AnimatorDesc::Boats(anim));
     }
 }
 
 /// A fishing boat offshore.
-#[derive(Clone, Copy, Debug)]
-struct Boat {
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Boat {
     x: f64,
     z: f64,
     yaw: f64,
@@ -2930,7 +2877,8 @@ struct Boat {
 
 /// The boats' updater: each boat bobs and rolls on the swell, its three
 /// running lights carried with it.
-struct Boats {
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Boats {
     boats: Vec<Boat>,
     im: NodeId,
     lg: GeoId,

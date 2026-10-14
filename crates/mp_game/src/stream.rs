@@ -11,9 +11,11 @@
 //! The level is `ready` once the sections round the start are up; from
 //! then on the ring follows the camera's focus along the route: the
 //! section it is in, one behind and two ahead, built one at a time on
-//! the thread (natively) or stepped between frames with a small budget
-//! (the web, where a kit's build is one job and can hitch a frame: stage
-//! 4c moves it to a worker).
+//! the thread (natively) or by the builder's worker (the web, stage 4c:
+//! `crate::worker`, `mp_builder` as its own wasm; the packed section
+//! read back here), or, without the worker (`?worker=0`, or its wasm
+//! failed), stepped between frames with a small budget, where a kit's
+//! build is one job and can hitch a frame.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -95,6 +97,9 @@ pub struct Up {
 enum Sec {
     #[cfg(not(target_arch = "wasm32"))]
     Thread,
+    /// Asked of the builder's worker.
+    #[cfg(target_arch = "wasm32")]
+    Worker,
     #[cfg(target_arch = "wasm32")]
     Stepping(Box<Mutex<Build>>),
     Spawning {
@@ -118,10 +123,24 @@ enum Phase {
     Running,
 }
 
+/// The builder's worker, for this level.
+#[cfg(target_arch = "wasm32")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WorkerState {
+    /// Not asked (`?worker=0`, or it could not start).
+    Off,
+    Planning,
+    Ready,
+    /// It failed: the sections are built here.
+    Failed,
+}
+
 /// The streamed level's state.
 #[derive(Resource)]
 pub struct Stream {
     phase: Phase,
+    #[cfg(target_arch = "wasm32")]
+    worker: WorkerState,
     planned: Option<Arc<Planned>>,
     secs: BTreeMap<i64, Sec>,
     /// The section the camera was last in, and the ring round it.
@@ -142,6 +161,8 @@ impl Default for Stream {
     fn default() -> Self {
         Stream {
             phase: Phase::Off,
+            #[cfg(target_arch = "wasm32")]
+            worker: WorkerState::Off,
             planned: None,
             secs: BTreeMap::new(),
             at: None,
@@ -308,6 +329,11 @@ pub fn drive(
             }
             #[cfg(target_arch = "wasm32")]
             {
+                // The worker plans the same level meanwhile.
+                if o.param("worker") != Some("0") && crate::worker::available() {
+                    crate::worker::plan(st.generation, &o.level);
+                    st.worker = WorkerState::Planning;
+                }
                 match plan(level) {
                     Ok(p) => {
                         info!(
@@ -454,12 +480,71 @@ pub fn drive(
         }
     }
 
+    // The worker's answers: the plan, the sections built, or its failure
+    // (then the sections waiting on it are built here).
+    #[cfg(target_arch = "wasm32")]
+    {
+        let mut failed = false;
+        for m in crate::worker::take() {
+            match m {
+                crate::worker::Msg::Planned(g) if g == st.generation => {
+                    st.worker = WorkerState::Ready;
+                    info!("stream: the builder's worker planned the level");
+                }
+                crate::worker::Msg::Built {
+                    generation,
+                    k,
+                    ms,
+                    bytes,
+                } if generation == st.generation => {
+                    if !matches!(st.secs.get(&k), Some(Sec::Worker)) {
+                        continue;
+                    }
+                    let t0 = Instant::now();
+                    let r = section::unpack(&bytes);
+                    info!(
+                        "stream: section {k} from the worker ({ms:.0} ms there, {:.1} MB, read in {:.1} ms)",
+                        bytes.len() as f64 / 1048576.0,
+                        t0.elapsed().as_secs_f64() * 1e3
+                    );
+                    section_built(st, &mut commands, k, r);
+                }
+                crate::worker::Msg::Failed {
+                    generation,
+                    k,
+                    error,
+                } if generation == st.generation || generation == 0 => {
+                    warn!(
+                        "stream: the builder's worker failed{}: {error}; building here",
+                        k.map(|k| format!(" on section {k}")).unwrap_or_default()
+                    );
+                    failed = true;
+                }
+                _ => {}
+            }
+        }
+        if failed {
+            st.worker = WorkerState::Failed;
+            let waiting: Vec<i64> = st
+                .secs
+                .iter()
+                .filter_map(|(k, s)| matches!(s, Sec::Worker).then_some(*k))
+                .collect();
+            for k in waiting {
+                st.secs.insert(
+                    k,
+                    Sec::Stepping(Box::new(Mutex::new(p.build(p.section(k))))),
+                );
+            }
+        }
+    }
+
     // Started: one at a time, nearest first.
     let building = st.secs.values().any(|s| {
         #[cfg(not(target_arch = "wasm32"))]
         let b = matches!(s, Sec::Thread);
         #[cfg(target_arch = "wasm32")]
-        let b = matches!(s, Sec::Stepping(_));
+        let b = matches!(s, Sec::Stepping(_) | Sec::Worker);
         b
     });
     if !building {
@@ -480,8 +565,20 @@ pub fn drive(
             }
             #[cfg(target_arch = "wasm32")]
             {
-                st.secs
-                    .insert(k, Sec::Stepping(Box::new(Mutex::new(p.build(sec)))));
+                match st.worker {
+                    WorkerState::Ready => {
+                        crate::worker::build(st.generation, k);
+                        st.secs.insert(k, Sec::Worker);
+                    }
+                    // Planning still: wait for its answer rather than
+                    // build here (the start's ring is behind the loading
+                    // screen either way).
+                    WorkerState::Planning => {}
+                    WorkerState::Off | WorkerState::Failed => {
+                        st.secs
+                            .insert(k, Sec::Stepping(Box::new(Mutex::new(p.build(sec)))));
+                    }
+                }
             }
         }
     }
@@ -760,8 +857,10 @@ mod tests {
     /// freed range is taken again.
     #[test]
     fn material_bases_are_first_fit_and_reused() {
-        let mut st = Stream::default();
-        st.base_materials = 3;
+        let mut st = Stream {
+            base_materials: 3,
+            ..Stream::default()
+        };
         let a = st.take_base(29);
         let b = st.take_base(15);
         let c = st.take_base(8);

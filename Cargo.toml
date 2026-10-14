@@ -25,6 +25,7 @@ mp_worldgen = { path = "crates/mp_worldgen" }
 mp_audio = { path = "crates/mp_audio" }
 mp_exhaust = { path = "crates/mp_exhaust" }
 mp_music = { path = "crates/mp_music" }
+mp_builder = { path = "crates/mp_builder" }
 mp_net = { path = "crates/mp_net" }
 mp_vdyn = { path = "crates/mp_vdyn" }
 mp_atlas = { path = "crates/mp_atlas" }

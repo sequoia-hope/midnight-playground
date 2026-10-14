@@ -85,6 +85,7 @@ mp_math ← mp_vdyn ← mp_sim   (vehicle dynamics: the sim car's body, tyres, d
 mp_scene ← mp_worldgen   (also mp_canvas, mp_math, mp_track, mp_levels)
 mp_exhaust ← mp_audio   (mp_exhaust has no dependencies; it is also its own wasm)
 mp_atlas   (real geography and the open world's plan; no dependencies yet)
+mp_builder uses mp_worldgen (the open world's section builder; its own wasm in the web's worker)
 mp_game uses mp_sim, mp_net, mp_scene, mp_worldgen, mp_audio
 ```
 

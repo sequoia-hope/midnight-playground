@@ -129,6 +129,22 @@ const RULES: &[Rule] = &[
         pure: false,
         exact_math: false,
     },
+    // The open world's section builder: mp_worldgen and what it builds
+    // on, as the worker's standalone wasm (D1215).
+    Rule {
+        krate: "mp_builder",
+        allowed: &[
+            "mp_math",
+            "mp_track",
+            "mp_levels",
+            "mp_scene",
+            "mp_canvas",
+            "mp_worldgen",
+        ],
+        banned: WORLD_BANNED,
+        pure: false,
+        exact_math: false,
+    },
     Rule {
         krate: "mp_audio",
         allowed: &["mp_math", "mp_exhaust", "mp_music"],

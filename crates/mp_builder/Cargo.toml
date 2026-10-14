@@ -1,0 +1,23 @@
+[package]
+name = "mp_builder"
+description = "The open world's section builder as its own wasm, run in a web worker (streaming, stage 4c)"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# rlib: the same plan-and-build calls, for the tests.
+# cdylib: on the web the builder is its own small wasm (no wasm-bindgen),
+# which the worker shim `crates/mp_game/web/builder-worker.js` runs off
+# the main thread; `cargo xtask web` builds it into dist/next/.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+mp_worldgen.workspace = true
+mp_levels.workspace = true
+mp_track.workspace = true
+
+[features]
+# The C-ABI exports of `src/wasm.rs`, for the standalone worker wasm only
+# (`cargo xtask web` builds it with this feature).
+worker = []

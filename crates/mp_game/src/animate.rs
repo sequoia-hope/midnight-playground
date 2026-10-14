@@ -241,10 +241,7 @@ pub fn take_world(wg: &mut WorldGen) -> Option<WorldBuild> {
 /// The open world's kits: the Coast Highway's, and the Land kit that
 /// plants by land cover (docs/vision/peninsula.md, stage 4a).
 pub(crate) fn open_world_scenery(info: &SceneryInfo) -> Option<Box<dyn Scenery>> {
-    match info.name {
-        "Land" => Some(Box::new(mp_worldgen::land::Land::new(info))),
-        _ => crate::levels::coast::scenery(info),
-    }
+    mp_worldgen::scenery::open_world(info)
 }
 
 fn level1_scenery(info: &SceneryInfo) -> Option<Box<dyn Scenery>> {

@@ -103,6 +103,7 @@ pub fn run(args: &[String]) -> Result {
 
     build_worklet(release, &out, &EXHAUST_WORKLET)?;
     build_worklet(release, &out, &MUSIC_WORKLET)?;
+    build_worker(release, &out)?;
     copy_dir(&root.join("crates/mp_game/web"), &out)?;
     copy_runtime_files(&root, &out)?;
     // Where the page finds the scene exports: the parity cache of this JS
@@ -359,6 +360,48 @@ fn build_worklet(release: bool, out: &Path, b: &WorkletBuild) -> Result {
         )
         .map_err(|e| format!("{e}\n(install with: cargo install wasm-opt --locked)"))?;
         precompress(out, &[name, js])?;
+    }
+    Ok(())
+}
+
+/// The open world's section builder as its own wasm for the page's worker
+/// (`crates/mp_game/web/builder-worker.js`, copied with the page; D1215):
+/// `mp_builder` with the C-ABI exports of its `worker` feature. Optimised
+/// for speed even in a debug build, as the worklets are: it builds a
+/// kilometre of world at a time.
+fn build_worker(release: bool, out: &Path) -> Result {
+    let root = root();
+    let profile = if release { "web-release" } else { "release" };
+    let mut build = cargo();
+    build.args([
+        "build",
+        "-p",
+        "mp_builder",
+        "--lib",
+        "--features",
+        "worker",
+        "--target",
+        TARGET,
+        "--profile",
+        profile,
+    ]);
+    println!("web: building the section builder's worker");
+    exec(&mut build)?;
+    let name = "mp_builder.wasm";
+    let wasm = root.join("target").join(TARGET).join(profile).join(name);
+    let dest = out.join(name);
+    std::fs::copy(&wasm, &dest).map_err(|e| format!("copying {}: {e}", wasm.display()))?;
+    if release {
+        exec(
+            Command::new("wasm-opt")
+                .arg("-O3")
+                .args(WASM_FEATURES)
+                .arg(&dest)
+                .arg("-o")
+                .arg(&dest),
+        )
+        .map_err(|e| format!("{e}\n(install with: cargo install wasm-opt --locked)"))?;
+        precompress(out, &[name, "builder-worker.js"])?;
     }
     Ok(())
 }

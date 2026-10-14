@@ -12,7 +12,7 @@
 // Index loops stay index loops (DECISIONS D52).
 #![allow(clippy::needless_range_loop)]
 
-use mp_math::{clamp, js, kernel, smoothstep};
+use mp_math::{clamp, js, kernel};
 use mp_scene::{MaterialKind, three};
 use mp_track::road_types::{ROAD_TYPES, RoadType};
 use mp_track::{Frame, Track};
@@ -27,7 +27,7 @@ use crate::three_geom::{
     BufferAttribute, BufferGeometry, Euler, Matrix4, Quaternion, Vector3, box_geometry,
     cylinder_geometry, plane_geometry,
 };
-use crate::world::{Change, Edit, Handle, UpdateCtx};
+use crate::world::{Change, Edit, Handle};
 
 pub const ROAD_STEP: f64 = 2.0;
 
@@ -461,21 +461,11 @@ impl Road {
     }
 
     /// The updater `World.build` registers after the road:
-    /// `road.setNight(smoothstep(0.55, 1.0, n) * 0.85)` every frame.
-    pub fn dew_animator(&self) -> impl FnMut(&UpdateCtx, &mut Vec<Edit>) + Send + Sync + 'static {
-        let mats = self.asphalt_materials();
-        move |u: &UpdateCtx, out: &mut Vec<Edit>| {
-            // Dew on the tarmac after dark: lamps and headlights glint off it.
-            let v = smoothstep(0.55, 1.0, u.night) * 0.85;
-            for &m in &mats {
-                out.push(Edit {
-                    target: Handle::Material(m),
-                    change: Change::Number {
-                        prop: "uWet",
-                        value: v,
-                    },
-                });
-            }
+    /// `road.setNight(smoothstep(0.55, 1.0, n) * 0.85)` every frame, as
+    /// data (`anim`, D1215).
+    pub fn dew_animator(&self) -> crate::anim::AnimatorDesc {
+        crate::anim::AnimatorDesc::Dew {
+            mats: self.asphalt_materials(),
         }
     }
 
