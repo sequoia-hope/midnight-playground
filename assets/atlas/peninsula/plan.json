@@ -99,6 +99,8 @@
     { "id": "hwy-92", "name": "Highway 92 over the hill", "roads": ["92"], "from": "hmb-1-92", "to": "jct-92-35" },
     { "id": "skyline-south", "name": "Skyline: 92 to Skylonda", "roads": ["35"], "from": "jct-92-35", "via": ["kings-mountain"], "to": "skylonda" },
     { "id": "hwy-84", "name": "Highway 84: Skylonda to the sea", "roads": ["84"], "from": "skylonda", "via": ["la-honda"], "to": "jct-84-1" },
+    { "id": "hwy-84-lower", "name": "Highway 84: the sea to La Honda", "roads": ["84"], "from": "jct-84-1", "to": "la-honda",
+      "note": "The lower half of 84 as a branch off Highway 1 for the open world's first junction (docs/vision/peninsula.md, stage 3)." },
     { "id": "coast-north", "name": "Highway 1: Half Moon Bay to Pacifica", "roads": ["1"], "from": "hmb-1-92", "via": ["montara", "devils-slide"], "to": "pacifica" },
     { "id": "tunitas", "name": "Tunitas Creek Road: the redwood climb", "names": ["Tunitas Creek Road", "Kings Mountain Road"], "from": "tunitas-creek", "to": "kings-mountain",
       "note": "One lane in places, steep, under redwoods all the way: the Highway 9 character the owner wants, inside the loop." },

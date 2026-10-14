@@ -180,9 +180,11 @@ fn steer_max(ph: &CarPhysics, inp: &Input, speed: f64) -> f64 {
 /// circle through the car, tangent to its heading, and that point), as a
 /// steering input for these controls.
 pub fn line_steer(inp: &Input, v: &Vehicle, ph: &CarPhysics, t: &Track) -> f64 {
+    // The road under the car: a branch of the level's road, or the road.
+    let t = t.road(v.road);
     let speed = kernel::hypot(v.vx, v.vz);
     let la = 8.0 + speed * 0.5;
-    let s = v.s + la;
+    let s = v.road_s + la;
     let p = t.point_at(s, t.racing_line[t.idx(s)] as f64);
     let (dx, dz) = (p.x - v.x, p.z - v.z);
     let l = js::max(kernel::hypot(dx, dz), 1.0);
@@ -198,12 +200,14 @@ pub fn line_steer(inp: &Input, v: &Vehicle, ph: &CarPhysics, t: &Track) -> f64 {
 /// or far off the line (from 4 to 8 m off, counted half: in the middle of
 /// a two-lane road with the line on one side the car is left alone).
 pub fn assist_need(v: &Vehicle, t: &Track) -> f64 {
-    let f = t.frame(v.s);
+    // The road under the car: a branch of the level's road, or the road.
+    let t = t.road(v.road);
+    let f = t.frame(v.road_s);
     let across = v.vx * f.rx + v.vz * f.rz;
-    let lat_p = v.lat + across * PREVIEW_T;
+    let lat_p = v.road_lat + across * PREVIEW_T;
     let room = |lat: f64| f.hw - lat.abs() - v.half_w;
-    let edge = 1.0 - smoothstep(0.2, 2.0, js::min(room(lat_p), room(v.lat) + 0.8));
-    let off = (v.lat - t.racing_line[t.idx(v.s)] as f64).abs();
+    let edge = 1.0 - smoothstep(0.2, 2.0, js::min(room(lat_p), room(v.road_lat) + 0.8));
+    let off = (v.road_lat - t.racing_line[t.idx(v.road_s)] as f64).abs();
     js::max(edge, 0.5 * smoothstep(4.0, 8.0, off))
 }
 
@@ -214,6 +218,8 @@ pub fn assist_need(v: &Vehicle, t: &Track) -> f64 {
 /// air, or facing more than about 70° off the road (spun, or going the
 /// wrong way).
 pub fn steer_assist(inp: &mut Input, v: &Vehicle, ph: &CarPhysics, t: &Track, a: Assist) {
+    // The road under the car: a branch of the level's road, or the road.
+    let t = t.road(v.road);
     let k = a.strength();
     if k <= 0.0 {
         return;
@@ -222,7 +228,7 @@ pub fn steer_assist(inp: &mut Input, v: &Vehicle, ph: &CarPhysics, t: &Track, a:
     if speed < 4.0 || !v.on_ground || ph.locked {
         return;
     }
-    let f = t.frame(v.s);
+    let f = t.frame(v.road_s);
     if wrap_angle(v.yaw - kernel::atan2(f.fz, f.fx)).abs() > 1.2 {
         return;
     }

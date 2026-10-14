@@ -143,6 +143,36 @@ impl fmt::Debug for LoopSpec {
     }
 }
 
+/// A road that leaves the level's road at a junction
+/// (docs/vision/peninsula.md, stage 3): a corridor of its own, given as a
+/// path that starts where it meets the parent. The Track trims the path to
+/// where it leaves the parent's pavement, starts it on the parent's
+/// centreline and fits its first metres to the parent's surface, so the
+/// two roads share the junction; the car projects onto whichever road
+/// holds it ([`crate::Track::project_road`]).
+#[derive(Clone)]
+pub struct Branch {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub path: PathFn,
+    /// The road type (`ROAD_TYPES`).
+    pub road: &'static str,
+    /// The level zone the branch lies in (its scenery and colouring).
+    pub zone: u8,
+    /// The branch's own elevation smoothing; the level's when `None`.
+    pub elevation_smooth: Option<f64>,
+}
+
+impl fmt::Debug for Branch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Branch")
+            .field("id", &self.id)
+            .field("road", &self.road)
+            .field("zone", &self.zone)
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Route {
     Segments(Vec<Segment>),
@@ -250,6 +280,9 @@ pub struct Level {
     /// The Track blends the road into it ([`crate::Track::ground_y`]) and
     /// world generation shapes the land from it with the same law.
     pub open: bool,
+    /// Roads leaving this one at junctions (an open level's road network,
+    /// docs/vision/peninsula.md, stage 3).
+    pub branches: Vec<Branch>,
     pub sea_y: Option<f64>,
     pub zones: Vec<Zone>,
     pub sky: Vec<SkyKey>,

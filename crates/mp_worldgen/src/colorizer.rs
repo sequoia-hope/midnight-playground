@@ -227,7 +227,7 @@ impl<'a> Colorizer<'a> {
     /// `color(x, y, z, ny, out)`: the colour, and `this.paved` after it.
     pub fn color(&self, x: f64, y: f64, z: f64, ny: f64) -> (Rgb, f64) {
         let t = self.t;
-        let w = t.zone_weights(x);
+        let w = t.zone_weights_at(x, z);
         let info = t.road_info(x, z);
         let mut ctx = Ctx {
             x,

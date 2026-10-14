@@ -69,13 +69,36 @@ pub fn road_stage() -> StageFn {
             graph,
             textures,
             no_marks,
+            branch_from: None,
         });
         graph.add(*root, group);
+        // The branches of the level's road (an open level's network): each
+        // its own road, begun at the parent's paved edge.
+        let mut branches = Vec::new();
+        for b in &track.branches {
+            let mut br = Road::new(graph, textures);
+            let group = br.build(&mut RoadCtx {
+                track: &b.track,
+                terrain,
+                graph,
+                textures,
+                no_marks: &[],
+                branch_from: Some(b.under - 0.3),
+            });
+            graph.add(*root, group);
+            branches.push(br);
+        }
         w.add_night(road.material("markings"), "emissiveIntensity", 0.0, 0.06);
         w.add_night(road.material("chevron"), "emissiveIntensity", 0.12, 0.9);
         // Dew on the tarmac after dark: lamps and headlights glint off it.
         w.add_animator(road.dew_animator());
+        for br in &branches {
+            w.add_night(br.material("markings"), "emissiveIntensity", 0.0, 0.06);
+            w.add_night(br.material("chevron"), "emissiveIntensity", 0.12, 0.9);
+            w.add_animator(br.dew_animator());
+        }
         w.road = Some(road);
+        w.branch_roads = branches;
         Ok(Vec::new())
     })
 }

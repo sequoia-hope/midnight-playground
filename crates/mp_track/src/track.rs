@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 
 use mp_math::{DEG, clamp, js, kernel, smoothstep};
 
-use crate::level::{GroundFn, Level, Route, Segment, Zone};
+use crate::level::{Branch, GroundFn, Level, LoopSpec, Route, Segment, Zone};
 use crate::road_types::{ROAD_TYPES, road_index};
 
 fn gaussian_smooth(src: &[f32], sigma: f64, wrap: bool) -> Vec<f32> {
@@ -164,6 +164,32 @@ pub const OPEN_BAND: f64 = 30.0;
 pub const OPEN_POW: f64 = 0.7;
 pub const OPEN_DROP: f64 = 0.3;
 
+/// Over how many metres past the parent's shoulder a branch's heights
+/// return from the parent's surface to its own, and how far it is lifted
+/// where it lies over the parent's shoulder (so the two meshes do not
+/// fight).
+pub const BRANCH_FIT: f64 = 120.0;
+pub const BRANCH_LIFT: f64 = 0.02;
+
+/// A road leaving the level's road at a junction (docs/vision/peninsula.md,
+/// stage 3): its own Track, built as an open path, and where it leaves the
+/// parent.
+#[derive(Clone)]
+pub struct BranchTrack {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub track: Track,
+    /// Where on the parent the branch leaves it (m), and to which side
+    /// (+1 right, -1 left).
+    pub s: f64,
+    pub side: f64,
+    /// Metres along the branch to the parent's shoulder: before it the
+    /// branch lies under the parent's road; and to the parent's paved
+    /// edge, where the branch's own surface begins.
+    pub clear: f64,
+    pub under: f64,
+}
+
 #[derive(Clone)]
 pub struct Track {
     pub level: Level,
@@ -199,6 +225,9 @@ pub struct Track {
     /// An open level's ground under the whole box (`level.ground` when
     /// `level.open`): the car may leave the road onto it ([`Track::ground_y`]).
     pub open_ground: Option<GroundFn>,
+    /// The roads leaving this one at junctions (`level.branches`); road 0
+    /// is this track, road k is `branches[k - 1]` ([`Track::road`]).
+    pub branches: Vec<BranchTrack>,
     pub elevated: Vec<u8>,
     /// Collision limits either side of the centreline (positive distances).
     pub wall_l: Vec<f32>,
@@ -235,7 +264,73 @@ impl Track {
             Route::Path(spec) => build_loop(level, spec, &mut tags, false)?,
             Route::Segments(segs) => walk_segments(level, segs, &mut tags),
         };
-        Ok(build(level, is_loop, raw, tags))
+        let mut t = build(level, is_loop, raw, tags);
+        for b in &level.branches {
+            let bt = build_branch(&t, level, b)?;
+            // The parent's fences open at the junction.
+            let w = f64::from(bt.track.hw[0]) + f64::from(bt.track.margin[0]) + 3.0;
+            t.fence_gaps.push(FenceGap {
+                s0: bt.s - w,
+                s1: bt.s + w,
+                side: bt.side,
+            });
+            t.branches.push(bt);
+        }
+        Ok(t)
+    }
+
+    /// Road `k` of the network: 0 is this track, k its (k - 1)th branch.
+    pub fn road(&self, k: usize) -> &Track {
+        if k == 0 {
+            self
+        } else {
+            &self.branches[k - 1].track
+        }
+    }
+
+    /// Every road of the network, this track first.
+    pub fn roads(&self) -> impl Iterator<Item = &Track> {
+        std::iter::once(self).chain(self.branches.iter().map(|b| &b.track))
+    }
+
+    /// The road under (x, z) in the network, and the projection onto it:
+    /// the road the car was on (`road`, searched near `hint`) while its
+    /// shoulder still holds the car, else the road whose shoulder does,
+    /// else the one the car is least far off. A level without branches is
+    /// its one road.
+    pub fn project_road(&self, x: f64, z: f64, road: usize, hint: f64) -> (usize, Projection) {
+        let cur = self.road(road);
+        let p = cur.project(x, z, hint);
+        if self.branches.is_empty() {
+            return (0, p);
+        }
+        // How far past a road's shoulder a projection lies (negative: held).
+        let over = |t: &Track, p: &Projection| {
+            p.lat.abs() - f64::from(t.hw[p.i]) - f64::from(t.margin[p.i])
+        };
+        let mut best = (road, p, over(cur, &p));
+        if best.2 <= 0.0 {
+            return (road, p);
+        }
+        for (k, t) in self.roads().enumerate() {
+            if k == road {
+                continue;
+            }
+            let d = t.distance_to_road(x, z, 96.0);
+            let Some(s) = d.s else {
+                continue;
+            };
+            let q = Projection {
+                s,
+                lat: d.lat,
+                i: d.i as usize,
+            };
+            let o = over(t, &q);
+            if o < best.2 {
+                best = (k, q, o);
+            }
+        }
+        (best.0, best.1)
     }
 
     pub fn tag(&self, name: &str) -> Vec<&Tag> {
@@ -796,6 +891,120 @@ fn build_loop(
     })
 }
 
+/// A branch's Track: its path trimmed to where it leaves the parent's
+/// pavement and started on the parent's centreline, its heights the
+/// parent's surface while it lies over the parent and its own again
+/// `BRANCH_FIT` metres on, built as an open path in the branch's zone.
+fn build_branch(parent: &Track, level: &Level, b: &Branch) -> Result<BranchTrack, String> {
+    let p = (b.path)()?;
+    if p.x.len() < 2 {
+        return Err(format!("branch {}: a path needs at least two points", b.id));
+    }
+    // Where the branch's start meets the parent, and the first of its
+    // points clear of the parent's pavement.
+    let near = parent.distance_to_road(p.x[0], p.z[0], 400.0);
+    let Some(s_j) = near.s else {
+        return Err(format!(
+            "branch {}: its start is nowhere near the parent road",
+            b.id
+        ));
+    };
+    let jf = parent.frame(s_j);
+    let edge = jf.hw + jf.margin;
+    let mut k0 = 0;
+    while k0 < p.x.len() {
+        let d = parent.distance_to_road(p.x[k0], p.z[k0], 400.0);
+        if d.s.is_none() || d.d > edge {
+            break;
+        }
+        k0 += 1;
+    }
+    if k0 + 1 >= p.x.len() {
+        return Err(format!("branch {}: never leaves the parent road", b.id));
+    }
+    let side = {
+        let d = parent.distance_to_road(p.x[k0], p.z[k0], 400.0);
+        if d.lat >= 0.0 { 1.0 } else { -1.0 }
+    };
+    let mut path = crate::level::LoopPath {
+        x: vec![jf.x],
+        z: vec![jf.z],
+        y: Some(vec![jf.y]),
+        ..Default::default()
+    };
+    path.x.extend_from_slice(&p.x[k0..]);
+    path.z.extend_from_slice(&p.z[k0..]);
+    if let Some(y) = &p.y {
+        path.y.as_mut().expect("set").extend_from_slice(&y[k0..]);
+    } else {
+        path.y = None;
+    }
+    let spec = LoopSpec {
+        path: std::sync::Arc::new(move || Ok(path.clone())),
+        base_y: None,
+        tags: Vec::new(),
+        road: Some(b.road),
+        roads: Vec::new(),
+        start_s: None,
+        elevation_smooth: b.elevation_smooth.or(level.elevation_smooth),
+        zones: None,
+    };
+    let mut bl = level.clone();
+    bl.route = Route::Path(spec.clone());
+    bl.branches = Vec::new();
+    bl.elevation_smooth = spec.elevation_smooth;
+    let mut tags = Vec::new();
+    let raw = build_loop(&bl, &spec, &mut tags, false)?;
+    let mut t = build(&bl, false, raw, tags);
+    // Over the parent the branch is the parent's surface (lifted a little
+    // over its shoulder), and its own heights return over BRANCH_FIT:
+    // fitted after the road's own smoothing, so the join is exact.
+    let clear = edge + 1.0;
+    let mut hint = s_j;
+    let mut delta = 0.0;
+    for k in 0..t.n {
+        let s = k as f64;
+        let x = f64::from(t.px[k]);
+        let z = f64::from(t.pz[k]);
+        if s <= clear {
+            let q = parent.project(x, z, hint);
+            hint = q.s;
+            let lift = BRANCH_LIFT * (1.0 - smoothstep(clear - 1.0, clear + 15.0, s));
+            let fitted = parent.surface_y(q.s, q.lat) + lift;
+            delta = fitted - f64::from(t.py[k]);
+            t.py[k] = fitted as f32;
+        } else {
+            let w = 1.0 - smoothstep(clear, clear + BRANCH_FIT, s);
+            t.py[k] = (f64::from(t.py[k]) + delta * w) as f32;
+        }
+    }
+    t.grade = grade_of(&t.py, false);
+    build_racing_line(&mut t);
+    // One zone, the branch's, the whole way.
+    let zone = b.zone as usize;
+    let z = level
+        .zones
+        .get(zone)
+        .ok_or_else(|| format!("branch {}: no zone {zone}", b.id))?;
+    t.zone.iter_mut().for_each(|v| *v = b.zone);
+    t.zone_start = vec![0];
+    t.zones = vec![TrackZone {
+        zone: z.clone(),
+        id: zone,
+        s0: 0.0,
+        s1: t.length,
+    }];
+    Ok(BranchTrack {
+        id: b.id,
+        name: b.name,
+        track: t,
+        s: s_j,
+        side,
+        clear,
+        under: jf.hw,
+    })
+}
+
 fn build(level: &Level, is_loop: bool, raw: Raw, tags: Vec<Tag>) -> Track {
     let Raw {
         n,
@@ -826,12 +1035,7 @@ fn build(level: &Level, is_loop: bool, raw: Raw, tags: Vec<Tag>) -> Track {
         }
     };
     let next = |k: usize| if w { (k + 1) % n } else { (k + 1).min(n - 1) };
-    let mut grade = vec![0f32; n];
-    for k in 0..n {
-        let (a, b) = (prev(k), next(k));
-        let div = if w || (k > 0 && k < n - 1) { 2.0 } else { 1.0 };
-        grade[k] = ((py[b] as f64 - py[a] as f64) / div) as f32;
-    }
+    let grade = grade_of(&py, w);
 
     // Frames.
     let mut fx = vec![0f32; n];
@@ -973,6 +1177,7 @@ fn build(level: &Level, is_loop: bool, raw: Raw, tags: Vec<Tag>) -> Track {
         } else {
             None
         },
+        branches: Vec::new(),
         elevated: elev_raw,
         wall_l,
         wall_r,
@@ -993,6 +1198,32 @@ fn build(level: &Level, is_loop: bool, raw: Raw, tags: Vec<Tag>) -> Track {
     build_spatial_hash(&mut t);
     build_racing_line(&mut t);
     t
+}
+
+/// The rise per metre at each sample, centred (one-sided at an open
+/// road's ends).
+fn grade_of(py: &[f32], wrap: bool) -> Vec<f32> {
+    let n = py.len();
+    let mut grade = vec![0f32; n];
+    for k in 0..n {
+        let a = if wrap {
+            (k + n - 1) % n
+        } else {
+            k.saturating_sub(1)
+        };
+        let b = if wrap {
+            (k + 1) % n
+        } else {
+            (k + 1).min(n - 1)
+        };
+        let div = if wrap || (k > 0 && k < n - 1) {
+            2.0
+        } else {
+            1.0
+        };
+        grade[k] = ((py[b] as f64 - py[a] as f64) / div) as f32;
+    }
+    grade
 }
 
 fn build_spatial_hash(t: &mut Track) {

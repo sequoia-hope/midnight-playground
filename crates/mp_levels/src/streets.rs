@@ -342,6 +342,7 @@ pub fn level() -> Level {
         ground: Some(Arc::new(ground)),
         loose_ground: None,
         open: false,
+        branches: Vec::new(),
         sea_y: None,
         zones: vec![
             zone(

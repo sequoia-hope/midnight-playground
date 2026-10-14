@@ -214,6 +214,9 @@ pub struct World {
     pub no_marks: Vec<MarkGap>,
     /// `world.road`, from "Paving roads" on (WP 3.5).
     pub road: Option<Road>,
+    /// The roads of the level's branches (docs/vision/peninsula.md, stage
+    /// 3), in `track.branches` order.
+    pub branch_roads: Vec<Road>,
     /// `world.sky`.
     pub sky: Option<Sky>,
     /// `world.sea`, on levels with a sea.
@@ -251,6 +254,7 @@ impl World {
             terrain_material: None,
             no_marks: Vec::new(),
             road: None,
+            branch_roads: Vec::new(),
             sky: None,
             sea: None,
             level_data: None,

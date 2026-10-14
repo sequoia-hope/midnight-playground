@@ -44,6 +44,9 @@ fn length_start_and_finish() {
         // (A circuit starts its lap on the line: startS 0.)
         let ok = if t.laps > 0 {
             t.start_s >= 0.0 && t.start_s < 200.0
+        } else if l.is_path() {
+            // A corridor's race may start well along its road (the crest).
+            t.start_s > 0.0 && t.start_s < t.finish_s - 3000.0
         } else {
             t.start_s > 0.0 && t.start_s < 200.0
         };

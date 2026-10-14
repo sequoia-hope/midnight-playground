@@ -717,9 +717,10 @@ impl Build<'_> {
         info.d - radius >= wall + 0.6
     }
 
-    /// `inZone(x, need = 0.5)`.
-    fn in_zone(&self, x: f64, need: f64) -> bool {
-        self.terrain.zone_weights(x).as_slice()[self.zone] >= need
+    /// `inZone(x, need = 0.5)` (at a point: an open level's zones follow
+    /// its roads).
+    fn in_zone(&self, x: f64, z: f64, need: f64) -> bool {
+        self.terrain.zone_weights_at(x, z).as_slice()[self.zone] >= need
     }
 
     fn chunk_of(&self, s: f64) -> usize {
@@ -1121,7 +1122,7 @@ impl Build<'_> {
                 let px = x + (rng.next_f64() - 0.5) * 6.5;
                 let pz = cur_z + (rng.next_f64() - 0.5) * 6.5;
                 let r = rng.next_f64();
-                if !self.in_zone(px, 0.35) {
+                if !self.in_zone(px, pz, 0.35) {
                     continue;
                 }
                 let f = terrain.far(px, pz);
@@ -1438,7 +1439,7 @@ impl Build<'_> {
                         {
                             break 'body;
                         }
-                        if !self.in_zone(x, 0.4)
+                        if !self.in_zone(x, z, 0.4)
                             || self.excluded(x, z, 4.0)
                             || !self.clear_of_road(x, z, 3.5)
                         {
@@ -1556,7 +1557,7 @@ impl Build<'_> {
                 let px = x + (rng.next_f64() - 0.5) * 10.0;
                 let pz = cur_z + (rng.next_f64() - 0.5) * 10.0;
                 let r0 = rng.next_f64();
-                if r0 > 0.45 || !self.in_zone(px, 0.5) {
+                if r0 > 0.45 || !self.in_zone(px, pz, 0.5) {
                     continue;
                 }
                 let f = terrain.far(px, pz);

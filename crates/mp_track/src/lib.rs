@@ -12,6 +12,6 @@ pub mod track;
 pub use level::*;
 pub use road_types::{ROAD_TYPES, RoadType, road_index, road_type};
 pub use track::{
-    Bounds, FenceGap, Frame, OPEN_BAND, OPEN_DROP, OPEN_POW, OPEN_R0, Projection, RUNOFF_FLAT,
-    RoadDistance, Tag, Track, TrackZone, trapezoid,
+    BRANCH_FIT, BRANCH_LIFT, Bounds, BranchTrack, FenceGap, Frame, OPEN_BAND, OPEN_DROP, OPEN_POW,
+    OPEN_R0, Projection, RUNOFF_FLAT, RoadDistance, Tag, Track, TrackZone, trapezoid,
 };
