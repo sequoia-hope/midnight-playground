@@ -19,6 +19,7 @@
 //! ([`effects`], drawn by [`fx`], WP 4.4).
 
 pub mod audio;
+pub mod beacons;
 pub mod camera;
 pub mod effects;
 pub mod flow;
@@ -166,7 +167,8 @@ impl Params {
 pub fn cruise_level(mut level: mp_track::Level, cruise: bool) -> mp_track::Level {
     if cruise && level.open {
         level.mode = mp_track::Mode::Cruise;
-        level.rivals.clear();
+        // The rivals stay on the level: a cruise starts without them and
+        // its races at places bring them (`mp_sim::event`).
         // A lap of the loop is a race; a cruise goes round and round.
         level.laps = None;
         level.lap_length = None;
@@ -201,6 +203,8 @@ pub struct Play {
     pub race: Option<Race>,
     /// The cars, per slot (players, rivals, the traffic pool).
     models: Option<models::Cars>,
+    /// The car slots the field's models were built for ([`flow::slots`]).
+    field: usize,
     /// The race's effects (`race.effects`).
     fx: Option<fx::Fx>,
     /// The touch controls are shown (a touch device, or `?touch=1`).
@@ -249,6 +253,7 @@ pub fn plugin(app: &mut App) {
         params,
         race: None,
         models: None,
+        field: 0,
         fx: None,
         touch_ui,
         insets: Insets::default(),
@@ -296,6 +301,7 @@ pub fn plugin(app: &mut App) {
     );
     audio::plugin(app);
     guide::plugin(app);
+    beacons::plugin(app);
     hud::plugin(app);
     gamepad_io::plugin(app);
     tilt::plugin(app);
@@ -338,6 +344,41 @@ fn start(
         play.models = None;
         play.started = false;
         play.stop = false;
+    }
+    // An event at a place brought its rivals or took them away: the
+    // field's models again, for the race as it is now.
+    let pl = &mut *play;
+    if let Some(race) = pl.race.as_mut()
+        && pl.models.is_some()
+        && flow::slots(&race.session.curr).count() != pl.field
+    {
+        for e in &cars {
+            commands.entity(e).despawn();
+        }
+        if let Some(f) = pl.fx.take() {
+            for e in f.entities {
+                commands.entity(e).despawn();
+            }
+        }
+        lights.values.clear();
+        let (field, fx) = spawn_cars(
+            &mut commands,
+            race,
+            pl.params.fx,
+            &mut meshes,
+            &mut images,
+            &mut mats,
+            &shared,
+            &mut lights,
+            &windows,
+            &cams,
+        );
+        let n = flow::slots(&race.session.curr).count();
+        race.springs = vec![pose::Springs::default(); n];
+        pl.models = Some(field);
+        pl.fx = fx;
+        pl.field = n;
+        return;
     }
     if play.race.is_some() || !play.armed {
         return;
@@ -404,6 +445,41 @@ fn start(
         cops: play.params.cops,
         flash: play.params.flash,
     });
+    let (cars, fx) = spawn_cars(
+        &mut commands,
+        &race,
+        play.params.fx,
+        &mut meshes,
+        &mut images,
+        &mut mats,
+        &shared,
+        &mut lights,
+        &windows,
+        &cams,
+    );
+    play.fx = fx;
+    play.field = flow::slots(&race.session.curr).count();
+    play.models = Some(cars);
+    play.race = Some(race);
+}
+
+/// The field's car models (the players, the rivals, the traffic pool, and
+/// Hot Pursuit's police and props after them) and their effects, for the
+/// race as it is: at the start, and again when an event at a place brings
+/// its rivals or takes them away.
+#[allow(clippy::too_many_arguments)]
+fn spawn_cars(
+    commands: &mut Commands,
+    race: &Race,
+    fx_on: bool,
+    meshes: &mut Assets<Mesh>,
+    images: &mut Assets<Image>,
+    mats: &mut Assets<ThreeMaterial>,
+    shared: &SharedImages,
+    lights: &mut MaterialLights,
+    windows: &Query<&Window, With<PrimaryWindow>>,
+    cams: &Query<&Projection, With<Camera3d>>,
+) -> (models::Cars, Option<fx::Fx>) {
     let st = &race.session.curr;
     let me = race.me();
     let mut wants = Vec::new();
@@ -448,15 +524,7 @@ fn start(
         .pv
         .as_ref()
         .map_or(Vec::new(), |pv| police::extras(&pv.pursuit));
-    let cars = models::spawn_field(
-        &wants,
-        &extras,
-        &mut commands,
-        &mut meshes,
-        &mut images,
-        &mut mats,
-        &shared,
-    );
+    let cars = models::spawn_field(&wants, &extras, commands, meshes, images, mats, shared);
     for (c, w) in cars.cars.iter().zip(&wants) {
         commands
             .entity(c.root)
@@ -471,25 +539,24 @@ fn start(
         Projection::Perspective(pp) => pp.fov.to_degrees(),
         _ => 62.0,
     });
-    play.fx = if play.params.fx {
+    let fx = if fx_on {
         fx::Fx::spawn(
-            &mut commands,
+            commands,
             fx::Assets3 {
-                meshes: &mut meshes,
-                images: &mut images,
-                mats: &mut mats,
-                shared: &shared,
-                lights: &mut lights,
+                meshes,
+                images,
+                mats,
+                shared,
+                lights,
             },
             &fx::CarSpec::of(&cars, st.players.len()),
-            setup.opts.seed,
+            race.setup.opts.seed,
             (height, fov),
         )
     } else {
         None
     };
-    play.models = Some(cars);
-    play.race = Some(race);
+    (cars, fx)
 }
 
 /// Keys, focus, touches (and the mouse as a finger when the touch controls
@@ -618,6 +685,8 @@ fn read_input(
     let _ = tapped;
     match race.mode {
         // Online the next race is the host's to start.
+        // An event at a place's results: Enter goes back to the cruise.
+        Mode::Results if again && race.event_result.is_some() => race.continue_cruise(),
         Mode::Results if again && !race.online_now() => {
             let mut opts = race.setup.opts;
             opts.seed = opts_for_restart.seed.unwrap_or_else(clock_seed);
@@ -690,9 +759,15 @@ fn draw(
     mut env: ResMut<EnvRequest>,
 ) {
     let play = &mut *play;
+    let field = play.field;
     let Some(race) = play.race.as_mut() else {
         return;
     };
+    // The field's models are being built for a new field (an event at a
+    // place brought its rivals or took them): the next frame draws.
+    if flow::slots(&race.session.curr).count() != field {
+        return;
+    }
     // Online the race goes on behind the menu.
     let paused = (race.mode == Mode::Paused && !race.online_now()) || !play.started;
     let dt = if paused {
@@ -726,8 +801,9 @@ fn draw(
         if !active {
             continue;
         }
-        // A car that came onto the road this tick has no previous pose.
-        let a = match prev.get(i) {
+        // A car that came onto the road this tick has no previous pose
+        // (nor has any, the tick a field changed).
+        let a = match prev.get(i).filter(|_| prev.len() == field) {
             Some((pv, true)) => pose::Pose::of(pv),
             _ => pose::Pose::of(v),
         };
@@ -1043,6 +1119,7 @@ pub(crate) mod tests {
             params: Params::from_options(&crate::options::Options::default()),
             race: None,
             models: None,
+            field: 0,
             fx: None,
             touch_ui: false,
             insets: Insets::default(),

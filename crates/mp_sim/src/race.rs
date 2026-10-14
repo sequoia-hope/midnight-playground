@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use mp_levels::world::{WorldData, level_world_data};
 use mp_math::{clamp, js, kernel, wrap_angle};
-use mp_track::{Level, Mode, Track};
+use mp_track::{EventKind, Level, Mode, Track};
 
 use crate::ai::{AiCtx, AiDriver, AiOpts};
 use crate::autopilot::autopilot;
@@ -89,6 +89,19 @@ pub struct RaceState {
     pub prog_s: Vec<f64>,
     /// A multiplayer race's rules and end ([`SimState::new_multi`]).
     pub multi: Option<Multi>,
+    /// A cruise on an open level: the event whose start the car is
+    /// holding gas and brake on, and for how long ([`crate::event`]).
+    pub hold: Option<(usize, f64)>,
+    /// The event at a place being run, out of a cruise.
+    pub event: Option<crate::event::EventRun>,
+}
+
+impl RaceState {
+    /// Progress is counted as a circuit's (`prog`, carried by the distance
+    /// moved): on a circuit, and in an event at a place.
+    pub fn progged(&self) -> bool {
+        self.laps > 0 || self.event.is_some()
+    }
 }
 
 /// Race's state about a player (SPEC 4.3: per player, in `PlayerCar`).
@@ -265,6 +278,13 @@ pub enum SimEvent {
     },
     /// Race.onFinish: the results are ready.
     Results,
+    /// An event at a place began out of a cruise (its countdown starts):
+    /// `index` into the level's events.
+    EventStart {
+        index: usize,
+    },
+    /// An event at a place ended, and the cruise is back.
+    EventEnd(crate::event::EventResult),
     Reset {
         player: usize,
     },
@@ -315,53 +335,13 @@ impl SimState {
         );
         let mut phys = CarPhysics::new(&v, spec);
 
-        // Rivals.
-        let mut rivals: Vec<AiDriver> = level
-            .rivals
-            .iter()
-            .enumerate()
-            .map(|(i, r)| {
-                let rv = Vehicle::new(dims(r.kind).expect("dims"), r.kind, 1400.0, r.name, r.color);
-                let opts = AiOpts {
-                    skill: Some(r.skill),
-                    name: r.name,
-                    power: Some(r.power),
-                    bias: Some((if i % 2 == 1 { 1.0 } else { -1.0 }) * 0.6),
-                    line_factor: Some(0.8 + (i % 3) as f64 * 0.08),
-                };
-                let mut ai = AiDriver::new(rv, opts, &mut rng.ai);
-                ai.color = r.color;
-                ai
-            })
-            .collect();
-
-        // Grid: rows of two; the player starts fourth (alone for a cruise).
-        let order: Vec<Option<usize>> = if rivals.len() >= 5 {
-            vec![Some(0), Some(1), Some(2), None, Some(3), Some(4)]
+        // Rivals (none in a cruise: an open level's events bring them).
+        let mut rivals = if cruise {
+            Vec::new()
         } else {
-            std::iter::once(None)
-                .chain((0..rivals.len()).map(Some))
-                .collect()
+            level_rivals(level, &mut rng)
         };
-        for (k, c) in order.into_iter().enumerate() {
-            let (row, col) = ((k / 2) as f64, k % 2);
-            let s = t.start_s - 5.0 - row * 10.0 - col as f64 * 3.0;
-            let lat = if col == 1 { 2.4 } else { -2.4 };
-            match c {
-                None => {
-                    phys.reset(&mut v, t, t.wrap(s), lat);
-                    v.prog = Some(s);
-                }
-                Some(i) => {
-                    let a = &mut rivals[i];
-                    a.k.s = t.wrap(s);
-                    a.k.lat = lat;
-                    a.k.speed = 0.0;
-                    a.prog = Some(s);
-                    a.write_pos(t);
-                }
-            }
-        }
+        grid(t, &mut phys, &mut v, &mut rivals, t.start_s);
         let prog_s = std::iter::once(v.s)
             .chain(rivals.iter().map(|a| a.k.s))
             .collect();
@@ -430,6 +410,8 @@ impl SimState {
                 park_rows: None,
                 prog_s,
                 multi: None,
+                hold: None,
+                event: None,
             },
             players: vec![PlayerCar {
                 v,
@@ -472,6 +454,65 @@ impl SimState {
         };
         use_physics(&mut st, t, o.physics);
         st
+    }
+}
+
+/// The level's rivals as Race builds them, drawing from the AI stream.
+pub(crate) fn level_rivals(level: &Level, rng: &mut RngStreams) -> Vec<AiDriver> {
+    level
+        .rivals
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            let rv = Vehicle::new(dims(r.kind).expect("dims"), r.kind, 1400.0, r.name, r.color);
+            let opts = AiOpts {
+                skill: Some(r.skill),
+                name: r.name,
+                power: Some(r.power),
+                bias: Some((if i % 2 == 1 { 1.0 } else { -1.0 }) * 0.6),
+                line_factor: Some(0.8 + (i % 3) as f64 * 0.08),
+            };
+            let mut ai = AiDriver::new(rv, opts, &mut rng.ai);
+            ai.color = r.color;
+            ai
+        })
+        .collect()
+}
+
+/// The grid behind `front`: rows of two; the player starts fourth (alone
+/// for a cruise). Each car's progress is its unwrapped s.
+pub(crate) fn grid(
+    t: &Track,
+    phys: &mut CarPhysics,
+    v: &mut Vehicle,
+    rivals: &mut [AiDriver],
+    front: f64,
+) {
+    let order: Vec<Option<usize>> = if rivals.len() >= 5 {
+        vec![Some(0), Some(1), Some(2), None, Some(3), Some(4)]
+    } else {
+        std::iter::once(None)
+            .chain((0..rivals.len()).map(Some))
+            .collect()
+    };
+    for (k, c) in order.into_iter().enumerate() {
+        let (row, col) = ((k / 2) as f64, k % 2);
+        let s = front - 5.0 - row * 10.0 - col as f64 * 3.0;
+        let lat = if col == 1 { 2.4 } else { -2.4 };
+        match c {
+            None => {
+                phys.reset(v, t, t.wrap(s), lat);
+                v.prog = Some(s);
+            }
+            Some(i) => {
+                let a = &mut rivals[i];
+                a.k.s = t.wrap(s);
+                a.k.lat = lat;
+                a.k.speed = 0.0;
+                a.prog = Some(s);
+                a.write_pos(t);
+            }
+        }
     }
 }
 
@@ -681,7 +722,7 @@ pub struct Standing {
 /// `standings()`: finishers by time, then the rest by progress (on a
 /// circuit `prog`, elsewhere s). A stable sort, as JS's.
 pub fn standings(st: &SimState) -> Vec<Standing> {
-    let laps = st.race.laps > 0;
+    let laps = st.race.progged();
     let mut list: Vec<Standing> = st
         .players
         .iter()
@@ -790,7 +831,8 @@ pub fn cruise_results(st: &SimState) -> CruiseResults {
 pub fn park_spot(t: &Track, race: &mut RaceState, s0: f64, lat0: f64) -> Park {
     // A circuit has no end to park at: a slow lap on the right-hand side,
     // easing off for the corners, and the racers still going pass on the left.
-    if race.laps > 0 {
+    // Nor has an event at a place: the car rolls on.
+    if race.progged() {
         return Park::Circuit;
     }
     let front = js::max(t.finish_s + 60.0, t.road_end() - PARK_GAP);
@@ -1062,7 +1104,14 @@ pub fn step(
     for i in 0..np {
         // The pursuit holds player 0 (Hot Pursuit is single-player).
         let held = i == 0 && st.pv.as_ref().is_some_and(|pv| pv.held());
-        let ctrl = if st.players[i].rules.finished {
+        let halt = st
+            .race
+            .event
+            .as_ref()
+            .is_some_and(|e| e.kind == EventKind::Delivery);
+        let ctrl = if st.players[i].rules.finished && halt {
+            crate::event::halt()
+        } else if st.players[i].rules.finished {
             let views = field(st).views(&agents);
             cool_down(t, &mut st.players[i], i, &views, dt)
         } else if held {
@@ -1084,8 +1133,9 @@ pub fn step(
     }
 
     let laps = st.race.laps > 0;
+    let progged = st.race.progged();
     let player_s = st.players[0].v.s;
-    let player_prog = if laps { st.players[0].v.prog } else { None };
+    let player_prog = if progged { st.players[0].v.prog } else { None };
     for i in 0..st.rivals.len() {
         let views = field(st).views(&agents);
         // Whom this rival rubber-bands against (MULTIPLAYER 2.1).
@@ -1094,12 +1144,12 @@ pub fn step(
             Some(m) if !m.rubber_band => {
                 // Its own position: a gap of zero, no banding.
                 let a = &st.rivals[i];
-                (a.k.s, if laps { a.prog } else { None })
+                (a.k.s, if progged { a.prog } else { None })
             }
             Some(_) => {
                 let k = nearest_human(st, i);
                 let v = &st.players[k].v;
-                (v.s, if laps { v.prog } else { None })
+                (v.s, if progged { v.prog } else { None })
             }
         };
         let ctx = AiCtx {
@@ -1118,7 +1168,7 @@ pub fn step(
             st.rivals[i].park = Some(park);
         }
     }
-    if laps {
+    if progged {
         track_progress(t, st);
     }
     let odos: Vec<f64> = (0..np)
@@ -1343,7 +1393,13 @@ pub fn step(
         let f = t.frame(p.v.s);
         let along = kernel::cos(p.v.yaw) * f.fx + kernel::sin(p.v.yaw) * f.fz;
         let spd = p.v.speed;
-        if started && !p.rules.finished && along < -0.3 && spd > 4.0 {
+        // A delivery goes by any road, either way.
+        let any_way = st
+            .race
+            .event
+            .as_ref()
+            .is_some_and(|e| e.kind == EventKind::Delivery);
+        if started && !p.rules.finished && along < -0.3 && spd > 4.0 && !any_way {
             p.rules.wrong_way += dt;
         } else {
             p.rules.wrong_way = 0.0;
@@ -1368,14 +1424,15 @@ pub fn step(
         if laps && started && !st.players[i].rules.finished {
             lap_check(t, st, i, events);
         }
-        let prog_now = if laps {
+        let prog_now = if progged {
             st.players[i].v.prog.unwrap_or(f64::NAN)
         } else {
             st.players[i].v.s
         };
+        let delivered = crate::event::delivered(lr, st, i);
         if !st.race.cruise
             && !st.players[i].rules.finished
-            && prog_now >= st.race.finish_prog
+            && (prog_now >= st.race.finish_prog || delivered)
             && started
         {
             let time = st.race.time;
@@ -1438,7 +1495,12 @@ pub fn step(
                 r.finish_delay -= dt;
                 if r.finish_delay <= 0.0 && !r.reported {
                     r.reported = true;
-                    events.push(SimEvent::Results);
+                    if st.race.event.is_some() {
+                        // An event at a place hands back to the cruise.
+                        crate::event::end(lr, st, events);
+                    } else {
+                        events.push(SimEvent::Results);
+                    }
                 }
             }
             Some(m) => {
@@ -1455,6 +1517,8 @@ pub fn step(
     if st.pv.is_some() {
         pursuit_events(t, st, events);
     }
+    // An open level's events at places: a start held, a delivery's time.
+    crate::event::step(lr, st, &inps, events);
 }
 
 /// Multiplayer: the human nearest rival `i` in race progress (on a circuit
@@ -1825,6 +1889,25 @@ pub fn hash(st: &SimState) -> u64 {
                 o(&mut rec, x);
             }
             rec.extend(p.rules.near_miss_hit.iter().map(|&b| u8::from(b)));
+        }
+    }
+    // An open level's event at a place (stage 5): only there while a start
+    // is held or an event runs, so every other race hashes as it did.
+    if st.race.hold.is_some() || st.race.event.is_some() {
+        rec.extend_from_slice(b"event");
+        if let Some((i, held)) = st.race.hold {
+            rec.push(i as u8);
+            rec.extend_from_slice(&held.to_bits().to_le_bytes());
+        }
+        if let Some(e) = &st.race.event {
+            rec.push(e.index as u8);
+            rec.push(
+                u8::from(e.cruise_time > 0.0)
+                    | u8::from(e.decided) << 1
+                    | u8::from(e.delivered) << 2,
+            );
+            rec.extend_from_slice(&e.cruise_time.to_bits().to_le_bytes());
+            rec.extend_from_slice(&st.race.finish_prog.to_bits().to_le_bytes());
         }
     }
     // A sim car's own state (docs/vehicle-dynamics/SPEC.md 10): only there

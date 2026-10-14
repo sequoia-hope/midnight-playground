@@ -217,6 +217,7 @@ pub fn straight_level(length: f64, road: &'static str) -> Level {
         traffic: Vec::new(),
         police: None,
         rivals: Vec::new(),
+        events: Vec::new(),
     }
 }
 

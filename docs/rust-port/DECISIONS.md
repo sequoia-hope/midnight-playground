@@ -11175,3 +11175,51 @@ road's tarmac (the road-end barricades, paint and light pools excepted).
   branch (at Tunitas's mouth). On an open level, `World::finish`
   (`section::clear_branch_tarmac`) scales to nothing any kit instance on
   a branch's paved width.
+
+## D1219 (2026-10-14): events at places, stage 5 of the open world
+
+The owner: "continue with stage 5" (docs/vision/peninsula.md: hold gas
+and brake at a marked place to start races, time trials, a delivery from
+a garage in Half Moon Bay).
+
+- **The events are level data** (`Level::events`, `mp_track::EventSpot`:
+  a kind, a start in metres along road 0, a finish the lap's way, or a
+  drop point and a time). The loop has the plan's two races and two
+  trials at the corridors' joins, and The Store Run, from a garage in
+  town to the San Gregorio General Store at Stage Road's mouth. The
+  plan (`plan.json`) gains the garage, the delivery, the kind `delivery`
+  and the route `garage-to-store`.
+- **The simulation runs them** (`mp_sim::event`). A cruise's car stopped
+  (under 2 m/s) on a start's marker with both pedals over half fills a
+  one-second hold (`RaceState::hold`). The event then comes out of the
+  cruise (`RaceState::event`): a race's rivals on a grid behind the start
+  (the grid code `SimState::new` uses, now `grid`), the traffic within
+  220 m gone, the countdown. Progress counts as a circuit's does
+  (`RaceState::progged`), to the start plus the event's length, so the
+  rivals finish, park and place by the circuit code. A delivery finishes
+  within 15 m of its drop or at its time, knows no wrong way, and stands
+  on the brakes after. A trial's time to beat is the road's speed
+  profile with 30 % in hand (`time_of`), roughly 15 % slower than the
+  rivals drive. At the results (`SimEvent::EventEnd`) the cruise comes
+  back with its score and multiplier as they were. The hash gains the
+  hold and the event only while either is there, so every other race
+  hashes as before.
+- **A cruise starts with no rivals in the simulation** (`SimState::new`
+  skips them when cruising), so `play::cruise_level` keeps the level's
+  rivals for the races.
+- **The client** rebuilds the field's car models when the slot count
+  changes (`spawn_cars`, `Play::field`; `draw` skips the frame between).
+  Each start gets a beacon: a column of light on the right shoulder at
+  the front of its marker, with a pool across the lane. The colour says
+  the kind: a race orange, a trial blue, a delivery green. A delivery's
+  drop gets one while the delivery runs (`play::beacons`). A card shows
+  as the car comes within 150 m of a start; on the marker a prompt reads
+  HOLD GAS + BRAKE TO START, and then HOLD n% while held. The HUD is
+  built afresh per leg (`Race::legs`, not `starts`, so the audio's
+  `startRace` and the music are untouched). The results show the event
+  (`event_results`; best time per event in `bestEvent.<level>.<id>`)
+  with Keep cruising (and Enter) back to the cruise, which went on
+  behind them.
+- **Not yet:** the rivals of an event drive the arcade model even with
+  Physics All. Restart in the pause menu restarts the whole cruise.
+  Starts are on road 0 only. The minimap does not show the starts.

@@ -11,6 +11,7 @@ pub mod autopilot;
 pub mod body;
 pub mod collisions;
 pub mod dims;
+pub mod event;
 pub mod field;
 pub mod fuzz;
 pub mod ground;

@@ -59,6 +59,7 @@ fn level(route: Route, zones: usize) -> Level {
         traffic: Vec::new(),
         police: None,
         rivals: Vec::new(),
+        events: Vec::new(),
     }
 }
 

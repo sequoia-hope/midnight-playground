@@ -93,7 +93,7 @@ pasted from a map.
   `from`, `via`, `to` (place ids); `scale` to override the plan's.
 - `circuits`: routes end to end; the report checks each ends where the
   next begins.
-- `events`: `kind` (race, time trial), `route` (whose roads it follows),
+- `events`: `kind` (race, time trial, delivery), `route` (whose roads it follows),
   `from`, `to`, `light`, `note`.
 - `remix`: what each existing level becomes.
 

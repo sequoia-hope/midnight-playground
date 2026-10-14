@@ -237,8 +237,10 @@ pub enum CenterCls {
 /// PursuitView.js; one class per text).
 pub fn center_class(text: &str) -> CenterCls {
     match text {
-        "GO!" | "WINNER!" | "ESCAPED" | "TAKEDOWN" => CenterCls::Go,
-        "WRONG WAY" | "PURSUIT" | "SPIKED!" | "BUSTED" | "WRECKED" => CenterCls::Warn,
+        "GO!" | "WINNER!" | "ESCAPED" | "TAKEDOWN" | "FINISH" | "DELIVERED" => CenterCls::Go,
+        "WRONG WAY" | "PURSUIT" | "SPIKED!" | "BUSTED" | "WRECKED" | "OUT OF TIME" => {
+            CenterCls::Warn
+        }
         t if t.ends_with(" PLACE") => CenterCls::Go,
         _ => CenterCls::Pop,
     }
@@ -383,6 +385,12 @@ impl Hud {
         self.zone_card_seq += 1;
     }
 
+    /// A card in the zone card's place: an event at a place's name and
+    /// what it is (docs/vision/peninsula.md, stage 5).
+    pub fn card(&mut self, name: &str, sub: &str) {
+        self.zone_card_show(name, sub);
+    }
+
     pub fn update(&mut self, dt: f64, st: &HudIn, track: &Track) {
         let set = |slot: &mut String, v: String| {
             if *slot != v {
@@ -439,8 +447,9 @@ impl Hud {
             );
         }
 
-        // Route dots: along the route, or round the lap on a circuit.
-        let len = if track.laps > 0 {
+        // Route dots: along the route, or round the lap on a circuit (or
+        // round a loop's, cruising or in an event at a place).
+        let len = if track.laps > 0 || track.is_loop {
             track.n as f64
         } else {
             track.finish_s
