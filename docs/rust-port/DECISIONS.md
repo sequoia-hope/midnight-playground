@@ -11149,3 +11149,29 @@ speed/turn hint arrows on cruise mode".
 - **CI.** `xtask web --release` copies the page's files before the
   worker's build precompresses `builder-worker.js` (Pages failed on that
   since D1215), and the wasm build's clippy has the `Built` alias.
+
+## D1218 (2026-10-14): nothing on the open world's roads
+
+The owner, after D1217: "scenery is still on the road in the new build.
+build tests to find the bug and then fix it". `tests/stream_clear.rs`
+builds the streamed sections round the start and at every junction and
+fails on any instance whose foot, or mesh whose body, stands on any
+road's tarmac (the road-end barricades, paint and light pools excepted).
+
+- **The Land kit** (D1212) kept clear of the roads by the far field's
+  distance. That field is a 32 m raster blended between its corners,
+  and on a road's centreline the blend reads about half a cell: a tree
+  3 m from the centreline measured 16 m. The kit planted trees and scrub
+  on the tarmac along the whole loop, in whole builds and sections
+  alike. Within 60 m of a road by the far field (a blend errs by at most
+  a cell's diagonal) it now measures against every road of the network
+  (`road_clearance`), and the crop fences do too.
+- **The junctions.** The loop's rails were cleared across a branch's
+  mouth but not where its far end meets the loop again, and not round
+  the loop's wrap. Both are cleared now, and a branch (`RoadCtx::parent`)
+  stands no rail, post or chevron where it runs onto its parent's
+  tarmac.
+- **The ported kits** know only the level's road and plant across a
+  branch (at Tunitas's mouth). On an open level, `World::finish`
+  (`section::clear_branch_tarmac`) scales to nothing any kit instance on
+  a branch's paved width.

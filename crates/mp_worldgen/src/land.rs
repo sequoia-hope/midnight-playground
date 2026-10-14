@@ -25,7 +25,7 @@
 
 use mp_math::{Mulberry32, fbm, js, kernel, lerp, smoothstep};
 use mp_scene::three;
-use mp_track::Cover;
+use mp_track::{Cover, Track};
 
 use crate::flora::{canopy_geometry, conifer_geometry, foliage_material, shrub_geometry};
 use crate::material::{Material, Param};
@@ -59,6 +59,11 @@ const FIELD: f64 = 190.0;
 const FIELD_DEPTH: f64 = 240.0;
 /// The road-edge fence stands this far outside the road's margin (m).
 const FENCE_OFF: f64 = 2.2;
+/// Within this of a road by the far field (m) a place is measured against
+/// the roads themselves: the far field is a 32 m raster whose distance is
+/// blended between its corners, which on a road's centreline reads half a
+/// cell (D1218), and a blend errs by at most a cell's diagonal.
+const NEAR_FAR: f64 = 60.0;
 /// The JS kits write a random yaw as `6.3`, not 2π.
 const TURN: f64 = 6.3;
 const DOUBLE_SIDE: f64 = three::DOUBLE_SIDE as f64;
@@ -469,9 +474,16 @@ impl Scenery for Land {
                         };
                         let tree = !matches!(tpl, Template::Scrub);
                         // Clear of every road: the far field's distance is
-                        // to the nearest road's centreline.
+                        // to the nearest road's centreline, but only
+                        // roughly; near one the roads say.
+                        let clear = if tree { CLEAR_TREE } else { CLEAR };
                         let road_w = js::max(at(&t.hw, t.idx(f.s)), 5.0) + 1.5;
-                        if f.d < road_w + if tree { CLEAR_TREE } else { CLEAR } {
+                        if f.d < road_w + clear {
+                            continue;
+                        }
+                        if f.d < road_w + clear + NEAR_FAR
+                            && road_clearance(t, px, pz, NEAR_FAR + 20.0) < 1.5 + clear
+                        {
                             continue;
                         }
                         let sv = surf.sample(px, pz);
@@ -565,7 +577,10 @@ impl Scenery for Land {
                             for side in [-1.0, 1.0] {
                                 let (x, z) = (f.x + f.rx * off * side, f.z + f.rz * off * side);
                                 let inside = x >= x0 && x < x0 + CELL && z >= z0 && z < z0 + CELL;
-                                let crop = crop_at(x, z) && terrain.far(x, z).d >= off - 0.5;
+                                // Not on another road's tarmac.
+                                let edge = off - f.hw - 0.5;
+                                let crop =
+                                    crop_at(x, z) && road_clearance(t, x, z, off + 40.0) >= edge;
                                 if !crop {
                                     continue;
                                 }
@@ -623,7 +638,8 @@ impl Scenery for Land {
                                 let from = [x + dir[0] * POST, z + dir[1] * POST];
                                 let mut keep = |qx: f64, qz: f64| {
                                     crop_at(qx, qz)
-                                        && terrain.far(qx, qz).d >= off - 0.5
+                                        && (terrain.far(qx, qz).d >= off + NEAR_FAR
+                                            || road_clearance(t, qx, qz, off + NEAR_FAR) >= edge)
                                         && terrain.height_at(qx, qz) >= sea_y + 1.0
                                 };
                                 fence_line(
@@ -685,6 +701,30 @@ impl Scenery for Land {
         self.counts = counts;
         Ok(())
     }
+}
+
+/// How far (x, z) lies outside the nearest road of the network, from its
+/// centreline less its half-width (negative: on the road); measured on
+/// the roads within `radius`, past an open end from the end itself.
+fn road_clearance(t: &Track, x: f64, z: f64, radius: f64) -> f64 {
+    let mut best = f64::INFINITY;
+    for r in t.roads() {
+        let d = r.distance_to_road(x, z, radius);
+        let Some(s) = d.s else { continue };
+        let inside = r.is_loop || (0.0..=r.length).contains(&s);
+        let f = r.frame(if r.is_loop {
+            r.wrap(s)
+        } else {
+            s.clamp(0.0, r.length)
+        });
+        let dd = if inside {
+            d.lat.abs()
+        } else {
+            kernel::hypot(x - f.x, z - f.z)
+        };
+        best = best.min(dd - f.hw);
+    }
+    best
 }
 
 fn at(a: &[f32], i: usize) -> f64 {

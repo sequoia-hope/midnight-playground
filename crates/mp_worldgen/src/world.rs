@@ -314,7 +314,8 @@ impl World {
     }
 
     /// The scene and everything the client needs to run it.
-    pub fn finish(self) -> WorldBuild {
+    pub fn finish(mut self) -> WorldBuild {
+        crate::section::clear_branch_tarmac(&mut self);
         let (mut scene, handles) = self.graph.finish();
         scene.meta = serde_json::json!({
             "name": self.level.id,
