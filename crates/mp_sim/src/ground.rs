@@ -82,9 +82,14 @@ impl Ground for TrackGround<'_> {
             y,
             normal,
             surface: Surface {
-                // The arcade's run-off: a third less grip, and the tyres
-                // plough (its `off` drag, as rolling resistance).
-                mu: 1.0 - 0.3 * off,
+                // The arcade's run-off: a third less grip (an open level's
+                // land a tenth, D1217), and the tyres plough (its `off`
+                // drag, as rolling resistance).
+                mu: if t.open_ground.is_some() && t.run_l.is_none() {
+                    1.0 - (1.0 - crate::physics::OPEN_LAND_GRIP) * off
+                } else {
+                    1.0 - 0.3 * off
+                },
                 rolling: 1.0 + 9.0 * off,
                 loose: off,
                 id: if off > 0.0 {

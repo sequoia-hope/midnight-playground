@@ -235,7 +235,6 @@ impl Stream {
 type PlanOut = Option<(u64, Result<Arc<Planned>, String>)>;
 #[cfg(not(target_arch = "wasm32"))]
 static THREAD_PLAN: Mutex<PlanOut> = Mutex::new(None);
-#[cfg(not(target_arch = "wasm32"))]
 type Built = Result<(WorldBuild, CutStats), String>;
 #[cfg(not(target_arch = "wasm32"))]
 static THREAD_OUT: Mutex<Vec<(u64, Option<i64>, Built)>> = Mutex::new(Vec::new());
@@ -603,7 +602,7 @@ pub fn drive(
         } else {
             BUILD_RUNNING_MS
         };
-        let mut finished: Vec<(i64, Result<(WorldBuild, CutStats), String>)> = Vec::new();
+        let mut finished: Vec<(i64, Built)> = Vec::new();
         for (k, s) in st.secs.iter_mut() {
             let Sec::Stepping(b) = s else { continue };
             let b = b.get_mut().unwrap_or_else(|e| e.into_inner());

@@ -147,6 +147,9 @@ pub fn car_spec(kind: &str) -> Option<CarSpec> {
 }
 
 const G: f64 = 9.81;
+/// The tyres' grip on an open level's land, of the road's (D1217): the
+/// circuits' run-off keeps its 0.7.
+pub const OPEN_LAND_GRIP: f64 = 0.9;
 const GEAR_TOP: [f64; 7] = [0.0, 15.0, 26.0, 38.0, 51.0, 64.0, 84.0];
 const IDLE: f64 = 900.0;
 const REDLINE: f64 = 7800.0;
@@ -593,6 +596,15 @@ impl CarPhysics {
             } else {
                 spec.grip * 2.2
             }) * (1.0 - 0.3 * off);
+            // An open level's land is not a circuit's gravel trap: the
+            // tyres bite on it nearly as on the road, and a slide that
+            // leaves the tarmac scrubs out instead of running on (D1217).
+            let grip_a = if rt.open_ground.is_some() && rt.run_l.is_none() && off > 0.0 {
+                let land = spec.grip * 2.2 * OPEN_LAND_GRIP;
+                grip_a + (js::max(grip_a, land) - grip_a) * off
+            } else {
+                grip_a
+            };
             let dv = js::min(v_lat.abs(), grip_a * dt);
             v_lat -= js::sign(v_lat) * dv;
             if hb || self.drifting {

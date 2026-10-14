@@ -37,7 +37,8 @@ fn swerve(t: &Track, s: f64, seconds: f64) -> (Vehicle, CarPhysics) {
         ..Input::default()
     };
     let mut el = 0.0;
-    while el < seconds {
+    // Then on until it lands, if a crest has it in the air.
+    while el < seconds || (!v.on_ground && el < seconds + 3.0) {
         phys.update(&mut v, t, DT, &inp);
         el += DT;
     }
