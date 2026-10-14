@@ -212,9 +212,11 @@ cached by section), spawned as they arrive and dropped behind; the level
 starts with the section round the start, so there is no loading screen
 to speak of. Natively on the build thread; on the web stepped on the
 main thread between frames with a small budget (a hitch now and then,
-until 4c). The world's half landed 2026-10-14 (D1213:
-`mp_worldgen::stream::Planned`, partitioned sections, the base layer);
-the client's half is next.
+until 4c). Landed 2026-10-14: the world's half (D1213:
+`mp_worldgen::stream::Planned`, partitioned sections, the base layer)
+and the client's (D1214: `mp_game::stream`, the ring round the camera,
+several scenes' animators at once, shared images, `?stream=0` for the
+whole build).
 
 **4c.** The web build off the main thread: a worker running the builder
 as its own wasm (as `mp_exhaust` and `mp_music` are), scene data

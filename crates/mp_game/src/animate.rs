@@ -240,7 +240,7 @@ pub fn take_world(wg: &mut WorldGen) -> Option<WorldBuild> {
 /// left out, as `scenery_factory` leaves out an unported one.
 /// The open world's kits: the Coast Highway's, and the Land kit that
 /// plants by land cover (docs/vision/peninsula.md, stage 4a).
-fn open_world_scenery(info: &SceneryInfo) -> Option<Box<dyn Scenery>> {
+pub(crate) fn open_world_scenery(info: &SceneryInfo) -> Option<Box<dyn Scenery>> {
     match info.name {
         "Land" => Some(Box::new(mp_worldgen::land::Land::new(info))),
         _ => crate::levels::coast::scenery(info),
@@ -297,6 +297,15 @@ pub fn drive_build(mut wg: ResMut<WorldGen>, opts: Res<Opts>, state: Res<State<A
     #[cfg(target_arch = "wasm32")]
     const BUDGET_MS: u128 = 30;
     let o = &opts.o;
+    // A streamed level is built in sections by `crate::stream`, which
+    // installs its base world here (D1214).
+    if crate::stream::streamed(o) {
+        if let Gen::Idle = wg.state {
+            wg.state = Gen::Off;
+            PENDING.store(true, Ordering::Relaxed);
+        }
+        return;
+    }
     if let Gen::Idle = wg.state {
         if !wants_world(o) || *state.get() != AppState::Waiting {
             wg.state = Gen::Off;
@@ -393,6 +402,27 @@ pub fn drive_build(mut wg: ResMut<WorldGen>, opts: Res<Opts>, state: Res<State<A
             PENDING.store(false, Ordering::Relaxed);
         }
     }
+}
+
+/// A streamed level's base world (its sky and animators), built by
+/// `crate::stream`: the animators run on the drawn scene once its index
+/// is in; `pending` stays as the stream sets it.
+pub(crate) fn set_ready(wg: &mut WorldGen, wb: WorldBuild, scene: &Scene) {
+    wg.state = Gen::Ready {
+        wb: Box::new(Mutex::new(wb)),
+        shape: Shape::of(scene),
+    };
+}
+
+/// Whether a world build blocks `ready` (`crate::stream` holds it until
+/// the sections round the start are up).
+pub(crate) fn set_pending(p: bool) {
+    PENDING.store(p, Ordering::Relaxed);
+}
+
+/// A scene the client can draw, as a level's build gives it.
+pub(crate) fn drawable_scene(scene: Scene) -> Scene {
+    drawable(scene)
 }
 
 /// A new scene is on its way (start, or a reload): the old world goes, and
@@ -620,6 +650,10 @@ pub struct SceneIndex {
     /// The scene's top-level groups, for the level viewer's toggles
     /// (`crate::viewer::groups`).
     pub groups: crate::viewer::groups::Groups,
+    /// Where this scene's materials start in the block map (a streamed
+    /// section's scene sits beside the others', D1214): the loader gives
+    /// its materials `slots.z` from here.
+    pub material_base: u32,
 }
 
 /// The uniform slot (block texel 4) of a kind's animated uniform.
@@ -829,6 +863,7 @@ impl SceneIndex {
                 (l.node, next)
             });
         SceneIndex {
+            material_base: 0,
             shape: Shape::of(scene),
             nodes,
             materials,
@@ -845,6 +880,12 @@ impl SceneIndex {
     /// drawn (a menu section's, under its root).
     pub fn set_entities(&mut self, by_node: Vec<Vec<Entity>>) {
         self.entities = Some(by_node);
+    }
+
+    /// The scene's materials numbered from `base` in the block map.
+    pub fn with_material_base(mut self, base: u32) -> SceneIndex {
+        self.material_base = base;
+        self
     }
 
     pub fn node_count(&self) -> usize {
@@ -890,6 +931,25 @@ impl SceneIndex {
 pub struct AnimBlocks {
     pub texels: Vec<[f32; 4]>,
     pub map: Vec<f32>,
+    /// Blocks given back by scenes that have gone (a streamed section's,
+    /// D1214), for the next material that wants one.
+    pub free: Vec<usize>,
+}
+
+/// Gives a scene's blocks back when its entities go (a streamed section
+/// dropped behind the player, D1214): its materials' map entries are
+/// cleared and their blocks join the free list.
+pub fn release_blocks(index: &mut SceneIndex, blocks: &mut AnimBlocks) {
+    for (i, m) in index.materials.iter_mut().enumerate() {
+        let Some(k) = m.block.take() else { continue };
+        for t in 0..BLOCK_TEXELS {
+            set_texel(blocks, k, t, |x| *x = [0.0; 4]);
+        }
+        if let Some(e) = blocks.map.get_mut(index.material_base as usize + i) {
+            *e = 0.0;
+        }
+        blocks.free.push(k);
+    }
 }
 
 /// Copies the blocks and their map into the globals row after
@@ -919,12 +979,14 @@ fn block_of(
     blocks: &mut AnimBlocks,
     materials: &mut Assets<ThreeMaterial>,
 ) -> Option<usize> {
+    let gi = index.material_base as usize + i as usize;
     let m = index.materials.get_mut(i as usize)?;
     if let Some(b) = m.block {
         return Some(b);
     }
-    let k = blocks.texels.len() / BLOCK_TEXELS;
-    if k >= MAX_BLOCKS || i as usize >= MAX_MAPPED {
+    let reused = blocks.free.pop();
+    let k = reused.unwrap_or(blocks.texels.len() / BLOCK_TEXELS);
+    if k >= MAX_BLOCKS || gi >= MAX_MAPPED {
         return None;
     }
     // The material now reads its block: its shader variant changes once
@@ -941,12 +1003,16 @@ fn block_of(
         t[2] = [m.emissive_intensity as f32, 1.0, 0.0, 0.0];
     }
     t[4] = m.uniforms;
-    blocks.texels.extend_from_slice(&t);
-    m.block = Some(k);
-    if blocks.map.len() <= i as usize {
-        blocks.map.resize(i as usize + 1, 0.0);
+    if reused.is_some() {
+        blocks.texels[k * BLOCK_TEXELS..(k + 1) * BLOCK_TEXELS].copy_from_slice(&t);
+    } else {
+        blocks.texels.extend_from_slice(&t);
     }
-    blocks.map[i as usize] = (G_BLOCKS + k * BLOCK_TEXELS) as f32;
+    m.block = Some(k);
+    if blocks.map.len() <= gi {
+        blocks.map.resize(gi + 1, 0.0);
+    }
+    blocks.map[gi] = (G_BLOCKS + k * BLOCK_TEXELS) as f32;
     Some(k)
 }
 
@@ -1005,22 +1071,16 @@ fn count_lamps(edits: &[SceneEdit]) {
 /// One frame of `World.update` on the drawn scene.
 #[allow(clippy::too_many_arguments)]
 pub fn run_animators(
-    mut commands: Commands,
     wg: ResMut<WorldGen>,
     index: Option<ResMut<SceneIndex>>,
     mut sky_res: ResMut<SkyRes>,
-    mut blocks: ResMut<AnimBlocks>,
-    mut materials: ResMut<Assets<ThreeMaterial>>,
-    meshes: Res<Assets<Mesh>>,
-    mesh_writes: Res<MeshWrites>,
     camera: Query<(&Transform, &Projection), With<Camera3d>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
-    nodes: Query<(Entity, &NodeRef), With<SceneEntity>>,
-    mut placed: Placed,
-    streams: Query<&Instances>,
+    nodes: LevelNodes,
     status: Res<Status>,
     race: Res<crate::levels::RaceCountdown>,
-    mut lighting: ResMut<crate::render::lighting::Lighting>,
+    mut apply: Apply,
+    stream: Option<ResMut<crate::stream::Stream>>,
 ) {
     let Some(frame) = sky_res.frame.take() else {
         return;
@@ -1068,12 +1128,13 @@ pub fn run_animators(
             .single()
             .map_or(800.0, |w| f64::from(w.physical_height())),
     });
-    let mut edits = wb.update(&UpdateCtx {
+    let ctx = UpdateCtx {
         dt: frame.dt,
         night: sky_frame.night,
         camera: view,
         s: frame.s,
-    });
+    };
+    let mut edits = wb.update(&ctx);
     // `Race.update`'s `world.onCountdown` (Seaside's start lights, D682).
     if let Some(cd) = race.0 {
         let lamps = wb.countdown(cd);
@@ -1081,6 +1142,45 @@ pub fn run_animators(
         edits.extend(lamps);
     }
     drop(wb);
+    apply_edits(index, edits, &mut apply);
+    // The streamed sections' worlds, each on its own scene (D1214).
+    if let Some(mut stream) = stream {
+        for (wb, index) in stream.animated() {
+            let edits = wb.update(&ctx);
+            apply_edits(index, edits, &mut apply);
+        }
+    }
+}
+
+/// The level's own entities by node: not a section's, which hang under
+/// their roots (the menu's views, the streamed sections).
+type LevelNodes<'w, 's> =
+    Query<'w, 's, (Entity, &'static NodeRef), (With<SceneEntity>, Without<ChildOf>)>;
+
+/// What applying a world's edits to its drawn scene needs of the app.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct Apply<'w, 's> {
+    commands: Commands<'w, 's>,
+    blocks: ResMut<'w, AnimBlocks>,
+    materials: ResMut<'w, Assets<ThreeMaterial>>,
+    meshes: Res<'w, Assets<Mesh>>,
+    mesh_writes: Res<'w, MeshWrites>,
+    placed: Placed<'w, 's>,
+    streams: Query<'w, 's, &'static Instances>,
+    lighting: ResMut<'w, crate::render::lighting::Lighting>,
+}
+
+/// Applies a world's edits to the scene `index` draws: transforms,
+/// visibility, instance streams, mesh attributes, the material blocks.
+pub fn apply_edits(index: &mut SceneIndex, edits: Vec<SceneEdit>, a: &mut Apply) {
+    let blocks: &mut AnimBlocks = &mut a.blocks;
+    let materials: &mut Assets<ThreeMaterial> = &mut a.materials;
+    let meshes: &Assets<Mesh> = &a.meshes;
+    let mesh_writes: &MeshWrites = &a.mesh_writes;
+    let placed = &mut a.placed;
+    let streams = &a.streams;
+    let commands = &mut a.commands;
+    let lighting: &mut crate::render::lighting::Lighting = &mut a.lighting;
     let blocks_before = blocks.texels.len();
     let mut moved: Vec<u32> = Vec::new();
     let mut shown: Vec<u32> = Vec::new();
@@ -1195,20 +1295,20 @@ pub fn run_animators(
                     } else {
                         3
                     };
-                    write_attribute(&meshes, kept, attr, size, offset, &values, &mesh_writes);
+                    write_attribute(meshes, kept, attr, size, offset, &values, mesh_writes);
                 }
             }
             (SceneRef::Material(i), change) => {
-                apply_material(index, i, change, &mut blocks, &mut materials);
+                apply_material(index, i, change, blocks, materials);
             }
             (SceneRef::Texture(t), Change::TextureOffset(off)) => {
                 let users = index.textures.get(t as usize).cloned().unwrap_or_default();
                 for (i, role, base) in users {
-                    let Some(k) = block_of(index, i, &mut blocks, &mut materials) else {
+                    let Some(k) = block_of(index, i, blocks, materials) else {
                         continue;
                     };
                     let d = [(off[0] - base[0]) as f32, (off[1] - base[1]) as f32];
-                    set_texel(&mut blocks, k, 3, |t| match role {
+                    set_texel(blocks, k, 3, |t| match role {
                         TexRole::Map => {
                             t[0] = d[0];
                             t[1] = d[1];
@@ -1253,7 +1353,7 @@ pub fn run_animators(
         };
         let (p, t) = (at(l), t.and_then(at));
         if light.is_some() || p.is_some() || t.is_some() {
-            crate::levels::desert::follow_spot(&mut lighting, light, p, t);
+            crate::levels::desert::follow_spot(lighting, light, p, t);
         }
     }
     let entities = index.entities.take().unwrap_or_default();
