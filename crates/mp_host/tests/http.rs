@@ -5,8 +5,10 @@
 //! comes from (`--port`, `$PORT`, `proj port`, else a loud failure). Ports
 //! are picked by the OS, never written down.
 
+mod common;
+
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -24,13 +26,7 @@ impl Drop for HostProc {
     }
 }
 
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
+use common::free_port;
 
 /// A fresh directory for one test.
 fn scratch(tag: &str) -> PathBuf {
@@ -72,34 +68,26 @@ fn site() -> PathBuf {
     root
 }
 
+/// Once `child` (from [`host_cmd`]) listens on `port`.
 fn wait_up(child: &mut Child, port: u16) {
-    let t = Instant::now();
-    while TcpStream::connect(("127.0.0.1", port)).is_err() {
-        if let Ok(Some(st)) = child.try_wait() {
-            panic!("mp-host exited: {st}");
-        }
-        assert!(t.elapsed() < Duration::from_secs(20), "mp-host came up");
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    assert!(common::listening(child), "mp-host listened on {port}");
 }
 
 fn host_cmd() -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_mp-host"));
     c.env_remove("PORT")
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     c
 }
 
 fn serve(root: &Path) -> HostProc {
-    let port = free_port();
-    let mut child = host_cmd()
-        .args(["--port", &port.to_string(), "--bind", "127.0.0.1", "--root"])
-        .arg(root)
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    wait_up(&mut child, port);
+    let (child, port) = common::serve(|port| {
+        let mut c = host_cmd();
+        c.args(["--port", &port.to_string(), "--bind", "127.0.0.1", "--root"])
+            .arg(root);
+        c
+    });
     HostProc(child, port)
 }
 

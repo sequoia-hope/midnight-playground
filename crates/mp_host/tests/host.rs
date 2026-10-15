@@ -1,9 +1,11 @@
 //! The `mp-host` binary end to end: it serves files as `tools/serve.py`
 //! does and runs a lobby and a race over real WebSockets.
 
+mod common;
+
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
-use std::process::{Child, Command, Stdio};
+use std::net::TcpStream;
+use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
 use mp_net::proto::{AiFill, Msg, Settings, VERSION};
@@ -19,14 +21,6 @@ impl Drop for HostProc {
     }
 }
 
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
-
 fn root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -35,19 +29,12 @@ fn root() -> std::path::PathBuf {
 }
 
 fn start() -> HostProc {
-    let port = free_port();
-    let child = Command::new(env!("CARGO_BIN_EXE_mp-host"))
-        .args(["--port", &port.to_string(), "--bind", "127.0.0.1", "--root"])
-        .arg(root())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    let t = Instant::now();
-    while TcpStream::connect(("127.0.0.1", port)).is_err() {
-        assert!(t.elapsed() < Duration::from_secs(20), "mp-host came up");
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    let (child, port) = common::serve(|port| {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_mp-host"));
+        c.args(["--port", &port.to_string(), "--bind", "127.0.0.1", "--root"])
+            .arg(root());
+        c
+    });
     HostProc(child, port)
 }
 

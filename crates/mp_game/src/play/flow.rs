@@ -718,10 +718,16 @@ impl Race {
         // Stopped on a start is waiting to begin it, not stuck.
         let on_start = st.race.cruise
             && event::at_start(&self.session.lr.track, &self.session.lr.level, &p.v).is_some();
+        // A cruise stops where it likes (and after an event's results it
+        // has stood still all through them): stuck there is trying to go
+        // and not going.
+        let i = &self.input.state;
+        let idle = st.race.cruise && i.throttle < 0.1 && i.brake < 0.1;
         if p.rules.stuck.is_some_and(|s| s > 3.0)
             && self.hud.toast_timer <= 0.0
             && !held
             && !on_start
+            && !idle
         {
             let t = if self.setup.touch {
                 "STUCK? TAP R TO RESET".to_string()
@@ -1367,6 +1373,55 @@ pub(crate) mod tests {
         assert_eq!(race.mode, Mode::Race);
         assert!(race.event_result.is_none());
         frames(&mut race, 60, &mut toasts);
+    }
+
+    /// A cruise stopped of its own accord isn't stuck; trying to go and
+    /// not going is.
+    #[test]
+    fn a_cruise_standing_still_is_not_stuck() {
+        let lr = LevelRuntime::new(crate::play::cruise_level(
+            mp_levels::level_by_id("peninsula"),
+            true,
+        ))
+        .unwrap();
+        let t = lr.track.clone();
+        let mut race = Race::new(
+            lr,
+            Setup {
+                opts: RaceOpts {
+                    car: "sports",
+                    seed: 1,
+                    pursuit: false,
+                    heat: 1.0,
+                    physics: mp_sim::model::Physics::Arcade,
+                },
+                autodrive: false,
+                touch: false,
+            },
+            TouchControls::default(),
+        );
+        let dt = 1.0 / 60.0;
+        let stuck = |race: &mut Race, n: usize| {
+            let mut seen = false;
+            for _ in 0..n {
+                race.frame(dt);
+                seen |= race
+                    .hud
+                    .toast
+                    .as_deref()
+                    .is_some_and(|t| t.starts_with("STUCK"));
+            }
+            seen
+        };
+        stuck(&mut race, 300);
+        // Off any start's marker.
+        let p = &mut race.session.curr.players[0];
+        p.phys.reset(&mut p.v, &t, 3000.0, 2.0);
+        race.session.prev = race.session.curr.clone();
+        assert!(!stuck(&mut race, 360), "standing still");
+        race.input.key_down("ArrowUp", false);
+        race.input.key_down("ArrowDown", false);
+        assert!(stuck(&mut race, 360), "gas and brake and going nowhere");
     }
 
     /// The open world as a cruise (the menu's Cruise, `?cruise=1`, D1211):

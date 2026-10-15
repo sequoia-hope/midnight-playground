@@ -40,7 +40,8 @@ use bevy::ui::{
 use bevy::ui_render::prelude::MaterialNode;
 use bevy::window::PrimaryWindow;
 use material::HudMaterial;
-use model::{Bar, CruiseIn, Dial, Dot, HudIn, LapsIn, PursuitIn, RivalDot, Unit};
+use model::{Bar, CruiseIn, Dial, Dot, HudIn, LapsIn, PlaceDot, PursuitIn, RivalDot, Unit};
+use mp_sim::event;
 use mp_sim::race::{RaceStateKind, standings};
 
 pub(super) fn plugin(app: &mut App) {
@@ -1742,6 +1743,43 @@ fn nitro_grad(b: f32) -> BackgroundGradient {
 // ── The frame ──────────────────────────────────────────────────────────
 
 /// `hud.update`'s `st` from the race (Race.js `updateHud`).
+/// Starts within this many metres show on a cruise's minimap.
+const PLACES_NEAR: f64 = 2000.0;
+
+/// The minimap's places: the starts near a cruise, a delivery's drop while
+/// it runs.
+fn places(race: &super::flow::Race) -> Vec<PlaceDot> {
+    let lr = &race.session.lr;
+    let st = &race.session.curr;
+    let p = &st.players[race.me()].v;
+    let colour = super::beacons::srgb;
+    if st.race.cruise {
+        return lr
+            .level
+            .events
+            .iter()
+            .map(|e| (event::start_point(&lr.track, e), e.kind))
+            .filter(|((x, z), _)| mp_math::kernel::hypot(x - p.x, z - p.z) < PLACES_NEAR)
+            .map(|((x, z), kind)| PlaceDot {
+                x,
+                z,
+                color: colour(kind),
+            })
+            .collect();
+    }
+    event::running(lr, st)
+        .filter(|_| !st.players[race.me()].rules.finished)
+        .and_then(|e| {
+            e.drop.map(|[x, z]| PlaceDot {
+                x,
+                z,
+                color: colour(e.kind),
+            })
+        })
+        .into_iter()
+        .collect()
+}
+
 fn hud_in(race: &super::flow::Race) -> HudIn {
     let st = &race.session.curr;
     let me = race.me();
@@ -1795,6 +1833,7 @@ fn hud_in(race: &super::flow::Race) -> HudIn {
                 }),
         })
         .collect();
+    let places = places(race);
     let r = &p.rules;
     HudIn {
         position,
@@ -1836,6 +1875,7 @@ fn hud_in(race: &super::flow::Race) -> HudIn {
             })
             .collect(),
         rivals,
+        places,
         cruise: st.race.cruise.then_some(CruiseIn {
             score: r.score,
             mult: r.mult,

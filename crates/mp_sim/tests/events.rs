@@ -259,3 +259,39 @@ fn a_delivery_out_of_time_is_not_made() {
     assert!(r.time > limit);
     assert!(st.race.cruise && st.race.event.is_none());
 }
+
+#[test]
+fn with_physics_all_an_events_rivals_drive_the_sim_model() {
+    let lr = cruise();
+    let mut st = SimState::new(
+        &lr,
+        RaceOpts {
+            car: "sports",
+            seed: 3,
+            pursuit: false,
+            heat: 1.0,
+            physics: mp_sim::model::Physics::All,
+        },
+    );
+    run(&lr, &mut st, InputFrame::default(), 4.5);
+    assert_eq!(
+        event::at_start(&lr.track, &lr.level, &st.players[0].v),
+        Some(0)
+    );
+    run(&lr, &mut st, frame(1.0, 1.0), 1.1);
+    assert!(st.race.event.is_some());
+    assert_eq!(st.rivals.len(), lr.level.rivals.len());
+    assert!(st.rivals.iter().all(|a| a.sim.is_some()));
+    // They get going off the grid.
+    run(&lr, &mut st, InputFrame::default(), 4.0);
+    let s0: Vec<f64> = st.rivals.iter().map(|a| a.k.s).collect();
+    run(&lr, &mut st, autopilot(), 10.0);
+    for (a, s) in st.rivals.iter().zip(s0) {
+        assert!(
+            lr.track.ds(s, a.k.s) > 100.0,
+            "{} moved {}",
+            a.name,
+            lr.track.ds(s, a.k.s)
+        );
+    }
+}

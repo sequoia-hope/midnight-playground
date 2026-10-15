@@ -48,13 +48,19 @@ fn linear(c: [u8; 3]) -> Vec3 {
     Vec3::new(f(c[0]), f(c[1]), f(c[2]))
 }
 
+/// A kind's colour, `0xrrggbb` (the minimap's dots too).
+pub fn srgb(kind: EventKind) -> u32 {
+    match kind {
+        EventKind::Race => 0xff781e,
+        EventKind::TimeTrial => 0x28beff,
+        EventKind::Delivery => 0x3ceb6e,
+    }
+}
+
 /// A kind's colour, linear RGB.
 pub fn colour(kind: EventKind) -> Vec3 {
-    linear(match kind {
-        EventKind::Race => [255, 120, 30],
-        EventKind::TimeTrial => [40, 190, 255],
-        EventKind::Delivery => [60, 235, 110],
-    })
+    let c = srgb(kind);
+    linear([(c >> 16) as u8, (c >> 8) as u8, c as u8])
 }
 
 /// A beacon's mesh about its foot: the column (a ring of quads fading

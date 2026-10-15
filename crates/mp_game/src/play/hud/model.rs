@@ -71,6 +71,15 @@ pub struct RivalDot {
     pub color: u32,
 }
 
+/// An event's start or a delivery's drop on the minimap (stage 5 of
+/// docs/vision/peninsula.md), kept on the map's rim when it is off it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PlaceDot {
+    pub x: f64,
+    pub z: f64,
+    pub color: u32,
+}
+
 /// A roadblock or spike strip (`pu.roadblocks`, `pu.spikes`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Bar {
@@ -157,6 +166,8 @@ pub struct HudIn {
     pub player: (f64, f64, f64),
     pub traffic: Vec<Dot>,
     pub rivals: Vec<RivalDot>,
+    /// The starts near a cruise, a delivery's drop.
+    pub places: Vec<PlaceDot>,
     pub cruise: Option<CruiseIn>,
     pub pursuit: Option<PursuitIn>,
 }

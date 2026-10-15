@@ -578,6 +578,7 @@ pub fn use_physics(st: &mut crate::race::SimState, t: &Track, physics: Physics) 
         use_sim(p, t);
     }
     if physics == Physics::All {
+        st.race.sim_rivals = true;
         for a in st.rivals.iter_mut() {
             a.sim = Some(Box::new(SimRival::new(&a.k.v, t)));
         }

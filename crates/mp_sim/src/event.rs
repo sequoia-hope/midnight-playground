@@ -15,6 +15,7 @@ use mp_math::{js, kernel};
 use mp_track::{EventKind, EventSpot, Level, Track};
 
 use crate::input::Input;
+use crate::model::SimRival;
 use crate::park::Park;
 use crate::race::{
     LevelRuntime, PlayerRules, RaceStateKind, ResultRow, SimEvent, SimState, grid, level_rivals,
@@ -256,6 +257,11 @@ pub fn start(lr: &LevelRuntime, st: &mut SimState, index: usize, events: &mut Ve
     let n_cars = st.traffic.cars.len();
     let p = &mut st.players[0];
     grid(t, &mut p.phys, &mut p.v, &mut rivals, e.s);
+    if st.race.sim_rivals {
+        for a in rivals.iter_mut() {
+            a.sim = Some(Box::new(SimRival::new(&a.k.v, t)));
+        }
+    }
     p.phys.locked = true;
     p.rules = PlayerRules::new(n_cars);
     let race = &mut st.race;

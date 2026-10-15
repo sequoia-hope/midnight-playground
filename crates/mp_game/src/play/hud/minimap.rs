@@ -172,6 +172,32 @@ pub fn scene(t: &Track, st: &HudIn, clock: f64) -> Scene {
             None,
         ));
     }
+    // Events' starts and a delivery's drop, kept on the rim (along the
+    // line from the player) when off the map, so they show the way.
+    for pl in &st.places {
+        let r = 26.0 * SCALE;
+        let (mut x, mut y) = xf.apply(pl.x, pl.z);
+        let edge = CLIP - r - 3.0;
+        let (dx, dy) = (x - C, y - C);
+        if dx.hypot(dy) > edge {
+            // From the player (C, C + 30) towards the place, to the circle.
+            let (ux, uy) = (x - C, y - C - 30.0);
+            let len = ux.hypot(uy).max(1e-9);
+            let (ux, uy) = (ux / len, uy / len);
+            // |(0, 30) + k u| = edge, k > 0.
+            let b = 30.0 * uy;
+            let k = -b + (b * b - (900.0 - edge * edge)).sqrt();
+            x = C + k * ux;
+            y = C + 30.0 + k * uy;
+        }
+        shapes.push(Shape::Dot {
+            x,
+            y,
+            r,
+            fill: rgb(pl.color, 1.0),
+            stroke: Some((5.0 * SCALE, BLACK)),
+        });
+    }
     // Traffic.
     for o in &st.traffic {
         shapes.push(dot(
@@ -355,6 +381,35 @@ pub(crate) mod tests {
             player: (100.0, 0.0, 0.0),
             ..HudIn::default()
         }
+    }
+
+    // A place on the map is drawn where it is; one off it sits on the rim,
+    // on the line from the player towards it.
+    #[test]
+    fn places_stay_on_the_rim() {
+        use crate::play::hud::model::PlaceDot;
+        let t = straight_track(1000);
+        let mut s = st();
+        let at = |x, z| PlaceDot {
+            x,
+            z,
+            color: 0xff781e,
+        };
+        s.places = vec![at(150.0, 0.0), at(2100.0, 0.0), at(100.0, 2000.0)];
+        let sc = scene(&t, &s, 0.0);
+        let xy = |k: usize| match sc.shapes[k] {
+            Shape::Dot { x, y, .. } => (x, y),
+            _ => panic!(),
+        };
+        assert!(close(xy(0), (110.0, 126.0)));
+        let r = 26.0 * SCALE;
+        let edge = CLIP - r - 3.0;
+        // Straight ahead, 2 km: at the top of the rim.
+        assert!(close(xy(1), (110.0, C - edge)), "{:?}", xy(1));
+        // 2 km to the right: on the rim, right of the player.
+        let (x, y) = xy(2);
+        assert!(((x - C).hypot(y - C) - edge).abs() < 1e-9);
+        assert!((y - (C + 30.0)).abs() < 1e-9 && x > C, "{x} {y}");
     }
 
     #[test]

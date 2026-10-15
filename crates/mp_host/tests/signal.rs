@@ -2,8 +2,10 @@
 //! ephemeral port, and `mp-host`'s `…/signal/<room>`, with plain WebSocket
 //! clients speaking matchbox's JSON.
 
-use std::net::{TcpListener, TcpStream};
-use std::process::{Child, Command, Stdio};
+mod common;
+
+use std::net::TcpStream;
+use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -19,39 +21,12 @@ impl Drop for Proc {
     }
 }
 
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
-
-/// Waits until something listens on `port`. A connect to a free port in
-/// the ephemeral range can meet itself (TCP's simultaneous open: the
-/// client is given that very port), which says nothing about the server,
-/// so such a connection doesn't count.
-fn wait_up(port: u16) {
-    let up = || {
-        TcpStream::connect(("127.0.0.1", port))
-            .is_ok_and(|s| s.local_addr().ok() != s.peer_addr().ok())
-    };
-    let t = Instant::now();
-    while !up() {
-        assert!(t.elapsed() < Duration::from_secs(20), "the server came up");
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
 fn signal_server() -> Proc {
-    let port = free_port();
-    let child = Command::new(env!("CARGO_BIN_EXE_mp-signal"))
-        .args(["--port", &port.to_string()])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    wait_up(port);
+    let (child, port) = common::serve(|port| {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_mp-signal"));
+        c.args(["--port", &port.to_string()]);
+        c
+    });
     Proc(child, port)
 }
 
@@ -250,20 +225,17 @@ fn mp_signal_needs_a_port() {
 /// game WebSocket and files.
 #[test]
 fn mp_host_relays_signalling_too() {
-    let port = free_port();
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
         .unwrap();
-    let child = Command::new(env!("CARGO_BIN_EXE_mp-host"))
-        .args(["--port", &port.to_string(), "--bind", "127.0.0.1", "--root"])
-        .arg(&root)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
+    let (child, port) = common::serve(|port| {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_mp-host"));
+        c.args(["--port", &port.to_string(), "--bind", "127.0.0.1", "--root"])
+            .arg(&root);
+        c
+    });
     let h = Proc(child, port);
-    wait_up(h.1);
     conversation(h.1, "/signal");
     conversation(h.1, "/midnight-racer/dist/next/signal");
 }
