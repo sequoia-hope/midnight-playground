@@ -27,9 +27,17 @@ fn free_port() -> u16 {
         .port()
 }
 
+/// Waits until something listens on `port`. A connect to a free port in
+/// the ephemeral range can meet itself (TCP's simultaneous open: the
+/// client is given that very port), which says nothing about the server,
+/// so such a connection doesn't count.
 fn wait_up(port: u16) {
+    let up = || {
+        TcpStream::connect(("127.0.0.1", port))
+            .is_ok_and(|s| s.local_addr().ok() != s.peer_addr().ok())
+    };
     let t = Instant::now();
-    while TcpStream::connect(("127.0.0.1", port)).is_err() {
+    while !up() {
         assert!(t.elapsed() < Duration::from_secs(20), "the server came up");
         std::thread::sleep(Duration::from_millis(50));
     }
