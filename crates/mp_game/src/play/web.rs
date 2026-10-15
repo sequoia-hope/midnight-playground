@@ -513,6 +513,9 @@ fn bridge_race(
     o.set("lastS", opt(p.rules.last_s));
     o.set("odo", opt(p.rules.odo));
     o.set("cruise", st.race.cruise);
+    o.set("road", p.v.road as f64);
+    o.set("hold", opt(st.race.hold.map(|(_, h)| h)));
+    o.set("event", opt(st.race.event.as_ref().map(|e| e.index as f64)));
     o.set("score", p.rules.score);
     o.set("nearMisses", p.rules.near_misses);
     o.set("pursuitOn", st.race.pursuit_on);

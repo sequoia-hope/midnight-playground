@@ -11223,3 +11223,38 @@ a garage in Half Moon Bay).
 - **Not yet:** the rivals of an event drive the arcade model even with
   Physics All. Restart in the pause menu restarts the whole cruise.
   Starts are on road 0 only. The minimap does not show the starts.
+
+## D1220 (2026-10-15): events at places, closing stage 5's gaps
+
+- **The minimap shows the places.** While cruising, every start within
+  2 km is a dot in its beacon's colour (`beacons::srgb`); during a
+  delivery its drop is. One off the map sits on the rim, on the line
+  from the player towards it, so it points the way
+  (`hud::places`, `minimap::scene`).
+- **An event's countdown streams round the car.** The ring stays round
+  the level's start through a countdown, for the opening's camera; an
+  event's countdown is wherever its start is, so the town round the
+  garage vanished until the car drove off. It is round the car now
+  (`stream::drive`). The first race hid it, starting where the cruise
+  does.
+- **A cruise standing still isn't stuck.** The stuck hint came after 3 s
+  stopped, which in a cruise is any stop, and always just after an
+  event's results. In a cruise it now needs gas or brake held as well.
+  A race keeps the old rule.
+- **Physics All carries into an event.** `RaceState::sim_rivals`
+  (set by `use_physics`; constant, so not hashed) gives an event's
+  rivals sim cars. The player's sim car was already put right by the
+  grid (it restarts on any placement).
+- **Still not:** Restart in the pause menu during an event restarts the
+  cruise. Restarting only the event has to reach the simulation through
+  the inputs (a recording replays them), and `InputFrame`'s flags byte
+  is full; a second byte changes the network protocol and the recording
+  format, a step of its own. Starts are on road 0 only.
+- **The relay tests stopped flaking.** `mp_host`'s end-to-end tests
+  polled a server's port with a connect until it answered, but
+  `free_port` in a test running beside listens for a moment on whatever
+  port it is given, which can be one a server was told and has not bound
+  yet; the poll met that and the test went on to a refused connection
+  (CI's only failure on beeb471, and about one run in three here). The
+  tests now wait for the server's own "listening" line, and take another
+  port if it couldn't bind (`tests/common`).

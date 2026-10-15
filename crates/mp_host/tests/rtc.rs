@@ -4,7 +4,9 @@
 //! race with inputs and hashes flowing; a guest with the wrong secret
 //! never gets in.
 
-use std::net::{TcpListener, TcpStream};
+mod common;
+
+use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -30,22 +32,11 @@ impl Drop for Proc {
 
 /// `mp-signal` on a free port; its address for the clients.
 fn signal_server() -> (Proc, String) {
-    let port = TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
-    let child = Command::new(env!("CARGO_BIN_EXE_mp-signal"))
-        .args(["--port", &port.to_string()])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    let t = Instant::now();
-    while TcpStream::connect(("127.0.0.1", port)).is_err() {
-        assert!(t.elapsed() < Duration::from_secs(20), "mp-signal came up");
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    let (child, port) = common::serve(|port| {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_mp-signal"));
+        c.args(["--port", &port.to_string()]);
+        c
+    });
     (Proc(child), format!("ws://127.0.0.1:{port}/"))
 }
 

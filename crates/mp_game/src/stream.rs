@@ -432,11 +432,12 @@ pub fn drive(
     let Some(p) = st.planned.clone() else { return };
 
     // The ring round the player's car once the race is on (the camera
-    // cuts about before and at the start); round the start until then.
+    // cuts about before and at the start); round the start until then. An
+    // event's countdown, wherever it begins, is round the car.
     let car = play.as_ref().and_then(|pl| {
         let r = pl.race.as_ref()?;
         let st = &r.session.curr;
-        if st.race.state == mp_sim::race::RaceStateKind::Countdown {
+        if st.race.state == mp_sim::race::RaceStateKind::Countdown && st.race.event.is_none() {
             return None;
         }
         st.players.first().map(|pl| (pl.v.x, pl.v.z))

@@ -94,6 +94,10 @@ pub struct RaceState {
     pub hold: Option<(usize, f64)>,
     /// The event at a place being run, out of a cruise.
     pub event: Option<crate::event::EventRun>,
+    /// The rivals drive the sim model (`Physics::All`, [`crate::model::
+    /// use_physics`]), so an event's rivals do too. Set once with the
+    /// field, so not in the hash.
+    pub sim_rivals: bool,
 }
 
 impl RaceState {
@@ -412,6 +416,7 @@ impl SimState {
                 multi: None,
                 hold: None,
                 event: None,
+                sim_rivals: false,
             },
             players: vec![PlayerCar {
                 v,

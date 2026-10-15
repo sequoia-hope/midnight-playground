@@ -270,7 +270,9 @@ fenced along the road and across; Skyline's fog by zone, drifting.
   delivery's drop), a card when the car is near one ("hold gas and
   brake"), the hold's fill, the race HUD during the event (a delivery's
   distance and time left), the results, then the cruise. The field's
-  models are rebuilt when the rivals come and go.
+  models are rebuilt when the rivals come and go. The minimap shows the
+  starts within 2 km and a delivery's drop, kept on its rim when off it
+  (D1220).
 
 ## 3. Decisions
 
