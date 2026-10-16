@@ -11350,3 +11350,27 @@ URL alone (the build's `MP_SIGNAL_URL`, or `?signal=`, D1124).
   socket. Open to anyone, it is metered bandwidth on the owner's
   account, so it waits for a measurement that strict NATs need it
   (6.1) and a decision on who may ask.
+
+## D1230 (2026-10-16): Playground Kit, the shared toolkit beside the game
+
+The owner asked for a common library that this game and Snowboarding (and
+the bicycle, kayak, platformer, diving, basketball and fantasy games to
+come) build on, carved mainly from this game. It is **Playground Kit**,
+`~/Software/game-engine` on this machine and
+`sequoia-hope/playground-kit` on GitHub, crates `pk_*`; its plan, the
+inventory of what in this game is generic, and what it means for the
+roadmap are `docs/PLAN.md`, `INVENTORY.md` and `RECOMMENDATIONS.md`
+there.
+
+- **By sibling path.** This workspace depends on the kit's crates at
+  `../game-engine/crates/pk_*` and on its patched wgpu, wgpu-hal and
+  bevy_ui_render at `../game-engine/patches/*`; `patches/` here is gone.
+  CI and the Pages workflow clone the kit beside the game before
+  building. Nothing is pinned twice and Cargo.lock does not change shape.
+- **Licence.** `LICENSE-MIT` and `LICENSE-APACHE` (MIT OR Apache-2.0),
+  the same as the kit; the game had no licence file before.
+- **The rework** runs in phases (PLAN.md section 6), each ending with
+  this game green on its own gates (tests, clippy, `check-deps`, the web
+  build, the e2e suites, `build-diff.mjs` against the pre-split build)
+  and pushed. Each move gets an entry here naming the kit crate that
+  took the code.
