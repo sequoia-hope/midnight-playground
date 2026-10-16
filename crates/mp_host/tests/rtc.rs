@@ -7,7 +7,7 @@
 mod common;
 
 use std::net::TcpListener;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -21,23 +21,11 @@ use mp_net::transport::{Channel, NetEvent, Transport};
 use mp_sim::input::InputFrame;
 use mp_sim::race::LevelRuntime;
 
-struct Proc(Child);
-
-impl Drop for Proc {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
-/// `mp-signal` on a free port; its address for the clients.
-fn signal_server() -> (Proc, String) {
-    let (child, port) = common::serve(|port| {
-        let mut c = Command::new(env!("CARGO_BIN_EXE_mp-signal"));
-        c.args(["--port", &port.to_string()]);
-        c
-    });
-    (Proc(child), format!("ws://127.0.0.1:{port}/"))
+/// `mp-signal` on a free port (or the Cloudflare Worker with
+/// `MP_SIGNAL_WORKER=1`); its address for the clients.
+fn signal_server() -> (common::Group, String) {
+    let (relay, port) = common::relay();
+    (relay, format!("ws://127.0.0.1:{port}/"))
 }
 
 /// No STUN: the peers find each other on this machine's own addresses, so
@@ -262,7 +250,7 @@ fn mp_host_takes_webrtc_guests_by_its_link() {
         .spawn()
         .unwrap();
     let out = child.stdout.take().unwrap();
-    let _h = Proc(child);
+    let _h = common::Group(child, None);
     let mut lines = BufReader::new(out).lines();
     let url = loop {
         let l = lines.next().expect("mp-host printed its link").unwrap();

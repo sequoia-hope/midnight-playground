@@ -353,6 +353,10 @@ is the same over any transport); WebRTC adds only the real channels.
   `MP_SIGNAL_URL` (a repository variable, e.g.
   `wss://signal.example.com/`), or for a test the page's
   `?signal=wss://…/` parameter.
+- **Or the Cloudflare Worker** (D1222): `tools/signal-worker/`, the same
+  relay as a Worker with a Durable Object per room, so nothing of the
+  owner's has to stay up. Its README has the deploy steps; the Worker's
+  `wss://mp-signal.<account>.workers.dev/` is then `MP_SIGNAL_URL`.
 - **TURN** (optional, later): matchbox's default ICE server is Google's
   public STUN. Players behind strict NATs will need a TURN relay; it is
   measured before it is decided (section 6.1).

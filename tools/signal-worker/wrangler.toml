@@ -1,0 +1,24 @@
+# The signalling relay as a Cloudflare Worker (DECISIONS D1222; README.md).
+name = "mp-signal"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+# No logs: the relay writes nothing down (D1123), and neither does
+# Cloudflare's Workers Logs for it.
+[observability]
+enabled = false
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+# SQLite-backed objects, which the free plan offers.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+# Set to a comma-separated list of origins (e.g.
+# "https://sequoia-hope.github.io") to turn away pages from anywhere else;
+# unset, any page may use the relay. Native clients send no Origin.
+# [vars]
+# ALLOWED_ORIGINS = ""
