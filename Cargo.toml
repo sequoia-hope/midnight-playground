@@ -13,12 +13,10 @@ publish = false
 repository = "https://github.com/sequoia-hope/midnight-playground"
 
 [workspace.dependencies]
-mp_math = { path = "crates/mp_math" }
 mp_track = { path = "crates/mp_track" }
 mp_levels = { path = "crates/mp_levels" }
 mp_sim = { path = "crates/mp_sim" }
 mp_scene = { path = "crates/mp_scene" }
-mp_canvas = { path = "crates/mp_canvas" }
 mp_worldgen = { path = "crates/mp_worldgen" }
 mp_audio = { path = "crates/mp_audio" }
 mp_exhaust = { path = "crates/mp_exhaust" }

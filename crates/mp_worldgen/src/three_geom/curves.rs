@@ -9,7 +9,7 @@
 use core::f64::consts::PI;
 use std::sync::OnceLock;
 
-use mp_math::kernel;
+use pk_math::kernel;
 
 use super::math::{Matrix4, Vector2, Vector3, clamp};
 

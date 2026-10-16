@@ -6,7 +6,7 @@
 //! nodes can't do cheaply (modal resonators, gated reverb tails, per-grain
 //! filtering). Everything renders in ~50 ms.
 //!
-//! Port notes: every inexact `Math` function goes through `mp_math::kernel`,
+//! Port notes: every inexact `Math` function goes through `pk_math::kernel`,
 //! and every store into a `Float32Array` rounds to `f32` at that point, so
 //! the buffers are bit-identical to the JS reference (SPEC 7.5). Each
 //! function returns its channels as `Vec<Vec<f32>>`; [`render_kit`] and
@@ -14,9 +14,9 @@
 //! [`to_buffer`] makes the AudioBuffer.
 
 use crate::wa::{AudioBuffer, AudioContext};
-use mp_math::Mulberry32;
-use mp_math::js;
-use mp_math::kernel::{exp, pow, sin, tanh};
+use pk_math::Mulberry32;
+use pk_math::js;
+use pk_math::kernel::{exp, pow, sin, tanh};
 
 /// `rngFrom(seed)`: mulberry32, the same generator as `util/math.js`.
 pub fn rng_from(seed: u32) -> Mulberry32 {
@@ -66,7 +66,7 @@ impl Biquad {
 
     fn set(&mut self, ty: BqType, f: f64, q: f64, sr: f64) -> &mut Self {
         let w = (2.0 * std::f64::consts::PI * js::min(f, sr * 0.45)) / sr;
-        let c = mp_math::kernel::cos(w);
+        let c = pk_math::kernel::cos(w);
         let al = sin(w) / (2.0 * q);
         let (b0, b1, b2);
         match ty {

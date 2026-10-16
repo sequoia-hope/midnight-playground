@@ -67,7 +67,7 @@ pub(crate) fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
 
 /// `x || d` for a number that may be missing.
 pub(crate) fn or0(x: Option<f64>, d: f64) -> f64 {
-    mp_math::js::or_opt(x, d)
+    pk_math::js::or_opt(x, d)
 }
 
 // ── Sirens ───────────────────────────────────────────────────────
@@ -134,7 +134,7 @@ pub fn siren_doppler(rel_speed: Option<f64>) -> f64 {
 
 /// Voice gain at a distance: near-inverse falloff, faded to zero at the range.
 pub fn siren_level(dist: Option<f64>) -> f64 {
-    let d = mp_math::js::max(0.0, dist.unwrap_or(0.0));
+    let d = pk_math::js::max(0.0, dist.unwrap_or(0.0));
     let edge = clamp(1.0 - d / SIREN_RANGE, 0.0, 1.0);
     SIREN_GAIN * (20.0 / (20.0 + d)) * edge * edge.sqrt()
 }
@@ -300,7 +300,7 @@ impl Platform {
             audio_session: None,
             radio: Rc::new(NoFetch),
             dj: None,
-            random: Rc::new(RefCell::new(mp_math::Mulberry32::new(seed))),
+            random: Rc::new(RefCell::new(pk_math::Mulberry32::new(seed))),
         }
     }
 }
@@ -718,7 +718,7 @@ impl GameAudio {
         let now = self.now();
         self.gate_timer = Some(self.timers.set_timeout(
             now,
-            (mp_math::js::max(0.25, s) + 0.05) * 1000.0,
+            (pk_math::js::max(0.25, s) + 0.05) * 1000.0,
             Task::GateTick,
         ));
     }
@@ -736,7 +736,7 @@ impl GameAudio {
             if t >= g.until {
                 g.shut();
             } else {
-                wait = mp_math::js::max(wait, g.until - t);
+                wait = pk_math::js::max(wait, g.until - t);
             }
         }
         if wait != 0.0 {

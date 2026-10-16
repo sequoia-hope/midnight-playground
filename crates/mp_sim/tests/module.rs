@@ -12,11 +12,11 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 mod common;
 
-use mp_math::{Mulberry32, js, kernel};
 use mp_sim::autopilot::autopilot;
 use mp_sim::input::{Input, quantise};
 use mp_sim::staged::{Sim, StageOpts};
 use mp_sim::trace::TraceFile;
+use pk_math::{Mulberry32, js, kernel};
 
 fn idle() -> Input {
     Input::default()

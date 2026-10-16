@@ -4,7 +4,7 @@
 //! throttle (a 70 % chance of a random amount), brake (20 %), handbrake
 //! (10 %), nitro (20 %).
 
-use mp_math::Mulberry32;
+use pk_math::Mulberry32;
 
 use crate::input::Input;
 

@@ -1759,7 +1759,7 @@ fn places(race: &super::flow::Race) -> Vec<PlaceDot> {
             .events
             .iter()
             .map(|e| (event::start_point(&lr.track, e), e.kind))
-            .filter(|((x, z), _)| mp_math::kernel::hypot(x - p.x, z - p.z) < PLACES_NEAR)
+            .filter(|((x, z), _)| pk_math::kernel::hypot(x - p.x, z - p.z) < PLACES_NEAR)
             .map(|((x, z), kind)| PlaceDot {
                 x,
                 z,
@@ -1842,7 +1842,7 @@ fn hud_in(race: &super::flow::Race) -> HudIn {
         } else {
             Some(st.race.time)
         },
-        speed: mp_math::kernel::hypot(p.v.vx, p.v.vz),
+        speed: pk_math::kernel::hypot(p.v.vx, p.v.vz),
         gear: p.phys.gear,
         rpm: p.phys.rpm,
         nitro: p.phys.nitro,
@@ -1918,7 +1918,7 @@ fn pursuit_in(t: &mp_track::track::Track, pv: &mp_sim::race::PursuitView) -> Pur
         Bar {
             x: f.x + f.rx * c,
             z: f.z + f.rz * c,
-            yaw: mp_math::kernel::atan2(f.fz, f.fx),
+            yaw: pk_math::kernel::atan2(f.fz, f.fx),
             width: lat1 - lat0,
         }
     };
@@ -2863,7 +2863,7 @@ mod tests {
         assert_eq!(h.position, mine + 1);
         let p = &st.players[1];
         assert_eq!(h.player, (p.v.x, p.v.z, p.v.yaw));
-        assert_eq!(h.speed, mp_math::kernel::hypot(p.v.vx, p.v.vz));
+        assert_eq!(h.speed, pk_math::kernel::hypot(p.v.vx, p.v.vz));
         assert_eq!(h.racers.len(), st.players.len() + st.rivals.len());
         assert_eq!(h.racers[0], h.s, "this player's mark first");
         // Every other car on the minimap: the other human and the rivals.

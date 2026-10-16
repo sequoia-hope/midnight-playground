@@ -33,11 +33,11 @@ use std::collections::BTreeMap;
 use std::f64::consts::PI;
 use std::sync::Arc;
 
-use mp_math::{
-    Mulberry32, Noise2D, clamp, fbm, hash2, js, kernel, lerp, ridged, rrange, smoothstep,
-};
 use mp_scene::{MaterialKind, NodeType, three};
 use mp_track::{FenceGap, Track};
+use pk_math::{
+    Mulberry32, Noise2D, clamp, fbm, hash2, js, kernel, lerp, ridged, rrange, smoothstep,
+};
 use serde_json::{Value, json};
 
 use crate::builder::{BuildOpts, Builder, CastShadow};

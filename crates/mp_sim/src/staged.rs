@@ -287,7 +287,7 @@ impl Sim {
                 && h.strength > 0.15
             {
                 let c = &mut self.traf.as_mut().unwrap().cars[i];
-                c.crashed = mp_math::js::max(c.crashed, 0.01);
+                c.crashed = pk_math::js::max(c.crashed, 0.01);
             }
         }
         self.players[0].phys.events.clear();

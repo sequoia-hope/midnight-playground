@@ -59,7 +59,7 @@ fn route_length(l: &Level) -> Option<f64> {
     let p = (spec.path)().ok()?;
     let mut len = 0.0;
     for k in 1..p.x.len() {
-        len += mp_math::kernel::hypot(p.x[k] - p.x[k - 1], p.z[k] - p.z[k - 1]);
+        len += pk_math::kernel::hypot(p.x[k] - p.x[k - 1], p.z[k] - p.z[k - 1]);
     }
     Some(len - spec.start_s.unwrap_or(0.0) - l.finish_runoff.unwrap_or(180.0))
 }
@@ -81,7 +81,7 @@ pub fn level_best(store: &Store, l: &Level) -> String {
     let mut parts = Vec::new();
     if let Some(b) = best {
         parts.push(if cruise {
-            format!("Best score {}", w::locale_int(mp_math::js::round(b)))
+            format!("Best score {}", w::locale_int(pk_math::js::round(b)))
         } else {
             format!("Best winning time {}", fmt_time(Some(b)))
         });

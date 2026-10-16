@@ -3,8 +3,8 @@
 //! (SPEC 4.3, "plain data, no closures"). Race hands one to a rival that has
 //! finished, and to the player's cool-down driver.
 
-use mp_math::{js, lerp, smoothstep, stop_speed};
 use mp_track::Track;
+use pk_math::{js, lerp, smoothstep, stop_speed};
 
 pub const COOL_CRUISE: f64 = 24.0; // m/s
 pub const COOL_DECEL: f64 = 1.8; // m/s², the final roll to a stop

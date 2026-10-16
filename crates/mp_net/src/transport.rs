@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use mp_math::Mulberry32;
+use pk_math::Mulberry32;
 
 /// A connection's id. On a client the host is always peer 0.
 pub type PeerId = u32;

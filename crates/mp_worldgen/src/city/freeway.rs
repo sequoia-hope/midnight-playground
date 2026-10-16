@@ -19,9 +19,9 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-use mp_math::{Mulberry32, clamp, js, kernel, lerp, smoothstep};
 use mp_scene::three;
 use mp_track::{Frame, Tag, Track};
+use pk_math::{Mulberry32, clamp, js, kernel, lerp, smoothstep};
 
 use super::textures::{
     BannerOpts, ad_texture, banner_texture, canvas_of, park_texture, sound_wall_texture,
@@ -2868,7 +2868,7 @@ pub fn atlas_quads(
     let rows = images.len().div_ceil(cols);
     let width = cw * cols.min(images.len()) as f64;
     let height = chh * rows as f64;
-    let mut cv = mp_canvas::Canvas::new(width as u32, height as u32);
+    let mut cv = crate::fonts::canvas(width as u32, height as u32);
     for (k, im) in images.iter().enumerate() {
         cv.draw_image(
             &canvas_of(im.texture()),

@@ -237,7 +237,7 @@ fn step_range(ui: &mut UiState, ctx: &mut ActCtx, sl: Sl, side: f64) {
         Sl::Sfx => (&mut s.sfx, "sfxVol"),
         Sl::TiltSens => (&mut s.tilt_sens, "tiltSens"),
     };
-    let was = mp_math::js::round(*slot * 100.0);
+    let was = pk_math::js::round(*slot * 100.0);
     let v = (was + side * SLIDER_STEP).clamp(0.0, 100.0);
     if v == was {
         return;

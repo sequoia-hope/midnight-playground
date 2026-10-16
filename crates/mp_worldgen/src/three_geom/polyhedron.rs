@@ -8,7 +8,7 @@
 
 use core::f64::consts::PI;
 
-use mp_math::{js, kernel};
+use pk_math::{js, kernel};
 
 use super::attribute::BufferAttribute;
 use super::geometry::BufferGeometry;

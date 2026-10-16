@@ -67,7 +67,7 @@ impl Recorded {
 /// `flow::apply_pursuit_opts`).
 pub fn apply_pursuit_opts(st: &mut SimState, cops: f64, flash: bool) {
     if let Some(pv) = st.pv.as_mut() {
-        pv.pursuit.max_units = mp_math::clamp(cops, 0.0, 6.0) as usize;
+        pv.pursuit.max_units = pk_math::clamp(cops, 0.0, 6.0) as usize;
         pv.pursuit.flash = flash;
     }
 }

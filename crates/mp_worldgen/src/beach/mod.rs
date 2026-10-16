@@ -31,10 +31,11 @@ pub mod parts;
 use std::f64::consts::PI;
 use std::sync::Arc;
 
-use mp_canvas::Canvas;
-use mp_math::{Mulberry32, js, kernel, lerp, rpick, rrange, smoothstep};
+use crate::fonts::canvas;
 use mp_scene::{MaterialKind, three};
 use mp_track::{Frame, Track};
+use pk_canvas::Canvas;
+use pk_math::{Mulberry32, js, kernel, lerp, rpick, rrange, smoothstep};
 use serde_json::Value;
 
 use crate::builder::{BuildOpts, Builder, CastShadow};
@@ -107,7 +108,7 @@ fn canvas_tex(
     srgb: bool,
     draw: impl FnOnce(&mut Canvas, f64, f64),
 ) -> TextureId {
-    let mut c = Canvas::new(w, h);
+    let mut c = canvas(w, h);
     draw(&mut c, f64::from(w), f64::from(h));
     let t = Arc::new(Texture::from_canvas(&c, repeat, srgb, 8.0));
     let desc = t.desc("", 0);
@@ -3594,7 +3595,7 @@ impl Bld<'_> {
 
     fn build_foam(&mut self) {
         let t = self.t;
-        let mut c = Canvas::new(256, 64);
+        let mut c = canvas(256, 64);
         {
             let (w, h) = (256.0, 64.0);
             let g = &mut c;

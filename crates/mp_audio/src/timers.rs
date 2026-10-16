@@ -47,7 +47,7 @@ impl Timers {
         self.seq += 1;
         // `Math.max(0, Number(ms) || 0) / 1000`
         let ms = if ms.is_nan() { 0.0 } else { ms };
-        let due = now + mp_math::js::max(0.0, ms) / 1000.0;
+        let due = now + pk_math::js::max(0.0, ms) / 1000.0;
         self.queue.push(Timer {
             id: self.seq,
             due,

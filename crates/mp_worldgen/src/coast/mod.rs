@@ -29,10 +29,11 @@
 
 pub mod kit;
 
-use mp_canvas::Canvas;
-use mp_math::{Mulberry32, Noise2D, clamp, fbm, js, kernel, lerp, smoothstep};
+use crate::fonts::canvas;
 use mp_scene::{MaterialKind, NodeType, three};
 use mp_track::Track;
+use pk_canvas::Canvas;
+use pk_math::{Mulberry32, Noise2D, clamp, fbm, js, kernel, lerp, smoothstep};
 
 use crate::anim::AnimatorDesc;
 use crate::car_model::{self, BuildOpts, Lod};
@@ -2942,7 +2943,7 @@ impl Animator for Boats {
 /// `bannerTex(front)`'s canvas: front says HOLLOW POINT, back (seen when
 /// looking back) START.
 pub fn banner_canvas(front: bool) -> Canvas {
-    let mut g = Canvas::new(1024, 160);
+    let mut g = canvas(1024, 160);
     g.set_fill_style("#0a1016");
     g.fill_rect(0.0, 0.0, 1024.0, 160.0);
     let sq = 20.0;
@@ -2988,7 +2989,7 @@ pub fn banner_canvas(front: bool) -> Canvas {
 
 /// The coffee shack's sign over the window.
 pub fn coffee_sign_canvas() -> Canvas {
-    let mut g = Canvas::new(512, 128);
+    let mut g = canvas(512, 128);
     g.set_fill_style("#0f1a1c");
     round_rect(&mut g, 4.0, 4.0, 504.0, 120.0, 16.0);
     g.fill();

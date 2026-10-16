@@ -11,12 +11,12 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 mod common;
 
 use common::{make_vehicle, straight_level, straight_track};
-use mp_math::Mulberry32;
 use mp_sim::body::{AgentView, Body, PhysicsBody};
 use mp_sim::collisions::resolve_collisions;
 use mp_sim::kinematic::Kinematic;
 use mp_sim::traffic::{Agent, Traffic, TrafficCar, activate};
 use mp_track::{Track, TrafficRule};
+use pk_math::Mulberry32;
 
 const DT: f64 = 1.0 / 30.0;
 

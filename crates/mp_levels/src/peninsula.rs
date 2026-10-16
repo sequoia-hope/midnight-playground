@@ -97,7 +97,7 @@ pub fn chain(cs: &[Corridor]) -> Loop {
         l.joins.push(len);
         for k in 0..c.x.len() {
             if let (Some(&px), Some(&pz)) = (l.x.last(), l.z.last()) {
-                let d = mp_math::kernel::hypot(c.x[k] - px, c.z[k] - pz);
+                let d = pk_math::kernel::hypot(c.x[k] - px, c.z[k] - pz);
                 if d < JOIN {
                     continue;
                 }
@@ -111,12 +111,12 @@ pub fn chain(cs: &[Corridor]) -> Loop {
     }
     while l.x.len() > 1 {
         let n = l.x.len() - 1;
-        let d = mp_math::kernel::hypot(l.x[n] - l.x[0], l.z[n] - l.z[0]);
+        let d = pk_math::kernel::hypot(l.x[n] - l.x[0], l.z[n] - l.z[0]);
         if d >= JOIN {
             len += d;
             break;
         }
-        len -= mp_math::kernel::hypot(l.x[n] - l.x[n - 1], l.z[n] - l.z[n - 1]);
+        len -= pk_math::kernel::hypot(l.x[n] - l.x[n - 1], l.z[n] - l.z[n - 1]);
         l.x.pop();
         l.z.pop();
         l.y.pop();
@@ -141,7 +141,7 @@ fn round_joins(l: &mut Loop) {
     let mut cum = 0.0;
     let mut k = 1;
     for i in 1..n as usize {
-        cum += mp_math::kernel::hypot(l.x[i] - l.x[i - 1], l.z[i] - l.z[i - 1]);
+        cum += pk_math::kernel::hypot(l.x[i] - l.x[i - 1], l.z[i] - l.z[i - 1]);
         while k < l.joins.len() && cum >= l.joins[k] - 1e-6 {
             idx.push(i as i64);
             k += 1;
@@ -222,7 +222,7 @@ pub fn events(l: &Loop, town: f64, crest: f64) -> Vec<EventSpot> {
     let drop = [stage.x[k], stage.z[k]];
     // The short way: back down the coast to San Gregorio (the lap's start),
     // then the last of 84 to Stage Road's mouth.
-    let mouth = mp_math::kernel::hypot(drop[0] - l.x[0], drop[1] - l.z[0]);
+    let mouth = pk_math::kernel::hypot(drop[0] - l.x[0], drop[1] - l.z[0]);
     let short = garage + mouth * 1.4;
     vec![
         EventSpot {
@@ -538,10 +538,10 @@ mod tests {
             assert!(j > 0.0 && j < l.length, "{j}");
         }
         let n = l.x.len() - 1;
-        let close = mp_math::kernel::hypot(l.x[n] - l.x[0], l.z[n] - l.z[0]);
+        let close = pk_math::kernel::hypot(l.x[n] - l.x[0], l.z[n] - l.z[0]);
         assert!((JOIN..12.0).contains(&close), "closing edge {close} m");
         for k in 1..=n {
-            let d = mp_math::kernel::hypot(l.x[k] - l.x[k - 1], l.z[k] - l.z[k - 1]);
+            let d = pk_math::kernel::hypot(l.x[k] - l.x[k - 1], l.z[k] - l.z[k - 1]);
             // The rounded corners pull the samples at a join closer.
             assert!((1.0..12.0).contains(&d), "sample {k}: {d} m from the last");
         }

@@ -77,7 +77,7 @@ impl Corridor {
         // little along the road).
         let mut len = 0.0;
         for k in 1..c.x.len() {
-            len += mp_math::kernel::hypot(c.x[k] - c.x[k - 1], c.z[k] - c.z[k - 1]);
+            len += pk_math::kernel::hypot(c.x[k] - c.x[k - 1], c.z[k] - c.z[k - 1]);
         }
         c.step = len / (c.x.len() - 1) as f64;
         Ok(c)
@@ -332,7 +332,7 @@ mod tests {
     fn highway_84_starts_at_the_junction_and_climbs_to_la_honda() {
         let c = Corridor::parse(CORRIDOR).unwrap();
         let b = Corridor::parse(BRANCH_84).unwrap();
-        let d = mp_math::kernel::hypot(b.x[0] - c.x[0], b.z[0] - c.z[0]);
+        let d = pk_math::kernel::hypot(b.x[0] - c.x[0], b.z[0] - c.z[0]);
         assert!(d < 5.0, "the branch starts {d} m from the junction");
         let len = (b.x.len() - 1) as f64 * b.step;
         assert!(len > 6000.0 && len < 8000.0, "{len}");

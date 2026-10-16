@@ -50,7 +50,7 @@ impl<G: Ground> Rig<G> {
 
     /// The throttle a simple proportional speed hold asks for.
     pub fn hold(&self, speed: f64) -> f64 {
-        mp_math::clamp((speed - self.car.speed()) * 0.5, 0.0, 1.0)
+        pk_math::clamp((speed - self.car.speed()) * 0.5, 0.0, 1.0)
     }
 
     /// Steps with `ctl`, the throttle replaced by the speed hold.

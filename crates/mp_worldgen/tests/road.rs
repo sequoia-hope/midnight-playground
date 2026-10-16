@@ -38,7 +38,6 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 mod common;
 
 use common::{hex, level};
-use mp_math::smoothstep;
 use mp_scene::digest::{SceneDigest, digest, sha256_hex};
 use mp_scene::{Scene, TextureSource};
 use mp_track::FenceGap;
@@ -49,6 +48,7 @@ use mp_worldgen::road::MarkGap;
 use mp_worldgen::scenery::plan_only_factory;
 use mp_worldgen::stages::{LevelSetup, RoadPlan, level_stages};
 use mp_worldgen::world::{Build, Change, World, level_jobs};
+use pk_math::smoothstep;
 use serde_json::{Value, json};
 
 fn golden(id: &str) -> Value {

@@ -31,9 +31,9 @@
 pub mod canvas;
 pub mod kit;
 
-use mp_math::{Mulberry32, clamp, fbm, js, kernel, lerp, smoothstep};
 use mp_scene::{NodeType, three};
 use mp_track::{Frame, Track};
+use pk_math::{Mulberry32, clamp, fbm, js, kernel, lerp, smoothstep};
 
 use crate::flora::{
     RockOpts, conifer_geometry, flower_geometry, foliage_material, grass_clump_geometry,

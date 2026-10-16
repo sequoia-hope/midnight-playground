@@ -29,7 +29,7 @@ pub fn fmt_time(t: Option<f64>) -> String {
     let Some(t) = t.filter(|t| t.is_finite()) else {
         return "--:--.--".into();
     };
-    let cs = mp_math::js::round(t * 100.0);
+    let cs = pk_math::js::round(t * 100.0);
     let m = (cs / 6000.0).floor();
     let s = (cs - m * 6000.0) / 100.0;
     format!("{m}:{:0>5.2}", s)
@@ -231,7 +231,7 @@ impl Default for PursuitOpts {
 /// with its defaults (6 units, flashing).
 fn apply_pursuit_opts(st: &mut SimState, o: PursuitOpts) {
     if let Some(pv) = st.pv.as_mut() {
-        pv.pursuit.max_units = mp_math::clamp(o.cops, 0.0, 6.0) as usize;
+        pv.pursuit.max_units = pk_math::clamp(o.cops, 0.0, 6.0) as usize;
         pv.pursuit.flash = o.flash;
     }
 }
@@ -539,7 +539,7 @@ impl Race {
                 ..
             } => {
                 let t = if self.session.curr.race.cruise && *points > 0.0 {
-                    format!("{text}  +{}", mp_math::js::round(*points))
+                    format!("{text}  +{}", pk_math::js::round(*points))
                 } else if *nitro > 0.0 {
                     format!("{text}  +N2O")
                 } else {
@@ -691,10 +691,10 @@ impl Race {
         }
         let p = &self.session.curr.players[self.session.me];
         let ph = &p.phys;
-        let speed = mp_math::kernel::hypot(p.v.vx, p.v.vz);
-        let sp = mp_math::clamp(speed / 30.0, 0.0, 1.0);
+        let speed = pk_math::kernel::hypot(p.v.vx, p.v.vz);
+        let sp = pk_math::clamp(speed / 30.0, 0.0, 1.0);
         let spiked = if ph.spiked > 0.0 { 0.3 * sp } else { 0.0 };
-        let max = mp_math::js::max_n;
+        let max = pk_math::js::max_n;
         self.feel = Some((
             max(&[ph.scrape * 0.55, self.offroad * 0.35 * sp, spiked]),
             max(&[
@@ -773,7 +773,7 @@ impl Race {
                 }
                 self.near = near;
             }
-            let slow = mp_math::kernel::hypot(p.v.vx, p.v.vz) < 8.0;
+            let slow = pk_math::kernel::hypot(p.v.vx, p.v.vz) < 8.0;
             if slow && event::at_start(t, &lr.level, &p.v).is_some() {
                 let text = match st.race.hold {
                     Some((_, held)) => format!(
@@ -793,7 +793,7 @@ impl Race {
             && self.hud.toast_timer <= 0.05
             && let Some([dx, dz]) = e.drop
         {
-            let d = mp_math::kernel::hypot(dx - p.v.x, dz - p.v.z);
+            let d = pk_math::kernel::hypot(dx - p.v.x, dz - p.v.z);
             let far = if d >= 1000.0 {
                 format!("{:.1} km", d / 1000.0)
             } else {

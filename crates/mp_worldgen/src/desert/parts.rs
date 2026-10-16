@@ -16,7 +16,7 @@
 
 use std::f64::consts::PI;
 
-use mp_math::{Mulberry32, Noise2D, js, lerp};
+use pk_math::{Mulberry32, Noise2D, js, lerp};
 use serde_json::Value;
 
 use crate::color::Color;
@@ -236,11 +236,11 @@ pub fn joshua_geometry(seed: u32) -> BufferGeometry {
 }
 
 fn kernel_cos(x: f64) -> f64 {
-    mp_math::kernel::cos(x)
+    pk_math::kernel::cos(x)
 }
 
 fn kernel_sin(x: f64) -> f64 {
-    mp_math::kernel::sin(x)
+    pk_math::kernel::sin(x)
 }
 
 /// Saguaro: ribbed column with up-turned arms.

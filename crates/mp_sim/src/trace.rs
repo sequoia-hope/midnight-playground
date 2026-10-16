@@ -75,9 +75,9 @@ pub fn write_input(w: &mut Writer, inp: Option<&Input>) {
             x
         }
     };
-    w.i32(mp_math::js::round(c(inp.steer, -1.0, 1.0) * 32767.0) as i32);
-    w.i32(mp_math::js::round(c(inp.throttle, 0.0, 1.0) * 255.0) as i32);
-    w.i32(mp_math::js::round(c(inp.brake, 0.0, 1.0) * 255.0) as i32);
+    w.i32(pk_math::js::round(c(inp.steer, -1.0, 1.0) * 32767.0) as i32);
+    w.i32(pk_math::js::round(c(inp.throttle, 0.0, 1.0) * 255.0) as i32);
+    w.i32(pk_math::js::round(c(inp.brake, 0.0, 1.0) * 255.0) as i32);
     w.i32(i32::from(inp.handbrake) | (i32::from(inp.nitro) << 1) | (i32::from(inp.analog) << 2));
 }
 

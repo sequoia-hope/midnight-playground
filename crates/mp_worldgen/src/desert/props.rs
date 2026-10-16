@@ -12,8 +12,8 @@
 
 use std::f64::consts::PI;
 
-use mp_canvas::Canvas;
-use mp_math::{Mulberry32, Noise2D, clamp, js, kernel, lerp, smoothstep};
+use crate::fonts::canvas;
+use pk_math::{Mulberry32, Noise2D, clamp, js, kernel, lerp, smoothstep};
 
 use super::parts::{boxg, cyl, limb, merge, paint, prep, sphere, v3};
 use crate::color::Color;
@@ -1073,7 +1073,7 @@ pub fn person_geometry(seed: u32) -> BufferGeometry {
 pub fn crack_decal_texture(seed: u32) -> Texture {
     const S: usize = 512;
     let sf = S as f64;
-    let mut g = Canvas::new(S as u32, S as u32);
+    let mut g = canvas(S as u32, S as u32);
     let mut img = g.create_image_data(S as u32, S as u32);
     let mut rng = Mulberry32::new(seed);
     let mut cells: Vec<[f64; 3]> = Vec::new();

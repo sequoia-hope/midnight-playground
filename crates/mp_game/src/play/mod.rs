@@ -864,7 +864,7 @@ fn draw(
     // and boost on the player, boost on the rivals; the traffic's far
     // models past 95 m from the camera, back inside 85 (`Traffic.farLod`).
     let night = sky_res.sky.as_ref().map_or(0.0, |k| k.night);
-    let lights_on = mp_math::smoothstep(0.25, 0.6, night);
+    let lights_on = pk_math::smoothstep(0.25, 0.6, night);
     let n_racers = st.players.len() + st.rivals.len();
     for (i, (v, active)) in flow::slots(st).enumerate() {
         let racer = i < n_racers;

@@ -6,11 +6,11 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
-brotli = "8"
-flate2 = "1"
+# The build tooling (web, size, prof, check-deps, imgdiff) is Playground
+# Kit's (DECISIONS D1233); this crate is its configuration plus the
+# JS-parity commands.
+pk_xtask.workspace = true
 serde_json = "1"
 mr_kernel = { path = "../tools/parity/kernel" }
-mp_math.workspace = true
-png = "0.18"
 mp_scene.workspace = true
 sha2 = "0.10"

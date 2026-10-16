@@ -8,10 +8,10 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 mod common;
 
-use mp_math::{clamp, kernel, wrap_angle};
 use mp_sim::assist::{Assist, steer_assist};
 use mp_sim::input::{Input, InputFrame};
 use mp_sim::race::{LevelRuntime, RaceOpts, SimState, standings, step};
+use pk_math::{clamp, kernel, wrap_angle};
 use std::f64::consts::PI;
 
 const DT: f64 = 1.0 / 120.0;

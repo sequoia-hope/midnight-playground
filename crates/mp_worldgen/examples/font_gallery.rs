@@ -1,14 +1,14 @@
 //! The font gallery (WP 3.2): draws the game's sign strings with each
-//! candidate substitute, through mp_canvas exactly as the port will draw
-//! them. Run by `node tools/parity/fonts-gallery.mjs`, which fetches the
+//! candidate substitute, through pk_canvas exactly as the port draws them.
+//! Run by `node tools/parity/fonts-gallery.mjs`, which fetches the
 //! candidates and writes the spec this reads.
 //!
-//!   cargo run --release -p mp_canvas --example font-gallery -- <spec.json>
+//!   cargo run --release -p mp_worldgen --example font-gallery -- <spec.json>
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use mp_canvas::{Canvas, FontBook};
+use pk_canvas::{Canvas, FontBook};
 use serde_json::Value;
 
 fn slug(s: &str) -> String {
@@ -129,7 +129,7 @@ fn main() {
         );
         for c in role["candidates"].as_array().unwrap() {
             let name = c["name"].as_str().unwrap();
-            let mut book = (*FontBook::bundled()).clone();
+            let mut book = (*mp_worldgen::fonts::book()).clone();
             let fam = family.to_ascii_lowercase();
             book.faces.retain(|f| f.family != fam);
             for f in c["faces"].as_array().unwrap() {

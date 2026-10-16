@@ -12,8 +12,8 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use mp_math::{js, kernel};
 use mp_scene::BufferData;
+use pk_math::{js, kernel};
 
 use crate::three_geom::{
     BufferAttribute, BufferGeometry, Euler, EulerOrder, ExtrudeOptions, Matrix4, Shape, Vector2,

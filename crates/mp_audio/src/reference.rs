@@ -12,7 +12,7 @@
 
 use crate::engine::{self, CARS, Fourier};
 use crate::{music, noise, samples, shapes};
-use mp_math::Rng;
+use pk_math::Rng;
 
 /// What an array is.
 #[derive(Clone, Debug, PartialEq)]

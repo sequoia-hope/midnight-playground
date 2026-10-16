@@ -5,13 +5,13 @@
 //! `setHSL` take working-space values as they are.
 //!
 //! The arithmetic is three's, in its order; the transfer functions use
-//! `mp_math::kernel::pow` (SPEC 4.2), so a colour matches the JS run with
+//! `pk_math::kernel::pow` (SPEC 4.2), so a colour matches the JS run with
 //! the parity kernel bit for bit (`tests/builders.rs`).
 //!
 //! The setters return `&mut Self` so calls chain as in the JS; `Color` is
 //! `Copy`, so `c.clone()` is a plain copy.
 
-use mp_math::{js, kernel};
+use pk_math::{js, kernel};
 
 /// A linear RGB colour (three's `Color`).
 #[derive(Clone, Copy, Debug, PartialEq)]

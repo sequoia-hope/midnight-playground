@@ -29,7 +29,6 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 mod common;
 
-use mp_canvas::compare::{block_diff, block_means};
 use mp_scene::digest::{SceneDigest, digest};
 use mp_scene::{BufferData, Scene, TextureSource};
 use mp_worldgen::material::{Param, num};
@@ -38,6 +37,7 @@ use mp_worldgen::scenery::{PlanOnly, scenery_factory};
 use mp_worldgen::stages::{LevelSetup, level_stages};
 use mp_worldgen::three_geom::{Quaternion, Vector3};
 use mp_worldgen::world::{Build, CameraView, Change, Edit, Handle, UpdateCtx, World, level_jobs};
+use pk_canvas::compare::{block_diff, block_means};
 use serde_json::{Value, json};
 
 const GOLDEN: &str = include_str!("../../../parity/golden/mountain/sierra.json");
@@ -390,7 +390,7 @@ fn cached_export() -> Option<Scene> {
 fn write_sheet(name: &str, w: usize, h: usize, js: &[u8], rust: &[u8]) {
     let dir = common::root().join("parity/report/mountain");
     std::fs::create_dir_all(&dir).expect("report dir");
-    let (sw, sh, px) = mp_canvas::compare::sheet(w, h, js, rust);
+    let (sw, sh, px) = pk_canvas::compare::sheet(w, h, js, rust);
     let f = std::fs::File::create(dir.join(format!("{name}.png"))).expect("png");
     let mut e = png::Encoder::new(std::io::BufWriter::new(f), sw as u32, sh as u32);
     e.set_color(png::ColorType::Rgba);
@@ -613,7 +613,7 @@ fn mountain_matches_the_js_export() {
             let jt = *jc.get(k)?;
             let jpx = rgba(js.as_ref().expect("export"), jt);
             write_sheet(&format!("canvas-{k}"), tw, th, &jpx, &px);
-            Some(mp_canvas::compare::mean_abs_diff(&jpx, &px))
+            Some(pk_canvas::compare::mean_abs_diff(&jpx, &px))
         });
         // Against the font-matched capture, for a lettered texture.
         let fmatch = lettered
@@ -633,7 +633,7 @@ fn mountain_matches_the_js_export() {
             let fbd = block_diff(&block_means(tw, th, &px), &blocks_of(fw));
             let fmad = cached_rgba(f, fw["sha256"].as_str().expect("sha")).map(|jpx| {
                 write_sheet(&format!("lettered-{f}"), tw, th, &jpx, &px);
-                mp_canvas::compare::mean_abs_diff(&jpx, &px)
+                pk_canvas::compare::mean_abs_diff(&jpx, &px)
             });
             gate = (
                 fmad.unwrap_or(fbd),

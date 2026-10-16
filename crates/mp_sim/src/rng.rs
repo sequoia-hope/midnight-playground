@@ -3,7 +3,7 @@
 //! `traffic` (Traffic's own stream, seed 99). Each counts its draws, which
 //! the trace record carries (`simStreams` in `src/parity/sim.js`).
 
-use mp_math::{Mulberry32, Rng};
+use pk_math::{Mulberry32, Rng};
 
 pub const TRAFFIC_SEED: u32 = 99;
 

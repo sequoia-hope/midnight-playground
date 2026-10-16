@@ -8,8 +8,8 @@
 //! per sample), then the tunnel (per channel, one draw per sample, then two
 //! per early reflection), before any loop picks its start offset.
 
-use mp_math::Rng;
-use mp_math::kernel::exp;
+use pk_math::Rng;
+use pk_math::kernel::exp;
 
 /// The three 2 s mono noise beds (`this.noise`).
 #[derive(Clone, Debug, PartialEq)]

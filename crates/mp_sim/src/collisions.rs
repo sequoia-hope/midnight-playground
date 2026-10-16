@@ -2,8 +2,8 @@
 //! two circles (front and rear axle) — cheap, and good enough for
 //! door-to-door racing, rear-enders and T-bones.
 
-use mp_math::{clamp, js, kernel, smoothstep};
 use mp_track::Track;
+use pk_math::{clamp, js, kernel, smoothstep};
 
 use crate::body::{Body, BodySet};
 

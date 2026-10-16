@@ -10,7 +10,7 @@
 //!
 //! Each export keeps its JS name, snake-cased, with its defaults written
 //! out (DECISIONS D190). The arithmetic is the JS's, in its order, with
-//! every inexact `Math` function through `mp_math::kernel` and `f32`
+//! every inexact `Math` function through `pk_math::kernel` and `f32`
 //! stores where the JS stores into a `Float32Array` (geometry attributes,
 //! the noise's value table, the rock's displacement). The golden is
 //! `parity/golden/flora/flora.json` (`tools/parity/flora.mjs`,
@@ -18,8 +18,8 @@
 
 #![allow(clippy::needless_range_loop)]
 
-use mp_math::{Mulberry32, clamp, js, kernel, lerp, smoothstep};
 use mp_scene::{BufferData, three};
+use pk_math::{Mulberry32, clamp, js, kernel, lerp, smoothstep};
 
 use crate::material::{Material, Param};
 use crate::three_geom::{

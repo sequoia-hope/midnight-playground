@@ -17,8 +17,8 @@ use bevy::render::render_resource::{
     AsBindGroup, CompareFunction, Face, RenderPipelineDescriptor, SpecializedMeshPipelineError,
 };
 use bevy::shader::ShaderRef;
-use mp_math::{clamp, kernel, lerp, smoothstep};
 use mp_track::{Level, SkyKey};
+use pk_math::{clamp, kernel, lerp, smoothstep};
 
 /// `SRGBToLinear` (three r180 ColorManagement).
 pub fn srgb_to_linear(c: f64) -> f64 {

@@ -1,11 +1,11 @@
 //! Vehicle dynamics for Midnight Playground (docs/vehicle-dynamics/SPEC.md):
 //! the rigid body, suspension, wheels, the brush tyre, the `Ground` trait
-//! and vehicle definitions. It depends only on `mp_math` and knows nothing
+//! and vehicle definitions. It depends only on `pk_math` and knows nothing
 //! of tracks, races or levels; `mp_sim` adapts its track to [`Ground`].
 //!
 //! The rules of the simulation crates hold here (SPEC 1.1): no engine,
 //! clock, threads, global state or hash maps; all values `f64`; every
-//! inexact function through `mp_math::kernel`. The same inputs give the
+//! inexact function through `pk_math::kernel`. The same inputs give the
 //! same bits on every platform.
 
 #![forbid(unsafe_code)]
@@ -17,12 +17,14 @@ pub mod body;
 pub mod cars;
 pub mod drivetrain;
 pub mod ground;
-pub mod math;
 pub mod rig;
 pub mod tyre;
 pub mod vehicle;
 
 pub use ground::{Collider, FlatGround, Ground, GroundSample, PlaneGround, SdfSample, Surface};
-pub use math::{Aabb, Iso3, Quat, Vec3};
+/// The vector types, from the kit (`pk_math::vec`); `mp_vdyn::math` stays
+/// as the path it was.
+pub use pk_math::vec as math;
+pub use pk_math::vec::{Aabb, Iso3, Quat, Vec3};
 pub use tyre::{BrushParams, BrushTyre, ContactInfo, HubState, Tyre, TyreOutput};
 pub use vehicle::{Controls, Telemetry, Vehicle, VehicleDef, WheelTelemetry};

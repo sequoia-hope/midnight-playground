@@ -569,7 +569,7 @@ impl Msg {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mp_math::Mulberry32;
+    use pk_math::Mulberry32;
 
     fn f(s: i16, t: u8) -> InputFrame {
         InputFrame {

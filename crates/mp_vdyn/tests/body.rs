@@ -4,9 +4,9 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::wasm_bindgen_test as test;
 
-use mp_math::kernel;
 use mp_vdyn::body::RigidBody;
 use mp_vdyn::{Quat, Vec3};
+use pk_math::kernel;
 
 const H: f64 = 1.0 / 600.0;
 

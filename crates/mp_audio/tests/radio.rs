@@ -145,7 +145,7 @@ fn lines_with_nothing_filled_in_get_extra_takes() {
 
 struct Fixed(f64);
 
-impl mp_math::Rng for Fixed {
+impl pk_math::Rng for Fixed {
     fn next_f64(&mut self) -> f64 {
         self.0
     }

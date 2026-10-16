@@ -15,6 +15,7 @@ pub mod color_builder;
 pub mod colorizer;
 pub mod desert;
 pub mod flora;
+pub mod fonts;
 pub mod geom;
 pub mod harbor;
 pub mod land;

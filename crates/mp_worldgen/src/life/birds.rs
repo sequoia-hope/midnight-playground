@@ -10,7 +10,7 @@
 
 use std::f64::consts::PI;
 
-use mp_math::{Mulberry32, kernel, rrange, smoothstep};
+use pk_math::{Mulberry32, kernel, rrange, smoothstep};
 
 use super::{Y, Z, dist2d, ground, heading, instance_count, instance_matrix, rot, v3};
 use crate::builder::Builder;

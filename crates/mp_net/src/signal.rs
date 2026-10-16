@@ -390,7 +390,7 @@ impl<P: Copy + Eq> Star<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mp_math::Mulberry32;
+    use pk_math::Mulberry32;
 
     /// Not secure: for the tests' rooms and nonces only.
     fn rng(seed: u32) -> impl FnMut(&mut [u8]) {

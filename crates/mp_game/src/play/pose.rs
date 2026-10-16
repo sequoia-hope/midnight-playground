@@ -7,9 +7,9 @@
 //! arrives as `PhysEvent::Touchdown`).
 
 use bevy::math::{DMat3, DQuat, DVec3};
-use mp_math::{clamp, kernel, wrap_angle};
 use mp_sim::vehicle::Vehicle;
 use mp_track::Track;
+use pk_math::{clamp, kernel, wrap_angle};
 
 /// What `sync` reads of a vehicle.
 #[derive(Clone, Copy, Debug, PartialEq)]

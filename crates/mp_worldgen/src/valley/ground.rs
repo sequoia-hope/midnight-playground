@@ -9,7 +9,7 @@
 //! (cleared past 200,000 entries); the heights are a pure function, so the
 //! port reads them directly and the values are the same.
 
-use mp_math::js;
+use pk_math::js;
 
 use crate::terrain::{TERRAIN_TILE, Terrain, Tile};
 

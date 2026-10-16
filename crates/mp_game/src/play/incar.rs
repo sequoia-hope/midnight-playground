@@ -176,7 +176,6 @@ mod tests {
     use super::*;
     use crate::play::camera::{self, CameraRig, MODES};
     use crate::play::pose::{self, Pose};
-    use mp_math::kernel;
     use mp_sim::autopilot::autopilot;
     use mp_sim::input::{Input, InputFrame};
     use mp_sim::physics::CAR_SPECS;
@@ -184,6 +183,7 @@ mod tests {
     use mp_worldgen::car_model::{BuildOpts, Lod, build_vehicle};
     use mp_worldgen::object::SceneGraph;
     use mp_worldgen::textures::TextureCache;
+    use pk_math::kernel;
 
     /// The player's model as `play::spawn` asks for it (`buildVehicle(kind,
     /// { color, lod: 'high', seed: 1 })`) as a scene: the root's node and

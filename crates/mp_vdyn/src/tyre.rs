@@ -18,10 +18,10 @@
 //! the slip is read from it, so the model is a spring at a standstill and
 //! the classic slip model at speed.
 
-use mp_math::smoothstep;
+use pk_math::smoothstep;
 
 use crate::ground::Ground;
-use crate::math::{Iso3, Vec3};
+use pk_math::vec::{Iso3, Vec3};
 
 /// The carcass deflection is held to this multiple of the slip at which
 /// the patch starts to slide entirely (`θs = 1`).
@@ -263,7 +263,7 @@ impl BrushTyre {
         // Theoretical slip σ = κ/(1+κ), tanα/(1+κ): the slide over the
         // rolling speed. The sign of travel fades in over half a metre a
         // second, where the deflection is a spring and this barely matters.
-        let dir = mp_math::clamp(vx / 0.5, -1.0, 1.0);
+        let dir = pk_math::clamp(vx / 0.5, -1.0, 1.0);
         let den = 1.0 - sx * dir;
         let den = if den > 0.1 { den } else { 0.1 };
         let tx = sx / den;

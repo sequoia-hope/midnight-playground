@@ -9,11 +9,11 @@
 //! `cargo run --release -p mp_sim --example freeway`
 use std::collections::VecDeque;
 
-use mp_math::{clamp, kernel, wrap_angle};
 use mp_sim::input::{Input, InputFrame};
 use mp_sim::model::{SimCar, sim_def};
 use mp_sim::physics::PhysEvent;
 use mp_sim::race::{LevelRuntime, PlayerCar};
+use pk_math::{clamp, kernel, wrap_angle};
 
 struct Out {
     rms: f64,

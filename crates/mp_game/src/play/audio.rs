@@ -44,7 +44,6 @@ use bevy::input::ButtonState;
 use bevy::input::keyboard::{KeyCode, KeyboardInput};
 use bevy::prelude::*;
 use mp_audio::game::{CarState, GameAudio, Platform, Rival, SirenUnit, Volume};
-use mp_math::{clamp, kernel};
 use mp_sim::input::InputFrame;
 use mp_sim::physics::{MOTOR_MAX, PhysEvent};
 use mp_sim::police::{Mode as UnitMode, Siren};
@@ -52,6 +51,7 @@ use mp_sim::pursuit::{PursuitEvent, State as PursuitState};
 use mp_sim::race::{DT, LevelRuntime, RaceStateKind, SimEvent, SimState};
 use mp_track::ROAD_TYPES;
 use mp_track::Track;
+use pk_math::{clamp, kernel};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -162,7 +162,7 @@ impl PursuitTick {
             }
             // Closing speed: how fast the gap between us shrinks.
             let rel =
-                -((dx * (u.k.v.vx - v.vx) + dz * (u.k.v.vz - v.vz)) / mp_math::js::max(d, 1.0));
+                -((dx * (u.k.v.vx - v.vx) + dz * (u.k.v.vz - v.vz)) / pk_math::js::max(d, 1.0));
             sirens.push(SirenAt {
                 id: u.callsign,
                 dx,
@@ -1039,7 +1039,7 @@ impl RaceAudio {
                         Rival {
                             dist: Some(d),
                             pan: Some(clamp(
-                                (r.dx * crx + r.dz * crz) / mp_math::js::max(d, 1.0),
+                                (r.dx * crx + r.dz * crz) / pk_math::js::max(d, 1.0),
                                 -1.0,
                                 1.0,
                             )),
@@ -1084,7 +1084,7 @@ impl RaceAudio {
                 id: Some(f64::from(u.id)),
                 dist: Some(u.dist),
                 pan: Some(clamp(
-                    (u.dx * crx + u.dz * crz) / mp_math::js::max(u.dist, 1.0),
+                    (u.dx * crx + u.dz * crz) / pk_math::js::max(u.dist, 1.0),
                     -1.0,
                     1.0,
                 )),
@@ -1171,7 +1171,7 @@ pub fn gesture() {
 struct JsRandom;
 
 #[cfg(target_arch = "wasm32")]
-impl mp_math::Rng for JsRandom {
+impl pk_math::Rng for JsRandom {
     fn next_f64(&mut self) -> f64 {
         js_sys::Math::random()
     }
@@ -1245,7 +1245,7 @@ fn platform() -> Platform {
         dj: Some(Rc::new(mp_audio::radio::DirFetch(
             crate::native::repo_root().join("audio/dj"),
         ))),
-        random: Rc::new(RefCell::new(mp_math::Mulberry32::new(seed))),
+        random: Rc::new(RefCell::new(pk_math::Mulberry32::new(seed))),
     }
 }
 

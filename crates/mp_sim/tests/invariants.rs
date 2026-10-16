@@ -8,12 +8,12 @@
 mod common;
 
 use common::level;
-use mp_math::Rng;
 use mp_sim::autopilot::autopilot;
 use mp_sim::input::{Input, InputFrame, RESET};
 use mp_sim::race::{
     Human, LevelRuntime, MultiOpts, RaceOpts, RaceStateKind, SimEvent, SimState, hash, step,
 };
+use pk_math::Rng;
 
 fn lr(id: &str) -> LevelRuntime {
     LevelRuntime::new(level(id)).unwrap()

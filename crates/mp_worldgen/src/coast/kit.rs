@@ -9,8 +9,8 @@
 //! `rockGeometry` (a simplex-noise lump, not flora's), `colorize`, `prep`,
 //! and `rockMaterial` (no vertex colours, program key `coast-rock`).
 
-use mp_math::{Noise2D, js};
 use mp_scene::MaterialKind;
+use pk_math::{Noise2D, js};
 use serde_json::Value;
 
 use crate::color::Color;

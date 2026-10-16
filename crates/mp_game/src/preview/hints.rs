@@ -16,7 +16,6 @@
 //! flora templates and boxes, deterministic (a fixed seed per level). They
 //! go under one group, `menu view`, at the end of the view's build.
 
-use mp_math::Mulberry32;
 use mp_track::{Frame, Track};
 use mp_worldgen::flora::{
     RockOpts, canopy_geometry, conifer_geometry, foliage_material, rock_geometry, shrub_geometry,
@@ -29,6 +28,7 @@ use mp_worldgen::terrain::Terrain;
 use mp_worldgen::textures::Texture;
 use mp_worldgen::three_geom::{BufferGeometry, box_geometry, cylinder_geometry, merge_geometries};
 use mp_worldgen::world::{Job, World};
+use pk_math::Mulberry32;
 use std::f64::consts::TAU;
 use std::sync::Arc;
 
@@ -499,11 +499,11 @@ const BAYS: u32 = 8;
 /// The facade picture: wall, frames and windows, some lit (map); the lit
 /// ones alone (emissive map). Its top-left corner is plain wall (roofs).
 fn facade() -> (Texture, Texture) {
-    use mp_canvas::Canvas;
+    use mp_worldgen::fonts::canvas;
     const PX: u32 = 16;
     let n = BAYS * PX;
-    let mut map = Canvas::new(n, n);
-    let mut glow = Canvas::new(n, n);
+    let mut map = canvas(n, n);
+    let mut glow = canvas(n, n);
     map.set_fill_style("#d8d4cc");
     map.fill_rect(0.0, 0.0, f64::from(n), f64::from(n));
     // The walls glow faintly too: lit by the street after dark.

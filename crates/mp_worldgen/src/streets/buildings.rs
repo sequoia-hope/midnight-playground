@@ -7,8 +7,8 @@
 #![allow(clippy::approx_constant)]
 #![allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 
-use mp_math::{js, kernel, lerp};
 use mp_scene::{NodeType, three};
+use pk_math::{js, kernel, lerp};
 
 use super::facades::{F_TILE, f, floor_h};
 use super::props;

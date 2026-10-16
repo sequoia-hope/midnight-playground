@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::object::{MaterialId, NodeId};
 use crate::three_geom::{Euler, Quaternion};
 use crate::world::{Animator, Change, Edit, Handle, UpdateCtx};
-use mp_math::{lerp, smoothstep};
+use pk_math::{lerp, smoothstep};
 
 /// One animator as data.
 #[derive(Clone, Debug, Serialize, Deserialize)]

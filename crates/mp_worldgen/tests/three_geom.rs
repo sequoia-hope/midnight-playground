@@ -13,9 +13,9 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 use core::f64::consts::PI;
 
-use mp_math::{Mulberry32, js, kernel};
 use mp_scene::BufferData;
 use mp_worldgen::three_geom::*;
+use pk_math::{Mulberry32, js, kernel};
 use serde_json::Value;
 
 const GOLDEN: &str = include_str!("../../../parity/golden/three_geom/three_geom.json");

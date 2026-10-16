@@ -4,7 +4,7 @@
 //! default `WorldUVGenerator`: the world code extrudes straight along +z
 //! and never passes either (DECISIONS D133).
 
-use mp_math::{js, kernel};
+use pk_math::{js, kernel};
 
 use core::f64::consts::PI;
 

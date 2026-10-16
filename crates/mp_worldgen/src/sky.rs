@@ -22,9 +22,9 @@
 //! The fog patch (`MR_SUN_FOG`: the fog picks up the sun's colour looking
 //! toward it, in every lit material) is the renderer's (SPEC 6.1, 6.2).
 
-use mp_math::{clamp, js, kernel, lerp, smoothstep};
 use mp_scene::{LightDesc, MaterialKind, NodeType, ShadowCamera, ShadowDesc, three};
 use mp_track::{Level, SkyKey, Track};
+use pk_math::{clamp, js, kernel, lerp, smoothstep};
 use serde_json::{Value, json};
 
 use crate::color::Color;

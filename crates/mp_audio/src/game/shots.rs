@@ -13,8 +13,8 @@ use crate::wa::{
     AudioBuffer, AudioBufferSourceNode, BiquadFilterNode, BiquadFilterType, GainNode, Node,
     OscillatorNode, OscillatorType,
 };
-use mp_math::js;
-use mp_math::kernel::log2;
+use pk_math::js;
+use pk_math::kernel::log2;
 
 use BiquadFilterType as B;
 

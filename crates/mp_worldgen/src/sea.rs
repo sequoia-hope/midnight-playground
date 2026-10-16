@@ -17,9 +17,9 @@
 
 use std::sync::Arc;
 
-use mp_canvas::Canvas;
-use mp_math::{Mulberry32, clamp, js, kernel, smoothstep};
+use crate::fonts::canvas;
 use mp_scene::{BufferData, MaterialKind, TextureSource};
+use pk_math::{Mulberry32, clamp, js, kernel, smoothstep};
 use serde_json::{Value, json};
 
 use crate::color::Color;
@@ -33,7 +33,7 @@ use crate::world::{Change, Edit, Handle, UpdateCtx};
 /// `waveNormals()`: a tileable ripple normal map, 256², from 40 waves.
 pub fn wave_normals() -> Texture {
     const S: usize = 256;
-    let mut c = Canvas::new(S as u32, S as u32);
+    let mut c = canvas(S as u32, S as u32);
     let mut rng = Mulberry32::new(51);
     struct Wave {
         fx: f64,

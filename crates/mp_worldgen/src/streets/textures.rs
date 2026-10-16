@@ -19,8 +19,9 @@
 use std::f64::consts::PI;
 use std::sync::Arc;
 
-use mp_canvas::Canvas;
-use mp_math::{Mulberry32, kernel};
+use crate::fonts::canvas;
+use pk_canvas::Canvas;
+use pk_math::{Mulberry32, kernel};
 
 use crate::textures::{Cached, Texture, TextureCache};
 
@@ -176,8 +177,8 @@ pub fn street_atlas(cache: &mut TextureCache) -> Arc<Cached> {
 fn draw_street_atlas() -> (Texture, Texture) {
     const S: f64 = SC;
     let (w, h) = ((S * 4.0) as u32, (S * 3.0) as u32);
-    let mut c = Canvas::new(w, h);
-    let mut ce = Canvas::new(w, h);
+    let mut c = canvas(w, h);
+    let mut ce = canvas(w, h);
     ce.set_fill_style("#000");
     ce.fill_rect(0.0, 0.0, S * 4.0, S * 3.0);
     let mut rng = Mulberry32::new(311);
@@ -780,7 +781,7 @@ pub fn neon_atlas(cache: &mut TextureCache) -> Arc<Cached> {
 
 fn draw_neon_atlas() -> (Texture, Texture) {
     // Horizontal: 4×4 cells of 256×128.
-    let mut g = Canvas::new(1024, 512);
+    let mut g = canvas(1024, 512);
     g.set_fill_style("#000");
     g.fill_rect(0.0, 0.0, 1024.0, 512.0);
     for (i, w) in WORDS.iter().enumerate() {
@@ -808,7 +809,7 @@ fn draw_neon_atlas() -> (Texture, Texture) {
         g.restore();
     }
     // Vertical: 8 cells of 128×512, letters stacked.
-    let mut gv = Canvas::new(1024, 512);
+    let mut gv = canvas(1024, 512);
     gv.set_fill_style("#000");
     gv.fill_rect(0.0, 0.0, 1024.0, 512.0);
     for (i, w) in BLADES.iter().enumerate() {
@@ -826,10 +827,10 @@ fn draw_neon_atlas() -> (Texture, Texture) {
         gv.set_shadow_blur(0.0);
         let letters: Vec<char> = w.chars().collect();
         let n = letters.len() as f64;
-        let step = mp_math::js::min(96.0, 460.0 / n);
+        let step = pk_math::js::min(96.0, 460.0 / n);
         for (k, ch) in letters.iter().enumerate() {
             let y = 256.0 - ((n - 1.0) / 2.0 - k as f64) * step;
-            let size = mp_math::js::min(84.0, step * 0.95);
+            let size = pk_math::js::min(84.0, step * 0.95);
             neon_text(&mut gv, &ch.to_string(), cx, y, size, col, 90.0);
         }
         gv.restore();
@@ -842,7 +843,7 @@ fn draw_neon_atlas() -> (Texture, Texture) {
 pub fn pavement_texture(cache: &mut TextureCache) -> Arc<Cached> {
     cache.cached_with("streets:pavement", || {
         const S: f64 = 256.0;
-        let mut g = Canvas::new(S as u32, S as u32);
+        let mut g = canvas(S as u32, S as u32);
         g.set_fill_style("#9d9891");
         g.fill_rect(0.0, 0.0, S, S);
         let mut rng = Mulberry32::new(5150);
@@ -882,7 +883,7 @@ pub fn pavement_texture(cache: &mut TextureCache) -> Arc<Cached> {
 /// chevron band.
 pub fn barrier_texture(cache: &mut TextureCache) -> Arc<Cached> {
     cache.cached_with("streets:barrier", || {
-        let mut g = Canvas::new(256, 128);
+        let mut g = canvas(256, 128);
         g.set_fill_style("#e8e6e0");
         g.fill_rect(0.0, 0.0, 256.0, 128.0);
         g.set_fill_style("#d0201c");
@@ -910,7 +911,7 @@ pub fn barrier_texture(cache: &mut TextureCache) -> Arc<Cached> {
 pub fn puddle_texture(cache: &mut TextureCache) -> Arc<Cached> {
     cache.cached_with("streets:puddle", || {
         const S: f64 = 128.0;
-        let mut g = Canvas::new(S as u32, S as u32);
+        let mut g = canvas(S as u32, S as u32);
         g.set_fill_style("#000");
         g.fill_rect(0.0, 0.0, S, S);
         let mut rng = Mulberry32::new(808);
@@ -944,8 +945,8 @@ pub fn train_texture(cache: &mut TextureCache) -> Arc<Cached> {
     cache.cached_with("streets:train", || {
         const W: f64 = 1024.0;
         const H: f64 = 128.0;
-        let mut g = Canvas::new(W as u32, H as u32);
-        let mut ge = Canvas::new(W as u32, H as u32);
+        let mut g = canvas(W as u32, H as u32);
+        let mut ge = canvas(W as u32, H as u32);
         let mut rng = Mulberry32::new(99);
         ge.set_fill_style("#000");
         ge.fill_rect(0.0, 0.0, W, H);

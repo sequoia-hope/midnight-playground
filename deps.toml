@@ -1,0 +1,106 @@
+# The crate dependency rules of SPEC 3.2, enforced by `cargo xtask
+# check-deps` (Playground Kit's pk_xtask, DECISIONS D1233; its
+# crates/pk_xtask/src/deps.rs explains the fields). Every workspace member
+# needs an entry, so a new crate cannot slip in unchecked. The kit's pk_*
+# crates (pk_math, pk_canvas, ...) are path dependencies outside this
+# workspace: allowed by default, still subject to `banned`.
+
+[banned]
+# No engine, no browser, no ambient randomness, no threads.
+sim = ["bevy*", "wgpu*", "web-sys", "js-sys", "wasm-bindgen*", "rand*", "getrandom", "rayon*", "crossbeam*"]
+# World generation: no engine, no GPU; rayon only behind a non-default
+# feature, so it must be absent from the default tree.
+world = ["bevy*", "wgpu*", "rayon*"]
+no_engine = ["bevy*", "wgpu*"]
+no_bevy = ["bevy*"]
+
+# The simulation crates: `#![forbid(unsafe_code)]`, no clock, threads or
+# hash maps, every inexact float function through pk_math's kernel
+# (SPEC 3.2, 4.2, 5.4).
+[crates.mp_track]
+allowed = []
+banned = "sim"
+pure = true
+exact_math = true
+
+[crates.mp_levels]
+allowed = ["mp_track"]
+banned = "sim"
+pure = true
+exact_math = true
+
+# Vehicle dynamics (docs/vehicle-dynamics/SPEC.md 2): pk_math only; it
+# knows nothing of tracks, and mp_sim adapts the track to its Ground.
+[crates.mp_vdyn]
+allowed = []
+banned = "sim"
+pure = true
+exact_math = true
+
+[crates.mp_sim]
+allowed = ["mp_track", "mp_levels", "mp_vdyn"]
+banned = "sim"
+pure = true
+exact_math = true
+
+# The atlas (docs/vision/atlas.md): real geography and the open world's
+# plan. No workspace dependencies; world generation will read real ground
+# from it.
+[crates.mp_atlas]
+allowed = []
+banned = "sim"
+pure = true
+exact_math = true
+
+[crates.mp_scene]
+allowed = []
+banned = "no_engine"
+
+[crates.mp_worldgen]
+allowed = ["mp_scene", "mp_track", "mp_levels"]
+banned = "world"
+exact_math = true
+
+# The exhaust engine model: no dependencies at all, so it also builds as
+# the small standalone wasm the web's AudioWorklet runs.
+[crates.mp_exhaust]
+allowed = []
+banned = "sim"
+
+# The Music Lab's port: no dependencies at all (it also builds as the
+# radio's standalone worklet wasm); the game's generated music.
+[crates.mp_music]
+allowed = []
+banned = "sim"
+
+# The open world's section builder: mp_worldgen and what it builds on, as
+# the worker's standalone wasm (D1215).
+[crates.mp_builder]
+allowed = ["mp_track", "mp_levels", "mp_scene", "mp_worldgen"]
+banned = "world"
+
+[crates.mp_audio]
+allowed = ["mp_exhaust", "mp_music"]
+banned = "no_bevy"
+
+[crates.mp_net]
+allowed = ["mp_track", "mp_levels", "mp_sim"]
+banned = "no_bevy"
+
+[crates.mp_host]
+allowed = ["mp_track", "mp_levels", "mp_sim", "mp_net"]
+banned = "no_bevy"
+
+[crates.mp_game]
+allowed = ["mp_track", "mp_levels", "mp_sim", "mp_net", "mp_scene", "mp_worldgen", "mp_audio", "mp_music"]
+banned = []
+
+# The kernel's wasm build for the JS oracle (WP 0.3): pk_math only.
+[crates.mr_kernel]
+allowed = []
+banned = "sim"
+exact_math = true
+
+[crates.xtask]
+allowed = ["*"]
+banned = []

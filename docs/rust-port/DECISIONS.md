@@ -11374,3 +11374,129 @@ there.
   build, the e2e suites, `build-diff.mjs` against the pre-split build)
   and pushed. Each move gets an entry here naming the kit crate that
   took the code.
+
+## D1232 (2026-10-16): mp_canvas becomes pk_canvas, fonts at run time
+
+The Canvas 2D crate is the kit's `pk_canvas` (`../game-engine/crates/pk_canvas`;
+kit DECISIONS D4), the first crate carved out under D1230. Its code is
+`mp_canvas`'s; what moved back into this game is the fonts.
+
+- **`mp_worldgen::fonts`** owns the bundled faces now: `build.rs` moved
+  from `mp_canvas` to `mp_worldgen` whole, so `assets/fonts/fonts.json`
+  is still the only copy of the mapping (D373), and `fonts::book()` is the
+  old `FontBook::bundled()`. `fonts::canvas(w, h)` is
+  `Canvas::with_fonts(w, h, book())`: what `document.createElement('canvas')`
+  is to the JS texture code. Every `Canvas::new` in `mp_worldgen` and
+  `mp_game::preview::hints` became it; `Canvas::new` in the kit has no
+  fonts and draws no text, so a canvas made with it here is a shape-only
+  canvas on purpose (the touch controls' and widgets' icons already were).
+  `mp_game::ui::widgets::load_fonts` reads the Rajdhani and Arimo faces
+  from `fonts::book()`; the wasm still links the font bytes once.
+- **The Chrome-parity tests moved with the fonts**: `tests/canvas_text.rs`
+  (measureText and baselines), `tests/canvas_probes.rs` (the probes
+  sheet) and `examples/font_gallery.rs` are `mp_worldgen`'s;
+  `tools/parity/fonts-gallery.mjs` runs the example from there. The
+  kit keeps `tests/pixels.rs`.
+- **Bit for bit.** The texture gate (`cargo test -p mp_worldgen`), the
+  probes and the text numbers pass unchanged against `pk_canvas`: only
+  where the font bytes come from changed, not the shaping or rasterising.
+- **Rules.** `xtask/src/deps.rs` has no `mp_canvas` rule; `pk_canvas` is
+  outside the workspace, so `check-deps` does not see it (the kit's own
+  `check-deps` will). SPEC 3.1 and 3.2 and CLAUDE.md's crate diagram say
+  where it lives.
+
+## D1231 (2026-10-16): mp_math becomes pk_math
+
+The first crate carved into the kit (D1230; PLAN.md phase 1). `mp_math`
+moved whole to `../game-engine/crates/pk_math`: `kernel`, `js`, the
+helpers, `Mulberry32`, `hash2`, `Noise2D`, `fbm`, `ridged`, and the four
+test files. Nothing in the API changed but the crate name: every
+`mp_math::X` is `pk_math::X`, and `crates/mp_math` is gone from the
+workspace. Each `mp_math.workspace = true` became `pk_math.workspace =
+true` (the path dependency D1230 declared).
+
+- **`js` is a cargo feature**, on by default: the JavaScript-semantics
+  helpers exist for ports of JS code, which this game is everywhere; a
+  game written in Rust from the start turns it off. The kernel and the
+  noise functions use `imul`, `to_int32` and `max` internally either way,
+  so the module is always compiled and the feature only decides whether it
+  is public.
+- **The vectors moved too.** `mp_vdyn::math` (`Vec3`, `Quat`, `Iso3`,
+  `Aabb`; `+ - * /` and `sqrt` only, the half-angle through the kernel) is
+  `pk_math::vec`, under the same names: the kit's PLAN wrote `DVec3`, but
+  renaming would have touched every vehicle-dynamics file for no gain, and
+  there is no `f32` sibling to tell apart. `mp_vdyn` re-exports the types
+  and keeps `mp_vdyn::math` as a path alias, so its callers are unchanged.
+- **The golden travels as a copy.** `tests/golden.rs` read
+  `parity/golden/math/math.json` from the repo root by relative path, which
+  the kit does not have; it now compiles in `tests/golden/math.json` beside
+  it, a copy that `tools/parity/math-golden.mjs` must refresh when it is
+  rerun (its header says so).
+- **`check-deps`**: the `mp_math` rule is gone and `"mp_math"` left every
+  `allowed` list. The `allowed` check only looks at workspace members, so
+  the external `pk_math` needs no entry and the rule engine is unchanged;
+  the `banned` tree scan still sees its tree (libm alone) and passes. The
+  `exact_math` and `pure` source scans apply to members only, so the kit
+  enforces them for its own crates.
+- **Tested from the kit**, not from here: `cargo test -p pk_math` refuses a
+  non-member with dev-dependencies, so CI's wasm test line drops
+  `-p mp_math`; the kit's CI runs pk_math natively and in wasm. `cargo
+  xtask kernel --check` (mr_kernel on `pk_math::kernel`) is still
+  bit-identical, 15 functions by a million inputs, both builds.
+
+## D1233 (2026-10-16): the build tooling moves to Playground Kit
+
+Phase 1 of the rework (D1230): `xtask`'s generic half, the loader page,
+the dev server and the headless-Chrome tools now live in the kit, and
+this game configures them.
+
+- **`pk_xtask`** (`../game-engine/crates/pk_xtask`) holds `web`, `size`,
+  `prof`, `check-deps` and `imgdiff`. `xtask/src/main.rs` is a `WebBuild`
+  (the `mp_game` crate, the two backends with the `mp_webgl2` cfg, the
+  page directory, `dist/next`, the runtime files, the three side wasms
+  for the exhaust and radio worklets and the section builder's worker,
+  the scene cache key as a `build.json` extra, binaryen 116) and the
+  parity commands (`kernel`, `parity shots|scene-check|materials|
+  stations`), which stay here. `web.rs`, `size.rs`, `prof.rs` and
+  `deps.rs` are deleted; `shots.rs` is a wrapper over
+  `pk_xtask::imgdiff` writing to `parity/report/shots-<label>/` as
+  before.
+- **`deps.toml`** at the repo root holds the rules `deps.rs`'s table held
+  (SPEC 3.2), read by the kit's engine. A path dependency outside the
+  workspace (`pk_math`, `pk_canvas`) is not a member: allowed by default,
+  still subject to `banned`. `cargo xtask check-deps` passes on 16 crates.
+- **New in the build.** `cargo xtask web` checks `wasm-opt`'s version
+  against the pin (as it checked wasm-bindgen's); `build.json` gains a
+  `wasm_opt` field (the version) in release builds, in place of the old
+  boolean; `--profile <name>` builds any cargo profile; `size --budget
+  [bytes]` takes the limit.
+- **The loader page** `crates/mp_game/web/index.html` is generated from
+  the kit's `template/web/index.html` by `tools/parity/gen-index.py`: the
+  three branding blocks and the hooks block (the scene, survey and photo
+  loads, the menu sections, the viewer and recording bridges, the build
+  line's links) are this game's; the rest is the kit's. It gains
+  snowboarding's crash screen (a `WebAssembly.RuntimeError` or panic after
+  the first frame shows a reload button instead of a frozen picture),
+  respects `build.json`'s `backends` list, and ignores winit's "Using
+  exceptions for control flow" throw.
+- **The status global.** The kit's contract (PLAN.md section 5, item 7)
+  is `window.__game` with `state`, `frames`, `ready`, `backend`, `error`,
+  `shot`, `wasmMemoryBytes` and `stage` (and the page's own: `startMs`,
+  `adapter`, `touch`, `insets`, `footer`, `screenshot`, `cover`,
+  `reload`), documented in the template. **This game still publishes
+  `__mp`**: the page's `GLOBAL` is `'__mp'` (one place) and the Rust side
+  is unchanged until the shell carve renames it to `__game` with an
+  `__mp` alias for the JS suites.
+- **`tools/serve.py`** is the template's (no-store, pinned dirs no-cache,
+  precompressed `.br`/`.gz`, the wasm type, `--port` required, a "not
+  built yet" page) plus the favourites POST, the `/legacy/` mapping and
+  the `.mrscene` type.
+- **The headless-Chrome tools.** `tools/parity/{lib/server, e2e/harness,
+  rust-perf, rust-prof, gl-calls, build-diff, web-console}.mjs` are thin
+  wrappers over `../game-engine/js/*.mjs` with this game's defaults
+  (`__mp`, the autopilot race as the scenario, `parity/report/` as the
+  output). The kit's tools take the scenario as parameters (`--query`,
+  `--wait`, `--pos`, `--global`). Dropped: `rust-perf.mjs --game js` and
+  `gl-calls.mjs --game js` (the JS game's flight is `perf-baseline.mjs`;
+  its GL counts are in BASELINE.md). The perf result file is now
+  `parity/report/perf/<level>-<backend>[-run][-tag].json`.

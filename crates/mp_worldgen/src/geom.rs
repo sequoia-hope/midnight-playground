@@ -11,7 +11,7 @@
 // The shape methods keep the JS argument lists (DECISIONS D130, D190).
 #![allow(clippy::too_many_arguments)]
 
-use mp_math::kernel;
+use pk_math::kernel;
 
 use crate::object::{GeoId, MaterialId, NodeId, SceneGraph};
 use crate::three_geom::{

@@ -11,7 +11,7 @@ use crate::wa::{
     Connectable, ConvolverNode, DynamicsCompressorNode, GainNode, Node, OscillatorNode,
     OscillatorType, OverSampleType, StereoPannerNode, WaveShaperNode,
 };
-use mp_math::Rng;
+use pk_math::Rng;
 use std::rc::Rc;
 
 /// The voice gates (`_vg`).

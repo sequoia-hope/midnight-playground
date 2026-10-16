@@ -159,7 +159,7 @@ fn frame(
     o.set("countdown", st.race.countdown);
     o.set("s", p.v.s);
     o.set("lat", p.v.lat);
-    o.set("speed", mp_math::kernel::hypot(p.v.vx, p.v.vz));
+    o.set("speed", pk_math::kernel::hypot(p.v.vx, p.v.vz));
     o.set("gear", p.phys.gear);
     o.set("finished", p.rules.finished);
     o.set("locked", p.phys.locked);
@@ -193,11 +193,11 @@ fn frame(
     o.set("steerAngle", p.v.steer_angle);
     // The road there: its half width, and the heading off it (`yawToRoad`).
     let f = race.session.lr.track.frame(p.v.s);
-    let ang = mp_math::kernel::atan2(f.fz, f.fx) - p.v.yaw;
+    let ang = pk_math::kernel::atan2(f.fz, f.fx) - p.v.yaw;
     o.set("hw", f.hw);
     o.set(
         "yawToRoad",
-        mp_math::kernel::atan2(mp_math::kernel::sin(ang), mp_math::kernel::cos(ang)),
+        pk_math::kernel::atan2(pk_math::kernel::sin(ang), pk_math::kernel::cos(ang)),
     );
     o.set("vx", p.v.vx);
     o.set("vz", p.v.vz);

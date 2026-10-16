@@ -6,7 +6,7 @@
 //! ramp straight after a target curve starts from the target's start value
 //! (the spec's literal reading; the game never reads a param in that state).
 
-use mp_math::kernel::{exp, pow};
+use pk_math::kernel::{exp, pow};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EventKind {

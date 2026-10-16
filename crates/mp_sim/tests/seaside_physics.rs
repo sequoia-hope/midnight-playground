@@ -6,12 +6,12 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 mod common;
 
-use mp_math::kernel::hypot;
 use mp_sim::dims::Dims;
 use mp_sim::input::Input;
 use mp_sim::physics::{CarPhysics, car_spec};
 use mp_sim::vehicle::Vehicle;
 use mp_track::Track;
+use pk_math::kernel::hypot;
 
 const DT: f64 = 1.0 / 60.0;
 

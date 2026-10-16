@@ -13,9 +13,9 @@
 
 use std::sync::Arc;
 
-use mp_canvas::{Canvas, ImageData};
-use mp_math::{Mulberry32, js};
 use mp_scene::MaterialKind;
+use pk_canvas::{Canvas, ImageData};
+use pk_math::{Mulberry32, js};
 use serde_json::Value;
 
 use crate::material::{Material, num, texture_value};
@@ -45,7 +45,7 @@ pub const WAREHOUSE_CELL: usize = 8;
 pub const BRICK_CELL: usize = 9;
 
 fn canvas(w: u32, h: u32) -> Canvas {
-    Canvas::new(w, h)
+    crate::fonts::canvas(w, h)
 }
 
 /// `tex(c, { srgb = true, repeat = false })`: a CanvasTexture, anisotropy 8.

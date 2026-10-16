@@ -26,7 +26,6 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 mod common;
 
-use mp_canvas::compare::{block_diff, block_means, mean_abs_diff};
 use mp_scene::digest::{SceneDigest, digest, sha256_hex};
 use mp_scene::{Scene, TextureSource};
 use mp_worldgen::color::Color;
@@ -37,6 +36,7 @@ use mp_worldgen::stages::{LevelSetup, level_stages};
 use mp_worldgen::world::{
     Build, Change, Handle, SceneRef, UpdateCtx, World, WorldBuild, level_jobs,
 };
+use pk_canvas::compare::{block_diff, block_means, mean_abs_diff};
 use serde_json::{Value, json};
 
 /// SPEC 5.7: mean absolute difference per channel, in 0..255 levels.
@@ -475,7 +475,7 @@ fn valley_l3() {
         let name = c["name"].as_str().expect("name");
         let t = our_texture(s, name);
         // The corn strip (thin curved strokes) is held like the rest since
-        // mp_canvas multisamples strokes as Chrome does (D333, D650-D653).
+        // pk_canvas multisamples strokes as Chrome does (D333, D650-D653).
         let limit = LIMIT;
         let (w, h, px) = pixels(s, t);
         let want = blocks_of(&c["blocks"]);
@@ -709,7 +709,7 @@ fn captured(_name: &str, _sha: &str) -> Option<Vec<u8>> {
 fn write_sheet(name: &str, w: usize, h: usize, js: &[u8], ours: &[u8]) {
     let dir = common::root().join("parity/report/valley");
     std::fs::create_dir_all(&dir).expect("report dir");
-    let (sw, sh, px) = mp_canvas::compare::sheet(w, h, js, ours);
+    let (sw, sh, px) = pk_canvas::compare::sheet(w, h, js, ours);
     write_png(&dir.join(format!("{name}.png")), sw, sh, &px);
     write_png(&dir.join(format!("{name}.rust.png")), w, h, ours);
 }

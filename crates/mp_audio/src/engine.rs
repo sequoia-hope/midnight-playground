@@ -11,11 +11,11 @@
 //! the low end (see [`rumble_cycle`]).
 //!
 //! Pure math: the coefficient arrays are bit-identical to the JS reference
-//! (every inexact function through `mp_math::kernel`, every `Float32Array`
+//! (every inexact function through `pk_math::kernel`, every `Float32Array`
 //! store rounded to `f32`).
 
-use mp_math::Mulberry32;
-use mp_math::kernel::{atan2, cos, exp, pow, sin};
+use pk_math::Mulberry32;
+use pk_math::kernel::{atan2, cos, exp, pow, sin};
 
 /// A car's engine character (`CARS[kind]`).
 ///

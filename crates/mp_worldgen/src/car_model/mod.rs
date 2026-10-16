@@ -56,7 +56,7 @@ mod wheels;
 
 use std::sync::Arc;
 
-use mp_canvas::Canvas;
+use crate::fonts::canvas;
 use mp_scene::{MaterialKind, NodeType, three};
 use serde_json::Value;
 
@@ -238,7 +238,7 @@ fn standard(color: u32, metalness: f64, roughness: f64, vc: bool) -> Material {
 /// catches the light (`canvasTex(64, ...)`: repeat, sRGB, anisotropy 4).
 pub fn carbon_texture() -> Texture {
     let s = 64.0;
-    let mut g = Canvas::new(64, 64);
+    let mut g = canvas(64, 64);
     let n = 8;
     let c = s / n as f64;
     for i in 0..n {
@@ -515,7 +515,7 @@ fn glow_geometry(spots: &[GlowSpot]) -> BufferGeometry {
     g.set_attribute("aSize", BufferAttribute::from_f64(&size, 1));
     g.set_index(&idx);
     g.compute_bounding_sphere();
-    let grow = mp_math::js::max_n(&spots.iter().map(|s| s.size).collect::<Vec<_>>());
+    let grow = pk_math::js::max_n(&spots.iter().map(|s| s.size).collect::<Vec<_>>());
     if let Some(bs) = &mut g.bounding_sphere {
         bs.radius += grow;
     }
@@ -641,13 +641,13 @@ impl VehicleModel {
 
     /// `setBrake(v)`.
     pub fn set_brake(&mut self, v: f64) -> Vec<Edit> {
-        self.brake = mp_math::js::min(1.0, mp_math::js::max(0.0, v));
+        self.brake = pk_math::js::min(1.0, pk_math::js::max(0.0, v));
         vec![self.update_tail()]
     }
 
     /// `setHeadlights(v)`.
     pub fn set_headlights(&mut self, v: f64) -> Vec<Edit> {
-        self.lights = mp_math::js::min(1.0, mp_math::js::max(0.0, v));
+        self.lights = pk_math::js::min(1.0, pk_math::js::max(0.0, v));
         vec![
             number(self.head, "emissiveIntensity", 0.3 + self.lights * 2.7),
             self.update_tail(),
@@ -669,7 +669,7 @@ impl VehicleModel {
             Some(a) => vec![number(
                 a,
                 "emissiveIntensity",
-                1.4 + 5.0 * mp_math::js::min(1.0, mp_math::js::max(0.0, v)),
+                1.4 + 5.0 * pk_math::js::min(1.0, pk_math::js::max(0.0, v)),
             )],
             None => Vec::new(),
         }

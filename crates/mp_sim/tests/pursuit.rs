@@ -11,7 +11,6 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 mod common;
 
 use common::{make_vehicle, straight_level};
-use mp_math::{Mulberry32, Rng};
 use mp_sim::ai::{AiCtx, AiDriver, AiOpts};
 use mp_sim::body::{AgentView, Body, BodyId};
 use mp_sim::collisions::resolve_collisions;
@@ -23,6 +22,7 @@ use mp_sim::pursuit::{
     bust_penalty, top_speed,
 };
 use mp_track::{Level, Police, Track, TrafficRule, seg};
+use pk_math::{Mulberry32, Rng};
 
 const DT: f64 = 1.0 / 60.0;
 

@@ -6,9 +6,9 @@
 //! interpolated car.
 
 use bevy::math::DVec3;
-use mp_math::{clamp, damp, kernel, lerp, smoothstep};
 use mp_sim::vehicle::Vehicle;
 use mp_track::Track;
+use pk_math::{clamp, damp, kernel, lerp, smoothstep};
 use std::f64::consts::PI;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -101,7 +101,7 @@ impl Car {
             x: l(a.x, b.x),
             y: l(a.y, b.y),
             z: l(a.z, b.z),
-            yaw: a.yaw + mp_math::wrap_angle(b.yaw - a.yaw) * t,
+            yaw: a.yaw + pk_math::wrap_angle(b.yaw - a.yaw) * t,
             vx: l(a.vx, b.vx),
             vy: l(a.vy, b.vy),
             vz: l(a.vz, b.vz),

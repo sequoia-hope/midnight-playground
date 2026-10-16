@@ -14,11 +14,11 @@ use std::sync::{Arc, OnceLock};
 
 use common::{make_vehicle, straight_track};
 
-use mp_math::kernel::hypot;
 use mp_sim::input::Input;
 use mp_sim::physics::{ANALOG_LOCK, CAR_SPECS, CarPhysics, MOTOR_MAX, PhysEvent, car_spec};
 use mp_sim::vehicle::Vehicle;
 use mp_track::Track;
+use pk_math::kernel::hypot;
 
 const DT: f64 = 1.0 / 60.0;
 
@@ -511,7 +511,7 @@ fn the_walls_keep_the_car_on_the_road_with_an_impact_event() {
 /// `yaw_rate`, for one frame.
 fn wall_frame(rel: f64, yaw_rate: f64, steer: f64) -> f64 {
     let mut c = car("sports", 100.0, 0.0, 0.0);
-    let ext = c.v.half_w * mp_math::kernel::cos(rel) + c.v.half_l * mp_math::kernel::sin(rel).abs();
+    let ext = c.v.half_w * pk_math::kernel::cos(rel) + c.v.half_l * pk_math::kernel::sin(rel).abs();
     let t = c.t.clone();
     c.phys
         .reset(&mut c.v, &t, 100.0, t.wall_r[100] as f64 - ext);
@@ -608,7 +608,7 @@ fn the_same_inputs_give_the_same_drive() {
         for i in 0..600 {
             let inp = Input {
                 throttle: 1.0,
-                steer: mp_math::kernel::sin(i as f64 / 40.0),
+                steer: pk_math::kernel::sin(i as f64 / 40.0),
                 handbrake: i % 200 < 30,
                 ..input()
             };

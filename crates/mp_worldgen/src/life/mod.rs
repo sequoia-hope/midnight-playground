@@ -12,14 +12,14 @@
 //!
 //! Flight and walking are functions of time, not integrated state, so a
 //! flock or a walker that comes back into range is where it should be.
-//! Every inexact function goes through `mp_math::kernel`, and every random
+//! Every inexact function goes through `pk_math::kernel`, and every random
 //! choice through a seeded `Mulberry32`, as the rest of world generation.
 
 mod birds;
 mod people;
 
-use mp_math::kernel;
 use mp_track::Level;
+use pk_math::kernel;
 
 use crate::three_geom::{Matrix4, Quaternion, Vector3};
 use crate::world::{Animator, Change, Edit, Handle, Scenery, UpdateCtx, World};
