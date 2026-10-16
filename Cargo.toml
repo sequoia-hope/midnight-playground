@@ -5,8 +5,6 @@
 resolver = "3"
 members = ["crates/*", "xtask", "tools/parity/kernel"]
 default-members = ["crates/*"]
-# Patched dependencies (below), not ours to build, lint or format.
-exclude = ["patches"]
 
 [workspace.package]
 version = "0.1.0"
@@ -29,6 +27,13 @@ mp_builder = { path = "crates/mp_builder" }
 mp_net = { path = "crates/mp_net" }
 mp_vdyn = { path = "crates/mp_vdyn" }
 mp_atlas = { path = "crates/mp_atlas" }
+# Playground Kit, the shared toolkit (docs/rust-port/DECISIONS.md D1230):
+# the sibling checkout at ../game-engine, by path.
+pk_math = { path = "../game-engine/crates/pk_math" }
+pk_lockstep = { path = "../game-engine/crates/pk_lockstep" }
+pk_canvas = { path = "../game-engine/crates/pk_canvas" }
+pk_xtask = { path = "../game-engine/crates/pk_xtask" }
+pk_shell = { path = "../game-engine/crates/pk_shell" }
 # The CLI that post-processes the wasm must be this exact version;
 # `cargo xtask web` checks it.
 wasm-bindgen = "=0.2.129"
@@ -71,14 +76,16 @@ opt-level = 3
 [profile.dev.package.xtask]
 opt-level = 3
 
+# The patched crates live in Playground Kit (`../game-engine/patches/*`,
+# its DECISIONS D2), the sibling checkout this game builds on (D1230).
 # wgpu with the WebGPU device's limits and features read once (DECISIONS
 # D1182; patches/wgpu/PATCHED.md). Bevy asks for the limits on every draw.
 [patch.crates-io]
-wgpu = { path = "patches/wgpu" }
+wgpu = { path = "../game-engine/patches/wgpu" }
 # wgpu-hal's GL backend skipping the GL calls that bind what is already
 # bound (D1190; patches/wgpu-hal/PATCHED.md): WebGL2 made 24,600 calls a
 # frame on Sierra where three.js made 4,400.
-wgpu-hal = { path = "patches/wgpu-hal" }
+wgpu-hal = { path = "../game-engine/patches/wgpu-hal" }
 # Bevy's UI skipping the draw of an empty batch (D1200;
 # patches/bevy_ui_render/PATCHED.md): Chrome warned about it on the menu.
-bevy_ui_render = { path = "patches/bevy_ui_render" }
+bevy_ui_render = { path = "../game-engine/patches/bevy_ui_render" }

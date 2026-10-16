@@ -23,6 +23,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Playground Kit beside the game: this workspace's pk_* crates and the
+      # patched wgpu/Bevy crates are path dependencies on ../game-engine
+      # (DECISIONS D1230).
+      - name: Playground Kit (the sibling checkout)
+        run: git clone --depth 1 https://github.com/sequoia-hope/playground-kit "$GITHUB_WORKSPACE/../game-engine"
       - name: Toolchain (from rust-toolchain.toml)
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
