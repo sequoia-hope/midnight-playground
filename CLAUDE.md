@@ -61,6 +61,7 @@ and carry on with the option that best preserves parity.
 | The Rust page's console when a build does not come up | `node tools/parity/web-console.mjs --backend webgl2` |
 | A headless race (results, `--trace`, `--state-at`, `bench`) | `cargo run --release -p mp_sim --bin mp-sim -- race --level sierra` |
 | Native client | `cargo run -p mp_game` |
+| The signalling relay as a Cloudflare Worker, under the relay's own tests (`npm install` in `tools/signal-worker` first; deploy steps in its README) | `MP_SIGNAL_WORKER=1 cargo test -p mp_host --test signal --test rtc` |
 | The open world's plan, measured (`resolve` rewrites what the planner draws; `corridor <id>` writes a route's road for a level, `docs/vision/peninsula.md`) | `cargo run --release -p mp_atlas -- report` |
 | Rebuild the atlas from real data (python3 with numpy, Pillow, shapely, pyarrow) | `python3 tools/atlas/build.py` |
 | The ground and land cover under the open world's corridors (stages 2 and 4a of `docs/vision/peninsula.md`) | `python3 tools/atlas/ground.py coast-south hwy-92 skyline-south hwy-84 --margin 1200 --step 16 --name peninsula` |

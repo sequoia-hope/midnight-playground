@@ -54,3 +54,76 @@ pub fn serve(mut cmd: impl FnMut(u16) -> Command) -> (Child, u16) {
         assert!(t.elapsed() < Duration::from_secs(20), "the server came up");
     }
 }
+
+/// A server and everything it started, stopped together (`wrangler dev`
+/// runs workerd as a child of its own), and the state it kept, if any.
+pub struct Group(pub Child, pub Option<std::path::PathBuf>);
+
+impl Drop for Group {
+    fn drop(&mut self) {
+        let _ = Command::new("kill")
+            .args(["-TERM", "--", &format!("-{}", self.0.id())])
+            .status();
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+        if let Some(dir) = &self.1 {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+}
+
+/// Whether the signalling tests run against the Cloudflare Worker
+/// (`tools/signal-worker`, DECISIONS D1222) instead of `mp-signal`:
+/// `MP_SIGNAL_WORKER=1`, with its `npm install` done.
+pub fn on_worker() -> bool {
+    std::env::var("MP_SIGNAL_WORKER").is_ok_and(|v| v == "1")
+}
+
+/// The signalling relay the tests talk to, on a free port: `mp-signal`,
+/// or the Worker under `wrangler dev` (each with its own state) when
+/// [`on_worker`].
+pub fn relay() -> (Group, u16) {
+    use std::os::unix::process::CommandExt;
+    if !on_worker() {
+        let (child, port) = serve(|port| {
+            let mut c = Command::new(env!("CARGO_BIN_EXE_mp-signal"));
+            c.args(["--port", &port.to_string()]).process_group(0);
+            c
+        });
+        return (Group(child, None), port);
+    }
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/signal-worker");
+    let t = Instant::now();
+    loop {
+        let port = free_port();
+        let state =
+            std::env::temp_dir().join(format!("mp-signal-worker-{}-{port}", std::process::id()));
+        let mut child = Command::new(dir.join("node_modules/.bin/wrangler"))
+            .args(["dev", "--ip", "127.0.0.1", "--port", &port.to_string()])
+            .args(["--inspector-port", "0", "--persist-to"])
+            .arg(&state)
+            .current_dir(&dir)
+            .env("WRANGLER_SEND_METRICS", "false")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()
+            .expect("wrangler is installed: npm install in tools/signal-worker");
+        let mut out = BufReader::new(child.stdout.take().unwrap()).lines();
+        let ready = out
+            .by_ref()
+            .map_while(Result::ok)
+            .any(|l| l.contains("Ready on"));
+        let group = Group(child, Some(state));
+        if ready {
+            std::thread::spawn(move || out.for_each(drop));
+            return (group, port);
+        }
+        drop(group);
+        assert!(
+            t.elapsed() < Duration::from_secs(60),
+            "wrangler dev came up"
+        );
+    }
+}

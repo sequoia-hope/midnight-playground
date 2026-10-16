@@ -21,13 +21,9 @@ impl Drop for Proc {
     }
 }
 
-fn signal_server() -> Proc {
-    let (child, port) = common::serve(|port| {
-        let mut c = Command::new(env!("CARGO_BIN_EXE_mp-signal"));
-        c.args(["--port", &port.to_string()]);
-        c
-    });
-    Proc(child, port)
+/// `mp-signal`, or the Cloudflare Worker with `MP_SIGNAL_WORKER=1`.
+fn signal_server() -> (common::Group, u16) {
+    common::relay()
 }
 
 type Ws = WebSocket<MaybeTlsStream<TcpStream>>;

@@ -1,0 +1,14 @@
+{
+  "name": "mp-signal-worker",
+  "private": true,
+  "type": "module",
+  "description": "The game's WebRTC signalling relay as a Cloudflare Worker (DECISIONS D1222)",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "cd ../.. && MP_SIGNAL_WORKER=1 cargo test -p mp_host --test signal --test rtc"
+  },
+  "devDependencies": {
+    "wrangler": "4.145.0"
+  }
+}

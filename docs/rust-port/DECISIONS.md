@@ -11310,3 +11310,43 @@ defensive of his friends. PG throughout.
   between D1183 and D1184. `python tools/dj-voice/design.py` then
   `render.py --only dez --takes 1` (and the Whisper check) on a machine
   with the model records him; commit the clips and `index.json`.
+
+## D1222 (2026-10-16): the signalling relay as a Cloudflare Worker
+
+The owner wants a relay for multiplayer games that needs no machine of
+theirs to keep up: MULTIPLAYER 6.1 named "a Cloudflare Worker with a
+Durable Object per room" as the alternative to `mp-signal` behind Caddy.
+`tools/signal-worker/` is that, and it is a drop-in: the same matchbox
+0.14 JSON protocol on `/<room>` (any path's last segment), so the game's
+clients, a stock matchbox client, or any other matchbox game use it by
+URL alone (the build's `MP_SIGNAL_URL`, or `?signal=`, D1124).
+
+- **One Durable Object per room** (`idFromName(room)`), on the WebSocket
+  Hibernation API: between messages the object may be evicted and costs
+  nothing. Its state is only the sockets and each one's attachment (peer
+  id, arrival order, last heard), never a field of the class.
+- **mp-signal's rules, bar one:** 16 peers a room (the seventeenth is
+  accepted and closed at once), 64 KiB a message (the sender is closed
+  and the message never relayed), anything that isn't matchbox closes the
+  connection, a peer silent for 60 s is dropped (an alarm while anyone is
+  in the room). There is no cap of 1024 rooms: rooms are separate
+  objects with no one place to count them, and Cloudflare's own limits
+  stand in.
+- **No logs:** no console output, and Workers observability off in
+  `wrangler.toml`. Cloudflare still sees request metadata (addresses,
+  times) as any host does; the payloads stay sealed (D1122).
+- **`ALLOWED_ORIGINS`** (optional var): when set, a page from any other
+  origin is refused; native clients send no Origin and always get in.
+- **Tested by the same suites:** `MP_SIGNAL_WORKER=1 cargo test -p
+  mp_host --test signal --test rtc` runs `mp-signal`'s conversation,
+  limits and refusals, and the native WebRTC race, against the Worker
+  under `wrangler dev` (pinned `wrangler` in the tool's `package.json`;
+  `npm install` there first). A free port, its own state directory per
+  run, like the other servers in the tests. Not in CI (it would install
+  wrangler and workerd on every run).
+- **TURN is not part of it yet.** Cloudflare's TURN service needs an API
+  token on the Worker and an endpoint that mints short-lived ICE
+  credentials, and the clients would fetch it before opening the
+  socket. Open to anyone, it is metered bandwidth on the owner's
+  account, so it waits for a measurement that strict NATs need it
+  (6.1) and a decision on who may ask.
