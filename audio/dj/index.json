@@ -1,5 +1,370 @@
 {
  "clips": {
+  "dez-ads-1": {
+   "takes": 1,
+   "text": "The Loft is brought to you by The Loft, the sewing room. Harnesses, vests, belts, anything with straps, cut to you. Come up. Elevator's broken. Worth it.",
+   "voice": "dez-bright"
+  },
+  "dez-ads-2": {
+   "takes": 1,
+   "text": "Rosa's Fabric, in the district, closing at six. Canvas, webbing, buckles, the good thread. She will not sell you the wrong thing. She will tell you.",
+   "voice": "dez-bright"
+  },
+  "dez-ads-3": {
+   "takes": 1,
+   "text": "Tomas's Repair, at the skate spot. Bikes, boards, trucks, bearings. Open late. Honest. Cute. I'm allowed to say cute. He's my friend.",
+   "voice": "dez-bright"
+  },
+  "dez-ads-4": {
+   "takes": 1,
+   "text": "Silver from the bench. Ear cuffs, rings, the fern, the heron. One of a kind, because I can't make the same thing twice. That's a feature.",
+   "voice": "dez-bright"
+  },
+  "dez-banter-1": {
+   "takes": 1,
+   "text": "Marisol on eighty-eight one is playing something slow for the harbour. Marisol. Sweetheart. The harbour can wait. The city cannot.",
+   "voice": "dez-bright"
+  },
+  "dez-banter-2": {
+   "takes": 1,
+   "text": "Kit's up on the ridge in a van going a hundred and seventy a minute. Kit, baby, we're going one twenty-eight down here and we have an elevator. It's broken. Come anyway.",
+   "voice": "dez-bright"
+  },
+  "dez-banter-3": {
+   "takes": 1,
+   "text": "Tess at The Roadhouse says she doesn't dance. Tess. I have seen you dance. In the redwoods. At four. You were efficient. I respect it.",
+   "voice": "dez-bright"
+  },
+  "dez-banter-4": {
+   "takes": 1,
+   "text": "The harbour, the hill, the farm, the bar and the loft. Five stations. The others go to bed. We're on till two. Then I ride home.",
+   "voice": "dez-bright"
+  },
+  "dez-callers-1": {
+   "takes": 1,
+   "text": "This one's for Tomas, who's closing the shop with the door open and the radio on. Lock it this time, baby. Please. Love you.",
+   "voice": "dez-bright"
+  },
+  "dez-callers-2": {
+   "takes": 1,
+   "text": "Somebody called to ask about the heron. The heron's fine. The heron is thriving. Thank you for asking about the heron. Nobody asks about me.",
+   "voice": "dez-bright"
+  },
+  "dez-callers-3": {
+   "takes": 1,
+   "text": "Caller says: Dez, you sound like you've had too much coffee. Sweetheart, I've had the right amount of coffee. This is the right amount. Here's a tune.",
+   "voice": "dez-bright"
+  },
+  "dez-callers-4": {
+   "takes": 1,
+   "text": "Shout-out to the kid who fixed my chain at the skate spot and didn't say a word about my bike. That's grace. That's the whole thing. This one's yours.",
+   "voice": "dez-bright"
+  },
+  "dez-callers-5": {
+   "takes": 1,
+   "text": "For Marco, for Priya, for Tomas, for the whole crew in the second room right now: I can hear you from here. Turn it up. I'm coming after the show.",
+   "voice": "dez-bright"
+  },
+  "dez-camping-1": {
+   "takes": 1,
+   "text": "Camping spot of the week: my friend Tomas's couch, two blocks from the club, with a cat on your face by six. Five stars.",
+   "voice": "dez-bright"
+  },
+  "dez-camping-2": {
+   "takes": 1,
+   "text": "You want camping? The park, dawn, a thermos, a bench by the lake, and a heron who's been there longer than the city. That's camping. That's the whole trip.",
+   "voice": "dez-bright"
+  },
+  "dez-camping-3": {
+   "takes": 1,
+   "text": "Rode out to the beach to sleep in the dunes once. Fog came in, the bike rusted, I got a cold, the sunrise was unbelievable. Would recommend. Would not repeat.",
+   "voice": "dez-bright"
+  },
+  "dez-ident-1": {
+   "takes": 1,
+   "text": "The Loft, ninety-four nine. House, techno, garage, drum and bass, from a sewing room south of Market. I'm Dez. The machines are off, the music's on, let's go.",
+   "voice": "dez-bright"
+  },
+  "dez-ident-2": {
+   "takes": 1,
+   "text": "Ninety-four point nine, The Loft. If you can hear a sewing machine under this, that's not a drum machine, sweetheart, that's a rush order.",
+   "voice": "dez-bright"
+  },
+  "dez-ident-3": {
+   "takes": 1,
+   "text": "You're on The Loft with Dez, eight to two, every night the city's awake. Which is every night. Let's go.",
+   "voice": "dez-bright"
+  },
+  "dez-ident-4": {
+   "takes": 1,
+   "text": "The Loft, ninety-four nine, broadcasting from the fourth floor above a tyre shop south of Market. The elevator's broken. The bass isn't.",
+   "voice": "dez-bright"
+  },
+  "dez-ident-5": {
+   "takes": 1,
+   "text": "This is Dez. This is The Loft. The dial's got a harbour, a hill, a farm and a bar. We're the city. We're the fast one. Keep up.",
+   "voice": "dez-bright"
+  },
+  "dez-morning-1": {
+   "takes": 1,
+   "text": "Good morning, city. It's six, I'm on a bench at Stow Lake with a long lens and a coffee, and the heron's just landed. This is a recording. Nobody move.",
+   "voice": "dez-bright"
+  },
+  "dez-morning-2": {
+   "takes": 1,
+   "text": "Morning. The Loft is a night show, but if you're up this early you're either a baker, a skater or a bird person, and I love all three of you.",
+   "voice": "dez-bright"
+  },
+  "dez-morning-3": {
+   "takes": 1,
+   "text": "Good morning from Golden Gate Park. The conservatory doesn't open till ten, so I'm outside the glass looking at a water lily like it owes me money.\n\nTonight I'm on from eight. Right now I'm on a bike. Here's something to pedal to.",
+   "voice": "dez-bright"
+  },
+  "dez-morning-4": {
+   "takes": 1,
+   "text": "Morning. Rode out to the park at dawn, fog on the lake, heron on the far bank, and three runners who all said hi. Good city. Good morning.",
+   "voice": "dez-bright"
+  },
+  "dez-music-1": {
+   "takes": 1,
+   "text": "Four on the floor, one twenty-eight, and the hi-hats open on the off-beat. That's the whole recipe. That's why it works. Go.",
+   "voice": "dez-bright"
+  },
+  "dez-music-2": {
+   "takes": 1,
+   "text": "Techno now. The nice kind. Okay, the medium kind. Okay, it's going to look at you, but it's going to look at you with love.",
+   "voice": "dez-bright"
+  },
+  "dez-music-3": {
+   "takes": 1,
+   "text": "Garage next, sweetheart. Skippy hats, the bass on the two-step, and a vocal chopped up like somebody's heart. Lovely. Drive to it.",
+   "voice": "dez-bright"
+  },
+  "dez-music-4": {
+   "takes": 1,
+   "text": "This one's drum and bass, one seventy-four, and the break's going to drop right where the bridge starts if you've timed it right. Time it right.",
+   "voice": "dez-bright"
+  },
+  "dez-music-5": {
+   "takes": 1,
+   "text": "That was a filter sweep. Low-pass, opening over sixteen bars, which is exactly as long as it takes to decide you're going out after all.",
+   "voice": "dez-bright"
+  },
+  "dez-music-6": {
+   "takes": 1,
+   "text": "Here's a big one. The breakdown's a minute long and then it all comes back at once. Don't change the station in the breakdown. Trust me. Trust the build.",
+   "voice": "dez-bright"
+  },
+  "dez-night-1": {
+   "takes": 1,
+   "text": "The city at two in the morning is the most honest thing I know. All the lights are for nobody. Drive like they're for you.",
+   "voice": "dez-bright"
+  },
+  "dez-night-2": {
+   "takes": 1,
+   "text": "After the show I ride down the boulevard with the lights timed. Twelve greens in a row if you hit it right. I'm not racing. I'm dancing, slowly, on a bicycle.",
+   "voice": "dez-bright"
+  },
+  "dez-night-3": {
+   "takes": 1,
+   "text": "There's an hour when the clubs let out and the whole street is people holding each other up. That's my favourite hour. That's why the show ends at two.",
+   "voice": "dez-bright"
+  },
+  "dez-night-4": {
+   "takes": 1,
+   "text": "Nobody needs a reason to be out this late. You need a working front light and a friend who'll text back. I've got both. Here's a tune.",
+   "voice": "dez-bright"
+  },
+  "dez-night-5": {
+   "takes": 1,
+   "text": "Whatever somebody said tonight about you, about your car, about your friends: they're not here. You are. I am. Go home loud.",
+   "voice": "dez-bright"
+  },
+  "dez-night-6": {
+   "takes": 1,
+   "text": "It's three in the morning and this is a recording. I'm home, the bike's by the door, the needle's threaded for tomorrow. Night, city. Mind the tram tracks.",
+   "voice": "dez-bright"
+  },
+  "dez-offair-1": {
+   "takes": 1,
+   "text": "Spent the morning at the jeweller's bench. Silver, a little brass, an ear cuff shaped like a fern. It's for Tomas. He doesn't know yet. Don't tell him.",
+   "voice": "dez-bright"
+  },
+  "dez-offair-2": {
+   "takes": 1,
+   "text": "I make harnesses, vests, tool belts, utility belts, anything with straps and pockets. People ask what for. For carrying things, sweetheart. What's your bag for.",
+   "voice": "dez-bright"
+  },
+  "dez-offair-3": {
+   "takes": 1,
+   "text": "The heron at Stow Lake was there again. Same bank, same bench, same me. I've got nine hundred photos of that bird. Nine hundred and one now. He blinked.",
+   "voice": "dez-bright"
+  },
+  "dez-offair-4": {
+   "takes": 1,
+   "text": "I ride a BMX everywhere. People say get a real bike. This is a real bike. It fits in the elevator. It fits in the club. It goes down stairs. Yours doesn't.",
+   "voice": "dez-bright"
+  },
+  "dez-offair-5": {
+   "takes": 1,
+   "text": "Skated the plaza till the sun came up with the crew, then rode to the botanical garden and looked at a tree fern for twenty minutes. Balance. That's balance.",
+   "voice": "dez-bright"
+  },
+  "dez-offair-6": {
+   "takes": 1,
+   "text": "Somebody said something about my friend Marco in the club. I won't say what I said. I'll say he's not coming back and the bouncer was very polite about it.",
+   "voice": "dez-bright"
+  },
+  "dez-offair-7": {
+   "takes": 1,
+   "text": "Twenty-nine, single, booked solid, and the happiest I've been. The friends are the point. The belts are how I say it.",
+   "voice": "dez-bright"
+  },
+  "dez-offair-8": {
+   "takes": 1,
+   "text": "There's a magnolia in the park that flowers for about nine days in February. I take the morning off for it every year. It's not optional. It's my church.",
+   "voice": "dez-bright"
+  },
+  "dez-places-1": {
+   "takes": 1,
+   "text": "Golden Gate Park, the botanical garden, the far end past the redwoods: the magnolias are out and nobody's there at nine a.m. Nobody. Go.",
+   "voice": "dez-bright"
+  },
+  "dez-places-2": {
+   "takes": 1,
+   "text": "Stow Lake. There's a great blue heron who stands on the west bank most mornings like he pays rent. He does not pay rent. Bring a long lens and sit still.",
+   "voice": "dez-bright"
+  },
+  "dez-places-3": {
+   "takes": 1,
+   "text": "The waterfront plazas at midnight: the smoothest ground in the city. I skate it. The cops don't mind if you're nice. Be nice.",
+   "voice": "dez-bright"
+  },
+  "dez-places-4": {
+   "takes": 1,
+   "text": "The fabric district, three blocks of it, closing at six. Canvas, webbing, buckles, the good thread. Ask for Rosa. Tell her Dez sent you. She'll roll her eyes. That's love.",
+   "voice": "dez-bright"
+  },
+  "dez-places-5": {
+   "takes": 1,
+   "text": "The hill above the park, by the tower: fog comes through the gap there first. Watch it arrive. Then it's dark and you're cold and you remember you came on a BMX.",
+   "voice": "dez-bright"
+  },
+  "dez-player-1": {
+   "takes": 1,
+   "text": "Who is in the orange Lancer? You just took the downtown loop record and I screamed so loud I bent a needle. That's on you. Here's a song.",
+   "voice": "dez-bright"
+  },
+  "dez-player-2": {
+   "takes": 1,
+   "text": "The white Evo is back. Gold wheels. In the city. At this hour. Sweetheart. Icon. This one's yours.",
+   "voice": "dez-bright"
+  },
+  "dez-player-3": {
+   "takes": 1,
+   "text": "Lost the cops on the waterfront, huh? I'm not allowed to say nice. I'm going to say gorgeous and play something at one seventy-four.",
+   "voice": "dez-bright"
+  },
+  "dez-player-4": {
+   "takes": 1,
+   "text": "Still out there? Me too, till two. Then I'm on the bike and you're on your own. Here's one for the lights.",
+   "voice": "dez-bright"
+  },
+  "dez-player-5": {
+   "takes": 1,
+   "text": "Last week the black Supra had you. Tonight you had them. Don't let anyone tell you that wasn't clean. I saw it. It was clean. Go.",
+   "voice": "dez-bright"
+  },
+  "dez-raves-1": {
+   "takes": 1,
+   "text": "Warehouse thing Saturday, south of the tracks, the one with the two rooms. I'm sewing for the door crew all week. If your harness fits, you're welcome.",
+   "voice": "dez-bright"
+  },
+  "dez-raves-2": {
+   "takes": 1,
+   "text": "The street fair's in September and I'm already behind. Forty vests. Forty. My friends have a lot of friends. It's a wonderful problem.",
+   "voice": "dez-bright"
+  },
+  "dez-raves-3": {
+   "takes": 1,
+   "text": "Went to the forest party up Kit's way. Danced till four. Rode the BMX down the hill at dawn. Do not do that. I'm fine. Do not do that.",
+   "voice": "dez-bright"
+  },
+  "dez-raves-4": {
+   "takes": 1,
+   "text": "Best thing at the club last night was a guy in a tool belt I made in April, full of glow sticks. Sweetheart. That's not what the pockets are for. That's exactly what the pockets are for.",
+   "voice": "dez-bright"
+  },
+  "dez-scene-1": {
+   "takes": 1,
+   "text": "The scanner says three units on the waterfront tonight and nothing on the hills. I'm not telling you anything. I'm reading a scanner. Out loud. For fun.",
+   "voice": "dez-bright"
+  },
+  "dez-scene-2": {
+   "takes": 1,
+   "text": "Somebody ran the whole length of the boulevard at two this morning and caught every green. Every green. I was on a BMX behind you. I did not catch every green.",
+   "voice": "dez-bright"
+  },
+  "dez-scene-3": {
+   "takes": 1,
+   "text": "The meet's under the freeway tonight, apparently, by the skate spot. If you're coming, don't park on the ramp, and don't scuff my ledge.",
+   "voice": "dez-bright"
+  },
+  "dez-scene-4": {
+   "takes": 1,
+   "text": "Word is the downtown loop record went last week to somebody nobody knows. I love that. I love a nobody. Come up to the loft, nobody, I'll make you a belt.",
+   "voice": "dez-bright"
+  },
+  "dez-scene-5": {
+   "takes": 1,
+   "text": "Somebody asked if I street race. Sweetheart, I ride a bicycle with twenty-inch wheels. I race the lights. I usually win. That's my whole career.",
+   "voice": "dez-bright"
+  },
+  "dez-tired-1": {
+   "takes": 1,
+   "text": "I'm tired. Forty utility belts, a jewellery order, two skate sessions and the heron didn't even show. This one's slow. For me. You keep driving.",
+   "voice": "dez-bright"
+  },
+  "dez-tired-2": {
+   "takes": 1,
+   "text": "If I sound slow it's because I rode to the top of the city and back before the show because somebody said I couldn't. I could. I'm wrecked. Worth it.",
+   "voice": "dez-bright"
+  },
+  "dez-tired-3": {
+   "takes": 1,
+   "text": "Sewing all day, DJing all night, botanical garden at dawn. People ask when I sleep. Sweetheart, I'm a heron. I sleep standing up. Here's a tune.",
+   "voice": "dez-bright"
+  },
+  "dez-tired-4": {
+   "takes": 1,
+   "text": "Not tired. Fabulous and sitting down. Different thing. Here's a big one so you can tell.",
+   "voice": "dez-bright"
+  },
+  "dez-weather-1": {
+   "takes": 1,
+   "text": "Fog's coming over Twin Peaks like it's late for something. Downtown's clear. The bridge is not. Low beams past the tunnel, sweetheart.",
+   "voice": "dez-bright"
+  },
+  "dez-weather-2": {
+   "takes": 1,
+   "text": "Clear tonight, and warm, which happens about four nights a year here, so everybody is out, and everybody is wearing less, and I have never been prouder of this city.",
+   "voice": "dez-bright"
+  },
+  "dez-weather-3": {
+   "takes": 1,
+   "text": "Wind off the bay tonight. The loft windows are rattling, the fabric's off the hooks and on the floor, and I'm not getting up. Here's a tune.",
+   "voice": "dez-bright"
+  },
+  "dez-weather-4": {
+   "takes": 1,
+   "text": "Rain. Actual rain. The streets are glass. Slow down on the painted lines and the tram tracks, both of them want you to fall over.",
+   "voice": "dez-bright"
+  },
+  "dez-weather-5": {
+   "takes": 1,
+   "text": "It's that hour where the fog sits on the hills and the city under it is lit up like a circuit board. Go up and look. Then come down fast. Not too fast. Fast.",
+   "voice": "dez-bright"
+  },
   "kit-ads-1": {
    "takes": 1,
    "text": "Ridgeline Radio is brought to you by nobody, because we are illegal. But if we had a sponsor, it would be Summit Gas and Bait. Gas. Bait. Do not mix them up.",
@@ -1467,6 +1832,7 @@
   }
  },
  "voices": {
+  "dez": "dez-bright",
   "kit": "kit-bright",
   "marisol": "marisol-warm",
   "teo": "teo-warm",
