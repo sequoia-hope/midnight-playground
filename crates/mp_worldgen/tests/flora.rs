@@ -12,11 +12,11 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 mod geocheck;
 
 use geocheck::{check_geo, check_material, check_seq};
-use mp_math::kernel;
 use mp_scene::three;
 use mp_worldgen::flora::*;
 use mp_worldgen::material::{Material, Param};
 use mp_worldgen::three_geom::BufferGeometry;
+use pk_math::kernel;
 use serde_json::Value;
 
 const GOLDEN: &str = include_str!("../../../parity/golden/flora/flora.json");

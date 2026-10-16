@@ -11,7 +11,7 @@
 //! scrape) and the launch puffs it emits once a frame happen at the same
 //! rate per second as at 60 frames a second (SPEC 6.5, D802).
 
-use mp_math::{Mulberry32, clamp, js, kernel, lerp};
+use pk_math::{Mulberry32, clamp, js, kernel, lerp};
 
 /// `Particles`: a ring buffer of soft points.
 #[derive(Clone, Debug)]

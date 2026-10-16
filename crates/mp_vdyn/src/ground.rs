@@ -2,7 +2,7 @@
 //! `mp_sim::ground::TrackGround` implements this for the road ribbon, and
 //! the test rig's [`FlatGround`] and [`PlaneGround`] are here.
 
-use crate::math::{Aabb, Vec3};
+use pk_math::vec::{Aabb, Vec3};
 
 /// A surface's properties. `mu` scales the tyre's friction, `rolling` its
 /// rolling resistance; `loose` is 0 on tarmac and up to 1 on dirt and grass.

@@ -8,12 +8,12 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::wasm_bindgen_test as test;
 
-use mp_math::Mulberry32;
 use mp_scene::digest::sha256_hex;
 use mp_worldgen::beach::atlas::Rect;
 use mp_worldgen::beach::parts::{self as p, GasOpts, HotelOpts, HouseOpts, MotelOpts, ShopOpts};
 use mp_worldgen::builder::Builder;
 use mp_worldgen::three_geom::{BufferGeometry, merge_geometries};
+use pk_math::Mulberry32;
 use serde_json::Value;
 
 const PALETTE: &[(&str, u32)] = &[

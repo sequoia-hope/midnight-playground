@@ -1,6 +1,6 @@
 // Level 2's canvas textures as Chrome draws them with the bundled fonts
 // (roadmap WP 7.1, as city-textures.mjs does for WP 3.8: WP 3.2's
-// threshold gate needs a reference drawn with the same faces as mp_canvas,
+// threshold gate needs a reference drawn with the same faces as pk_canvas,
 // and the scene export is drawn with the machine's own fonts).
 //
 //   node tools/parity/coast-textures.mjs [--check]

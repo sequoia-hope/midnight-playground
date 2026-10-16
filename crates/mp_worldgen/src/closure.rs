@@ -12,9 +12,10 @@
 //! streamed section keeps it when its road's last stretch is its own
 //! (the cut goes by the drawables' centres).
 
-use mp_canvas::Canvas;
-use mp_math::kernel;
+use crate::fonts::canvas;
 use mp_track::Track;
+use pk_canvas::Canvas;
+use pk_math::kernel;
 
 use crate::material::Material;
 use crate::mountain::canvas::{FONT, canvas_tex};
@@ -32,7 +33,7 @@ const PITCH: f64 = 2.7;
 
 /// The board: a work-zone orange panel reading ROAD CLOSED.
 pub fn board_canvas() -> Canvas {
-    let mut g = Canvas::new(256, 160);
+    let mut g = canvas(256, 160);
     g.set_fill_style("#e8761a");
     g.fill_rect(0.0, 0.0, 256.0, 160.0);
     g.set_fill_style("#101010");

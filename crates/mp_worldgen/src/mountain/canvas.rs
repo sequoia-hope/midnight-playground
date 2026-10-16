@@ -5,9 +5,10 @@
 
 use std::sync::Arc;
 
-use mp_canvas::Canvas;
-use mp_math::{Mulberry32, kernel};
+use crate::fonts::canvas;
 use mp_scene::{TextureSource, three};
+use pk_canvas::Canvas;
+use pk_math::{Mulberry32, kernel};
 
 use crate::object::{Image, SceneGraph, TextureId};
 use crate::textures::Texture;
@@ -71,7 +72,7 @@ impl SignAtlas {
         SignAtlas {
             w: 2048.0,
             h: 1024.0,
-            canvas: Canvas::new(2048, 1024),
+            canvas: canvas(2048, 1024),
             x: 0.0,
             y: 0.0,
             row_h: 0.0,
@@ -96,7 +97,7 @@ impl SignAtlas {
         draw(g, w, h);
         g.restore();
         self.x += w + 4.0;
-        self.row_h = mp_math::js::max(self.row_h, h);
+        self.row_h = pk_math::js::max(self.row_h, h);
         Rect {
             u0: x / self.w,
             u1: (x + w) / self.w,
@@ -182,7 +183,7 @@ pub fn panel(
 
 /// The snow poles' orange and black bands (8 × 64).
 pub fn snow_pole_canvas() -> Canvas {
-    let mut g = Canvas::new(8, 64);
+    let mut g = canvas(8, 64);
     for k in 0..8 {
         g.set_fill_style(if k % 2 == 1 { "#111" } else { "#ff6a13" });
         g.fill_rect(0.0, k as f64 * 8.0, 8.0, 8.0);
@@ -193,7 +194,7 @@ pub fn snow_pole_canvas() -> Canvas {
 /// `bannerTex(front)`'s canvas: front says SIERRA PASS, back (seen when
 /// looking back) START.
 pub fn banner_canvas(front: bool) -> Canvas {
-    let mut g = Canvas::new(1024, 160);
+    let mut g = canvas(1024, 160);
     g.set_fill_style("#0d0f14");
     g.fill_rect(0.0, 0.0, 1024.0, 160.0);
     let sq = 20.0;
@@ -236,7 +237,7 @@ pub fn banner_canvas(front: bool) -> Canvas {
 
 /// The diner's neon roof sign.
 pub fn neon_canvas() -> Canvas {
-    let mut g = Canvas::new(512, 128);
+    let mut g = canvas(512, 128);
     g.set_fill_style("#1a0f10");
     round_rect(&mut g, 4.0, 4.0, 504.0, 120.0, 18.0);
     g.fill();
@@ -256,7 +257,7 @@ pub fn neon_canvas() -> Canvas {
 
 /// The tall pole sign by the road.
 pub fn pole_sign_canvas() -> Canvas {
-    let mut g = Canvas::new(256, 320);
+    let mut g = canvas(256, 320);
     g.set_fill_style("#2b1d14");
     round_rect(&mut g, 4.0, 4.0, 248.0, 312.0, 20.0);
     g.fill();
@@ -284,7 +285,7 @@ pub fn pole_sign_canvas() -> Canvas {
 
 /// The waterfall's streaks (128 × 256), seeded 3.
 pub fn waterfall_canvas() -> Canvas {
-    let mut g = Canvas::new(128, 256);
+    let mut g = canvas(128, 256);
     let mut rng = Mulberry32::new(3);
     g.set_fill_style("rgba(255,255,255,0.4)");
     g.fill_rect(0.0, 0.0, 128.0, 256.0);
@@ -315,7 +316,7 @@ pub fn waterfall_canvas() -> Canvas {
 
 /// The plunge pool's churning foam (128 × 128), seeded 8.
 pub fn foam_canvas() -> Canvas {
-    let mut g = Canvas::new(128, 128);
+    let mut g = canvas(128, 128);
     let mut fr = Mulberry32::new(8);
     for _ in 0..160 {
         let a = fr.next_f64() * PI * 2.0;

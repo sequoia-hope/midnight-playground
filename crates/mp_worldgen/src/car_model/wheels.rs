@@ -1,7 +1,7 @@
 //! The wheels of `CarModel.js` (`:961-1077`): `wheelGeometry` (tyre, rim
 //! and brake groups, the outboard face +X) and `caliperGeom`.
 
-use mp_math::{js, kernel};
+use pk_math::{js, kernel};
 
 use super::detail::dummy_group;
 use super::kit::{Greys, O, P3, PI, R0, Tris, fix_normals, grey, lathe_x, pc, prep};

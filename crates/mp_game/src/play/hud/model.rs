@@ -27,7 +27,7 @@ pub fn ord(n: usize) -> &'static str {
 }
 
 fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
-    mp_math::clamp(v, lo, hi)
+    pk_math::clamp(v, lo, hi)
 }
 
 /// A width as the JS writes it: `(v * 100).toFixed(1) + '%'`, as the
@@ -414,7 +414,7 @@ impl Hud {
         let spd = st.speed * if self.mph { 2.23694 } else { 3.6 };
         set(
             &mut self.last.speed,
-            mp_math::js::round(spd.abs()).to_string(),
+            pk_math::js::round(spd.abs()).to_string(),
         );
         set(
             &mut self.last.unit,
@@ -495,7 +495,7 @@ impl Hud {
             );
             set(
                 &mut self.last.best,
-                locale_int(mp_math::js::max(self.best_score, cr.score).floor()),
+                locale_int(pk_math::js::max(self.best_score, cr.score).floor()),
             );
         }
         if self.toast_timer > 0.0 {
@@ -529,7 +529,7 @@ impl Hud {
         p.patrol = pu.state == "patrol";
         // Stars: whole ones up to the heat, the next one filling with the
         // meter.
-        let heat = clamp(mp_math::js::or(pu.heat, 1.0).floor(), 1.0, 5.0) as usize;
+        let heat = clamp(pk_math::js::or(pu.heat, 1.0).floor(), 1.0, 5.0) as usize;
         for (i, f) in p.stars.iter_mut().enumerate() {
             let v = if i < heat {
                 1.0
@@ -557,7 +557,7 @@ impl Hud {
         // Damage: green → amber → red, pulsing past 75 %.
         let d = clamp(pu.damage, 0.0, 1.0);
         p.dmg_fill = pct(d);
-        p.dmg_hue = mp_math::js::round(125.0 * (1.0 - d));
+        p.dmg_hue = pk_math::js::round(125.0 * (1.0 - d));
         p.dmg_crit = d > 0.75;
         p.dmg_flash = flash;
         // Penalty served, under the race clock.

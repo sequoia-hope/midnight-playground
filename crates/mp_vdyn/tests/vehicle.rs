@@ -7,11 +7,11 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::wasm_bindgen_test as test;
 
-use mp_math::kernel;
 use mp_vdyn::cars::rig_car;
 use mp_vdyn::rig::Rig;
 use mp_vdyn::vehicle::G;
 use mp_vdyn::{Controls, FlatGround, PlaneGround, Quat, Vec3, Vehicle, VehicleDef};
+use pk_math::kernel;
 
 fn rig() -> Rig<FlatGround> {
     Rig::flat(rig_car())

@@ -7,8 +7,10 @@ publish.workspace = true
 
 [dependencies]
 mp_scene.workspace = true
-mp_canvas.workspace = true
-mp_math.workspace = true
+# The kit's Canvas 2D. The fonts it draws with are this crate's
+# (`src/fonts.rs`, baked from assets/fonts/fonts.json by build.rs; D1232).
+pk_canvas.workspace = true
+pk_math.workspace = true
 mp_track.workspace = true
 mp_levels.workspace = true
 # Material parameters are JSON values in the scene (mp_scene::MaterialDesc),
@@ -28,6 +30,10 @@ sha2 = "0.10"
 # (tests/car_model.rs; DECISIONS D412). A dev-dependency only: mp_worldgen
 # itself does not depend on mp_sim (SPEC 3.2).
 mp_sim.workspace = true
+
+[[example]]
+name = "font-gallery"
+path = "examples/font_gallery.rs"
 
 [features]
 # Native only: run the pieces of a parallel build job on threads (SPEC 5.5;

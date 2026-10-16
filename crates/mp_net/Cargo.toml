@@ -24,7 +24,7 @@ rtc = [
 ]
 
 [dependencies]
-mp_math.workspace = true
+pk_math.workspace = true
 mp_levels.workspace = true
 mp_sim.workspace = true
 # The sealed signalling (`signal`, DECISIONS D1122): pure Rust, and

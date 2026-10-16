@@ -6,7 +6,7 @@
 //! equality. The arithmetic, the visiting order and the triangles are the
 //! JS's.
 
-use mp_math::js;
+use pk_math::js;
 
 use super::math::Vector2;
 

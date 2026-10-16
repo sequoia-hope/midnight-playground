@@ -4,8 +4,8 @@
 
 use std::collections::BTreeMap;
 
-use mp_math::{js, kernel};
 use mp_scene::BufferData;
+use pk_math::{js, kernel};
 
 use super::attribute::{BufferAttribute, zeroed};
 use super::geometry::{BufferGeometry, copy_element};

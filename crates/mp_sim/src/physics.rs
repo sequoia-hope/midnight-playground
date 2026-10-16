@@ -15,8 +15,8 @@
 
 use core::f64::consts::PI;
 
-use mp_math::{clamp, damp, js, kernel, lerp, smoothstep, wrap_angle};
 use mp_track::Track;
+use pk_math::{clamp, damp, js, kernel, lerp, smoothstep, wrap_angle};
 
 use crate::input::Input;
 use crate::vehicle::Vehicle;

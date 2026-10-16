@@ -3,8 +3,8 @@
 //! Bit-identical to the JS arrays.
 
 use crate::engine::Fourier;
-use mp_math::js;
-use mp_math::kernel::{cos, sin, tanh};
+use pk_math::js;
+use pk_math::kernel::{cos, sin, tanh};
 use std::f64::consts::PI;
 
 /// `distortionCurve(amount, n = 1024)`: a symmetric tanh soft clip.

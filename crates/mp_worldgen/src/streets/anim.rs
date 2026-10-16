@@ -7,7 +7,7 @@
 
 use std::f64::consts::PI;
 
-use mp_math::{js, kernel};
+use pk_math::{js, kernel};
 
 use super::dressing::SignalLamp;
 use super::ground;

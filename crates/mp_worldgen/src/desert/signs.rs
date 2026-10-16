@@ -1,12 +1,13 @@
 //! Desert's canvas code: `makeSigns` (the two painted atlases and the neon
 //! one), the start gantry's banners, the railway's ties and the lake bed's
-//! cracked mud, drawn on mp_canvas in the JS order.
+//! cracked mud, drawn on pk_canvas in the JS order.
 
 use std::f64::consts::PI;
 use std::sync::Arc;
 
-use mp_canvas::Canvas;
-use mp_math::{Mulberry32, js};
+use crate::fonts::canvas;
+use pk_canvas::Canvas;
+use pk_math::{Mulberry32, js};
 
 use crate::beach::atlas::{
     NeonOpts, PaintedOpts, Rect, SignAtlas, neon_sign, painted_sign, round_rect,
@@ -632,7 +633,7 @@ pub fn make_signs(graph: &mut SceneGraph) -> Signs {
 
 /// The start gantry's banner (`bannerTex(front)`).
 pub fn start_banner(front: bool) -> Texture {
-    let mut g = Canvas::new(1024, 160);
+    let mut g = canvas(1024, 160);
     g.set_fill_style("#1a0e0a");
     g.fill_rect(0.0, 0.0, 1024.0, 160.0);
     let sq = 20.0;
@@ -678,7 +679,7 @@ pub fn start_banner(front: bool) -> Texture {
 
 /// The railway bed: dark sleepers across pale ballast.
 pub fn ties_texture() -> Texture {
-    let mut g = Canvas::new(64, 256);
+    let mut g = canvas(64, 256);
     g.set_fill_style("#8c7c68");
     g.fill_rect(0.0, 0.0, 64.0, 256.0);
     let mut rng = Mulberry32::new(5);
@@ -704,7 +705,7 @@ pub fn ties_texture() -> Texture {
 pub fn lakebed_texture() -> Texture {
     const S: usize = 512;
     let sf = S as f64;
-    let mut g = Canvas::new(S as u32, S as u32);
+    let mut g = canvas(S as u32, S as u32);
     g.set_fill_style("#d6cfc0");
     g.fill_rect(0.0, 0.0, sf, sf);
     let mut rng = Mulberry32::new(81);

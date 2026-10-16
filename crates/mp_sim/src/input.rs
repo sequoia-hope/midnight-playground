@@ -4,7 +4,7 @@
 //! (`quantiseInput`, `src/parity/sim.js`), so both sides integrate identical
 //! values.
 
-use mp_math::js;
+use pk_math::js;
 
 /// The controls physics reads. `cruise` is the cruise level's part-throttle
 /// gearbox hint; nothing in the race sets it.

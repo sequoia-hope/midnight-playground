@@ -31,7 +31,7 @@
 //! `hud.css`'s rules (`--b`, `--pedal-h`, `--stick-r`, the insets), in CSS
 //! pixels (DECISIONS D436, D840).
 
-use mp_math::{clamp, kernel};
+use pk_math::{clamp, kernel};
 
 use super::input::TouchSource;
 use super::tilt::SharedTilt;

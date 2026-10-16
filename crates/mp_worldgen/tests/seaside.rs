@@ -44,7 +44,6 @@ mod common;
 
 use std::sync::OnceLock;
 
-use mp_canvas::compare::{block_diff, block_means};
 use mp_scene::digest::{SceneDigest, digest, sha256_hex};
 use mp_scene::{BufferData, Scene, TextureSource};
 use mp_worldgen::color::Color;
@@ -55,6 +54,7 @@ use mp_worldgen::stages::{LevelSetup, level_stages};
 use mp_worldgen::terrain_mesh::GroundPhoto;
 use mp_worldgen::textures::Texture;
 use mp_worldgen::world::{Build, CameraView, Change, Edit, Handle, UpdateCtx, level_jobs};
+use pk_canvas::compare::{block_diff, block_means};
 use serde_json::{Map, Value, json};
 
 fn golden() -> &'static Value {
@@ -431,7 +431,7 @@ fn captured_rgba(k: usize, sha: &str) -> Option<Vec<u8>> {
 fn sheet(name: &str, w: usize, h: usize, js: &[u8], rust: &[u8]) {
     let dir = common::root().join("parity/report/seaside");
     std::fs::create_dir_all(&dir).expect("report dir");
-    let (sw, sh, px) = mp_canvas::compare::sheet(w, h, js, rust);
+    let (sw, sh, px) = pk_canvas::compare::sheet(w, h, js, rust);
     let path = dir.join(format!("{name}.png"));
     let f = std::fs::File::create(path).expect("sheet file");
     let mut e = png::Encoder::new(std::io::BufWriter::new(f), sw as u32, sh as u32);
@@ -595,7 +595,7 @@ fn raceway_group() {
                 let jt = material_textures(s, j.table[k]);
                 if let Some(&(_, jt)) = jt.iter().find(|(kk, _)| *kk == key) {
                     let (_, _, jpx) = pixels(s, jt);
-                    let mad = mp_canvas::compare::mean_abs_diff(&px, &jpx);
+                    let mad = pk_canvas::compare::mean_abs_diff(&px, &jpx);
                     sheet(
                         &format!("export-m{k}-{}", key.replace('.', "-")),
                         tw,
@@ -641,7 +641,7 @@ fn raceway_group() {
                                 std::fs::write(dir.join(format!("{group}-m{k}-rust.rgba")), &px);
                             let _ = std::fs::write(dir.join(format!("{group}-m{k}-js.rgba")), &jpx);
                         }
-                        mp_canvas::compare::mean_abs_diff(&px, &jpx)
+                        pk_canvas::compare::mean_abs_diff(&px, &jpx)
                     });
                 line += &format!(
                     "; with the bundled fonts (held): block diff {fbd:.2?}, mean abs diff {}",

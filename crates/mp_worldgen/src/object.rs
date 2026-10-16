@@ -807,7 +807,7 @@ pub fn max_scale_on_axis(m: &Matrix4) -> f64 {
     let scale_x_sq = te[0] * te[0] + te[1] * te[1] + te[2] * te[2];
     let scale_y_sq = te[4] * te[4] + te[5] * te[5] + te[6] * te[6];
     let scale_z_sq = te[8] * te[8] + te[9] * te[9] + te[10] * te[10];
-    f64::sqrt(mp_math::js::max_n(&[scale_x_sq, scale_y_sq, scale_z_sq]))
+    f64::sqrt(pk_math::js::max_n(&[scale_x_sq, scale_y_sq, scale_z_sq]))
 }
 
 /// `Sphere.applyMatrix4(m)`.
@@ -848,7 +848,7 @@ pub fn sphere_union(s: Sphere, other: Sphere) -> Sphere {
     if s.center.equals(other.center) {
         Sphere {
             center: s.center,
-            radius: mp_math::js::max(s.radius, other.radius),
+            radius: pk_math::js::max(s.radius, other.radius),
         }
     } else {
         let v2 = (other.center - s.center).set_length(other.radius);

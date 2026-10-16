@@ -10,8 +10,8 @@
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 use std::sync::Arc;
 
-use mp_math::DEG;
 use mp_track::*;
+use pk_math::DEG;
 
 fn zone(key: &'static str) -> Zone {
     Zone {
@@ -94,8 +94,8 @@ fn loop_level(spec: LoopSpec) -> Level {
 fn circle_path(r: f64, m: usize) -> LoopPath {
     let a = |k: usize| k as f64 / m as f64 * TAU;
     LoopPath {
-        x: (0..m).map(|k| r * mp_math::kernel::cos(a(k))).collect(),
-        z: (0..m).map(|k| r * mp_math::kernel::sin(a(k))).collect(),
+        x: (0..m).map(|k| r * pk_math::kernel::cos(a(k))).collect(),
+        z: (0..m).map(|k| r * pk_math::kernel::sin(a(k))).collect(),
         ..LoopPath::default()
     }
 }
@@ -127,10 +127,10 @@ fn figure_eight() -> Track {
         let th = |k: usize| k as f64 / m as f64 * TAU;
         Ok(LoopPath {
             x: (0..m)
-                .map(|k| 150.0 * mp_math::kernel::sin(th(k)))
+                .map(|k| 150.0 * pk_math::kernel::sin(th(k)))
                 .collect(),
             z: (0..m)
-                .map(|k| 150.0 * mp_math::kernel::sin(th(k)) * mp_math::kernel::cos(th(k)))
+                .map(|k| 150.0 * pk_math::kernel::sin(th(k)) * pk_math::kernel::cos(th(k)))
                 .collect(),
             ..LoopPath::default()
         })

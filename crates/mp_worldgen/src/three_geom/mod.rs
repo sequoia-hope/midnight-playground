@@ -9,7 +9,7 @@
 //! Vertex order, index order, groups and UV layout are three's, value for
 //! value: positions are computed in `f64` and rounded to `f32` where three
 //! stores into a `Float32Array`, every inexact `Math` function goes through
-//! `mp_math::kernel`, and the result matches a three.js dump taken with the
+//! `pk_math::kernel`, and the result matches a three.js dump taken with the
 //! parity kernel bit for bit (`parity/golden/three_geom/`, written by
 //! `tools/parity/three-geom.mjs`; DECISIONS D130 to D135).
 //!

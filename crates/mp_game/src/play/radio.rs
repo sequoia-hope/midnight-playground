@@ -186,7 +186,7 @@ pub fn zone_name(t: &mp_track::Track, s: f64) -> String {
 /// `PursuitView.heading()`: the compass heading from the road direction
 /// (+x east, +z south).
 pub fn heading(t: &mp_track::Track, s: f64) -> &'static str {
-    use mp_math::{js, kernel};
+    use pk_math::{js, kernel};
     let f = t.frame(s);
     let a = kernel::atan2(f.fz, f.fx);
     let k = ((js::round(a / (std::f64::consts::PI / 4.0)) % 8.0) + 8.0) % 8.0;

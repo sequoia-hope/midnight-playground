@@ -25,13 +25,13 @@ use crate::status::Status;
 use bevy::camera::Projection;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use mp_math::{kernel, smoothstep};
 use mp_sim::body::BodyId;
 use mp_sim::police::{Mode, Siren};
 use mp_sim::pursuit::{Pursuit, PursuitEvent, PursuitOpts, RacerBody, Racers, top_speed};
 use mp_sim::race::SimEvent;
 use mp_sim::rng::RngStreams;
 use mp_sim::vehicle::Vehicle;
+use pk_math::{kernel, smoothstep};
 use serde_json::Value;
 
 /// The scene definitions (`tools/parity/pursuit-scenes.mjs` reads the same).

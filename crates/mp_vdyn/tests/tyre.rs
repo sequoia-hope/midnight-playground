@@ -6,10 +6,10 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::wasm_bindgen_test as test;
 
-use mp_math::kernel;
 use mp_vdyn::cars::SPORT_TYRE;
 use mp_vdyn::tyre::{brush_force, pneumatic_trail, sliding_mu};
 use mp_vdyn::{BrushTyre, FlatGround, HubState, Iso3, Quat, TyreOutput, Vec3};
+use pk_math::kernel;
 
 const H: f64 = 1.0 / 600.0;
 

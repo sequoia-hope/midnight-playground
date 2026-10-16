@@ -8,9 +8,10 @@
 
 use std::sync::Arc;
 
-use mp_canvas::Canvas;
-use mp_math::{js, kernel};
+use crate::fonts::canvas;
 use mp_track::Track;
+use pk_canvas::Canvas;
+use pk_math::{js, kernel};
 
 use crate::material::Material;
 use crate::object::{GeoId, Image, MaterialId, NodeId, SceneGraph};
@@ -46,7 +47,7 @@ pub const SAWHORSE_DIMS: [f64; 5] = [2.4, 0.5, 1.0, 0.3, 1.0];
 
 /// The board's stripes: a 128 × 16 canvas of red and white diagonal bands.
 pub fn sawhorse_canvas() -> Canvas {
-    let mut g = Canvas::new(128, 16);
+    let mut g = canvas(128, 16);
     for i in 0..8 {
         let x = f64::from(i) * 16.0;
         g.set_fill_style(if i % 2 == 1 { "#f4f4f0" } else { "#e2261c" });

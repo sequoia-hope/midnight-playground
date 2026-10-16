@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use bevy::prelude::*;
-use mp_math::{clamp, js, kernel};
+use pk_math::{clamp, js, kernel};
 
 use super::Play;
 

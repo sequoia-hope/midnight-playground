@@ -1,11 +1,12 @@
 //! Text measurement against numbers read from Chrome 151 with the bundled
 //! faces registered (tools/parity/textures.html): `measureText().width`,
 //! and `fontBoundingBoxAscent` under each `textBaseline`, which gives the
-//! baseline offset Blink applies.
+//! baseline offset Blink applies. The canvas is the kit's `pk_canvas`; the
+//! faces are this game's (`mp_worldgen::fonts`, D1232).
 
-use mp_canvas::Canvas;
-use mp_canvas::fonts::{FontBook, parse_font};
-use mp_canvas::text::{Baseline, layout};
+use mp_worldgen::fonts;
+use pk_canvas::fonts::parse_font;
+use pk_canvas::text::{Baseline, layout};
 
 fn close(a: f64, b: f64, tol: f64) -> bool {
     (a - b).abs() <= tol
@@ -13,7 +14,7 @@ fn close(a: f64, b: f64, tol: f64) -> bool {
 
 #[test]
 fn widths_match_chrome() {
-    let mut g = Canvas::new(8, 8);
+    let mut g = fonts::canvas(8, 8);
     let cases: &[(&str, &[(&str, f64)])] = &[
         (
             "bold 64px \"Arial Narrow\", Arial, sans-serif",
@@ -86,7 +87,7 @@ fn widths_match_chrome() {
 
 #[test]
 fn baselines_match_chrome() {
-    let book = FontBook::bundled();
+    let book = fonts::book();
     // (font, alphabetic ascent, [middle, top, bottom, hanging, ideographic]
     // fontBoundingBoxAscent), from Chrome.
     let cases: &[(&str, f64, [f64; 5])] = &[

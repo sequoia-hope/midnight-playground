@@ -6,8 +6,9 @@
 
 use std::sync::Arc;
 
-use mp_canvas::Canvas;
+use crate::fonts::canvas;
 use mp_scene::TextureSource;
+use pk_canvas::Canvas;
 
 use crate::object::{Image, SceneGraph, TextureId};
 use crate::textures::Texture;
@@ -35,7 +36,7 @@ pub struct SignAtlas {
 
 impl SignAtlas {
     pub fn new(size: u32, bg: Option<&str>) -> SignAtlas {
-        let mut canvas = Canvas::new(size, size);
+        let mut canvas = canvas(size, size);
         let s = f64::from(size);
         if let Some(bg) = bg {
             canvas.set_fill_style(bg);
@@ -64,7 +65,7 @@ impl SignAtlas {
         assert!(self.y + h <= s, "sign atlas full");
         let (x, y) = (self.x, self.y);
         self.x += w + p;
-        self.row_h = mp_math::js::max(self.row_h, h);
+        self.row_h = pk_math::js::max(self.row_h, h);
         let g = &mut self.canvas;
         g.save();
         g.translate(x, y);
@@ -163,7 +164,7 @@ pub fn painted_sign<'a>(
         }
         if let Some(border) = o.border {
             g.set_stroke_style(border);
-            let lw = mp_math::js::max(6.0, h * 0.06);
+            let lw = pk_math::js::max(6.0, h * 0.06);
             g.set_line_width(lw);
             g.stroke_rect(lw / 2.0, lw / 2.0, w - lw, h - lw);
         }

@@ -15,8 +15,8 @@
 
 use super::gamepad::{self, Action};
 use bevy::input::keyboard::KeyCode;
-use mp_math::{clamp, kernel};
 use mp_sim::input::Input as SimInput;
+use pk_math::{clamp, kernel};
 
 /// Held controls (`KEYMAP`).
 pub const THROTTLE: &[&str] = &["KeyW", "ArrowUp"];
@@ -269,14 +269,14 @@ impl Input {
         let g = &self.pad;
         let ax = g.steer_axis;
         if ax.abs() > 0.12 {
-            steer = mp_math::js::sign(ax) * kernel::pow((ax.abs() - 0.12) / 0.88, 1.4);
+            steer = pk_math::js::sign(ax) * kernel::pow((ax.abs() - 0.12) / 0.88, 1.4);
             analog_steer = true;
         }
         if g.value(Action::Throttle) > 0.05 {
-            throttle = mp_math::js::max(throttle, g.value(Action::Throttle));
+            throttle = pk_math::js::max(throttle, g.value(Action::Throttle));
         }
         if g.value(Action::Brake) > 0.05 {
-            brake = mp_math::js::max(brake, g.value(Action::Brake));
+            brake = pk_math::js::max(brake, g.value(Action::Brake));
         }
         if g.held(Action::Nitro) {
             nitro = true;

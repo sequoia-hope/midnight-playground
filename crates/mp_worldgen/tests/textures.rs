@@ -1,6 +1,6 @@
 //! L3 gate of WP 3.2 (SPEC 5.7): the shared textures of
 //! `src/world/textures.js`, drawn by `mp_worldgen::textures` on
-//! `mp_canvas`, against Chrome's canvas (`tools/parity/textures.mjs`,
+//! `pk_canvas`, against Chrome's canvas (`tools/parity/textures.mjs`,
 //! kernel on, bundled fonts).
 //!
 //! Always checked, from the committed summary
@@ -13,8 +13,8 @@
 
 use std::path::PathBuf;
 
-use mp_canvas::compare::{block_diff, block_means, mean_abs_diff, sheet};
 use mp_worldgen::textures::{self, Cached, SignOpts, Texture};
+use pk_canvas::compare::{block_diff, block_means, mean_abs_diff, sheet};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 

@@ -3,7 +3,7 @@
 //! new velocities, the orientation a unit quaternion renormalised every
 //! step (SPEC 3, 4.1). Only `+ − × ÷` and `sqrt`.
 
-use crate::math::{Quat, Vec3};
+use pk_math::vec::{Quat, Vec3};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RigidBody {

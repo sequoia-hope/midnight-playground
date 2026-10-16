@@ -11,10 +11,10 @@
 //!   with its target speed, how soon a car going this fast has to brake
 //!   for it (green, orange, red).
 //!
-//! Both are pure functions of the state, through `mp_math`'s kernel only.
+//! Both are pure functions of the state, through `pk_math`'s kernel only.
 
-use mp_math::{clamp, js, kernel, lerp, smoothstep, wrap_angle};
 use mp_track::Track;
+use pk_math::{clamp, js, kernel, lerp, smoothstep, wrap_angle};
 
 use crate::input::Input;
 use crate::physics::{ANALOG_LOCK, CarPhysics};

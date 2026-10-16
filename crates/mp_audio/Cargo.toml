@@ -6,7 +6,7 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
-mp_math.workspace = true
+pk_math.workspace = true
 # The exhaust node's model (the native backend runs it in a worklet
 # processor; the web build loads it as its own wasm).
 mp_exhaust.workspace = true
@@ -80,7 +80,7 @@ null = []
 serde_json = { version = "1", features = ["float_roundtrip"] }
 # The radio test (`test/unit/radio.test.js`) reads the levels' zones and
 # rivals and the pursuit's callsigns. Test-only: the library itself stays on
-# mp_math (SPEC 3.2).
+# pk_math (SPEC 3.2).
 mp_track.workspace = true
 mp_levels.workspace = true
 mp_sim.workspace = true

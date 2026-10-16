@@ -11,7 +11,7 @@
 //! renders; the tests here reproduce the first two exactly and the renders
 //! to a tolerance. The lab uses `Math.*`; this crate uses the platform's
 //! `f64` functions, which may differ in the last bit. Audio is not
-//! simulation, so `mp_math`'s kernel is not required here (as in
+//! simulation, so `pk_math`'s kernel is not required here (as in
 //! `mp_exhaust`).
 //!
 //! Port rules (DECISIONS D1150):

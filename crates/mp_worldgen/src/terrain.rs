@@ -24,9 +24,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use mp_math::{Noise2D, clamp, fbm, js, kernel, lerp, ridged, ridged_with, smoothstep};
 use mp_track::level::GroundFn;
 use mp_track::{Level, OPEN_BAND, OPEN_POW, OPEN_R0, RUNOFF_FLAT, Track};
+use pk_math::{Noise2D, clamp, fbm, js, kernel, lerp, ridged, ridged_with, smoothstep};
 
 const FAR: f64 = 32.0; // far-field cell size (m)
 const NEAR: f64 = 4.0; // near-field node spacing (m)

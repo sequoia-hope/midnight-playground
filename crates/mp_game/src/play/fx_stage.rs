@@ -17,7 +17,7 @@ use crate::status::Status;
 use bevy::camera::Projection;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use mp_math::kernel;
+use pk_math::kernel;
 use serde_json::Value;
 
 /// The scene definitions (`tools/parity/effects-scenes.mjs` reads the same).

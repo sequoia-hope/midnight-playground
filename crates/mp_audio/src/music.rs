@@ -34,8 +34,8 @@ use crate::wa::{
     AudioBuffer, AudioContext, BiquadFilterNode, BiquadFilterType, Connectable, ConvolverNode,
     GainNode, Node, OscillatorNode, OverSampleType, PeriodicWave,
 };
-use mp_math::js;
-use mp_math::kernel::{exp, pow, sin, tanh};
+use pk_math::js;
+use pk_math::kernel::{exp, pow, sin, tanh};
 use std::f64::consts::PI;
 use std::rc::Rc;
 

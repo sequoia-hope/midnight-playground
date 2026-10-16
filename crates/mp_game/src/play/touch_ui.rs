@@ -6,7 +6,7 @@
 //! and the reset, camera and pause buttons. Positions come from
 //! [`super::touch::Layout`], sizes are CSS px (fonts, borders and icons
 //! too), turned into Bevy UI px by the page's scale. The SVG icons are
-//! drawn once with `mp_canvas`'s paths from the same path data (DECISIONS
+//! drawn once with `pk_canvas`'s paths from the same path data (DECISIONS
 //! D842).
 
 use std::f64::consts::PI;
@@ -82,10 +82,10 @@ fn svg(
     images: &mut Assets<Image>,
     view: f64,
     width: f64,
-    draw: impl Fn(&mut mp_canvas::Canvas, f64),
+    draw: impl Fn(&mut pk_canvas::Canvas, f64),
 ) -> Handle<Image> {
     let n = 96u32;
-    let mut c = mp_canvas::Canvas::with_fonts(n, n, Arc::new(mp_canvas::FontBook::new()));
+    let mut c = pk_canvas::Canvas::with_fonts(n, n, Arc::new(pk_canvas::FontBook::new()));
     let k = f64::from(n) / view;
     c.set_stroke_style("#ffffff");
     c.set_line_width(width * k);
@@ -96,7 +96,7 @@ fn svg(
 }
 
 /// A polyline in SVG units.
-fn poly(c: &mut mp_canvas::Canvas, k: f64, pts: &[(f64, f64)]) {
+fn poly(c: &mut pk_canvas::Canvas, k: f64, pts: &[(f64, f64)]) {
     c.begin_path();
     for (i, &(x, y)) in pts.iter().enumerate() {
         if i == 0 {

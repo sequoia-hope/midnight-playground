@@ -3,12 +3,12 @@
 //! VERSION bump), decoding is canonical (whatever decodes re-encodes to the
 //! same bytes) and nothing malformed panics or allocates on trust.
 
-use mp_math::Mulberry32;
 use mp_net::proto::{
     AiFill, DecodeError, GridRule, MAX_PLAYERS, Msg, PlayerInfo, PointsRow, RaceStart, Settings,
     VERSION,
 };
 use mp_sim::input::InputFrame;
+use pk_math::Mulberry32;
 
 fn player(slot: u8, name: &str) -> PlayerInfo {
     PlayerInfo {

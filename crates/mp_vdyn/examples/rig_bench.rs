@@ -17,7 +17,7 @@ fn main() {
         let t = tick as f64 / 120.0;
         let c = Controls {
             throttle: 0.6,
-            steer: 0.3 * mp_math::kernel::sin(t * 0.7),
+            steer: 0.3 * pk_math::kernel::sin(t * 0.7),
             ..Controls::default()
         };
         r.step_at(&c, 30.0);

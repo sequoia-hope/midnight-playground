@@ -1,20 +1,21 @@
 //! The canvas textures of `src/world/Valley.js` (roadmap WP 3.7): the wood
 //! signs, the creek's ripple normals, the neon "OPEN" and the corn strip.
-//! Each draws on an [`mp_canvas::Canvas`] as the JS draws on its 2D
+//! Each draws on an [`pk_canvas::Canvas`] as the JS draws on its 2D
 //! context, from the same streams in the same order.
 
 use std::f64::consts::PI;
 
-use mp_canvas::Canvas;
-use mp_math::{Mulberry32, js, kernel};
+use crate::fonts::canvas;
 use mp_scene::TextureSource;
+use pk_canvas::Canvas;
+use pk_math::{Mulberry32, js, kernel};
 
 use crate::textures::Texture;
 
 /// `canvasTexture(w, h, draw)`: a `CanvasTexture` in sRGB, anisotropy 8,
 /// clamped (the callers change the wrap and colour space after).
 fn canvas_texture(w: u32, h: u32, draw: impl FnOnce(&mut Canvas, f64, f64)) -> Texture {
-    let mut c = Canvas::new(w, h);
+    let mut c = canvas(w, h);
     draw(&mut c, f64::from(w), f64::from(h));
     Texture {
         width: w,

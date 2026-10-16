@@ -6,8 +6,8 @@
 
 use std::rc::Rc;
 
-use mp_math::{js, kernel};
 use mp_scene::BufferData;
+use pk_math::{js, kernel};
 
 use super::kit::{
     Arch, Axis, Buckets, Col, DCol, DecalOpts, Greys, Line, Loft, LoftOpts, MatFn, O, P2, P3, PCol,

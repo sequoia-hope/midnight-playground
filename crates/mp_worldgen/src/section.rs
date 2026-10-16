@@ -140,7 +140,7 @@ impl Section {
             } else {
                 s.clamp(0.0, t.length)
             });
-            let dd = mp_math::kernel::hypot(x - f.x, z - f.z);
+            let dd = pk_math::kernel::hypot(x - f.x, z - f.z);
             if dd <= NEAR_ROAD && best.is_none_or(|b| dd < b.2) {
                 best = Some((r, s, dd));
             }

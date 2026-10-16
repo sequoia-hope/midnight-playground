@@ -20,8 +20,8 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use mp_levels::survey::SeasideData;
-use mp_math::{clamp, hash2, js, kernel};
 use mp_scene::{MaterialKind, TextureSource, three};
+use pk_math::{clamp, hash2, js, kernel};
 use serde_json::{Value, json};
 
 use crate::colorizer::Colorizer;

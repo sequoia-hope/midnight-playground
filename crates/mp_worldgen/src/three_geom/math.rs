@@ -13,7 +13,7 @@
 use core::f64::consts::PI;
 use core::ops::{Add, Neg, Sub};
 
-use mp_math::{js, kernel};
+use pk_math::{js, kernel};
 
 /// three's `MathUtils.clamp`: `Math.max(min, Math.min(max, value))`.
 pub fn clamp(value: f64, min: f64, max: f64) -> f64 {

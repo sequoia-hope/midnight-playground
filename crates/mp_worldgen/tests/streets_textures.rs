@@ -15,13 +15,13 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 mod common;
 
-use mp_canvas::compare::mean_abs_diff;
 use mp_scene::digest::sha256_hex;
 use mp_worldgen::streets::facades::facade_atlas;
 use mp_worldgen::streets::textures::{
     barrier_texture, neon_atlas, pavement_texture, puddle_texture, street_atlas, train_texture,
 };
 use mp_worldgen::textures::{Cached, Texture, TextureCache};
+use pk_canvas::compare::mean_abs_diff;
 use serde_json::Value;
 
 /// WP 3.2's threshold, per channel.

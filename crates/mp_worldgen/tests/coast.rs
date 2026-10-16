@@ -31,7 +31,6 @@ mod common;
 
 use std::sync::OnceLock;
 
-use mp_canvas::compare::{block_diff, block_means};
 use mp_scene::digest::{SceneDigest, digest, sha256_hex};
 use mp_scene::{BufferData, Scene, TextureSource};
 use mp_worldgen::color::Color;
@@ -40,6 +39,7 @@ use mp_worldgen::object::{MaterialId, SceneGraph};
 use mp_worldgen::scenery::scenery_factory;
 use mp_worldgen::stages::{LevelSetup, level_stages};
 use mp_worldgen::world::{Build, CameraView, Change, Edit, Handle, UpdateCtx, World, level_jobs};
+use pk_canvas::compare::{block_diff, block_means};
 use serde_json::{Map, Value, json};
 
 fn golden() -> &'static Value {
@@ -493,7 +493,7 @@ fn premultiplied(a: &[u8], b: &[u8], alpha_test: f64) -> ([f64; 3], f64) {
 fn sheet(name: &str, w: usize, h: usize, js: &[u8], rust: &[u8]) {
     let dir = common::root().join("parity/report/coast");
     std::fs::create_dir_all(&dir).expect("report dir");
-    let (sw, sh, px) = mp_canvas::compare::sheet(w, h, js, rust);
+    let (sw, sh, px) = pk_canvas::compare::sheet(w, h, js, rust);
     let path = dir.join(format!("{name}.png"));
     let f = std::fs::File::create(path).expect("sheet file");
     let mut e = png::Encoder::new(std::io::BufWriter::new(f), sw as u32, sh as u32);
@@ -645,7 +645,7 @@ fn check(group: &str) {
                 let jt = material_textures(s, j.table[k]);
                 if let Some(&(_, jt)) = jt.iter().find(|(kk, _)| *kk == key) {
                     let (_, _, jpx) = pixels(s, jt);
-                    let mad = mp_canvas::compare::mean_abs_diff(&px, &jpx);
+                    let mad = pk_canvas::compare::mean_abs_diff(&px, &jpx);
                     line += &format!(", mean abs diff {mad:.3?}");
                     gate = mad;
                 }
@@ -684,7 +684,7 @@ fn check(group: &str) {
                             &jpx,
                             &px,
                         );
-                        let mad = mp_canvas::compare::mean_abs_diff(&px, &jpx);
+                        let mad = pk_canvas::compare::mean_abs_diff(&px, &jpx);
                         if std::env::var_os("COAST_DUMP").is_some() {
                             let dir = common::root().join("parity/report/coast");
                             let _ = std::fs::write(dir.join(format!("{group}-m{k}-rust.rgba")), &px);

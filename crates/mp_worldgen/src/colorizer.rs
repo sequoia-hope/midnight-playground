@@ -9,7 +9,7 @@
 //! returns it with the colour, so the colouriser holds no state and the
 //! mesh tiles can be coloured on several threads.
 
-use mp_math::{clamp, fbm, hash2, js, kernel, smoothstep};
+use pk_math::{clamp, fbm, hash2, js, kernel, smoothstep};
 
 use crate::color::Color;
 use crate::terrain::{Form, Terrain};

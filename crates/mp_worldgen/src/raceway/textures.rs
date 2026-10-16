@@ -11,8 +11,9 @@
 use std::f64::consts::PI;
 use std::sync::Arc;
 
-use mp_canvas::Canvas;
-use mp_math::Mulberry32;
+use crate::fonts::canvas;
+use pk_canvas::Canvas;
+use pk_math::Mulberry32;
 
 use crate::textures::{Cached, Texture, TextureCache};
 
@@ -25,7 +26,7 @@ fn to_texture(c: &Canvas, repeat: bool) -> Texture {
 /// little wear. u runs across the kerb.
 pub fn kerb_texture(cache: &mut TextureCache) -> Arc<Cached> {
     cache.cached_with("raceway:kerb", || {
-        let mut g = Canvas::new(64, 128);
+        let mut g = canvas(64, 128);
         g.set_fill_style("#c8281e");
         g.fill_rect(0.0, 0.0, 64.0, 64.0);
         g.set_fill_style("#f1efe8");
@@ -54,7 +55,7 @@ pub fn kerb_texture(cache: &mut TextureCache) -> Arc<Cached> {
 /// bands of colour. u across the face (height), v along the wall.
 pub fn tyre_texture(cache: &mut TextureCache) -> Arc<Cached> {
     cache.cached_with("raceway:tyre", || {
-        let mut g = Canvas::new(128, 256);
+        let mut g = canvas(128, 256);
         g.set_fill_style("#18191b");
         g.fill_rect(0.0, 0.0, 128.0, 256.0);
         let bands = ["#d8d6d0", "#c62a22", "#d8d6d0", "#1f4fa0"];
@@ -92,7 +93,7 @@ pub fn tyre_texture(cache: &mut TextureCache) -> Arc<Cached> {
 /// (`t.generateMipmaps = true` is three's default.)
 pub fn fence_texture(cache: &mut TextureCache) -> Arc<Cached> {
     cache.cached_with("raceway:fence", || {
-        let mut g = Canvas::new(128, 128);
+        let mut g = canvas(128, 128);
         g.clear_rect(0.0, 0.0, 128.0, 128.0);
         g.set_stroke_style("rgba(190,196,200,0.95)");
         g.set_line_width(1.6);
@@ -121,7 +122,7 @@ pub fn crowd_texture(cache: &mut TextureCache) -> Arc<Cached> {
     cache.cached_with("raceway:crowd", || {
         const W: f64 = 512.0;
         const H: f64 = 256.0;
-        let mut g = Canvas::new(W as u32, H as u32);
+        let mut g = canvas(W as u32, H as u32);
         g.set_fill_style("#6c6f73");
         g.fill_rect(0.0, 0.0, W, H);
         let mut rng = Mulberry32::new(31);
@@ -279,7 +280,7 @@ pub fn banner_rect(name: &str) -> [f64; 4] {
 pub fn banner_atlas(cache: &mut TextureCache) -> Arc<Cached> {
     cache.cached_with("raceway:banners", || {
         let (cw, ch) = atlas_size();
-        let mut g = Canvas::new(cw as u32, ch as u32);
+        let mut g = canvas(cw as u32, ch as u32);
         for (i, b) in BANNERS.iter().enumerate() {
             let x = (i % COLS) as f64 * PW;
             let y = (i / COLS) as f64 * PH;

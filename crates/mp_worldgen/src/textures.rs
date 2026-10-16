@@ -3,7 +3,7 @@
 //! disk, so the game has no asset pipeline and starts instantly from a
 //! static server.
 //!
-//! Each generator draws on an [`mp_canvas::Canvas`] exactly as the JS draws
+//! Each generator draws on an [`pk_canvas::Canvas`] exactly as the JS draws
 //! on its 2D context, drawing from the same seeded `mulberry32` streams in
 //! the same order. The JS module caches by key in a `Map`; here the cache is
 //! a [`TextureCache`] the world build owns, with the JS keys (including
@@ -14,9 +14,9 @@
 
 use std::sync::Arc;
 
-use mp_canvas::Canvas;
-use mp_math::{Mulberry32, js, kernel};
 use mp_scene::{TextureDesc, TextureSource, three};
+use pk_canvas::Canvas;
+use pk_math::{Mulberry32, js, kernel};
 
 const PI: f64 = std::f64::consts::PI;
 
@@ -222,7 +222,7 @@ impl TextureCache {
 }
 
 fn canvas(w: u32, h: u32) -> Canvas {
-    Canvas::new(w, h)
+    crate::fonts::canvas(w, h)
 }
 
 /// A `Float32Array` element read back.

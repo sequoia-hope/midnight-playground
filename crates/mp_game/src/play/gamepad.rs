@@ -15,7 +15,7 @@
 //! Gamepad API on the web, gilrs through Bevy natively) and carries the
 //! rumble out through a [`Rumble`] backend (DECISIONS D780–D782).
 
-use mp_math::clamp;
+use pk_math::clamp;
 use serde_json::{Map, Value};
 
 /// The driving actions (`ACTIONS`), in the JS order.
@@ -368,7 +368,7 @@ pub fn binding_label(b: Option<&Binding>, standard: bool) -> String {
 pub fn binding_value(p: &Pad, b: &Binding) -> f64 {
     match *b {
         Binding::Button(i) => p.buttons.get(i).map_or(0.0, |x| {
-            mp_math::js::max(x.value, if x.pressed { 1.0 } else { 0.0 })
+            pk_math::js::max(x.value, if x.pressed { 1.0 } else { 0.0 })
         }),
         Binding::Axis { axis, dir, rest } => {
             let rest = rest.unwrap_or(0.0);
@@ -392,7 +392,7 @@ fn stick(b: &Binding) -> bool {
 
 fn dead(v: f64, b: &Binding) -> f64 {
     if stick(b) {
-        mp_math::js::max(0.0, (v - STICK_DEAD) / (1.0 - STICK_DEAD))
+        pk_math::js::max(0.0, (v - STICK_DEAD) / (1.0 - STICK_DEAD))
     } else {
         v
     }
@@ -597,7 +597,7 @@ impl Pads {
             for a in Action::ALL {
                 for b in bindings(map, a.key()) {
                     let v = binding_value(p, b);
-                    value[a.i()] = mp_math::js::max(value[a.i()], dead(v, b));
+                    value[a.i()] = pk_math::js::max(value[a.i()], dead(v, b));
                     if v > 0.5 {
                         held[a.i()] = true;
                     }
@@ -807,7 +807,7 @@ impl Pads {
                     // an axis.
                     let b0 = at(j);
                     let rest = if !p.standard() && b0.abs() > 0.8 {
-                        mp_math::js::sign(b0)
+                        pk_math::js::sign(b0)
                     } else {
                         0.0
                     };
@@ -879,14 +879,14 @@ impl Pads {
         let (mut strong, mut weak) = (0.0, 0.0);
         for k in &self.kicks {
             let f = 1.0 - (now - k.t0) / k.ms;
-            strong = mp_math::js::max(strong, k.strong * f);
-            weak = mp_math::js::max(weak, k.weak * f);
+            strong = pk_math::js::max(strong, k.strong * f);
+            weak = pk_math::js::max(weak, k.weak * f);
         }
         if let Some(c) = self.cont
             && now - c.t < 150.0
         {
-            strong = mp_math::js::max(strong, c.strong);
-            weak = mp_math::js::max(weak, c.weak);
+            strong = pk_math::js::max(strong, c.strong);
+            weak = pk_math::js::max(weak, c.weak);
         }
         (clamp(strong, 0.0, 1.0), clamp(weak, 0.0, 1.0))
     }

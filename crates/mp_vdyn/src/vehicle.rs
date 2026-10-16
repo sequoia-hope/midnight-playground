@@ -9,13 +9,13 @@
 
 use core::f64::consts::PI;
 
-use mp_math::{clamp, kernel};
+use pk_math::{clamp, kernel};
 
 use crate::body::RigidBody;
 use crate::drivetrain::{EngineDef, EngineState, engine_step, gearbox_tick};
 use crate::ground::{Collider, Ground};
-use crate::math::{Aabb, Iso3, Quat, Vec3};
 use crate::tyre::{BrushParams, BrushTyre, HubState, Tyre, TyreOutput};
+use pk_math::vec::{Aabb, Iso3, Quat, Vec3};
 
 pub const G: f64 = 9.81;
 /// The game's tick (s).

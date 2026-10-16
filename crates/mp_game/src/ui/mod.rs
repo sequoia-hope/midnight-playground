@@ -843,9 +843,9 @@ fn show_results(
             (
                 "Top speed",
                 if settings.mph {
-                    format!("{} mph", mp_math::js::round(res.top * 2.23694))
+                    format!("{} mph", pk_math::js::round(res.top * 2.23694))
                 } else {
-                    format!("{} km/h", mp_math::js::round(res.top * 3.6))
+                    format!("{} km/h", pk_math::js::round(res.top * 3.6))
                 },
             ),
             ("Near misses", res.near_misses.to_string()),

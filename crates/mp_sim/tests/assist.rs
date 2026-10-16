@@ -6,11 +6,11 @@
 //!
 //!   cargo test --release -p mp_sim --test assist -- --ignored --nocapture
 
-use mp_math::clamp;
 use mp_sim::assist::{Assist, steer_assist};
 use mp_sim::autopilot::autopilot;
 use mp_sim::input::{Input, InputFrame, RESET};
 use mp_sim::race::{LevelRuntime, RaceOpts, RaceStateKind, SimState, step};
+use pk_math::clamp;
 
 /// How the scripted driver steers, given the autopilot's steering.
 #[derive(Clone, Copy, Debug)]

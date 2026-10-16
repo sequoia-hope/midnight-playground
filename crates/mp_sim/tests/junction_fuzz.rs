@@ -8,10 +8,10 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 mod common;
 
-use mp_math::kernel;
 use mp_sim::assist::{Assist, steer_assist};
 use mp_sim::input::{Input, InputFrame};
 use mp_sim::race::{LevelRuntime, RaceOpts, SimState, standings, step};
+use pk_math::kernel;
 use std::f64::consts::PI;
 
 /// A small LCG, so the cases are the same everywhere.

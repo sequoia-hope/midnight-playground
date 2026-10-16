@@ -15,7 +15,7 @@
 pub mod lines;
 
 use crate::wa::{AudioBuffer, AudioContext, Pending};
-use mp_math::Rng;
+use pk_math::Rng;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;

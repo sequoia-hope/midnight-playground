@@ -10,9 +10,10 @@
 use std::f64::consts::PI;
 use std::sync::Arc;
 
-use mp_canvas::Canvas;
-use mp_math::{Mulberry32, kernel};
+use crate::fonts::canvas;
 use mp_scene::MaterialKind;
+use pk_canvas::Canvas;
+use pk_math::{Mulberry32, kernel};
 use serde_json::Value;
 
 use crate::material::Material;
@@ -30,7 +31,7 @@ pub fn corrugated_texture(cache: &mut TextureCache) -> Arc<Cached> {
     cache.cached_with("harbor:corrugated", || {
         const W: f64 = 128.0;
         const H: f64 = 128.0;
-        let mut g = Canvas::new(W as u32, H as u32);
+        let mut g = canvas(W as u32, H as u32);
         for x in 0..W as u32 {
             let xf = f64::from(x);
             let ph = (xf % 16.0) / 16.0;
@@ -59,7 +60,7 @@ pub fn paving_texture(cache: &mut TextureCache) -> Arc<Cached> {
     cache.cached_with("harbor:paving", || {
         const S: f64 = 512.0;
         const P: f64 = S / 4.0;
-        let mut g = Canvas::new(S as u32, S as u32);
+        let mut g = canvas(S as u32, S as u32);
         let mut rng = Mulberry32::new(404);
         for i in 0..4 {
             for j in 0..4 {
@@ -143,7 +144,7 @@ pub fn container_atlas(cache: &mut TextureCache) -> Arc<Cached> {
         const H: f64 = RH * 4.0;
         const SW: f64 = 768.0; // side 0..768, end 768..960, roof 960..1024
         const EW: f64 = 192.0;
-        let mut g = Canvas::new(W as u32, H as u32);
+        let mut g = canvas(W as u32, H as u32);
         let mut rng = Mulberry32::new(4040);
         const LETTERS: &[u8] = b"ABCDEFGHKLMNPRSTU";
         for row in 0..4usize {

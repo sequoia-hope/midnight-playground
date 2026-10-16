@@ -22,7 +22,6 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 mod common;
 
-use mp_canvas::compare::{block_diff, block_means};
 use mp_scene::digest::{SceneDigest, digest, sha256_hex};
 use mp_scene::{BufferData, Scene, TextureSource};
 use mp_worldgen::car_model::{
@@ -32,6 +31,7 @@ use mp_worldgen::car_model::{
 use mp_worldgen::object::SceneGraph;
 use mp_worldgen::textures::TextureCache;
 use mp_worldgen::world::{Change, Handle};
+use pk_canvas::compare::{block_diff, block_means};
 use serde_json::{Map, Value, json};
 
 const GOLDEN: &str = include_str!("../../../parity/golden/car_model/models.json");
@@ -315,7 +315,7 @@ fn material_textures(s: &Scene, m: u32) -> Vec<(String, u32)> {
 fn write_sheet(name: &str, w: usize, h: usize, js: &[u8], rust: &[u8]) {
     let dir = common::root().join("parity/report/car_model");
     std::fs::create_dir_all(&dir).expect("report dir");
-    let (sw, sh, px) = mp_canvas::compare::sheet(w, h, js, rust);
+    let (sw, sh, px) = pk_canvas::compare::sheet(w, h, js, rust);
     let f = std::fs::File::create(dir.join(format!("{name}.png"))).expect("png");
     let mut e = png::Encoder::new(std::io::BufWriter::new(f), sw as u32, sh as u32);
     e.set_color(png::ColorType::Rgba);
@@ -493,7 +493,7 @@ fn models_match_the_js_export() {
                 .1;
             let jpx = rgba(js, jt);
             write_sheet(&format!("texture-{i}"), tw, th, &jpx, &px);
-            mp_canvas::compare::mean_abs_diff(&jpx, &px)
+            pk_canvas::compare::mean_abs_diff(&jpx, &px)
         });
         let gate = mad.unwrap_or(bd);
         if gate.iter().any(|&v| v >= LIMIT) {

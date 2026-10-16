@@ -13,7 +13,7 @@
 
 use std::f64::consts::{FRAC_1_SQRT_2, PI};
 
-use mp_math::{Mulberry32, kernel, rpick, rrange};
+use pk_math::{Mulberry32, kernel, rpick, rrange};
 
 use crate::builder::Builder;
 use crate::three_geom::{
@@ -85,7 +85,7 @@ fn windows(
     lit_p: f64,
     shutter: Option<&str>,
 ) {
-    let n = mp_math::js::max(1.0, ((x1 - x0) / spacing).floor());
+    let n = pk_math::js::max(1.0, ((x1 - x0) / spacing).floor());
     let step = (x1 - x0) / n;
     let mut i = 0.0;
     while i < n {
@@ -129,7 +129,7 @@ fn side_windows(
     spacing: f64,
     lit_p: f64,
 ) {
-    let n = mp_math::js::max(1.0, ((z1 - z0) / spacing).floor());
+    let n = pk_math::js::max(1.0, ((z1 - z0) / spacing).floor());
     let step = (z1 - z0) / n;
     let mut i = 0.0;
     while i < n {

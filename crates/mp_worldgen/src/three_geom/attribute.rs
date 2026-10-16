@@ -7,8 +7,8 @@
 //! ToUint32, and the 8- and 16-bit versions), and a `normalized`
 //! attribute scales through three's `normalize` / `denormalize` first.
 
-use mp_math::js;
 use mp_scene::BufferData;
+use pk_math::js;
 
 use super::math::{Matrix3, Matrix4, Vector3};
 

@@ -391,7 +391,7 @@ fn draw(
     let ps = a.s + track.ds(a.s, b.s) * alpha;
     let speed = {
         let l = |p: f64, q: f64| p + (q - p) * alpha;
-        mp_math::kernel::hypot(l(a.vx, b.vx), l(a.vz, b.vz))
+        pk_math::kernel::hypot(l(a.vx, b.vx), l(a.vz, b.vz))
     };
     let reach = reach(speed);
     // A sim car corners and brakes for its own profile.
@@ -434,8 +434,8 @@ fn draw(
         let dist = sc - ps;
         let verts = k * 6..k * 6 + 6;
         // Near the car it would only sit under it or the camera.
-        let fade = mp_math::smoothstep(3.0, 9.0, dist)
-            * (1.0 - mp_math::smoothstep(reach * 0.55, reach, dist));
+        let fade = pk_math::smoothstep(3.0, 9.0, dist)
+            * (1.0 - pk_math::smoothstep(reach * 0.55, reach, dist));
         let u = brake_urgency_with(speed, f64::from(profile[track.idx(sc)]), dist, braking);
         let a = fade
             * match mode {

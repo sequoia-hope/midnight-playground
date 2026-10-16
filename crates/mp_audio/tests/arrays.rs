@@ -14,7 +14,7 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 use mp_audio::array_hash;
 use mp_audio::reference::{self, Kind, RefArray};
-use mp_math::Mulberry32;
+use pk_math::Mulberry32;
 use serde_json::Value;
 
 const ARRAYS_JSON: &str = include_str!("../../../parity/golden/audio/arrays.json");

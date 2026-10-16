@@ -38,7 +38,8 @@ apply only as history and as regression checks that still pass. Principles
 5. **One implementation for every platform**; platform differences sit
    behind small traits.
 6. **Deterministic by construction**: fixed tick, seeded streams in the
-   state, and every inexact math function through `mp_math`'s kernel. Never
+   state, and every inexact math function through `pk_math`'s kernel (the
+   kit's, `../game-engine/crates/pk_math`, D1231). Never
    call `f64::sin` and friends, `powi`, or `mul_add` in the simulation or
    world generation (`check-deps` rejects them).
 
@@ -51,12 +52,12 @@ and carry on with the option that best preserves parity.
 |---|---|
 | Build and test the workspace | `cargo test --workspace` |
 | Lints, as CI runs them | `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings` |
-| Crate dependency rules (SPEC 3.2) | `cargo xtask check-deps` |
+| Crate dependency rules (SPEC 3.2, `deps.toml`) | `cargo xtask check-deps` |
 | Web build into `dist/next/` | `cargo xtask web` (add `--release` for the optimised build) |
 | Wasm size report | `cargo xtask size` (after a release web build) |
-| Frame times, JS or Rust, desktop, phone or throttled (BASELINE) | `node tools/parity/rust-perf.mjs --level sierra --race [--backend webgl2] [--phone] [--throttle 4] [--game js]` (on a laptop over ssh: `--headed --angle gl --size WxH --dpr N`, see BASELINE "The laptop itself") |
+| Frame times of the Rust client, desktop, phone or throttled (BASELINE; the JS game's: `perf-baseline.mjs`) | `node tools/parity/rust-perf.mjs --level sierra --race [--backend webgl2] [--phone] [--throttle 4]` (on a laptop over ssh: `--headed --angle gl --size WxH --dpr N`, see BASELINE "The laptop itself") |
 | CPU profile by Bevy system (needs the names-kept build: `cargo xtask prof`) | `node tools/parity/rust-prof.mjs --level sierra --backend webgl2 --throttle 4` (`--from <.cpuprofile> --callers <regex>` to dig) |
-| WebGL2 calls a frame, and the GPU's time by pass and shader program, Rust against the JS game | `node tools/parity/gl-calls.mjs --game rust` and `--game js` (`--by-program`, `--angle gl`, `--headed`, `--sub-frag 're=>to'` for what-if shader edits, `MP_DUMPIO=1 INTEL_DEBUG=perf` for Mesa's compile notes) |
+| WebGL2 calls a frame, and the GPU's time by pass and shader program (the JS game's figures are in BASELINE) | `node tools/parity/gl-calls.mjs` (`--by-program`, `--angle gl`, `--headed`, `--sub-frag 're=>to'` for what-if shader edits, `PK_DUMPIO=1 INTEL_DEBUG=perf` for Mesa's compile notes) |
 | Two builds of the Rust client compared pixel for pixel (WebGL2, four levels; `dist/prof/` is the usual before) | `node tools/parity/build-diff.mjs --a prof --b next` |
 | The Rust page's console when a build does not come up | `node tools/parity/web-console.mjs --backend webgl2` |
 | A headless race (results, `--trace`, `--state-at`, `bench`) | `cargo run --release -p mp_sim --bin mp-sim -- race --level sierra` |
@@ -73,27 +74,38 @@ and carry on with the option that best preserves parity.
 | JS browser tests | `npm run test:e2e` (headless Chrome on the GPU, ~3 min) |
 | The same browser suites against the Rust build | `cargo xtask web --release && npm run test:e2e:rust` (one Chrome at a time; prints the suite table) |
 
+The build tooling (`cargo xtask web`, `size`, `prof`, `check-deps`,
+`imgdiff`) is Playground Kit's `pk_xtask` (D1233): `xtask/src/main.rs` is
+its `WebBuild` config plus the parity commands. The headless-Chrome tools
+(`rust-perf.mjs`, `rust-prof.mjs`, `gl-calls.mjs`, `build-diff.mjs`,
+`web-console.mjs`, `e2e/harness.mjs`, `lib/server.mjs`) are thin wrappers
+with this game's defaults over `../game-engine/js/*.mjs`, which read the
+status global named by `--global` (`__mp` here). `crates/mp_game/web/
+index.html` is generated from the kit's loader page by
+`tools/parity/gen-index.py`: edit the branding and hook blocks there.
+
 Toolchain: stable Rust with the `wasm32-unknown-unknown` target
 (`rust-toolchain.toml`), `wasm-bindgen-cli` at exactly the version of the
-`wasm-bindgen` crate in `Cargo.lock` (`cargo xtask web` checks), and
-`wasm-opt` (`cargo install wasm-opt --locked`) for release builds.
+`wasm-bindgen` crate in `Cargo.lock`, and `wasm-opt` from binaryen at
+exactly the version `xtask/src/main.rs` pins (116, as CI installs it);
+`cargo xtask web` checks both.
 
 ## Crate rules (SPEC 3.2)
 
 ```
-mp_math ← mp_track ← mp_levels ← mp_sim ← mp_net ← mp_host
-mp_math ← mp_vdyn ← mp_sim   (vehicle dynamics: the sim car's body, tyres, drivetrain)
-mp_scene ← mp_worldgen   (also mp_canvas, mp_math, mp_track, mp_levels)
+pk_math ← mp_track ← mp_levels ← mp_sim ← mp_net ← mp_host   (pk_math is the kit's kernel, noise and vectors, D1231)
+pk_math ← mp_vdyn ← mp_sim   (vehicle dynamics: the sim car's body, tyres, drivetrain)
+mp_scene ← mp_worldgen   (also pk_canvas and pk_math from the kit, mp_track, mp_levels; the fonts are mp_worldgen::fonts, D1232)
 mp_exhaust ← mp_audio   (mp_exhaust has no dependencies; it is also its own wasm)
 mp_atlas   (real geography and the open world's plan; no dependencies yet)
 mp_builder uses mp_worldgen (the open world's section builder; its own wasm in the web's worker)
 mp_game uses mp_sim, mp_net, mp_scene, mp_worldgen, mp_audio
 ```
 
-Only `mp_game` depends on Bevy. The simulation crates (`mp_math`,
-`mp_track`, `mp_levels`, `mp_vdyn`, `mp_sim`) have `#![forbid(unsafe_code)]` and no
-clock, threads, `rand`, or hash maps. `xtask/src/deps.rs` holds the rule for
-every crate; a new crate needs one there.
+Only `mp_game` depends on Bevy. The simulation crates (`mp_track`,
+`mp_levels`, `mp_vdyn`, `mp_sim`, and `pk_math` in the kit) have `#![forbid(unsafe_code)]` and no
+clock, threads, `rand`, or hash maps. `deps.toml` at the repo root holds
+the rule for every crate; a new crate needs one there.
 
 ## JS semantics to keep (SPEC 4.2)
 

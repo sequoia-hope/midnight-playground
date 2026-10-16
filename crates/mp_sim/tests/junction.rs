@@ -8,10 +8,10 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 mod common;
 
 use common::make_vehicle;
-use mp_math::{clamp, kernel, wrap_angle};
 use mp_sim::input::Input;
 use mp_sim::physics::{CarPhysics, car_spec};
 use mp_sim::race::LevelRuntime;
+use pk_math::{clamp, kernel, wrap_angle};
 use std::f64::consts::PI;
 
 const DT: f64 = 1.0 / 120.0;

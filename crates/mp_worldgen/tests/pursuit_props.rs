@@ -13,12 +13,12 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 mod common;
 
-use mp_canvas::compare::{block_diff, block_means};
 use mp_scene::digest::{SceneDigest, digest, sha256_hex};
 use mp_scene::{BufferData, Scene, TextureSource};
 use mp_track::Track;
 use mp_worldgen::object::SceneGraph;
 use mp_worldgen::pursuit_props::{PropKit, sawhorse_model, spike_strip};
+use pk_canvas::compare::{block_diff, block_means};
 use serde_json::{Map, Value, json};
 
 const GOLDEN: &str = include_str!("../../../parity/golden/car_model/props.json");
@@ -381,7 +381,7 @@ fn props_match_the_js_export() {
                     .find(|(kk, _)| kk == key)
                     .expect("the JS texture")
                     .1;
-                mp_canvas::compare::mean_abs_diff(&rgba(js, jtex), &px)
+                pk_canvas::compare::mean_abs_diff(&rgba(js, jtex), &px)
             });
         println!("texture of material {k} {key}: block means {bd:.2?}, mean abs diff {mad:.2?}");
         let gate = mad.unwrap_or(bd);

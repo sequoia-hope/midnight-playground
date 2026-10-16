@@ -23,7 +23,7 @@ pub const LO: f64 = -250.0;
 pub const HI: f64 = 1000.0;
 
 fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
-    mp_math::clamp(v, lo, hi)
+    pk_math::clamp(v, lo, hi)
 }
 
 /// How far round the rev counter is: `clamp(rpm / maxR, 0, 1)`.

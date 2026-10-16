@@ -23,9 +23,9 @@
 //! running out from the road every [`FIELD`] metres or so, each post and
 //! rail belonging to the cell its centre is in.
 
-use mp_math::{Mulberry32, fbm, js, kernel, lerp, smoothstep};
 use mp_scene::three;
 use mp_track::{Cover, Track};
+use pk_math::{Mulberry32, fbm, js, kernel, lerp, smoothstep};
 
 use crate::flora::{canopy_geometry, conifer_geometry, foliage_material, shrub_geometry};
 use crate::material::{Material, Param};
@@ -628,7 +628,7 @@ impl Scenery for Land {
                                 // window's own draw), while the land is crop.
                                 let win = (s / FIELD).floor();
                                 let at = win * FIELD
-                                    + mp_math::hash2(win, ri as f64 + side, 11.0)
+                                    + pk_math::hash2(win, ri as f64 + side, 11.0)
                                         * (FIELD - POST * 2.0)
                                     + POST;
                                 if s < at || s - POST >= at {

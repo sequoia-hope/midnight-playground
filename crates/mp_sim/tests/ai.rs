@@ -15,7 +15,6 @@ mod common;
 use std::f64::consts::PI;
 
 use common::{make_vehicle, straight_track};
-use mp_math::{Mulberry32, Rng, kernel};
 use mp_sim::ai::{AiCtx, AiDriver, AiOpts};
 use mp_sim::body::{AgentView, Body, PhysicsBody};
 use mp_sim::collisions::resolve_collisions;
@@ -23,6 +22,7 @@ use mp_sim::input::Input;
 use mp_sim::kinematic::Kinematic;
 use mp_sim::physics::{CAR_SPECS, CarPhysics, car_spec};
 use mp_track::Track;
+use pk_math::{Mulberry32, Rng, kernel};
 
 const DT: f64 = 1.0 / 60.0;
 

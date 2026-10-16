@@ -224,7 +224,7 @@ impl BufferGeometry {
             let mut max_radius_sq = 0.0;
             for i in 0..position.count() {
                 let v = position.get_vector3(i);
-                max_radius_sq = mp_math::js::max(max_radius_sq, center.distance_to_squared(v));
+                max_radius_sq = pk_math::js::max(max_radius_sq, center.distance_to_squared(v));
             }
             sphere.center = center;
             sphere.radius = f64::sqrt(max_radius_sq);

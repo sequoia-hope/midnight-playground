@@ -37,7 +37,6 @@ use crate::render::material::ThreeMaterial;
 use crate::{Opts, SkyRes};
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
-use mp_math::{js, kernel, smoothstep};
 use mp_sim::police::{Mode as UnitMode, Siren, UnitType};
 use mp_sim::pursuit::{Pursuit, PursuitEvent, Spikes};
 use mp_sim::race::SimEvent;
@@ -45,6 +44,7 @@ use mp_track::Track;
 use mp_worldgen::car_model::SirenMode;
 use mp_worldgen::object::SceneGraph;
 use mp_worldgen::pursuit_props::{PropKit, spike_strip};
+use pk_math::{js, kernel, smoothstep};
 
 /// `new THREE.PointLight(0xff2030, 0, 38, 1.6)`: its distance and decay.
 const LIGHT_DISTANCE: f64 = 38.0;

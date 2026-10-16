@@ -11,7 +11,7 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 mod common;
 
-use mp_math::{Mulberry32, kernel::hypot};
+use pk_math::{Mulberry32, kernel::hypot};
 
 fn near(a: f64, b: f64, eps: f64, msg: &str) {
     assert!((a - b).abs() <= eps, "{msg}: {a} vs {b}");

@@ -3,8 +3,8 @@
 
 use super::{CarState, GameAudio, RUMBLE, clamp, or0};
 use crate::engine::{self, CarProfile};
-use mp_math::js;
-use mp_math::kernel::{pow, sin};
+use pk_math::js;
+use pk_math::kernel::{pow, sin};
 
 impl GameAudio {
     // ── Per-frame update ─────────────────────────────────────────────

@@ -26,8 +26,9 @@
 
 use std::sync::Arc;
 
-use mp_canvas::Canvas;
-use mp_math::Mulberry32;
+use crate::fonts::canvas;
+use pk_canvas::Canvas;
+use pk_math::Mulberry32;
 
 use crate::textures::{Cached, Texture, TextureCache};
 
@@ -264,8 +265,8 @@ pub fn facade_atlas(cache: &mut TextureCache) -> Arc<Cached> {
 fn draw_atlas() -> (Texture, Texture) {
     use f::*;
     let n = (S * 4.0) as u32;
-    let mut c = Canvas::new(n, n);
-    let mut ce = Canvas::new(n, n);
+    let mut c = canvas(n, n);
+    let mut ce = canvas(n, n);
     ce.set_fill_style("#000");
     ce.fill_rect(0.0, 0.0, S * 4.0, S * 4.0);
     let mut rng = Mulberry32::new(4242);

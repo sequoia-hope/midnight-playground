@@ -19,10 +19,10 @@
 //! its next update: small changes as impulses on the rigid body, a jump as
 //! a re-placement (SPEC 4.7).
 
-use mp_math::{clamp, js, kernel, smoothstep, wrap_angle};
 use mp_track::Track;
 use mp_vdyn::cars::vento_gt;
 use mp_vdyn::{Controls, Ground, Quat, Vec3, VehicleDef};
+use pk_math::{clamp, js, kernel, smoothstep, wrap_angle};
 
 use crate::ground::TrackGround;
 use crate::input::{Input, InputFrame, SHIFT_DOWN, SHIFT_UP};

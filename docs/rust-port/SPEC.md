@@ -119,13 +119,16 @@ decision record justifies one: each is a reason an upgrade stalls.
 ```
 Cargo.toml                 workspace root (repo root)
 crates/
-  mp_math/       scalar math on libm, mulberry32, hash2, simplex, fbm, ridged
+  (mp_math, the scalar math on libm, mulberry32, hash2, simplex, fbm and
+                 ridged, is the kit's pk_math, ../game-engine/crates/pk_math,
+                 since D1231; mp_vdyn's f64 vectors are its pk_math::vec)
   mp_track/      level definition types, Track (1 m samples), road types
   mp_levels/     the six levels as data; Seaside's survey data loader
   mp_sim/        vehicles, physics, AI, traffic, collisions, race rules,
                  pursuit; SimState and step()
   mp_scene/      scene data types and the .mrscene file format; data only
-  mp_canvas/     the Canvas 2D subset the texture generators use (tiny-skia)
+                 (the Canvas 2D subset the texture generators use is the
+                 kit's pk_canvas, ../game-engine/crates/pk_canvas, D1232)
   mp_worldgen/   terrain, road, sky, sea, scenery, car models, textures;
                  produces a mp_scene::Scene plus animators
   mp_audio/      Web Audio shaped facade and backends; engine, SFX, music,
@@ -147,22 +150,23 @@ docs/rust-port/  this spec, the roadmap, DEVIATIONS.md, DECISIONS.md
 ### 3.2 Dependency rules
 
 ```
-mp_math ← mp_track ← mp_levels ← mp_sim ← mp_net ← mp_host
+pk_math ← mp_track ← mp_levels ← mp_sim ← mp_net ← mp_host   (pk_math from the kit, D1231)
 
-mp_scene ← mp_worldgen   (also uses mp_canvas, mp_math, mp_track, mp_levels)
+mp_scene ← mp_worldgen   (also uses pk_canvas and pk_math from the kit, mp_track, mp_levels)
 
 mp_game uses mp_sim, mp_net, mp_scene, mp_worldgen, mp_audio
 ```
 
-- `mp_math`, `mp_track`, `mp_levels`, `mp_sim`: no Bevy, wgpu, web-sys,
+- `pk_math`, `mp_track`, `mp_levels`, `mp_sim`: no Bevy, wgpu, web-sys,
   `std::time`, threads, `rand`, or hash-map iteration. `#![forbid(unsafe_code)]`.
   They build for `wasm32-unknown-unknown` and native.
 - `mp_scene`: plain data and its reader and writer. No Bevy, no wgpu. Both
   `mp_worldgen` (which produces scenes) and `mp_game` (which draws them)
   depend on it, so the client can load an exported scene before any world
   generation exists.
-- `mp_canvas`, `mp_worldgen`: no Bevy, no wgpu. `rayon` is allowed behind a
-  native-only feature.
+- `mp_worldgen`: no Bevy, no wgpu. `rayon` is allowed behind a
+  native-only feature. (`mp_canvas` lives in the kit as `pk_canvas` since
+  D1232, under the same rule.)
 - `mp_audio`: no Bevy. Backends are features (`web`, `native`, `null`).
 - `mp_net`: no Bevy. Transports are features.
 - Only `mp_game` depends on Bevy.

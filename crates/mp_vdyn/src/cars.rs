@@ -6,9 +6,9 @@
 //! driving.
 
 use crate::drivetrain::EngineDef;
-use crate::math::Vec3;
 use crate::tyre::BrushParams;
 use crate::vehicle::{AeroDef, AxleDef, ChassisDef, DriveDef, SuspensionDef, VehicleDef};
+use pk_math::vec::Vec3;
 
 /// A street-legal performance tyre, 0.33 m radius.
 pub const SPORT_TYRE: BrushParams = BrushParams {

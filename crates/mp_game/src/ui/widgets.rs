@@ -141,12 +141,12 @@ impl Bp {
 pub const RAJDHANI_BOLD_OBLIQUE: &[u8] =
     include_bytes!("../../../../assets/fonts/rajdhani/Rajdhani-BoldOblique.ttf");
 
-/// The bundled Rajdhani faces (`mp_canvas`'s copies, so the wasm carries
-/// one), registered with Bevy's text under their family name; and Rajdhani
+/// The bundled Rajdhani faces (`mp_worldgen::fonts`'s copies, so the wasm
+/// carries one), registered with Bevy's text under their family name; and Rajdhani
 /// Bold in place of Bevy's default font, which the M4 HUD and the touch
 /// controls draw with (D431).
 pub fn load_fonts(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
-    let book = mp_canvas::FontBook::bundled();
+    let book = mp_worldgen::fonts::book();
     let mut bold: Option<Arc<[u8]>> = None;
     let mut keep = Vec::new();
     for f in book.faces.iter().filter(|f| f.family == "arimo") {
@@ -841,7 +841,7 @@ pub fn dropdown(
 // ── Icons (characters the bundled faces lack, drawn) ───────────────────
 
 /// Small pictures for the characters no bundled face has (★ ⏭ ♪ ✓ and the
-/// select's chevron), drawn once with `mp_canvas`'s paths and shown as
+/// select's chevron), drawn once with `pk_canvas`'s paths and shown as
 /// images.
 #[derive(Resource, Clone)]
 pub struct Icons {
@@ -852,7 +852,7 @@ pub struct Icons {
     pub chevron: Handle<Image>,
 }
 
-pub fn image_from_canvas(c: &mp_canvas::Canvas, w: u32, h: u32) -> Image {
+pub fn image_from_canvas(c: &pk_canvas::Canvas, w: u32, h: u32) -> Image {
     Image::new(
         Extent3d {
             width: w,
@@ -866,10 +866,10 @@ pub fn image_from_canvas(c: &mp_canvas::Canvas, w: u32, h: u32) -> Image {
     )
 }
 
-fn icon(images: &mut Assets<Image>, draw: impl Fn(&mut mp_canvas::Canvas, f64)) -> Handle<Image> {
+fn icon(images: &mut Assets<Image>, draw: impl Fn(&mut pk_canvas::Canvas, f64)) -> Handle<Image> {
     let n = 64u32;
     // No fonts: shapes only (the text stack stays out of the wasm).
-    let mut c = mp_canvas::Canvas::with_fonts(n, n, Arc::new(mp_canvas::FontBook::new()));
+    let mut c = pk_canvas::Canvas::with_fonts(n, n, Arc::new(pk_canvas::FontBook::new()));
     draw(&mut c, f64::from(n));
     images.add(image_from_canvas(&c, n, n))
 }
@@ -986,7 +986,7 @@ pub fn icon_node(
 /// colour its glyphs mostly show (the white top of its gradient) and each
 /// letter of the second word the colour of the accent-to-orange gradient where it
 /// stands; the glow is left out (DECISIONS D573). (Drawing it with
-/// mp_canvas's text instead linked a second copy of the font stack, 1 MB
+/// pk_canvas's text instead linked a second copy of the font stack, 1 MB
 /// of wasm.)
 pub fn logo(p: &mut ChildSpawnerCommands, bp: &Bp, f: f32) -> Entity {
     let top = T::new(f).w(900).italic().ls(-0.02).lh(0.9).c(rgb(0xf6f7fa));

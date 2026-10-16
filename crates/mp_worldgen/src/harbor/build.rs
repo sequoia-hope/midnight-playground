@@ -6,7 +6,7 @@
 // The JS signatures stay (DECISIONS D130).
 #![allow(clippy::too_many_arguments)]
 
-use mp_math::kernel;
+use pk_math::kernel;
 use serde_json::Value;
 
 use crate::color::Color;

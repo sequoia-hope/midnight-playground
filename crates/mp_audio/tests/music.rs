@@ -30,7 +30,7 @@ fn make_music(log: bool) -> (AudioContext, NullHandle, Music) {
         &ctx,
         &out,
         false,
-        Rc::new(RefCell::new(mp_math::Mulberry32::new(1))),
+        Rc::new(RefCell::new(pk_math::Mulberry32::new(1))),
     );
     (ctx, h, m)
 }

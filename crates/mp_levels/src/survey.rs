@@ -9,7 +9,7 @@
 //! follows `load.js` step for step, including where it stores into a
 //! `Float32Array` and where into a plain array.
 
-use mp_math::js;
+use pk_math::js;
 
 /// A point of a polyline, back in metres (the files hold decimetres).
 #[derive(Clone, Copy, Debug, PartialEq)]

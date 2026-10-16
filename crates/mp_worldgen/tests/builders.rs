@@ -17,7 +17,6 @@ use wasm_bindgen_test::wasm_bindgen_test as test;
 
 use core::f64::consts::PI;
 
-use mp_math::kernel;
 use mp_scene::{BufferData, NodeType};
 use mp_track::{Frame, Track};
 use mp_worldgen::builder::{BuildOpts, Builder, CastShadow};
@@ -30,6 +29,7 @@ use mp_worldgen::three_geom::*;
 use mp_worldgen::world::{
     Build, Job, Scenery, SceneryInfo, Stages, level_jobs, scenery_label, scenery_modules,
 };
+use pk_math::kernel;
 use serde_json::Value;
 
 const GOLDEN: &str = include_str!("../../../parity/golden/builders/builders.json");

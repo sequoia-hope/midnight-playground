@@ -10,7 +10,7 @@
 
 use std::f64::consts::PI;
 
-use mp_math::{Mulberry32, js, kernel, rpick, rrange};
+use pk_math::{Mulberry32, js, kernel, rpick, rrange};
 
 use crate::builder::Builder;
 use crate::three_geom::{

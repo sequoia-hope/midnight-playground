@@ -3,7 +3,7 @@
 
 use core::f64::consts::PI;
 
-use mp_math::kernel;
+use pk_math::kernel;
 
 use super::attribute::BufferAttribute;
 use super::curves::{Curve3, FrenetFrames};

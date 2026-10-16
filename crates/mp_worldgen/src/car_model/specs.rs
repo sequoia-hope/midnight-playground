@@ -727,7 +727,7 @@ fn muscle(p: &mut Parts, hi: bool, v: Variant) -> Layout {
             ),
         );
         fn lens(u: f64, w: f64) -> f64 {
-            0.25 + 0.75 * bump(mp_math::kernel::hypot(u - 0.5, w - 0.5), 0.0, 0.28)
+            0.25 + 0.75 * bump(pk_math::kernel::hypot(u - 0.5, w - 0.5), 0.0, 0.28)
         }
         p.add0(
             "head",
@@ -2981,8 +2981,8 @@ fn tractor(p: &mut Parts, hi: bool, _v: Variant) -> Layout {
     for i in 0..=n {
         let t = 0.12 + (0.76 * i as f64) / n as f64;
         fender.push([
-            mp_math::kernel::cos(t * PI) * 0.9,
-            mp_math::kernel::sin(t * PI) * 0.9,
+            pk_math::kernel::cos(t * PI) * 0.9,
+            pk_math::kernel::sin(t * PI) * 0.9,
         ]);
     }
     for i in (0..fender.len()).rev() {

@@ -103,7 +103,7 @@ fn sirens(v: &Value) -> Vec<SirenUnit> {
 /// `window.renderScenario(sc)`.
 fn render(sc: &Value) -> Vec<Vec<f32>> {
     let secs = sc["secs"].as_f64().unwrap();
-    let frames = mp_math::js::round((secs * SR) / FRAME as f64) as usize * FRAME;
+    let frames = pk_math::js::round((secs * SR) / FRAME as f64) as usize * FRAME;
     let ctx = native::offline_context(2, frames, SR as f32);
     let seed = sc["seed"].as_u64().unwrap_or(1) as u32;
     let a = Rc::new(RefCell::new(GameAudio::new(Platform::headless(seed))));

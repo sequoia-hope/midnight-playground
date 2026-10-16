@@ -1,22 +1,28 @@
 """Static file server for the game (run by serve.sh, which finds the port).
 
-The URL space is GitHub Pages' (D1112, D1197): the Rust build (dist/next/)
-sits over the repo root, so / is Midnight Playground, and the JS game is
-under /legacy/. See Handler.translate_path.
+Playground Kit's template/tools/serve.py (D1233) plus this game's own: the
+URL space is GitHub Pages' (D1112, D1197), the Rust build (dist/next/)
+over the repo root so / is Midnight Playground, and the JS game under
+/legacy/ (see Handler.translate_path); the .mrscene type; and the Radio
+page's song ratings (radio.md 8): a POST to FAVOURITES (the file the page
+also reads) upserts one song into it on disk, so the owner's keeps and
+rejects land in the working tree and travel with the repo; GitHub Pages
+has no such endpoint, so the page shows the rating controls only where the
+GET carries X-Favourites: writable.
 
-python3 -m http.server sends Last-Modified but no Cache-Control, so browsers
-guess how long each file stays fresh. A phone then reloads with some modules
-new and some hours old: new touch controls lit up while an old Input.js
-ignored them. Everything under src/ and the pages are sent no-store, so every
-load is one consistent version. vendor/ (pinned three.js) and audio/ (the
-recorded radio voice) are no-cache: always revalidated, but a 304 saves
-re-downloading them.
+From the template: python3 -m http.server sends Last-Modified but no
+Cache-Control, so browsers guess how long each file stays fresh, and a
+phone then reloads with some modules new and some hours old. Everything is
+sent no-store, so every load is one consistent version, except the PINNED
+directories (vendor/, the pinned three.js; audio/, the recorded voice),
+which are no-cache: always revalidated, but a 304 saves re-downloading
+them. A precompressed `<file>.br` or `<file>.gz` beside a file under dist/
+is sent with Content-Encoding when the browser takes it (brotli only on
+https, so phones on the tailnet front get it and plain http gets gzip,
+D677). Before the first build, / is a page saying so.
 
-The one thing it writes: the Radio page's song ratings (radio.md 8). A POST
-to FAVOURITES (the file the page also reads) upserts one song into it on
-disk, so the owner's keeps and rejects land in the working tree and travel
-with the repo; GitHub Pages has no such endpoint, so the page shows the
-rating controls only where the GET carries X-Favourites: writable.
+The port is `--port`, required, with no default: serve.sh passes $PORT or
+`proj port`.
 """
 import argparse
 import functools
@@ -25,6 +31,17 @@ import os
 import http.server
 import threading
 from pathlib import Path
+
+# The web build, from the repository root.
+DIST = os.path.join('dist', 'next')
+# URL prefixes sent no-cache instead of no-store (also under /legacy/).
+PINNED = ('/vendor/', '/audio/')
+TITLE = 'Midnight Playground'
+
+NOT_BUILT = (f"""<!doctype html><meta charset=utf-8><title>{TITLE}</title>
+<body style="font:16px system-ui;background:#05060c;color:#e8ecf4;padding:2rem">
+<h1>{TITLE}</h1><p>No web build yet. Run <code>cargo xtask web --release</code>, then reload.
+The JavaScript game is at <a href="legacy/" style="color:#b9c2d8">legacy/</a>.</p>""").encode()
 
 # The song ratings the Radio page writes, relative to the repo root; the
 # same path the page fetches. One object per line under "songs", sorted, so
@@ -63,9 +80,10 @@ def upsert_favourite(root, song):
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
-    # The Rust build's wasm must be application/wasm for streaming compilation.
+    # The wasm must be application/wasm for streaming compilation.
     extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map,
-                      '.wasm': 'application/wasm', '.mrscene': 'application/octet-stream'}
+                      '.wasm': 'application/wasm', '.js': 'text/javascript', '.mjs': 'text/javascript',
+                      '.mrscene': 'application/octet-stream'}
 
     def pinned(self):
         # No path yet when the request line itself is bad (e.g. a browser
@@ -73,7 +91,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         path = getattr(self, 'path', '')
         if path.startswith('/legacy/'):
             path = path[len('/legacy'):]
-        return path.startswith(('/vendor/', '/audio/'))
+        return path.startswith(PINNED)
 
     def translate_path(self, path):
         """The working tree laid out as GitHub Pages lays out the site
@@ -93,7 +111,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return os.path.join(root, rel)
         # Over the root file by file, as `cp -r dist/next/. _site/` is: a
         # directory only counts when the build has its page.
-        over = os.path.join(root, 'dist', 'next', rel)
+        over = os.path.join(root, DIST, rel)
         if os.path.isfile(over) or os.path.isfile(os.path.join(over, 'index.html')):
             return over
         return file
@@ -106,10 +124,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # old copy cached before this server existed must be replaced.
         if not self.pinned():
             del self.headers['If-Modified-Since']
-        gz = self.precompressed()
-        if gz:
-            return gz
-        return super().send_head()
+        path = getattr(self, 'path', '').split('?', 1)[0].split('#', 1)[0]
+        if path == '/' and not os.path.isfile(self.translate_path('/index.html')):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(NOT_BUILT)))
+            self.end_headers()
+            self.wfile.write(NOT_BUILT)
+            return None
+        return self.precompressed(path) or super().send_head()
 
     def do_POST(self):
         if not self.is_favourites():
@@ -127,20 +150,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def precompressed(self):
-        """The Rust build under dist/: when `cargo xtask web --release` left a
-        `<file>.br` or `<file>.gz` beside the file, send the best one the
-        browser takes with Content-Encoding, so load times on phones are
-        realistic (SPEC 6.6). Browsers offer brotli only on https, so phones
-        on the tailnet front get it and plain http gets gzip (D677)."""
-        path = getattr(self, 'path', '').split('?', 1)[0].split('#', 1)[0]
+    def precompressed(self, path):
         file = self.translate_path(path)
         if not file.startswith(os.path.join(os.path.abspath(self.directory), 'dist') + os.sep):
             return None
-        accepted = {t.split(';', 1)[0].strip().lower()
-                    for t in self.headers.get('Accept-Encoding', '').split(',')}
         if not os.path.isfile(file):
             return None
+        accepted = {t.split(';', 1)[0].strip().lower()
+                    for t in self.headers.get('Accept-Encoding', '').split(',')}
         for encoding, ext in (('br', '.br'), ('gzip', '.gz')):
             if encoding not in accepted or not os.path.isfile(file + ext):
                 continue
@@ -166,7 +183,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument('--port', type=int, required=True)
+    ap.add_argument('--port', type=int, required=True, help='from serve.sh: $PORT or `proj port`; no default')
     ap.add_argument('--bind', default='0.0.0.0')
     args = ap.parse_args()
     root = Path(__file__).resolve().parent.parent
