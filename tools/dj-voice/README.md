@@ -53,10 +53,12 @@ memory" test (vision WORLD 1.1): those lines are templates the game would
 fill from what the player actually did, recorded here with one example
 each.
 
-Dez (The Loft, added 2026-10-13) is scripted and his voice candidates
-described, but not yet recorded: `audio/dj/` has no `dez-*` clips until
-`design.py` and `render.py --only dez --takes 1` run on a machine with the
-model. Until then the station plays music only.
+Dez (The Loft, added 2026-10-13) was recorded on 2026-10-15: his three
+candidates designed, his 73 lines rendered once each in `dez-bright`
+(`render.py --takes 1`), and every clip checked against its line with
+Whisper (mean match 0.96; the low scores are only digits and US spellings).
+The owner has not heard him yet; another candidate is a `"chosen"` change
+and a re-run away.
 
 Teo (Radio Pacífico, added 2026-10-08) is bilingual and switches into
 Spanish mid-sentence. Qwen3-TTS speaks Spanish, but a cloned voice
