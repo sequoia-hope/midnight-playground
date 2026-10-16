@@ -1,22 +1,22 @@
-//! Native glue: the scene file from disk, the player's window
-//! ([`window_state`]: saved bounds, F11, Ctrl+Q, the icon), a race pausing
-//! when the window loses the focus (SPEC 8.4), the window title as the
-//! status line (`stats=1`, and the runs that make pictures), and the
-//! `--screenshot` / `--smoke-test` modes (SPEC 8.5).
-
-pub mod window_state;
+//! Native glue: the scene file from disk, the player's window (Playground
+//! Kit's `pk_shell::native`, D1234: saved bounds, F11, Ctrl+Q, the icon;
+//! WP 6.8, D1000), a race pausing when the window loses the focus (SPEC
+//! 8.4, D1002), the window title as the status line (`stats=1`, and the
+//! runs that make pictures), and the `--screenshot` / `--smoke-test` modes
+//! (SPEC 8.5, D1003).
 
 use crate::options::{Options, usage};
 use crate::play::Play;
 use crate::play::flow::Mode;
-use crate::status::Status;
+use crate::status::{LoadState, SceneStatus, Status};
 use crate::{Opts, inbox};
 use bevy::app::AppExit;
 use bevy::prelude::*;
-use bevy::render::renderer::RenderAdapterInfo;
-use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk};
-use bevy::window::WindowFocused;
+use pk_shell::FocusLost;
+use pk_shell::native::{SmokeTest, SmokeTestPlugin, StatusTitle, WindowConfig, WindowStatePlugin};
 use std::path::{Path, PathBuf};
+
+pub use pk_shell::native::log_tally;
 
 /// The repository root: the working directory if it is one, else where
 /// this crate was built from.
@@ -67,7 +67,7 @@ pub fn reload(level: &str) {
 fn reload_scene(opts: Res<Opts>, status: Res<Status>) {
     let mut r = RELOAD.lock().unwrap_or_else(|e| e.into_inner());
     if r.as_deref() == Some(opts.o.level.as_str())
-        && status.state == "waiting"
+        && status.state == LoadState::Waiting
         && inbox().unload.is_none()
     {
         *r = None;
@@ -110,70 +110,117 @@ fn load(o: Options) {
     });
 }
 
+// ── The window ───────────────────────────────────────────────────────────
+
+/// `width: st.width || 1600, height: st.height || 900`.
+pub const DEFAULT_SIZE: (u32, u32) = (1600, 900);
+/// `minWidth: 800, minHeight: 450`.
+pub const MIN_SIZE: (f32, f32) = (800.0, 450.0);
+
+/// The player's window: the game's name and app id (D1100), the icon
+/// `desktop/icon.png` (256 × 256, built in), the Electron shell's sizes,
+/// and `window-state.json` beside the settings store (D1000).
+pub fn window_config() -> WindowConfig {
+    static ICON: &[u8] = include_bytes!("../../../desktop/icon.png");
+    let info = crate::app_info();
+    WindowConfig {
+        app_id: info.app_id,
+        title: info.name,
+        icon_png: Some(ICON),
+        default_size: DEFAULT_SIZE,
+        min_size: MIN_SIZE,
+        state_path: window_state_path(),
+    }
+}
+
+/// `window-state.json` in the settings store's directory.
+pub fn window_state_path() -> Option<PathBuf> {
+    let store = pk_shell::store::FileStore::default_path(&crate::ui::store::STORE_CONFIG)?;
+    Some(store.parent()?.join("window-state.json"))
+}
+
+/// Whether this run is the player's window: one that keeps its state.
+pub fn persists(o: &Options) -> bool {
+    o.size.is_none() && !headless(o)
+}
+
+/// The runs that make pictures or check the build: their window is theirs,
+/// and the race does not pause when it loses the focus.
+pub fn headless(o: &Options) -> bool {
+    o.smoke_test
+        || o.screenshot.is_some()
+        || o.param("shots").is_some()
+        || o.materials.is_some()
+        || o.stations.is_some()
+}
+
+/// The primary window for these options. Runs that do not keep the state
+/// get the window they always had: `--size`, else 512 × 512 for the
+/// material scenes and 1280 × 800 for the rest, hidden where a picture is
+/// all that is wanted.
+pub fn window(o: &Options, title: String) -> Window {
+    let cfg = window_config();
+    if !persists(o) {
+        // The material test scenes are 512 × 512 (scenes.json).
+        let size = o.size.unwrap_or(if o.materials.is_some() {
+            (512, 512)
+        } else {
+            (1280, 800)
+        });
+        // A screenshot run draws without showing a window, where the
+        // platform allows it.
+        let visible = o.screenshot.is_none()
+            && o.param("shots").is_none()
+            && o.materials.is_none()
+            && o.stations.is_none();
+        return cfg.plain(title, size, visible);
+    }
+    cfg.window()
+}
+
 /// The window title carries the status line natively: with `stats=1` (the
 /// web build's stats panel, `fps` and the worst frame), and in the runs
 /// that are not the player's window (`--size`, the pictures). The player's
 /// window is the game's name, as the Electron shell's (DECISIONS D1001, D1100).
 pub fn status_title(o: &Options) -> bool {
-    !window_state::persists(o) || o.param("stats").is_some()
+    !persists(o) || o.param("stats").is_some()
 }
 
-fn title(
-    time: Res<Time>,
-    mut last: Local<f32>,
-    mut status: ResMut<Status>,
-    opts: Res<Opts>,
-    mut windows: Query<&mut Window>,
-) {
-    let now = time.elapsed_secs();
-    if now - *last < 0.5 {
-        return;
-    }
-    *last = now;
-    if !status_title(&opts.o) {
-        return;
-    }
-    let Ok(mut w) = windows.single_mut() else {
-        return;
-    };
+/// The status line (`pk_shell::native::StatusTitle`).
+fn title_line(world: &World, status: &Status) -> String {
+    let level = &world.resource::<Opts>().o.level;
+    let s = world.resource::<SceneStatus>().s;
     let fps = if status.frame_ms > 0.0 {
         1000.0 / status.frame_ms
     } else {
         0.0
     };
-    w.title = match status.state {
-        "running" => format!(
-            "{} — {} — s {:.0} — {:.0} fps (worst {:.0} ms)",
+    match status.state {
+        LoadState::Running => format!(
+            "{} — {level} — s {s:.0} — {fps:.0} fps (worst {:.0} ms)",
             crate::banner(),
-            opts.o.level,
-            status.s,
-            fps,
             status.worst_ms
         ),
-        "failed" => format!("{} — failed", crate::banner()),
-        s => format!(
-            "{} — {} — {s} {:.0} %",
+        LoadState::Failed => format!("{} — failed", crate::banner()),
+        st => format!(
+            "{} — {level} — {} {:.0} %",
             crate::banner(),
-            opts.o.level,
+            st.name(),
             status.progress * 100.0
         ),
-    };
-    status.worst_ms = 0.0;
+    }
 }
 
-/// The window lost the focus: a race in progress pauses, the counterpart
-/// of the web build's `visibilitychange` (`play::web::visibility`, `if
-/// (document.hidden && mode === 'race') pause(true)`), before the frame's
-/// ticks. Not in the runs that make pictures or check the build, whose
-/// window may never have the focus, nor with `autodrive=1`, where nobody
-/// drives and a measurement would stall (DECISIONS D1002).
-fn focus_pause(
-    mut focus: MessageReader<WindowFocused>,
-    opts: Res<Opts>,
-    play: Option<ResMut<Play>>,
-) {
-    let lost = focus.read().filter(|f| !f.focused).count() > 0;
-    if !lost || window_state::headless(&opts.o) || opts.o.param("autodrive") == Some("1") {
+/// The window lost the focus (`pk_shell::FocusLost`): a race in progress
+/// pauses, the counterpart of the web build's `visibilitychange`
+/// (`play::web`, `if (document.hidden && mode === 'race') pause(true)`),
+/// before the frame's ticks. Not in the runs that make pictures or check
+/// the build, whose window may never have the focus, nor with
+/// `autodrive=1`, where nobody drives and a measurement would stall
+/// (DECISIONS D1002).
+fn focus_pause(mut lost: MessageReader<FocusLost>, opts: Res<Opts>, play: Option<ResMut<Play>>) {
+    let lost = lost.read().count() > 0;
+    if !lost || headless(&opts.o) || opts.o.param("autodrive") == Some("1") {
         return;
     }
     if let Some(mut play) = play
@@ -185,224 +232,32 @@ fn focus_pause(
     }
 }
 
-/// What the log said at warning and error level, for `--smoke-test`'s
-/// report: the Electron smoke test lists the page's console warnings and
-/// errors and fails on an error (`smokeTest`). A tracing layer beside
-/// Bevy's, under the same filter (`wgpu=error,naga=warn`, `RUST_LOG`).
-pub mod log_tally {
-    use bevy::app::App;
-    use bevy::log::BoxedLayer;
-    use bevy::log::tracing::field::{Field, Visit};
-    use bevy::log::tracing::{Event, Level};
-    use bevy::log::tracing_subscriber::Layer;
-    use bevy::log::tracing_subscriber::layer::Context;
-    use bevy::log::tracing_subscriber::registry::Registry;
-    use std::sync::Mutex;
-
-    /// Errors, warnings, and the first [`KEEP`] messages of either.
-    pub static TALLY: Mutex<(usize, usize, Vec<String>)> = Mutex::new((0, 0, Vec::new()));
-    pub const KEEP: usize = 20;
-
-    struct Tally;
-
-    /// The message and its fields; a `log` crate record's own target in
-    /// place of `log` (the bridge's `log.target`, its other `log.*` fields
-    /// left out).
-    #[derive(Default)]
-    struct Message(String, Option<String>);
-
-    impl Visit for Message {
-        fn record_str(&mut self, field: &Field, value: &str) {
-            if field.name() == "log.target" {
-                self.1 = Some(value.to_owned());
-            } else {
-                self.record_debug(field, &value);
-            }
-        }
-
-        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-            use std::fmt::Write;
-            match field.name() {
-                "message" => {
-                    let _ = write!(self.0, "{value:?}");
-                }
-                n if n.starts_with("log.") => {}
-                n => {
-                    let _ = write!(self.0, " {n}={value:?}");
-                }
-            }
-        }
-    }
-
-    /// Errors that say nothing about the build, counted as warnings (as the
-    /// Electron one filters the favicon's 404): the sound's output stream
-    /// running dry while a software renderer holds the frame up.
-    pub const BENIGN: &[(&str, &str)] = &[("web_audio_api::io", "buffer underrun or overrun")];
-
-    /// Counts and keeps one record.
-    pub fn note(level: Level, target: &str, message: &str) {
-        let error = level == Level::ERROR
-            && !BENIGN
-                .iter()
-                .any(|(t, m)| target.starts_with(t) && message.contains(m));
-        if !error && level > Level::WARN {
-            return;
-        }
-        let mut t = TALLY.lock().unwrap_or_else(|e| e.into_inner());
-        if error {
-            t.0 += 1;
-        } else {
-            t.1 += 1;
-        }
-        if t.2.len() < KEEP {
-            let kind = if error { "error" } else { "warn" };
-            t.2.push(format!("[{kind}] {target}: {}", message.trim_end()));
-        }
-    }
-
-    impl Layer<Registry> for Tally {
-        fn on_event(&self, event: &Event<'_>, _: Context<'_, Registry>) {
-            let meta = event.metadata();
-            // The run recording keeps the client's own info lines too
-            // (`crate::recording`, D1021).
-            let keep = crate::recording::wants_log(*meta.level(), meta.target());
-            if *meta.level() > Level::WARN && !keep {
-                return;
-            }
-            let mut m = Message::default();
-            event.record(&mut m);
-            let target = m.1.as_deref().unwrap_or(meta.target());
-            if keep {
-                crate::recording::log(*meta.level(), target, &m.0);
-            }
-            if *meta.level() <= Level::WARN {
-                note(*meta.level(), target, &m.0);
-            }
-        }
-    }
-
-    #[cfg(test)]
-    #[test]
-    fn errors_fail_and_the_benign_ones_do_not() {
-        use bevy::log::tracing_subscriber::layer::SubscriberExt;
-        let sub = bevy::log::tracing_subscriber::registry().with(Tally);
-        bevy::log::tracing::subscriber::with_default(sub, || {
-            bevy::log::info!("not counted");
-            bevy::log::warn!("a warning");
-            bevy::log::error!(target: "web_audio_api::io::cpal", "an error occurred on the output audio stream: A buffer underrun or overrun occurred.");
-            bevy::log::error!(n = 3, "a real one");
-        });
-        let t = std::mem::take(&mut *TALLY.lock().unwrap());
-        assert_eq!((t.0, t.1), (1, 2), "{:?}", t.2);
-        assert!(
-            t.2[2].starts_with("[error] mp_game::native::log_tally: a real one n=3"),
-            "{:?}",
-            t.2
-        );
-    }
-
-    /// `LogPlugin::custom_layer`.
-    pub fn layer(_: &mut App) -> Option<BoxedLayer> {
-        Some(Box::new(Tally))
-    }
-}
-
-/// `--smoke-test` gives up when the scene is not up in this long (the
-/// Electron one waits 60 s for `__ready`; a software renderer in CI
-/// compiles the pipelines far slower than a GPU).
-const SMOKE_TIMEOUT_S: f64 = 600.0;
-
-/// `--screenshot` and `--smoke-test`: once the scene has drawn `after`
-/// frames, capture the window (or just report) and exit. The smoke test
-/// prints what it saw (the load time, the adapter, the scene's counts, the
-/// log's warnings and errors) and fails on a logged error, a failed load,
-/// or no scene after [`SMOKE_TIMEOUT_S`].
-#[allow(clippy::too_many_arguments)]
-fn finish(
-    mut commands: Commands,
-    opts: Res<Opts>,
-    status: Res<Status>,
-    time: Res<Time<Real>>,
-    adapter: Option<Res<RenderAdapterInfo>>,
-    mut ready_at: Local<Option<f64>>,
-    mut done: Local<bool>,
-    mut exit: MessageWriter<AppExit>,
-) {
-    if *done {
-        return;
-    }
-    if status.state == "failed" && (opts.o.smoke_test || opts.o.screenshot.is_some()) {
-        *done = true;
-        if opts.o.smoke_test {
-            println!(
-                "smoke test: failed: {}",
-                status.error.as_deref().unwrap_or("?")
-            );
-        }
-        exit.write(AppExit::error());
-        return;
-    }
-    let now = time.elapsed_secs_f64();
-    if status.ready && ready_at.is_none() {
-        *ready_at = Some(now);
-    }
-    if opts.o.smoke_test && !status.ready && now > SMOKE_TIMEOUT_S {
-        *done = true;
-        println!(
-            "smoke test: failed: not ready after {SMOKE_TIMEOUT_S:.0} s ({} {:.0} %)",
-            status.state,
-            status.progress * 100.0
-        );
-        exit.write(AppExit::error());
-        return;
-    }
-    if status.ready_frames < u64::from(opts.o.after.max(1)) {
-        return;
-    }
-    if let Some(path) = &opts.o.screenshot {
-        *done = true;
-        commands
-            .spawn(Screenshot::primary_window())
-            .observe(save_to_disk(path.clone()))
-            .observe(
-                |_: On<ScreenshotCaptured>, mut exit: MessageWriter<AppExit>| {
-                    exit.write(AppExit::Success);
-                },
-            );
-    } else if opts.o.smoke_test {
-        *done = true;
-        let (errors, warnings, messages) =
-            std::mem::take(&mut *log_tally::TALLY.lock().unwrap_or_else(|e| e.into_inner()));
-        let ok = errors == 0;
-        println!(
-            "smoke test: {}: {}, ready in {:.1} s, {} frames after; adapter {}; \
-             {errors} errors, {warnings} warnings; {:?}",
-            if ok { "ok" } else { "failed" },
-            opts.o.level,
-            ready_at.unwrap_or(now),
-            status.ready_frames,
-            adapter.map_or_else(
-                || "?".to_string(),
-                |a| format!("{} ({:?}, {:?})", a.name, a.backend, a.device_type)
-            ),
-            status.counts,
-        );
-        for m in &messages {
-            println!("  {m}");
-        }
-        exit.write(if ok {
-            AppExit::Success
-        } else {
-            AppExit::error()
-        });
-    }
+/// The smoke test's extra: the scene's counts.
+fn smoke_extra(world: &World) -> String {
+    format!("{:?}", world.resource::<SceneStatus>().counts)
 }
 
 pub fn plugin(app: &mut App) {
     let o = app.world().resource::<Opts>().o.clone();
-    window_state::plugin(app, &o);
+    app.add_plugins(WindowStatePlugin {
+        config: window_config(),
+        keys: !headless(&o),
+        persist: persists(&o),
+    });
+    app.add_plugins(SmokeTestPlugin(SmokeTest {
+        label: o.level.clone(),
+        after: o.after,
+        timeout_s: pk_shell::native::SMOKE_TIMEOUT_S,
+        screenshot: o.screenshot.clone(),
+        smoke: o.smoke_test,
+        extra: Some(smoke_extra),
+    }));
+    if status_title(&o) {
+        app.insert_resource(StatusTitle(Box::new(title_line)))
+            .add_systems(Update, pk_shell::native::title);
+    }
     app.add_systems(Startup, start_loading)
-        .add_systems(Update, (title, finish, reload_scene))
+        .add_systems(Update, reload_scene)
         .add_systems(Update, focus_pause.before(crate::play::PlayFrame));
 }
 
@@ -435,4 +290,37 @@ pub fn run() -> AppExit {
     let touch = crate::ui::touch_ui(&o);
     let resolved = crate::ui::prepare(&mut o, touch);
     crate::app(o, resolved).run()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_players_window_keeps_its_state() {
+        let args = |a: &[&str]| {
+            Options::from_args(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>()).unwrap()
+        };
+        assert!(persists(&args(&[])));
+        assert!(persists(&args(&["--query", "level=coast&autostart=super"])));
+        for a in [
+            &["--smoke-test"][..],
+            &["--screenshot", "a.png"],
+            &["--size", "1280x800"],
+            &["--query", "shots=out"],
+            &["--materials", "all"],
+            &["--stations", "s.json"],
+        ] {
+            assert!(!persists(&args(a)), "{a:?}");
+        }
+        // `--size` alone is still an interactive window.
+        assert!(!headless(&args(&["--size", "1280x800"])));
+        // The pictures' windows are what they were.
+        let w = window(&args(&["--screenshot", "a.png"]), "t".into());
+        assert_eq!((w.width(), w.height(), w.visible), (1280.0, 800.0, false));
+        let w = window(&args(&["--materials", "all"]), "t".into());
+        assert_eq!((w.width(), w.height()), (512.0, 512.0));
+        let w = window(&args(&["--size", "390x844"]), "t".into());
+        assert_eq!((w.width(), w.height(), w.visible), (390.0, 844.0, true));
+    }
 }

@@ -80,9 +80,29 @@ its `WebBuild` config plus the parity commands. The headless-Chrome tools
 (`rust-perf.mjs`, `rust-prof.mjs`, `gl-calls.mjs`, `build-diff.mjs`,
 `web-console.mjs`, `e2e/harness.mjs`, `lib/server.mjs`) are thin wrappers
 with this game's defaults over `../game-engine/js/*.mjs`, which read the
-status global named by `--global` (`__mp` here). `crates/mp_game/web/
-index.html` is generated from the kit's loader page by
-`tools/parity/gen-index.py`: edit the branding and hook blocks there.
+status global named by `--global`. The global is the kit's `window.__game`
+(D1234); the same object is also `window.__mp`, the name the e2e suites and
+the wrappers read. `crates/mp_game/web/index.html` is generated from the
+kit's loader page by `tools/parity/gen-index.py`: edit the branding and
+hook blocks there.
+
+The client shell is Playground Kit's `pk_shell` (D1234): the Bevy plugin
+group, the parameters (`pk_shell::params::Params`; `options.rs` builds this
+game's `Options` from it, with the flags in `options::ALIASES`), the load
+status and readiness (`pk_shell::status::LoadStatus`, `status::Status`
+here; the scene's counts, `s` and route are `status::SceneStatus`), the
+settings store (`pk_shell::store`; `ui::store` keeps `Settings` and
+`STORE_CONFIG`), the window's state, keys and icon, the smoke test and the
+title (`pk_shell::native`; `native.rs` keeps the scene thread and the
+window's choice), the web glue (`pk_shell::web`: the gesture bridge, the
+pixel ratio and split-screen camera, the tap-sensitive controls, the stage
+command registry; `web.rs`, `ui/web.rs` and `play/web.rs` keep the game's
+exports, publishing and handlers), the pipeline warm-up
+(`pk_shell::warmup`; `warmup.rs` is the `ThreeKey` newtype), the debug
+overlay (`pk_shell::debug`; `debug.rs` writes the game's lines), the run
+recorder (`pk_shell::recorder`; `recording.rs` writes the race lines, with
+`ticks` byte-identical for `mp-sim replay`), the worker executor and the
+stations. `RUST_LOG=pk_shell::status=debug` logs the slow frames.
 
 Toolchain: stable Rust with the `wasm32-unknown-unknown` target
 (`rust-toolchain.toml`), `wasm-bindgen-cli` at exactly the version of the

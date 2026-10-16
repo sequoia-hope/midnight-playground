@@ -39,7 +39,7 @@ use crate::loader::{AppState, SkyDome};
 use crate::options::{FlyParams, Options};
 use crate::render::Lighting;
 use crate::render::pmrem::EnvRequest;
-use crate::status::Status;
+use crate::status::{SceneStatus, Status};
 use crate::{CameraState, Opts, SkyRes, TrackRes};
 use bevy::camera::Projection;
 use bevy::camera::visibility::RenderLayers;
@@ -870,7 +870,8 @@ fn drive(
     mut intent: ResMut<input::Intent>,
     tr: Res<TrackRes>,
     opts: Res<Opts>,
-    mut status: ResMut<Status>,
+    status: Res<Status>,
+    mut scene_status: ResMut<SceneStatus>,
     mut cs: ResMut<CameraState>,
     mut cam: Query<(&mut Transform, &mut Projection), (With<Camera3d>, Without<SkyDome>)>,
     mut dome: Query<&mut Transform, With<SkyDome>>,
@@ -998,9 +999,9 @@ fn drive(
     // the ride keeps the fly camera's, `main.js`'s `frame(s - back)`).
     let focus = ride_focus.unwrap_or(pose.pos);
     cs.focus = focus;
-    status.s = s;
-    if status.route.is_none() {
-        status.route = Some((track.length, track.road_end(), track.is_loop));
+    scene_status.s = s;
+    if scene_status.route.is_none() {
+        scene_status.route = Some((track.length, track.road_end(), track.is_loop));
     }
     crate::loader::follow_focus(focus, &mut dome);
     if let Some(sky) = sky_res.sky.as_mut() {

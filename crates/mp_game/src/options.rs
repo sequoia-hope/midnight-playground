@@ -1,10 +1,14 @@
 //! What the client was asked to do: the page's query string on the web, and
-//! the same names as a `--query` string (or flags) natively (SPEC 8.4).
+//! the same names as a `--query` string (or flags) natively (SPEC 8.4), as
+//! Playground Kit's [`Params`] reads them (D1234); this module is the
+//! game's typed view of those parameters.
 //!
 //! Names follow the JS game where it has them: `level`, and the debug fly
 //! camera's `s`, `h`, `back`, `lat`, `v`, `yaw`, `pitch` (`src/main.js`
 //! `fly`). `scene` (a `.mrscene` path or relative URL) and `hq` are the Rust
 //! client's own until the menus exist (DECISIONS D102).
+
+pub use pk_shell::params::{Params, number, parse_query};
 
 /// The debug fly camera's parameters (`main.js` `fly`), with its defaults.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -124,63 +128,16 @@ pub fn is_level(id: &str) -> bool {
         .contains(&id)
 }
 
-/// Percent-encodes everything but RFC 3986's unreserved characters.
-fn escape(s: &str) -> String {
-    mp_net::signal::query_escape(s)
-}
-
-/// Splits `a=1&b=2` (a leading `?` is ignored) into decoded pairs, in order.
-pub fn parse_query(q: &str) -> Vec<(String, String)> {
-    q.trim_start_matches('?')
-        .split('&')
-        .filter(|p| !p.is_empty())
-        .map(|p| {
-            let (k, v) = p.split_once('=').unwrap_or((p, ""));
-            (decode(k), decode(v))
-        })
-        .collect()
-}
-
-/// `%XX` and `+` decoding (URLSearchParams' rules).
-fn decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        match b[i] {
-            b'+' => out.push(b' '),
-            b'%' if i + 2 < b.len() => {
-                let hex = |c: u8| (c as char).to_digit(16);
-                match (hex(b[i + 1]), hex(b[i + 2])) {
-                    (Some(h), Some(l)) => {
-                        out.push((h * 16 + l) as u8);
-                        i += 2;
-                    }
-                    _ => out.push(b'%'),
-                }
-            }
-            c => out.push(c),
-        }
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-/// JS `Number(x)` for the simple forms the debug parameters use; NaN when
-/// it does not parse (as `Number('abc')`), 0 for an empty string.
-fn number(v: &str) -> f64 {
-    let t = v.trim();
-    if t.is_empty() {
-        return 0.0;
-    }
-    t.parse().unwrap_or(f64::NAN)
-}
-
 impl Options {
     /// Reads the query-string parameters into options.
     pub fn from_query(q: &str) -> Options {
-        let pairs = parse_query(q);
-        let get = |k: &str| pairs.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str());
+        Options::from_params(&Params::from_query(q))
+    }
+
+    /// The options these parameters ask for (the flags natively are
+    /// parameters too, [`ALIASES`]).
+    pub fn from_params(p: &Params) -> Options {
+        let get = |k: &str| p.get(k);
         let mut o = Options::default();
         if let Some(l) = get("level") {
             o.level = l.to_owned();
@@ -204,12 +161,25 @@ impl Options {
         o.t = get("t").map(number).filter(|t| t.is_finite());
         o.materials = get("mat").map(str::to_owned);
         o.cars = get("cars").map(|v| v == "1" || v == "true");
-        o.query = pairs.clone();
+        o.query = p.pairs().to_vec();
         o.gpu_preprocessing = get("gpupre").map(|v| v == "1" || v == "true");
         o.scale = get("scale").map(number).and_then(|v| {
             let v = if v > 1.0 { v / 100.0 } else { v };
             v.is_finite().then_some(v.clamp(0.25, 1.0))
         });
+        // The native flags (`ALIASES`), as parameters.
+        o.screenshot = get("screenshot").map(str::to_owned);
+        if let Some(a) = p.parse::<u32>("after") {
+            o.after = a;
+        }
+        o.smoke_test = p.flag("smoke-test");
+        o.smoke_race = p.flag("smoke-race");
+        o.size = get("size").and_then(|v| {
+            v.split_once('x')
+                .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
+        });
+        o.out = get("out").map(str::to_owned);
+        o.stations = get("stations").map(str::to_owned);
         o
     }
 
@@ -258,75 +228,51 @@ impl Options {
 
     /// Native command line: `--query "level=sierra&s=300"`, `--level`,
     /// `--scene <file>`, `--screenshot <png>`, `--after <frames>`,
-    /// `--smoke-test`, `--size WxH`. A bare `key=value` is a query pair.
+    /// `--smoke-test`, `--size WxH` ([`ALIASES`]). A bare `key=value` is a
+    /// query pair.
     pub fn from_args(args: &[String]) -> Result<Options, String> {
-        let mut query: Vec<String> = Vec::new();
-        let mut screenshot = None;
-        let mut after = None;
-        let mut smoke = false;
-        let mut size = None;
-        let mut materials = None;
-        let mut out = None;
-        let mut stations = None;
-        let mut smoke_race = false;
-        let mut it = args.iter();
-        while let Some(a) = it.next() {
-            let mut val = |name: &str| {
-                it.next()
-                    .cloned()
-                    .ok_or_else(|| format!("{name} needs a value"))
-            };
-            match a.as_str() {
-                "--query" => query.push(val("--query")?),
-                "--level" => query.push(format!("level={}", val("--level")?)),
-                "--scene" => query.push(format!("scene={}", val("--scene")?)),
-                "--screenshot" => screenshot = Some(val("--screenshot")?),
-                "--after" => {
-                    let v = val("--after")?;
-                    after = Some(v.parse().map_err(|_| format!("--after {v}: not a count"))?);
-                }
-                "--size" => {
-                    let v = val("--size")?;
-                    let (w, h) = v
-                        .split_once('x')
-                        .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
-                        .ok_or_else(|| format!("--size {v}: expected WxH"))?;
-                    size = Some((w, h));
-                }
-                "--smoke-test" => smoke = true,
-                "--smoke-race" => smoke_race = true,
-                "--autodrive" => query.push("autodrive=1".into()),
-                // The debug overlay and the run recording (D1020, D1021).
-                "--debug" => query.push("debug=1".into()),
-                "--record" => query.push("record=1".into()),
-                "--materials" => materials = Some(val("--materials")?),
-                "--out" => out = Some(val("--out")?),
-                "--stations" => stations = Some(val("--stations")?),
-                // Multiplayer: a host's WebSocket or an invitation link, and
-                // the signalling server for hosting (MULTIPLAYER 8). Links
-                // hold `?`, `&` and `#`, so they go in escaped.
-                "--join" => query.push(format!("join={}", escape(&val("--join")?))),
-                "--signal" => query.push(format!("signal={}", escape(&val("--signal")?))),
-                s if s.contains('=') && !s.starts_with('-') => query.push(s.to_owned()),
-                other => return Err(format!("unknown argument `{other}`\n\n{}", usage())),
-            }
+        let p = Params::from_args(args, &ALIASES).map_err(|e| format!("{e}\n\n{}", usage()))?;
+        if let Some(v) = p.get("after")
+            && v.parse::<u32>().is_err()
+        {
+            return Err(format!("--after {v}: not a count"));
         }
-        let mut o = Options::from_query(&query.join("&"));
-        o.screenshot = screenshot;
-        if let Some(a) = after {
-            o.after = a;
+        if let Some(v) = p.get("size")
+            && !v
+                .split_once('x')
+                .is_some_and(|(w, h)| w.parse::<u32>().is_ok() && h.parse::<u32>().is_ok())
+        {
+            return Err(format!("--size {v}: expected WxH"));
         }
-        o.smoke_test = smoke;
-        o.size = size;
-        if materials.is_some() {
-            o.materials = materials;
-        }
-        o.out = out;
-        o.stations = stations;
-        o.smoke_race = smoke_race;
-        Ok(o)
+        Ok(Options::from_params(&p))
     }
 }
+
+/// The command line's spelling of the parameters (`pk_shell::params`):
+/// a flag alone, a flag with a value, and the links (which hold `?`, `&`
+/// and `#`, so they go in escaped): a host's WebSocket or an invitation,
+/// and the signalling server for hosting (MULTIPLAYER 8). The debug
+/// overlay and the run recording are D1020 and D1021.
+pub const ALIASES: pk_shell::params::Aliases = pk_shell::params::Aliases {
+    flags: &[
+        ("--smoke-test", "smoke-test"),
+        ("--smoke-race", "smoke-race"),
+        ("--autodrive", "autodrive"),
+        ("--debug", "debug"),
+        ("--record", "record"),
+    ],
+    valued: &[
+        ("--level", "level"),
+        ("--scene", "scene"),
+        ("--screenshot", "screenshot"),
+        ("--after", "after"),
+        ("--size", "size"),
+        ("--materials", "mat"),
+        ("--out", "out"),
+        ("--stations", "stations"),
+    ],
+    escaped: &[("--join", "join"), ("--signal", "signal")],
+};
 
 pub fn usage() -> &'static str {
     "usage: midnight-playground [--level <id>] [--scene <file.mrscene>] [--query \"s=300&h=5&v=30\"]\n\

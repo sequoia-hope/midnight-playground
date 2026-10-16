@@ -15,7 +15,7 @@ use crate::render::lighting::{Lighting, Point, Spot};
 use crate::render::material::{ThreeKey, three_material};
 use crate::render::pmrem::EnvRequest;
 use crate::render::{SharedImages, SkyMaterial, ThreeMaterial};
-use crate::status::Status;
+use crate::status::{SceneStatus, Status};
 use crate::warmup::{Combos, Layout};
 use bevy::camera::primitives::{Aabb, MeshAabb};
 use bevy::camera::visibility::{NoAutoAabb, NoFrustumCulling};
@@ -781,6 +781,7 @@ pub fn build_step(
     mut sky_materials: ResMut<Assets<SkyMaterial>>,
     mut images: ResMut<Assets<Image>>,
     mut status: ResMut<Status>,
+    mut scene_status: ResMut<SceneStatus>,
     mut next: ResMut<NextState<AppState>>,
     mut lighting: ResMut<Lighting>,
     mut env: ResMut<EnvRequest>,
@@ -853,7 +854,7 @@ pub fn build_step(
             loaded.counts.skipped_nodes,
             loaded.counts.invisible
         );
-        status.counts = Some(loaded.counts.clone());
+        scene_status.counts = Some(loaded.counts.clone());
         commands.insert_resource(loaded);
         // The warm-up (SPEC 6.3): one off-screen stand-in per material ×
         // mesh-layout combination, until every pipeline has compiled.

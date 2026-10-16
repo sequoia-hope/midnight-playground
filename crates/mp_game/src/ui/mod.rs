@@ -330,7 +330,7 @@ pub fn menu_first(o: &Options) -> bool {
 /// says, the render scale the saved one unless `?scale=` says (D1194).
 /// Returns `(hq, scale)`.
 pub fn prepare(o: &mut Options, touch: bool) -> (bool, f64) {
-    let store = Store::platform();
+    let store = store::platform();
     let settings = Settings::load(&store, touch);
     let level_given = o.param("level").is_some();
     if !level_given && (menu_first(o) || o.param("autostart").is_some()) {
@@ -349,7 +349,7 @@ pub fn plugin(app: &mut App) {
     let o = app.world().resource::<Opts>().o.clone();
     // As the page decided it (play's own copy is set at Startup).
     let touch = touch_ui(&o);
-    let store = Store::platform();
+    let store = store::platform();
     let mut settings = Settings::load(&store, touch);
     // `if (params.has('level')) settings.level = params.get('level')`.
     if o.param("level").is_some() {
@@ -457,7 +457,7 @@ pub fn touch_ui(o: &Options) -> bool {
     }
     #[cfg(target_arch = "wasm32")]
     {
-        web::page_touch()
+        web::page_touch().unwrap_or(false)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -1039,40 +1039,7 @@ fn tile(value: String, label: &str) -> ResTile {
     }
 }
 
-/// A control's box in CSS px: `(left, top, width, height)`.
-fn css_rect(node: &ComputedNode, t: &UiGlobalTransform, css: f32) -> (f32, f32, f32, f32) {
-    let k = node.inverse_scale_factor * css;
-    let c = t.affine().translation * k;
-    let s = node.size * k;
-    (c.x - s.x / 2.0, c.y - s.y / 2.0, s.x, s.y)
-}
-
-/// The part of a control's box its scrolling screen shows, in CSS px:
-/// [`css_rect`] cut to the clip its ancestors give it (empty, at its
-/// corner, when none of it shows).
-fn css_shown(
-    node: &ComputedNode,
-    t: &UiGlobalTransform,
-    clip: Option<&CalculatedClip>,
-    css: f32,
-) -> (f32, f32, f32, f32) {
-    let r = css_rect(node, t, css);
-    let Some(clip) = clip else { return r };
-    let k = node.inverse_scale_factor * css;
-    let (x0, y0) = (r.0.max(clip.clip.min.x * k), r.1.max(clip.clip.min.y * k));
-    let (x1, y1) = (
-        (r.0 + r.2).min(clip.clip.max.x * k),
-        (r.1 + r.3).min(clip.clip.max.y * k),
-    );
-    if x1 <= x0 || y1 <= y0 {
-        return (r.0, r.1, 0.0, 0.0);
-    }
-    (x0, y0, x1 - x0, y1 - y0)
-}
-
-fn inside(r: (f32, f32, f32, f32), p: Vec2) -> bool {
-    p.x >= r.0 && p.x <= r.0 + r.2 && p.y >= r.1 && p.y <= r.1 + r.3
-}
+pub use pk_shell::ui::{css_rect, css_shown, inside};
 
 type ControlQuery<'w, 's> = Query<
     'w,
@@ -2099,7 +2066,7 @@ pub(crate) mod tests {
     /// The front end's state on `screen`, with the default settings.
     pub(crate) fn ui_state(screen: Screen) -> UiState {
         UiState {
-            settings: Settings::load(&Store::memory(), false),
+            settings: Settings::load(&store::memory(), false),
             menu_first: true,
             preview: false,
             screen,
@@ -2164,7 +2131,7 @@ pub(crate) mod tests {
         let mut w = World::new();
         w.insert_resource(ui_state(screen));
         w.insert_resource(crate::play::tests::bare_play());
-        w.insert_resource(Store::memory());
+        w.insert_resource(store::memory());
         w.insert_resource(Opts {
             o,
             hq: false,
@@ -2501,7 +2468,7 @@ pub(crate) mod tests {
                 .unwrap()
         };
         let (trial, delivery) = (ev(EventKind::TimeTrial), ev(EventKind::Delivery));
-        let mut store = Store::memory();
+        let mut store = store::memory();
         let settings = Settings::load(&store, false);
         race.event_result = Some(EventResult {
             index: trial,
@@ -2555,7 +2522,7 @@ pub(crate) mod tests {
         ]);
         let mut net = lobby_of_two(1);
         net.humans = net.lobby.players.clone();
-        let mut store = Store::memory();
+        let mut store = store::memory();
         let settings = Settings::load(&store, false);
         let v = show_results(&mut store, &settings, "coast", &race, &net);
         assert_eq!(v.title, "3rd place");
@@ -2600,7 +2567,7 @@ pub(crate) mod tests {
     #[test]
     fn offline_a_win_saves_a_better_best_only() {
         let mut race = offline_race();
-        let mut store = Store::memory();
+        let mut store = store::memory();
         let settings = Settings::load(&store, false);
         let net = NetView::default();
         race.results = Some(vec![

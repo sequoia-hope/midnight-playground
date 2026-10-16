@@ -74,10 +74,10 @@ B2 = r'''<!-- ===== BRANDING (2 of 3): the screens' words. ===== -->
 
 B3 = r'''// ===== BRANDING (3 of 3): the names the page needs. =====
   // The status global's name: the ONE place it is spelled. The wasm
-  // publishes its status on window[GLOBAL] (SPEC 8.5's window.__mp; the
-  // kit's name is `__game`, which the shell carve adopts with `__mp` as an
-  // alias, D1233) and every tool in the kit's js/ reads it (`--global`).
-  const GLOBAL = '__mp';
+  // publishes its status on window[GLOBAL], the kit's `__game`, and makes
+  // the same object reachable as window.__mp (SPEC 8.5's name, which the
+  // e2e suites and this game's tools read; D1234) once it runs.
+  const GLOBAL = '__game';
   const TITLE = 'Midnight Playground';
   // wasm-bindgen's out-name per backend (`WebBuild::backends` in xtask).
   const OUT_NAME = (backend) => backend === 'webgl2' ? 'mp_game_webgl2' : 'mp_game';
@@ -243,7 +243,7 @@ out = swap(out, '<!-- ===== BRANDING (1 of 3)', '<!-- ===== end BRANDING (1 of 3
 out = swap(out, '<!-- ===== BRANDING (2 of 3)', '<!-- ===== end BRANDING (2 of 3) ===== -->', B2)
 out = swap(out, '// ===== BRANDING (3 of 3)', '// ===== end BRANDING (3 of 3) =====', B3)
 out = swap(out, '// ===== GAME HOOKS', '// ===== end GAME HOOKS =====', HOOKS)
-assert "GLOBAL = '__game'" not in out, 'the template global left'
+assert "GLOBAL = '__game'" in out, 'the status global is the kit\'s name (D1234)'
 assert 'New Game' not in out
 open('/home/sequoia/Software/midnight-playground/crates/mp_game/web/index.html', 'w').write(out)
 print('written', len(out.splitlines()), 'lines')

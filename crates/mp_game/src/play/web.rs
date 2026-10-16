@@ -1,86 +1,38 @@
 //! The race's web glue: whether this is a touch device (the page decides,
 //! as `isTouchDevice` does, into `__mp.touch`), the safe-area insets the
 //! page measures (`__mp.insets`), a hidden page pausing the race
-//! (`visibilitychange`), the JS's pixel ratio (`applyQuality`), and the
-//! race's state on `window.__mp.race` for the tests.
+//! (`pk_shell::FocusLost` from `visibilitychange`, D1234), the JS's pixel
+//! ratio (`applyQuality`), and the race's state on `window.__mp.race` for
+//! the tests.
 
 use super::Play;
 use super::flow::Mode;
 use super::touch::{Hold, Insets};
 use crate::bridge::{Obj, V};
 use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
-use js_sys::{Object, Reflect};
 use mp_track::Track;
-use std::sync::atomic::{AtomicBool, Ordering};
+use pk_shell::FocusLost;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use wasm_bindgen::prelude::{Closure, wasm_bindgen};
-use wasm_bindgen::{JsCast, JsValue};
-
-/// The page went hidden since the last frame (`visibilitychange`). A hidden
-/// page gets no frames, so the event is latched and the race pauses in the
-/// first frame back, before its ticks.
-static WENT_HIDDEN: AtomicBool = AtomicBool::new(false);
-
-fn mr() -> Option<Object> {
-    let w = web_sys::window()?;
-    Reflect::get(&w, &JsValue::from_str("__mp"))
-        .ok()?
-        .dyn_into::<Object>()
-        .ok()
-}
-
-fn get(o: &JsValue, k: &str) -> Option<JsValue> {
-    Reflect::get(o, &JsValue::from_str(k))
-        .ok()
-        .filter(|v| !v.is_undefined() && !v.is_null())
-}
-
-fn num(o: &JsValue, k: &str) -> f64 {
-    get(o, k).and_then(|v| v.as_f64()).unwrap_or(0.0)
-}
+use wasm_bindgen::prelude::wasm_bindgen;
 
 /// At start: the touch controls on a touch device (unless `?touch=` said),
-/// and the JS's pixel ratio: `hq ? min(devicePixelRatio, 1.5) : 1`.
-fn setup(
-    mut play: ResMut<Play>,
-    opts: Res<crate::Opts>,
-    mut windows: Query<&mut Window, With<PrimaryWindow>>,
-) {
-    if let Some(mr) = mr()
-        && play.params.touch.is_none()
+/// and the shell's pixel ratio from the start (D1195); the screens
+/// (`ui::web`) drive it each frame after.
+fn setup(mut play: ResMut<Play>, mut policy: ResMut<pk_shell::web::PixelRatioPolicy>) {
+    if play.params.touch.is_none()
+        && let Some(t) = pk_shell::web::page_touch()
     {
-        play.touch_ui = get(mr.as_ref(), "touch")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        play.touch_ui = t;
     }
-    // `document.addEventListener('visibilitychange', …)`.
-    if let Some(d) = web_sys::window().and_then(|w| w.document()) {
-        let f = Closure::<dyn FnMut()>::new(|| {
-            let hidden = web_sys::window()
-                .and_then(|w| w.document())
-                .is_some_and(|d| d.hidden());
-            if hidden {
-                WENT_HIDDEN.store(true, Ordering::Relaxed);
-            }
-        });
-        let _ = d.add_event_listener_with_callback("visibilitychange", f.as_ref().unchecked_ref());
-        f.forget();
-    }
-    if let Ok(mut w) = windows.single_mut() {
-        crate::ui::web::apply_pixel_ratio(&mut w, crate::ui::web::race_pixel_ratio(&opts));
-    }
+    policy.on = true;
 }
 
 /// Leaving the page (switching apps, locking the phone) pauses the race
 /// (`if (document.hidden && mode === 'race') pause(true)`), before the
 /// frame's ticks.
-fn visibility(mut play: ResMut<Play>) {
-    let went = WENT_HIDDEN.swap(false, Ordering::Relaxed);
-    let hidden = went
-        || web_sys::window()
-            .and_then(|w| w.document())
-            .is_some_and(|d| d.hidden());
+fn visibility(mut lost: MessageReader<FocusLost>, mut play: ResMut<Play>) {
+    let hidden = lost.read().count() > 0;
     if let Some(race) = play.race.as_mut()
         && hidden
         && race.mode == Mode::Race
@@ -92,55 +44,35 @@ fn visibility(mut play: ResMut<Play>) {
 /// Each frame: the insets, the CSS scale, the hidden page, `__mp.race`.
 fn frame(
     mut play: ResMut<Play>,
-    windows: Query<&Window, With<PrimaryWindow>>,
+    scale: Res<pk_shell::web::CanvasScale>,
     cams: Query<&GlobalTransform, With<Camera3d>>,
     hud: Option<Res<super::hud::HudState>>,
     drawn: Option<Res<super::police::PoliceDrawn>>,
 ) {
-    let Some(mr) = mr() else { return };
     bridge_page(hud.as_deref());
     bridge_pursuit(play.race.as_ref(), drawn.as_deref());
-    if let Some(ins) = get(mr.as_ref(), "insets") {
+    if let Some(ins) = pk_shell::web::insets() {
         let i = Insets {
-            top: num(&ins, "top"),
-            right: num(&ins, "right"),
-            bottom: num(&ins, "bottom"),
-            left: num(&ins, "left"),
+            top: ins.top,
+            right: ins.right,
+            bottom: ins.bottom,
+            left: ins.left,
         };
         if i != play.insets {
             play.insets = i;
         }
     }
-    // CSS px per logical px, measured: the canvas's CSS width over the
-    // window's logical width (they differ under the pixel-ratio override).
-    let css_w = web_sys::window()
-        .and_then(|w| w.document())
-        .and_then(|d| d.get_element_by_id("game"))
-        .map_or(0, |c| c.client_width());
-    if let Ok(w) = windows.single()
-        && css_w > 0
-        && w.width() > 0.0
-    {
-        let k = css_w as f32 / w.width();
-        if (k - play.css_scale).abs() > 1e-3 {
-            play.css_scale = k;
-        }
-        let t = w.resolution.scale_factor() / w.resolution.base_scale_factor().max(0.01);
-        if (t - play.touch_scale).abs() > 1e-4 {
-            play.touch_scale = t;
-        }
+    // CSS px per logical px, measured (`pk_shell::web::CanvasScale`).
+    if (scale.css - play.css_scale).abs() > 1e-3 {
+        play.css_scale = scale.css;
     }
-    let hidden = web_sys::window()
-        .and_then(|w| w.document())
-        .is_some_and(|d| d.hidden());
+    if (scale.touch - play.touch_scale).abs() > 1e-4 {
+        play.touch_scale = scale.touch;
+    }
     let touch_ui = play.touch_ui;
     let Some(race) = play.race.as_mut() else {
         return;
     };
-    // Leaving the page (switching apps, locking the phone) pauses the race.
-    if hidden && race.mode == Mode::Race {
-        race.pause(true);
-    }
     let st = &race.session.curr;
     let p = &st.players[0];
     let s = race.input.state;

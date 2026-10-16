@@ -1318,7 +1318,7 @@ pub fn plugin(app: &mut App) {
     // someone is using).
     #[cfg(not(target_arch = "wasm32"))]
     mp_audio::wa::native::set_silent(
-        crate::native::window_state::headless(&app.world().resource::<Opts>().o)
+        crate::native::headless(&app.world().resource::<Opts>().o)
             || std::env::var_os("MP_MUTE").is_some_and(|v| v != "0"),
     );
     let shared = Rc::new(RefCell::new(RaceAudio::new(platform(), settings(), record)));
