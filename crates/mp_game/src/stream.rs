@@ -505,7 +505,7 @@ pub fn drive(
                 }
                 crate::worker::Msg::Built {
                     generation,
-                    k,
+                    key: k,
                     ms,
                     bytes,
                 } if generation == st.generation => {
@@ -523,7 +523,7 @@ pub fn drive(
                 }
                 crate::worker::Msg::Failed {
                     generation,
-                    k,
+                    key: k,
                     error,
                 } if generation == st.generation || generation == 0 => {
                     warn!(

@@ -6,7 +6,7 @@
 use super::widgets::{self as w, Bp, Control, Icons, T, Value};
 use super::{Act, Opt, Sl, UiState};
 use crate::play::Play;
-use crate::status::Status;
+use crate::status::{LoadState, Status};
 use bevy::prelude::*;
 use bevy::text::{Justify, TextLayout};
 
@@ -182,11 +182,11 @@ pub(super) fn title(p: &mut ChildSpawnerCommands, bp: &Bp, id: &str, s: &str) {
 /// The loading line under the bar: what the client is doing.
 pub fn loading_label(status: &Status) -> String {
     match status.state {
-        "waiting" => "Loading the scene…".into(),
-        "building" => "Building the scene…".into(),
-        "warming" => "Preparing the shaders…".into(),
-        "failed" => status.error.clone().unwrap_or_else(|| "Failed".into()),
-        _ => "Starting…".into(),
+        LoadState::Waiting => "Loading the scene…".into(),
+        LoadState::Building => "Building the scene…".into(),
+        LoadState::Warming => "Preparing the shaders…".into(),
+        LoadState::Failed => status.error.clone().unwrap_or_else(|| "Failed".into()),
+        LoadState::Running => "Starting…".into(),
     }
 }
 
@@ -194,9 +194,9 @@ pub fn loading_label(status: &Status) -> String {
 pub fn loading(p: &mut ChildSpawnerCommands, cx: &mut Cx, status: &Status) -> Entity {
     let bp = cx.bp;
     let frac = match status.state {
-        "building" => 0.8 + 0.2 * status.progress,
-        "warming" | "running" => 1.0,
-        _ => 0.3,
+        LoadState::Building => 0.8 + 0.2 * status.progress,
+        LoadState::Warming | LoadState::Running => 1.0,
+        LoadState::Waiting | LoadState::Failed => 0.3,
     };
     screen(p, cx, Kind::Loading, |p, cx| {
         logo(p, cx, |_| {});

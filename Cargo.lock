@@ -4395,12 +4395,12 @@ dependencies = [
  "mp_worldgen",
  "pk_canvas",
  "pk_math",
+ "pk_shell",
  "serde_json",
  "tracing",
  "tungstenite 0.30.0",
  "wasm-bindgen",
  "web-sys",
- "winit",
 ]
 
 [[package]]
@@ -5400,6 +5400,19 @@ name = "pk_math"
 version = "0.1.0"
 dependencies = [
  "libm",
+]
+
+[[package]]
+name = "pk_shell"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "image",
+ "js-sys",
+ "serde_json",
+ "wasm-bindgen",
+ "web-sys",
+ "winit",
 ]
 
 [[package]]

@@ -2159,7 +2159,7 @@ pub(super) fn update(
         let mut m = model::Hud::new(st.race.cruise, colors.len());
         if st.race.cruise {
             let k = format!("bestScore.{}", track.level.id);
-            m.best_score = crate::ui::store::Store::platform().num(&k, 0.0);
+            m.best_score = crate::ui::store::platform().num(&k, 0.0);
         }
         hs.model = Some(m);
         hs.starts = race.starts;

@@ -52,7 +52,7 @@ use crate::render::SharedImages;
 use crate::render::lighting::MaterialLights;
 use crate::render::material::ThreeMaterial;
 use crate::render::pmrem::EnvRequest;
-use crate::status::Status;
+use crate::status::{SceneStatus, Status};
 use crate::{CameraState, Opts, SkyRes, TrackRes};
 use bevy::camera::Projection;
 use bevy::input::ButtonState;
@@ -753,7 +753,7 @@ fn draw(
     windows: Query<&Window, With<PrimaryWindow>>,
     opts: Res<Opts>,
     mut cs: ResMut<CameraState>,
-    mut status: ResMut<Status>,
+    mut status: ResMut<SceneStatus>,
     mut sky_res: ResMut<SkyRes>,
     mut lighting: ResMut<Lighting>,
     mut env: ResMut<EnvRequest>,

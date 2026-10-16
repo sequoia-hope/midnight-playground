@@ -518,7 +518,7 @@ fn drive(
                     s.stage = Stage::Stepping(Box::new(Mutex::new(b)));
                 }
                 if loading {
-                    status.state = "building";
+                    status.state = crate::status::LoadState::Building;
                     status.progress = 0.0;
                 }
             }
@@ -980,11 +980,11 @@ fn show(world: &mut World, k: usize, before: Option<usize>) {
     }
     world.resource_mut::<EnvRequest>().noise = noise;
     world.resource_mut::<CameraState>().attract.s = start;
-    world.resource_mut::<Status>().route = None;
+    world.resource_mut::<crate::status::SceneStatus>().route = None;
     world.insert_resource(loaded.clone());
     // The first: the loading screen's warm-up, then the menu.
     if *world.resource::<State<AppState>>().get() != AppState::Running {
-        world.resource_mut::<Status>().counts = Some(loaded.counts.clone());
+        world.resource_mut::<crate::status::SceneStatus>().counts = Some(loaded.counts.clone());
         world
             .resource_mut::<NextState<AppState>>()
             .set(AppState::Running);

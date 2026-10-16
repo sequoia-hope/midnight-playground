@@ -7,338 +7,40 @@
 //! so it reads and writes the same keys in the same encoding: a player keeps
 //! their car, options and best times across the two builds. Natively the
 //! same key → value strings live in a JSON file in the user's config
-//! directory ([`FileStore`]). The full table of keys is in
-//! `inventory-ui-input-tests.md` section 3.
+//! directory. The store itself is Playground Kit's `pk_shell::store`
+//! (D1234: the `Backend` trait, the JS-exact `stringify`, `Memory`,
+//! `LocalStorage`, the atomic `FileStore`); this module is its
+//! configuration and `main.js`'s `settings` on top. The full table of keys
+//! is in `inventory-ui-input-tests.md` section 3.
 
-use bevy::prelude::Resource;
+#[cfg(test)]
 use serde_json::Value;
 
-/// Where the strings live: `localStorage`'s `getItem` and `setItem`.
-pub trait Backend: Send + Sync + 'static {
-    fn get_item(&self, key: &str) -> Option<String>;
-    fn set_item(&mut self, key: &str, value: &str);
-}
+pub use pk_shell::store::{Backend, Memory, Store, StoreConfig, js_number, num_value, stringify};
 
 /// The JS's key prefix.
 pub const PREFIX: &str = "mr.";
 
-/// `store.get` and `store.set`, over a backend.
-#[derive(Resource)]
-pub struct Store {
-    backend: Box<dyn Backend>,
+/// Where the store lives: `mr.` keys; natively `$MP_STORE`, else
+/// `storage.json` under `midnight-playground/` in the user's config
+/// directory, filled from the old name's folder (`midnight-racer/`: this
+/// store and the window's state) the first time it is missing, so the
+/// rename (D1100) keeps the player's settings and best times.
+pub const STORE_CONFIG: StoreConfig = StoreConfig {
+    prefix: PREFIX,
+    app_dir: "midnight-playground",
+    env_var: "MP_STORE",
+    legacy_dirs: &["midnight-racer"],
+};
+
+/// The platform's store: `localStorage` on the web, the file natively.
+pub fn platform() -> Store {
+    Store::platform(&STORE_CONFIG)
 }
 
-impl Store {
-    pub fn new(backend: impl Backend) -> Store {
-        Store {
-            backend: Box::new(backend),
-        }
-    }
-
-    /// An empty store in memory (tests, and where nothing persists).
-    pub fn memory() -> Store {
-        Store::new(Memory::default())
-    }
-
-    /// The platform's store: `localStorage` on the web, a file natively.
-    pub fn platform() -> Store {
-        #[cfg(target_arch = "wasm32")]
-        {
-            Store::new(LocalStorage)
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            match FileStore::default_path() {
-                Some(p) => Store::new(FileStore::open(p)),
-                None => Store::memory(),
-            }
-        }
-    }
-
-    /// The raw string under `mr.<k>`.
-    pub fn raw(&self, k: &str) -> Option<String> {
-        self.backend.get_item(&format!("{PREFIX}{k}"))
-    }
-
-    /// `store.get(k, d)` without the default: the parsed value, or `None`
-    /// when the key is missing or does not parse (`JSON.parse` threw).
-    pub fn get(&self, k: &str) -> Option<Value> {
-        serde_json::from_str(&self.raw(k)?).ok()
-    }
-
-    /// `store.set(k, v)`: `JSON.stringify(v)` under `mr.<k>`.
-    pub fn set(&mut self, k: &str, v: &Value) {
-        let s = stringify(v);
-        self.backend.set_item(&format!("{PREFIX}{k}"), &s);
-    }
-
-    /// A number, else `d` (a missing key, `null` or another type).
-    pub fn num(&self, k: &str, d: f64) -> f64 {
-        self.get(k).and_then(|v| v.as_f64()).unwrap_or(d)
-    }
-
-    /// A number or `null` (`store.get(k, null)` for best times).
-    pub fn num_or_null(&self, k: &str) -> Option<f64> {
-        self.get(k).and_then(|v| v.as_f64())
-    }
-
-    pub fn bool(&self, k: &str, d: bool) -> bool {
-        self.get(k).and_then(|v| v.as_bool()).unwrap_or(d)
-    }
-
-    pub fn string(&self, k: &str, d: &str) -> String {
-        match self.get(k) {
-            Some(Value::String(s)) => s,
-            _ => d.to_owned(),
-        }
-    }
-
-    pub fn set_num(&mut self, k: &str, v: f64) {
-        self.set(k, &num_value(v));
-    }
-
-    pub fn set_bool(&mut self, k: &str, v: bool) {
-        self.set(k, &Value::Bool(v));
-    }
-
-    pub fn set_str(&mut self, k: &str, v: &str) {
-        self.set(k, &Value::String(v.to_owned()));
-    }
-}
-
-/// A number as a JSON value; NaN and the infinities are `null`, as
-/// `JSON.stringify` writes them.
-pub fn num_value(v: f64) -> Value {
-    serde_json::Number::from_f64(v).map_or(Value::Null, Value::Number)
-}
-
-/// `JSON.stringify(v)`: no spaces, numbers as JS prints them
-/// (`Number.prototype.toString`: `1` not `1.0`, `1e+21`, `1e-7`), strings
-/// escaped as JSON does.
-pub fn stringify(v: &Value) -> String {
-    let mut out = String::new();
-    write_value(&mut out, v);
-    out
-}
-
-fn write_value(out: &mut String, v: &Value) {
-    match v {
-        Value::Null => out.push_str("null"),
-        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
-        Value::Number(n) => match n.as_f64() {
-            Some(f) if n.is_f64() => out.push_str(&js_number(f)),
-            _ => out.push_str(&n.to_string()),
-        },
-        Value::String(s) => out.push_str(&serde_json::to_string(s).unwrap_or_default()),
-        Value::Array(a) => {
-            out.push('[');
-            for (i, x) in a.iter().enumerate() {
-                if i > 0 {
-                    out.push(',');
-                }
-                write_value(out, x);
-            }
-            out.push(']');
-        }
-        Value::Object(m) => {
-            out.push('{');
-            for (i, (k, x)) in m.iter().enumerate() {
-                if i > 0 {
-                    out.push(',');
-                }
-                out.push_str(&serde_json::to_string(k).unwrap_or_default());
-                out.push(':');
-                write_value(out, x);
-            }
-            out.push('}');
-        }
-    }
-}
-
-/// `Number.prototype.toString()` for a finite number (ECMA-262
-/// Number::toString): the shortest digits that round-trip, written plainly
-/// for exponents from -7 to 20 and in exponent form outside them. NaN and
-/// the infinities are `null` (as JSON writes them).
-pub fn js_number(x: f64) -> String {
-    if !x.is_finite() {
-        return "null".into();
-    }
-    if x == 0.0 {
-        return "0".into();
-    }
-    if x < 0.0 {
-        return format!("-{}", js_number(-x));
-    }
-    // Rust's `{:e}` is the shortest round-trip digits: "1.2345e3".
-    let e = format!("{x:e}");
-    let (mant, exp) = e.split_once('e').unwrap_or((&e, "0"));
-    let digits: String = mant.chars().filter(|c| *c != '.').collect();
-    let k = digits.len() as i32;
-    // x = 0.digits × 10^n
-    let n = exp.parse::<i32>().unwrap_or(0) + 1;
-    if k <= n && n <= 21 {
-        format!("{digits}{}", "0".repeat((n - k) as usize))
-    } else if 0 < n && n <= 21 {
-        format!("{}.{}", &digits[..n as usize], &digits[n as usize..])
-    } else if -6 < n && n <= 0 {
-        format!("0.{}{digits}", "0".repeat((-n) as usize))
-    } else {
-        let sign = if n - 1 < 0 { '-' } else { '+' };
-        let rest = if k > 1 {
-            format!("{}.{}", &digits[..1], &digits[1..])
-        } else {
-            digits.clone()
-        };
-        format!("{rest}e{sign}{}", (n - 1).abs())
-    }
-}
-
-/// A store in memory, in insertion order.
-#[derive(Default, Clone, Debug)]
-pub struct Memory {
-    pub items: Vec<(String, String)>,
-}
-
-impl Backend for Memory {
-    fn get_item(&self, key: &str) -> Option<String> {
-        self.items
-            .iter()
-            .find(|(k, _)| k == key)
-            .map(|(_, v)| v.clone())
-    }
-
-    fn set_item(&mut self, key: &str, value: &str) {
-        match self.items.iter_mut().find(|(k, _)| k == key) {
-            Some(slot) => slot.1 = value.to_owned(),
-            None => self.items.push((key.to_owned(), value.to_owned())),
-        }
-    }
-}
-
-/// `window.localStorage`. Every access is wrapped as the JS wraps it: a
-/// browser in private mode, or with storage blocked, throws, and the game
-/// carries on with its defaults.
-#[cfg(target_arch = "wasm32")]
-pub struct LocalStorage;
-
-#[cfg(target_arch = "wasm32")]
-impl LocalStorage {
-    fn storage() -> Option<web_sys::Storage> {
-        web_sys::window()?.local_storage().ok()?
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-impl Backend for LocalStorage {
-    fn get_item(&self, key: &str) -> Option<String> {
-        Self::storage()?.get_item(key).ok()?
-    }
-
-    fn set_item(&mut self, key: &str, value: &str) {
-        if let Some(s) = Self::storage() {
-            let _ = s.set_item(key, value);
-        }
-    }
-}
-
-/// Natively: the same key → string pairs as `localStorage` holds, as one
-/// JSON object in a file, rewritten on every change (a few hundred bytes).
-#[cfg(not(target_arch = "wasm32"))]
-pub struct FileStore {
-    path: std::path::PathBuf,
-    mem: Memory,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl FileStore {
-    /// `$MP_STORE`, else `storage.json` in the user's config directory
-    /// (`$XDG_CONFIG_HOME` or `~/.config` on Linux, `~/Library/Application
-    /// Support` on macOS, `%APPDATA%` on Windows) under
-    /// `midnight-playground/`. The first time that folder is missing, the
-    /// files of the old name's folder (`midnight-racer/`: this store and
-    /// the window's state) are copied into it, so the rename (D1100) keeps
-    /// the player's settings and best times.
-    pub fn default_path() -> Option<std::path::PathBuf> {
-        use std::path::PathBuf;
-        if let Some(p) = std::env::var_os("MP_STORE") {
-            return Some(PathBuf::from(p));
-        }
-        let env = |k: &str| {
-            std::env::var_os(k)
-                .filter(|v| !v.is_empty())
-                .map(PathBuf::from)
-        };
-        let dir = if cfg!(windows) {
-            env("APPDATA")?
-        } else if cfg!(target_os = "macos") {
-            env("HOME")?.join("Library/Application Support")
-        } else {
-            env("XDG_CONFIG_HOME").or_else(|| env("HOME").map(|h| h.join(".config")))?
-        };
-        let (new, old) = (dir.join("midnight-playground"), dir.join("midnight-racer"));
-        if !new.exists()
-            && old.is_dir()
-            && std::fs::create_dir_all(&new).is_ok()
-            && let Ok(entries) = std::fs::read_dir(&old)
-        {
-            for e in entries.flatten() {
-                if e.path().is_file() {
-                    let _ = std::fs::copy(e.path(), new.join(e.file_name()));
-                }
-            }
-        }
-        Some(new.join("storage.json"))
-    }
-
-    /// Reads the file if there is one (a missing or broken file is an empty
-    /// store).
-    pub fn open(path: std::path::PathBuf) -> FileStore {
-        let mut mem = Memory::default();
-        if let Ok(text) = std::fs::read_to_string(&path)
-            && let Ok(Value::Object(m)) = serde_json::from_str::<Value>(&text)
-        {
-            for (k, v) in m {
-                if let Value::String(s) = v {
-                    mem.items.push((k, s));
-                }
-            }
-        }
-        FileStore { path, mem }
-    }
-
-    fn save(&self) -> std::io::Result<()> {
-        // In insertion order, as `localStorage` keeps them.
-        let mut text = String::from("{");
-        for (i, (k, v)) in self.mem.items.iter().enumerate() {
-            if i > 0 {
-                text.push(',');
-            }
-            text.push_str(&stringify(&Value::String(k.clone())));
-            text.push(':');
-            text.push_str(&stringify(&Value::String(v.clone())));
-        }
-        text.push('}');
-        if let Some(dir) = self.path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        let tmp = self.path.with_extension("json.tmp");
-        std::fs::write(&tmp, text)?;
-        std::fs::rename(&tmp, &self.path)
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl Backend for FileStore {
-    fn get_item(&self, key: &str) -> Option<String> {
-        self.mem.get_item(key)
-    }
-
-    fn set_item(&mut self, key: &str, value: &str) {
-        self.mem.set_item(key, value);
-        if let Err(e) = self.save() {
-            bevy::log::warn!("settings: {}: {e}", self.path.display());
-        }
-    }
+/// An empty store in memory (tests, and where nothing persists).
+pub fn memory() -> Store {
+    Store::memory(PREFIX)
 }
 
 /// The car kinds (`CAR_SPECS` keys), in the menu's order.
@@ -518,7 +220,80 @@ mod tests {
         for (k, v) in pairs {
             m.set_item(k, v);
         }
-        Store::new(m)
+        Store::new(m, PREFIX)
+    }
+
+    /// The keys the game saves read back through the kit's store with the
+    /// same bytes: the JS game's `localStorage` strings and the native
+    /// file are unchanged by the move (D1234).
+    #[test]
+    fn the_games_keys_round_trip_unchanged() {
+        let saved = [
+            ("mr.musicVol", "0.7"),
+            ("mr.sfxVol", "0.85"),
+            ("mr.mph", "true"),
+            ("mr.hq", "false"),
+            ("mr.autogas", "false"),
+            ("mr.steering", "\"tilt\""),
+            ("mr.tiltSens", "0.5"),
+            ("mr.pedals", "\"slider\""),
+            ("mr.fullscreen", "true"),
+            ("mr.car", "\"super\""),
+            ("mr.level", "\"coast\""),
+            ("mr.track", "\"auto\""),
+            ("mr.flash", "true"),
+            ("mr.rumble", "true"),
+            ("mr.guideLine", "\"full\""),
+            ("mr.steerAssist", "\"light\""),
+            ("mr.classicEngine", "false"),
+            ("mr.station", "\"playlist\""),
+            ("mr.radioStation", "\"ridgeline\""),
+            ("mr.renderScale", "\"75\""),
+            ("mr.physics", "\"arcade\""),
+            ("mr.best.sierra", "183.4566666666667"),
+            ("mr.best.coast.pursuit", "201.25"),
+            ("mr.bestScore.cruise", "12345"),
+            ("mr.mode.coast", "\"pursuit\""),
+            ("mr.mpName", "\"Ann \\\"Speedy\\\"\""),
+            ("mr.mpColor", "14163510"),
+            (
+                "mr.padMaps",
+                r#"{"Pad (STANDARD GAMEPAD)":{"left":[{"axis":0,"dir":-1,"rest":0}],"throttle":[{"button":7}]}}"#,
+            ),
+        ];
+        let store = seeded(&saved);
+        let s = Settings::load(&store, true);
+        assert_eq!(
+            (s.car.as_str(), s.scale.as_str(), s.steering.as_str()),
+            ("super", "75", "tilt")
+        );
+        // Written back by the typed setters, byte for byte.
+        let mut out = memory();
+        out.set_num("musicVol", 0.7);
+        out.set_bool("hq", false);
+        out.set_str("car", "super");
+        out.set_num("best.sierra", 183.456_666_666_666_7);
+        out.set_num("mpColor", 14_163_510.0);
+        out.set_str("mpName", "Ann \"Speedy\"");
+        out.set(
+            "padMaps",
+            &serde_json::from_str::<Value>(saved[27].1).unwrap(),
+        );
+        for k in [
+            "musicVol",
+            "hq",
+            "car",
+            "best.sierra",
+            "mpColor",
+            "mpName",
+            "padMaps",
+        ] {
+            let want = saved
+                .iter()
+                .find(|(n, _)| *n == format!("{PREFIX}{k}"))
+                .map(|(_, v)| *v);
+            assert_eq!(out.raw(k).as_deref(), want, "{k}");
+        }
     }
 
     #[test]
@@ -566,7 +341,7 @@ mod tests {
     /// defaults when the store is empty.
     #[test]
     fn defaults_and_the_js_keys() {
-        let store = Store::memory();
+        let store = memory();
         let s = Settings::load(&store, false);
         assert_eq!(
             s,
@@ -696,7 +471,7 @@ mod tests {
     /// JSON-encoded, and what the JS wrote reads back.
     #[test]
     fn writes_are_the_js_strings() {
-        let mut store = Store::memory();
+        let mut store = memory();
         store.set_str("car", "muscle");
         store.set_str("level", "cruise");
         store.set_bool("mph", false);
@@ -744,11 +519,12 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn the_file_store_round_trips() {
+        use pk_shell::store::FileStore;
         let dir = std::env::temp_dir().join(format!("mp-store-test-{}", std::process::id()));
         let path = dir.join("storage.json");
         let _ = std::fs::remove_dir_all(&dir);
         {
-            let mut s = Store::new(FileStore::open(path.clone()));
+            let mut s = Store::new(FileStore::open(path.clone()), PREFIX);
             s.set_str("car", "electric");
             s.set_num("tiltSens", 0.3);
             s.set_bool("hq", false);
@@ -758,7 +534,7 @@ mod tests {
             text,
             r#"{"mr.car":"\"electric\"","mr.tiltSens":"0.3","mr.hq":"false"}"#
         );
-        let s = Store::new(FileStore::open(path.clone()));
+        let s = Store::new(FileStore::open(path.clone()), PREFIX);
         assert_eq!(s.raw("car").as_deref(), Some("\"electric\""));
         assert_eq!(s.raw("tiltSens").as_deref(), Some("0.3"));
         let set = Settings::load(&s, false);
@@ -791,7 +567,7 @@ mod tests {
         assert_eq!(store.get("e"), None, "an empty string does not parse");
         assert_eq!(store.num("missing", 4.0), 4.0);
         // A NaN saved is `null`, and reads back as missing.
-        let mut store = Store::memory();
+        let mut store = memory();
         store.set_num("best.coast", f64::NAN);
         assert_eq!(store.raw("best.coast").as_deref(), Some("null"));
         assert_eq!(store.num_or_null("best.coast"), None);
@@ -817,7 +593,7 @@ mod tests {
     /// the other settings are, a colour as a plain integer.
     #[test]
     fn the_multiplayer_keys() {
-        let mut store = Store::memory();
+        let mut store = memory();
         store.set_str("mpName", "Ann \"Speedy\"");
         store.set_num("mpColor", f64::from(0xd81e36u32));
         assert_eq!(store.raw("mpColor").as_deref(), Some("14163510"));
@@ -830,17 +606,18 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn the_file_store_survives_a_broken_file() {
+        use pk_shell::store::FileStore;
         let dir = std::env::temp_dir().join(format!("mp-store-broken-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("storage.json");
         for text in ["{not json", "[1,2]", "", "null"] {
             std::fs::write(&path, text).unwrap();
-            let s = Store::new(FileStore::open(path.clone()));
+            let s = Store::new(FileStore::open(path.clone()), PREFIX);
             assert_eq!(s.raw("car"), None, "{text:?}");
         }
         std::fs::write(&path, r#"{"mr.car":"\"rally\"","mr.hq":false,"mr.x":1}"#).unwrap();
-        let mut s = Store::new(FileStore::open(path.clone()));
+        let mut s = Store::new(FileStore::open(path.clone()), PREFIX);
         assert_eq!(s.raw("car").as_deref(), Some("\"rally\""));
         assert_eq!(s.raw("hq"), None, "not a string: left out");
         s.set_str("car", "super");
@@ -851,7 +628,7 @@ mod tests {
         );
         // A store whose folder isn't there yet makes it.
         let deep = dir.join("a/b/storage.json");
-        Store::new(FileStore::open(deep.clone())).set_num("sfxVol", 0.5);
+        Store::new(FileStore::open(deep.clone()), PREFIX).set_num("sfxVol", 0.5);
         assert!(deep.exists());
         let _ = std::fs::remove_dir_all(&dir);
     }

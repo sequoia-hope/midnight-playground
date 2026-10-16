@@ -87,7 +87,7 @@ fn clipboard(q: &str) {
 }
 
 pub fn screenshot(name: &str) {
-    crate::web::screenshot(name.to_owned());
+    pk_shell::web::screenshot(name.to_owned());
 }
 
 /// The link on the clipboard (if the tap did not already put it there)
@@ -157,7 +157,7 @@ fn keep(q: &str) -> String {
 /// The menu: the page without the viewer's parameters, the viewed level
 /// saved as the menu's choice.
 pub fn open_menu(level: &str) {
-    crate::ui::store::Store::platform().set_str("level", level);
+    crate::ui::store::platform().set_str("level", level);
     let q = keep("");
     go(&if q.is_empty() {
         "?".to_owned()
@@ -182,9 +182,12 @@ fn go(href: &str) {
 /// (`hq ? min(devicePixelRatio, 1.5) : 1`, times the render scale, D1194),
 /// so the viewer's frames cost what the race's do; every frame because a
 /// resize puts winit's size back (D1195).
-fn setup(opts: Res<crate::Opts>, mut windows: Query<&mut Window, With<PrimaryWindow>>) {
+fn setup(
+    scale: Res<pk_shell::web::RenderScale>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
+) {
     if let Ok(mut w) = windows.single_mut() {
-        crate::ui::web::apply_pixel_ratio(&mut w, crate::ui::web::race_pixel_ratio(&opts));
+        pk_shell::web::set_pixel_ratio(&mut w, scale.scene_ratio());
     }
 }
 

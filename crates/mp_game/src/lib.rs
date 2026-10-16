@@ -19,24 +19,29 @@
 //! - [`fly`]: the fly and attract cameras of `src/main.js`.
 //! - [`cars`]: stand-in cars driven by the simulation (WP 2.4).
 //! - [`play`]: a playable race (M4): session, input, camera, flow, HUD.
-//! - [`plugins`]: Bevy's default plugins less its 2D sprites.
 //! - [`preview`]: the menu's flyover sections of every level (D740).
 //! - [`ui`]: the screens (M6): loading, menu, pause, results, controller
 //!   setup, and the settings store.
 //! - [`warmup`]: every pipeline the scene needs, compiled behind the
 //!   loading screen (WP 2.6).
 //! - [`status`]: what the page and the window title show.
-//! - [`debug_overlay`]: the frame-time overlay (`debug=1`, F3).
-//! - [`recording`]: the run recording (`record=1`).
+//! - [`debug`]: what this game shows on the frame-time overlay (`debug=1`, F3).
+//! - [`recording`]: the run recording's race lines (`record=1`).
 //! - [`viewer`]: the level viewer, "god mode" (`?view=god`, SPEC 8.6).
 //!
+//! The client shell (the plugins, parameters, load status, store, window
+//! state, web glue and status bridge, warm-up, debug overlay, recorder,
+//! worker and stations) is Playground Kit's `pk_shell` (D1234); these
+//! modules configure it and add the game's own.
+//!
 //! The web build comes in two backends, WebGPU and WebGL2 (the `mp_webgl2`
-//! cfg), one wasm file each; the page picks (WP 2.7).
+//! cfg, which turns on `pk_shell`'s `webgl2` feature), one wasm file each;
+//! the page picks (WP 2.7).
 
 pub mod animate;
 pub mod cars;
 pub mod convert;
-pub mod debug_overlay;
+pub mod debug;
 pub mod fly;
 pub mod levels;
 pub mod loader;
@@ -44,7 +49,6 @@ pub mod matscene;
 pub mod net;
 pub mod options;
 pub mod play;
-pub mod plugins;
 pub mod preview;
 pub mod recording;
 pub mod render;
@@ -56,7 +60,7 @@ pub mod viewer;
 pub mod warmup;
 
 #[cfg(target_arch = "wasm32")]
-pub(crate) mod bridge;
+pub(crate) use pk_shell::bridge;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
 #[cfg(target_arch = "wasm32")]
@@ -77,13 +81,23 @@ use mp_track::Track;
 use options::{FlyParams, Options};
 use render::pmrem::EnvRequest;
 use render::{Lighting, SharedImages, SkyState};
-use status::Status;
+use status::{LoadState, SceneStatus, Status};
 use std::sync::Mutex;
 
 /// The line both builds print, so the native and web pipelines are seen to
 /// run the same crate.
 pub fn banner() -> String {
     format!("Midnight Playground (Rust) {}", env!("CARGO_PKG_VERSION"))
+}
+
+/// The window's title and the desktop's app id (D1100; the Electron
+/// window's was `title: 'Midnight Racer'`), and the banner.
+pub fn app_info() -> pk_shell::AppInfo {
+    pk_shell::AppInfo {
+        name: "Midnight Playground",
+        app_id: "midnight-playground",
+        banner: banner(),
+    }
 }
 
 /// What arrives from outside the app: the scene file (read by a thread
@@ -271,7 +285,7 @@ fn receive_scene(
                 scene.materials.len(),
                 scene.textures.len()
             );
-            status.state = "building";
+            status.state = LoadState::Building;
             let mut b = Build::new(scene, shared.clone());
             // A streamed level's sections share the base's images (D1214).
             if stream::streamed(&opts.o) {
@@ -290,7 +304,7 @@ fn receive_scene(
 /// The scene is up; its pipelines compile behind the loading screen (the
 /// warm-up, `warmup`) until the status turns `ready` and `running`.
 fn enter_running(mut status: ResMut<Status>) {
-    status.state = "warming";
+    status.state = LoadState::Warming;
     status.progress = 1.0;
     status.scenes += 1;
 }
@@ -305,6 +319,7 @@ fn unload_scene(
     mut commands: Commands,
     scene: Query<Entity, With<loader::SceneEntity>>,
     mut status: ResMut<Status>,
+    mut scene_status: ResMut<SceneStatus>,
     mut opts: ResMut<Opts>,
     mut tr: ResMut<TrackRes>,
     mut sky: ResMut<SkyRes>,
@@ -334,14 +349,8 @@ fn unload_scene(
     sky.env_at = None;
     cs.fly = opts.o.fly;
     cs.attract = fly::Attract::default();
-    *status = Status {
-        state: "waiting",
-        frames: status.frames,
-        frame_ms: status.frame_ms,
-        gestures: status.gestures,
-        scenes: status.scenes,
-        ..default()
-    };
+    status.reset_for_reload();
+    *scene_status = SceneStatus::default();
     next.set(AppState::Waiting);
     info!("scene unloaded; waiting for {}", opts.o.level);
 }
@@ -379,7 +388,8 @@ pub fn fly_system(
     mut cs: ResMut<CameraState>,
     mut cam: Query<&mut Transform, (With<Camera3d>, Without<SkyDome>)>,
     mut sky: Query<&mut Transform, With<SkyDome>>,
-    mut status: ResMut<Status>,
+    status: Res<Status>,
+    mut scene_status: ResMut<SceneStatus>,
     mut sky_res: ResMut<SkyRes>,
     mut lighting: ResMut<Lighting>,
     mut env: ResMut<EnvRequest>,
@@ -422,8 +432,8 @@ pub fn fly_system(
         }
         return;
     };
-    if status.route.is_none() {
-        status.route = Some((track.length, track.road_end(), track.is_loop));
+    if scene_status.route.is_none() {
+        scene_status.route = Some((track.length, track.road_end(), track.is_loop));
     }
     let Ok(mut t) = cam.single_mut() else { return };
     let cs = &mut *cs;
@@ -438,12 +448,12 @@ pub fn fly_system(
         let (pose, focus) = fly::fly_camera(track, dt, f);
         cs.focus = focus;
         *t = pose;
-        status.s = f.s;
+        scene_status.s = f.s;
     } else {
         let (pose, focus) = cs.attract.step(track, dt);
         cs.focus = focus;
         *t = pose;
-        status.s = cs.attract.s;
+        scene_status.s = cs.attract.s;
     }
     loader::follow_focus(cs.focus, &mut sky);
     // ?freeze=1: the scenery (and the sky's clock) holds still.
@@ -452,7 +462,7 @@ pub fn fly_system(
         &mut sky_res,
         &opts,
         (world_dt, pixel_ratio),
-        status.s,
+        scene_status.s,
         cs.focus,
         &mut lighting,
         &mut env,
@@ -510,9 +520,9 @@ pub fn app(o: Options, (hq, scale): (bool, f64)) -> App {
     // DECISIONS D396.
     let gpu_preprocessing = o.gpu_preprocessing.unwrap_or(true);
     // The player's window at its saved bounds; the pictures' windows as
-    // they always were (`native::window_state`, WP 6.8).
+    // they always were (`native::window`, WP 6.8).
     #[cfg(not(target_arch = "wasm32"))]
-    let window = native::window_state::window(&o, title);
+    let window = native::window(&o, title);
     #[cfg(target_arch = "wasm32")]
     let window = Window {
         title,
@@ -520,13 +530,15 @@ pub fn app(o: Options, (hq, scale): (bool, f64)) -> App {
         fit_canvas_to_parent: true,
         ..default()
     };
-    let client = plugins::ClientPlugins.build();
-    // The log's warnings and errors, for `--smoke-test`'s report.
+    let client = pk_shell::plugins::ClientPlugins.build();
+    // The log's warnings and errors, for `--smoke-test`'s report, and the
+    // run recording's lines (the game's own info lines too, D1021).
     #[cfg(not(target_arch = "wasm32"))]
     let client = client.set(bevy::log::LogPlugin {
-        custom_layer: native::log_tally::layer,
+        custom_layer: pk_shell::native::log_tally::layer,
         ..default()
     });
+    pk_shell::recorder::keep_info_from(&["mp_"]);
     app.add_plugins(
         client
             .set(WindowPlugin {
@@ -543,10 +555,8 @@ pub fn app(o: Options, (hq, scale): (bool, f64)) -> App {
     // three's default clear colour; the sky dome covers it.
     .insert_resource(ClearColor(Color::BLACK))
     .insert_resource(SkyRes::default())
-    .insert_resource(Status {
-        state: "waiting",
-        ..default()
-    })
+    .insert_resource(SceneStatus::default())
+    .insert_resource(app_info())
     .insert_resource(TrackRes::default())
     .insert_resource(CameraState {
         fly: o.fly,
@@ -555,8 +565,9 @@ pub fn app(o: Options, (hq, scale): (bool, f64)) -> App {
     })
     .insert_resource(Opts { o, hq, scale })
     .init_state::<AppState>()
+    // The load status (waiting), readiness and the focus messages (D1234).
+    .add_plugins((pk_shell::status::StatusPlugin, pk_shell::FocusPlugin))
     .add_systems(Startup, (spawn_camera, no_light_clustering))
-    .add_systems(First, status::tick.after(bevy::time::TimeSystems))
     .add_systems(Update, make_track)
     .add_systems(Update, unload_scene.before(receive_scene))
     .add_systems(Update, receive_scene.run_if(in_state(AppState::Waiting)))
@@ -576,10 +587,12 @@ pub fn app(o: Options, (hq, scale): (bool, f64)) -> App {
             .chain()
             .run_if(in_state(AppState::Running)),
     );
-    app.sub_app_mut(bevy::render::RenderApp).add_systems(
-        bevy::render::Render,
-        (status::count_pipelines, status::gpu_fence).in_set(bevy::render::RenderSystems::Cleanup),
-    );
+    // The world build for the animators and a background section's own
+    // warm-up (`preview`) hold readiness and excuse late pipelines (D1005).
+    app.world_mut()
+        .resource_mut::<status::ReadyBlockers>()
+        .add(animate::pending);
+    pk_shell::status::late_is_expected_while(preview::section_warming);
     app.add_plugins(render::ThreeRenderPlugin);
     if let Some(which) = &materials {
         let out = app.world().resource::<Opts>().o.out.clone();
@@ -600,7 +613,7 @@ pub fn app(o: Options, (hq, scale): (bool, f64)) -> App {
     animate::plugin(&mut app);
     stream::plugin(&mut app);
     levels::plugin(&mut app);
-    debug_overlay::plugin(&mut app);
+    debug::plugin(&mut app);
     recording::plugin(&mut app);
     #[cfg(not(target_arch = "wasm32"))]
     native::plugin(&mut app);

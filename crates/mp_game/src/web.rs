@@ -1,32 +1,31 @@
 //! Web glue (SPEC 8.4): the page (`web/index.html`) checks WebGPU, loads
 //! this module, calls [`run`], downloads the scene with a progress bar and
-//! hands it in with [`load_scene`]. Status goes out on `window.__mp`.
+//! hands it in with [`load_scene`]. Status goes out on `window.__game`,
+//! also reachable as `window.__mp` for the e2e suites (Playground Kit's
+//! `pk_shell::bridge`, D1234): the shell publishes the contract's fields,
+//! this module the game's own (the level, the quality, the fly camera's
+//! position and route, the scene's counts).
 //!
 //! The gesture bridge: the page calls [`gesture`] inside its pointer-down,
 //! pointer-up, touch-end, click and key-down handlers, which is where audio
 //! resume, fullscreen, the landscape lock and the motion permission must
 //! happen (they are refused a frame later). The audio wakes there
-//! (`play::audio::gesture`, M5); the rest is M6's.
+//! (`play::audio::gesture`, M5); the rest is `pk_shell::web`'s.
 
 use crate::options::Options;
-use crate::status::Status;
+use crate::status::{SceneStatus, Status};
 use crate::{Opts, inbox};
 use bevy::prelude::*;
-use js_sys::{Object, Reflect};
+use pk_shell::bridge;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
 use wasm_bindgen::prelude::*;
-
-static GESTURES: AtomicU32 = AtomicU32::new(0);
-static SCREENSHOT: Mutex<Option<String>> = Mutex::new(None);
 
 /// Starts the client: options from the page's query string, then the Bevy
 /// app (which returns at once on the web; the browser drives its frames).
 #[wasm_bindgen]
 pub fn run() {
-    let window = web_sys::window().expect("a window");
-    let search = window.location().search().unwrap_or_default();
-    let mut o = Options::from_query(&search);
+    let mut o = Options::from_query(&pk_shell::web::query());
     // The saved level for the menu, and the saved High quality, which the
     // JS game defaults to off on touch devices (DECISIONS D570).
     let touch = crate::ui::touch_ui(&o);
@@ -53,13 +52,8 @@ pub fn unload_scene(level: String) {
 /// picks).
 #[wasm_bindgen]
 pub fn backend() -> String {
-    BACKEND.into()
+    pk_shell::backend().into()
 }
-
-#[cfg(mp_webgl2)]
-const BACKEND: &str = "webgl2";
-#[cfg(not(mp_webgl2))]
-const BACKEND: &str = "webgpu";
 
 /// The page could not get the scene file.
 #[wasm_bindgen]
@@ -78,92 +72,46 @@ pub fn survey_failed(message: String) {
     inbox().survey = Some(Err(message));
 }
 
-/// The gesture bridge (stub): called by the page inside a user gesture.
+/// The gesture bridge: called by the page inside a user gesture.
 #[wasm_bindgen]
-pub fn gesture(_kind: &str) {
-    GESTURES.fetch_add(1, Ordering::Relaxed);
+pub fn gesture(kind: &str) {
+    pk_shell::web::gesture(kind);
+}
+
+/// The sound wakes inside the gesture.
+fn wake_audio(_kind: &str) {
     crate::play::audio::gesture();
 }
 
-/// Captures the next frame with Bevy's screenshot and hands it to the
-/// browser as a download named `name` (a dev and test hook: headless Chrome
-/// does not composite a WebGPU canvas into its own screenshots). Sets
-/// `window.__mp.shot` to the name when done.
+/// Captures the next frame and hands it to the browser as a download named
+/// `name` (a dev and test hook); sets `shot` to the name when done.
 #[wasm_bindgen]
 pub fn screenshot(name: String) {
-    *SCREENSHOT.lock().unwrap_or_else(|e| e.into_inner()) = Some(name);
+    pk_shell::web::screenshot(name);
 }
 
-fn take_screenshot(mut commands: Commands) {
-    use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk};
-    let Some(name) = SCREENSHOT.lock().unwrap_or_else(|e| e.into_inner()).take() else {
-        return;
-    };
-    let done = name.clone();
-    commands
-        .spawn(Screenshot::primary_window())
-        .observe(save_to_disk(name))
-        .observe(move |_: On<ScreenshotCaptured>| {
-            if let Some(w) = web_sys::window()
-                && let Ok(mr) = Reflect::get(&w, &JsValue::from_str("__mp"))
-                && let Some(mr) = mr.dyn_ref::<Object>()
-            {
-                set(mr, "shot", done.as_str());
-            }
-        });
-}
-
-fn set(o: &Object, k: &str, v: impl Into<JsValue>) {
-    let _ = Reflect::set(o, &JsValue::from_str(k), &v.into());
-}
-
-/// Publishes the status on `window.__mp` (created by the page).
-fn publish(mut status: ResMut<Status>, opts: Res<Opts>, mut counts_sent: Local<bool>) {
-    status.gestures = GESTURES.load(Ordering::Relaxed);
-    let Some(window) = web_sys::window() else {
-        return;
-    };
-    let Ok(mr) = Reflect::get(&window, &JsValue::from_str("__mp")) else {
-        return;
-    };
-    let Some(mr) = mr.dyn_ref::<Object>() else {
-        return;
-    };
-    let now = window.performance().map_or(0.0, |p| p.now());
-    if status.frames == 1 {
-        set(mr, "firstFrameMs", now);
+/// Publishes the game's own fields on the status global (the shell's are
+/// `pk_shell::web::publish_status`).
+fn publish(
+    status: Res<Status>,
+    scene: Res<SceneStatus>,
+    opts: Res<Opts>,
+    mut counts_sent: Local<bool>,
+) {
+    bridge::set("level", opts.o.level.as_str());
+    bridge::set("hq", opts.hq);
+    bridge::set("scale", opts.scale);
+    bridge::set("s", scene.s);
+    if let Some((length, road_end, is_loop)) = scene.route {
+        bridge::set("routeLength", length);
+        bridge::set("roadEnd", road_end);
+        bridge::set("routeLoop", is_loop);
     }
-    if status.ready && status.ready_frames == 1 {
-        set(mr, "readyMs", now);
-    }
-    set(mr, "state", status.state);
-    set(mr, "level", opts.o.level.as_str());
-    set(mr, "hq", opts.hq);
-    set(mr, "scale", opts.scale);
-    set(mr, "progress", status.progress);
-    set(mr, "frames", status.frames as f64);
-    set(mr, "frameMs", status.frame_ms);
-    set(mr, "pipelinesWaiting", status.pipelines_waiting as f64);
-    set(mr, "ready", status.ready);
-    set(mr, "s", status.s);
-    set(mr, "gestures", status.gestures);
-    set(mr, "backend", BACKEND);
-    set(mr, "warmUp", status.warm_up as f64);
-    set(mr, "lateFrames", status.late_frames as f64);
-    set(mr, "scenes", status.scenes);
-    if let Some((length, road_end, is_loop)) = status.route {
-        set(mr, "routeLength", length);
-        set(mr, "roadEnd", road_end);
-        set(mr, "routeLoop", is_loop);
-    }
-    if let Some(e) = &status.error {
-        set(mr, "error", e.as_str());
-    }
-    if status.counts.is_none() {
+    if scene.counts.is_none() {
         // A reload: send the next scene's counts too.
         *counts_sent = false;
     }
-    if !*counts_sent && let Some(c) = &status.counts {
+    if !*counts_sent && let Some(c) = &scene.counts {
         *counts_sent = true;
         let hidden: Vec<String> = c
             .hidden_kinds
@@ -181,9 +129,10 @@ fn publish(mut status: ResMut<Status>, opts: Res<Opts>, mut counts_sent: Local<b
             c.invisible
         );
         if let Ok(v) = js_sys::JSON::parse(&json) {
-            set(mr, "counts", v);
+            bridge::set("counts", v);
         }
     }
+    let _ = &status;
 }
 
 /// Whether the client builds this level's scene itself (`animate`; the
@@ -247,17 +196,36 @@ fn fly_hook(
 }
 
 fn publish_fly() {
-    if let Some(w) = web_sys::window()
-        && let Ok(mr) = Reflect::get(&w, &JsValue::from_str("__mp"))
-        && let Some(mr) = mr.dyn_ref::<Object>()
-    {
-        set(mr, "flyQuiet", FLY_QUIET.load(Ordering::Relaxed));
+    bridge::set("flyQuiet", FLY_QUIET.load(Ordering::Relaxed));
+}
+
+/// The pixel-ratio policy follows the options: High quality and the render
+/// scale (D437, D1194), which Settings may change mid-race.
+fn sync_render_scale(opts: Res<Opts>, mut scale: ResMut<pk_shell::web::RenderScale>) {
+    if scale.hq != opts.hq || scale.scale != opts.scale {
+        scale.hq = opts.hq;
+        scale.scale = opts.scale;
     }
 }
 
 pub fn plugin(app: &mut App) {
-    app.add_systems(Last, publish)
-        .add_systems(Update, take_screenshot);
+    // The status global: the kit's name, and this game's for its suites.
+    app.add_plugins(pk_shell::web::WebPlugin {
+        global: "__game",
+        aliases: &["__mp"],
+    });
+    pk_shell::web::on_gesture(wake_audio);
+    pk_shell::web::set_permission_hook(crate::play::tilt::web::ask_in_gesture);
+    {
+        let o = app.world().resource::<Opts>().clone();
+        app.insert_resource(pk_shell::web::RenderScale {
+            hq: o.hq,
+            scale: o.scale,
+            ..default()
+        });
+    }
+    app.add_systems(PreUpdate, sync_render_scale)
+        .add_systems(Last, publish);
     app.add_systems(Update, fly_hook.after(crate::fly_system))
         .add_systems(Last, publish_fly);
 }

@@ -11500,3 +11500,147 @@ this game configures them.
   `gl-calls.mjs --game js` (the JS game's flight is `perf-baseline.mjs`;
   its GL counts are in BASELINE.md). The perf result file is now
   `parity/report/perf/<level>-<backend>[-run][-tag].json`.
+
+## D1234 (2026-10-16): the client shell moves to Playground Kit (pk_shell)
+
+Phase 1 of the rework (D1230), its last and largest piece: everything in
+`mp_game` that a second game would copy is now the kit's `pk_shell`
+(`../game-engine/crates/pk_shell`, its DECISIONS D8), and this crate
+configures it. Module by module, what moved and what became
+configuration:
+
+- **`plugins.rs` → `pk_shell::plugins::ClientPlugins`** as it was
+  (`UiSpriteSupport` included). Deleted here.
+- **`bridge.rs` → `pk_shell::bridge`**: the lazy value trees (`V`,
+  `Obj`, `publish`) and the scalar `set`/`get`/`call` on the status global.
+  **The global is `window.__game`** now, the kit's contract (PLAN.md section
+  5 item 7): the page spells it once (`GLOBAL = '__game'` in
+  `gen-index.py`), and `WebPlugin { global: "__game", aliases: &["__mp"] }`
+  makes **the same object** reachable as `window.__mp` when the wasm runs,
+  so the e2e suites and this game's tool wrappers (`--global __mp`) keep
+  working unchanged: one object, every field under both names. A reader
+  that looked at `__mp` before the wasm ran sees `undefined` until then
+  (the kit's harness waits with `G?.state`, so nothing in the suites did).
+  The kit publishes `state`, `progress`, `frames`, `frameMs`,
+  `pipelinesWaiting`, `ready`, `backend`, `error`, `shot`, `warmUp`,
+  `lateFrames`, `scenes`, `firstFrameMs`, `readyMs`, `gestures`,
+  `staged`; `web.rs` here adds `level`, `hq`, `scale`, `s`, `routeLength`,
+  `roadEnd`, `routeLoop`, `counts`, `flyQuiet`, and `ui::web` and
+  `play::web` their trees as before.
+- **`options.rs` → `pk_shell::params::Params`** (ordered pairs,
+  URLSearchParams decoding, JS `number()`, `--query`, bare `k=v`, flag
+  aliases). `Options`, `FlyParams`, `race_on`, `cars_on` and `usage` stay
+  here, built from `Params` (`Options::from_params`); the command-line
+  flags are an alias table (`options::ALIASES`: `--debug` → `debug=1`,
+  `--level x` → `level=x`, `--join` escaped), so `--screenshot`, `--after`,
+  `--size`, `--materials`, `--out`, `--stations`, `--smoke-test` and
+  `--smoke-race` are parameters too (`screenshot=`, `after=`, `size=`,
+  `mat=`, `out=`, `stations=`, `smoke-test=1`, `smoke-race=1`) and appear in
+  a recording's `query`. The percent-encoder is the kit's
+  (`pk_shell::params::escape`), not `mp_net`'s.
+- **`status.rs` → `pk_shell::status`**: `LoadStatus` with `LoadState
+  {Waiting, Building, Warming, Running, Failed}` in place of the string,
+  the render-world pipeline counter with the WebGL2 compute-pipeline
+  exception (D392), the GPU fence (D390), the late frames, and
+  `ReadyBlockers` (this game adds `animate::pending`) plus
+  `late_is_expected_while` (this game's `preview::section_warming`,
+  D1005). `status::Status` here is a type alias of `LoadStatus`; the
+  scene's counts, the fly camera's `s` and the route are
+  `status::SceneStatus`, a second resource. The slow-frame log target is
+  `pk_shell::status` (`RUST_LOG=pk_shell::status=debug`), and the
+  late-pipeline warning no longer names the camera's s.
+- **`ui/store.rs` (the store) → `pk_shell::store`**: `Backend`, `Store`
+  (now with its prefix), the JS-exact `stringify` and `js_number`,
+  `Memory`, `LocalStorage`, `FileStore` (atomic write, the config
+  directories, the env var, the legacy folders). `ui::store` keeps
+  `Settings`, the choices, `mode_for`, `best_key`, and the configuration:
+  `STORE_CONFIG { prefix: "mr.", app_dir: "midnight-playground", env_var:
+  "MP_STORE", legacy_dirs: &["midnight-racer"] }`, `platform()` and
+  `memory()`. A test (`the_games_keys_round_trip_unchanged`) seeds the
+  game's keys as the JS wrote them and checks the bytes the typed setters
+  write back; the native file's bytes are checked as before.
+- **`native/window_state.rs` + half of `native.rs` → `pk_shell::native`**:
+  `WindowStatePlugin { config: WindowConfig { app_id, title, icon_png,
+  default_size, min_size, state_path }, keys, persist }` (bounds, maximised,
+  fullscreen, the monitor-cover detection, F11, Ctrl/Cmd+Q, the 64 px
+  icon), `log_tally` (the benign list is configurable; the web-audio
+  underrun is in the kit's default), `SmokeTestPlugin(SmokeTest { label,
+  after, timeout_s, screenshot, smoke, extra })` with the adapter report and
+  the exit code, `StatusTitle` + `title` for the window title, and
+  `FocusLost`/`FocusGained` messages from `WindowFocused`. `native.rs`
+  here keeps the scene thread, Seaside's survey, `reload`, `repo_root`,
+  `persists`/`headless`, `window(o, title)` (the pictures' windows) and
+  the title's text; `focus_pause` reads `pk_shell::FocusLost`.
+- **`play/web.rs`'s visibility + `web.rs`'s and `ui/web.rs`'s generic
+  halves → `pk_shell::web`**: `FocusLost` from `visibilitychange` (one
+  message for both platforms; the race pauses on it before its ticks as
+  before), `backend()`, the gesture registry (`on_gesture`; the sound's
+  wake is registered here), `screenshot`, `RenderScale { hq, hq_cap,
+  scale, screen_min }` with `scene_ratio()` and `screen_ratio()` (D437,
+  D1194, D575), `set_pixel_ratio` (D1195), `PixelRatioPolicy { on,
+  screen_up }` driving the split-screen camera (`SceneImage`, `ScreenCam`,
+  D1199; `play::web::setup` turns it on, `ui::web::screen_state` says when
+  a screen is up), `CanvasScale { css, touch }` measured each frame (the
+  race's `css_scale`/`touch_scale` copy it), `FullscreenOnTap` and
+  `PermissionOnTap` marker components with `TapPolicy` in place of the
+  hard-coded ids (`ui::web::mark_taps` marks `btn-start`, `btn-again`,
+  `btn-restart` and `option-tilt` as they are built; the 800 ms dedupe and
+  the permission-before-fullscreen order, D843, are the kit's;
+  `tilt::web::ask_in_gesture` is the permission hook), `page_touch`,
+  `insets`, `footer`, `copy_text`, `prompt`, and `register_stage(name,
+  fn(&mut World, &Value))` with the `staged` counter: `ui::web` registers
+  one handler (`apply_stage`, run through `run_system_cached_with`) for
+  every command the suites send. The game's exports to the page
+  (`gesture`, `gesture_at`, `screenshot`, `stage`, `backend`) are thin
+  `#[wasm_bindgen]` wrappers here, as the template's README says.
+- **`warmup.rs` → `pk_shell::warmup`**: `Combos<M: Material, K>` (the key
+  type is the game's), `Layout`, `prewarm_glyphs(sizes)`, `prewarm_ui`,
+  `end_warm_up`, with an `extra` closure per stand-in. `warmup.rs` here is
+  the `ThreeKey` newtype (`key.instanced` → the instance stream of one
+  instance and `NoAutomaticBatching`), `SceneEntity` on every stand-in,
+  `HUD_TEXT_SIZES`, `spawn_glyphs`, `spawn_ui`.
+- **`debug_overlay.rs` → `pk_shell::debug`**: `DebugOverlayPlugin { on,
+  toggle_key, font }` (F3 and Bevy's Fira Mono by default), `FrameTimes`,
+  the three graphs, the shell's lines (backend, adapter, resolution,
+  entities, pipelines waiting, late frames, wasm memory). `debug.rs` here
+  writes `DebugLines { head, touch_layout }`: the mode and screen, level,
+  car, tick, speed, lap, gear.
+- **`recording.rs` → `pk_shell::recorder`**: `RecorderPlugin { want, name,
+  root, banner, web_label, extra, query }` writes the file and the
+  `start`, `frames`, `slow_frame`, `status`, `mode`, `adapter`, `focus`,
+  `gamepad`, `overlay`, `window`, `log` and `end` lines; a game writes its
+  own through `RecordLine { kind, json }` messages (`settings`, `pads`,
+  `audio` here) or straight into the `Recorder` (`race_start`,
+  `race_mode`, `race_end`, `race_stop`, `gap`); `RecorderMode` is the
+  `mode` field's text. `InputLog<I>` chunks the inputs with the hash and
+  the events, generic over the encoder: **`ticks` lines are
+  byte-identical** (`mp_sim::replay::encode`, the `race` id key and the
+  player-car fragment are this game's), and `a_recorded_race_replays`
+  still passes, so `mp-sim replay` reads a new recording as before. The
+  `start` line keeps its field order (`preserve_order` in the kit too);
+  the `status` line no longer carries `counts`, and the `end` line no
+  longer `races`.
+- **`worker.rs` → `pk_shell::worker::Worker { script }`**: the
+  generation-stamped plan/build/failed messages, the inbox, the "gone"
+  fallback; `worker.rs` here names `builder-worker.js` and the plan's
+  `level` field (`Msg::Built { key, .. }` where it said `k`).
+  `web/builder-worker.js` stays this game's file.
+- **`stations.rs` → `pk_shell::stations::Stations<P>`** with the pose
+  callback and the settled predicate; `stations.rs` here reads
+  `stations.json` into `FlyParams`, applies a pose to `CameraState` and
+  says settled when the environment map is built.
+- **From `lib.rs`**: `pk_shell::AppInfo { name, app_id, banner }`
+  (`app_info()`), `pk_shell::Inbox<T>` (this game keeps its three-field
+  `Inbox`), `StatusPlugin` and `FocusPlugin` in `app()`.
+- **The WebGL2 build.** `pk_shell` reads its backend from its `webgpu` or
+  `webgl2` cargo feature; this crate's wasm target tables turn the right
+  one on beside Bevy's (`cfg(all(target_arch = "wasm32", mp_webgl2))` →
+  `pk_shell/webgl2`), so the `mp_webgl2` cfg stays this game's and the kit
+  never reads it. `winit` left this crate's dependencies (the icon is
+  the kit's).
+- **Gates**: `cargo fmt`, clippy natively and for both wasm backends,
+  `cargo test --workspace`, `check-deps` (16 crates), the release web
+  build within the size budget, `build-diff.mjs --a pre-split --b next`
+  pixel-identical on the four levels, `web-console.mjs` on both backends,
+  the native smoke test, and the e2e suites that touch what moved; the
+  results are in the carve's report.

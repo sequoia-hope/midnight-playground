@@ -26,6 +26,9 @@ mp_music.workspace = true
 mp_track.workspace = true
 mp_levels.workspace = true
 pk_math.workspace = true
+# The client shell (Playground Kit, D1234): plugins, parameters, status,
+# store, window state, web glue, warm-up, debug overlay, recorder, stations.
+pk_shell.workspace = true
 # The bundled fonts and the menus' drawn pictures (the logo, icons; WP 6.1).
 pk_canvas.workspace = true
 # The material test scenes' definitions (parity/golden/materials/scenes.json)
@@ -91,13 +94,9 @@ bevy = { version = "=0.19.1", default-features = false, features = [
 mp_worldgen = { workspace = true, features = ["parallel"] }
 # Seaside Raceway's ground photo (`photo.jpg`) for the client's own build
 # natively; on the web the browser decodes it (`levels::seaside`, D681).
-# PNG too: the window's icon, `desktop/icon.png` (WP 6.8; Bevy's `png`
-# feature turns it on in the same crate already).
+# (The window's icon is decoded by pk_shell; Bevy's `png` feature turns PNG
+# on in the same crate already.)
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
-# The window's icon and state natively (WP 6.8, DECISIONS D1000): Bevy has
-# no icon API, and `winit::window::Icon` is not re-exported. The version
-# Bevy 0.19.1 uses; its features come from bevy_winit.
-winit = { version = "0.30", default-features = false }
 # Multiplayer natively: the WebSocket to an mp-host (`net::ws_native`).
 tungstenite = "0.30"
 
@@ -107,11 +106,15 @@ tungstenite = "0.30"
 # builds both, the WebGL2 one in its own target directory). A cfg rather
 # than a Cargo feature, so the native build's Bevy features (and every
 # build cache of it) stay as they are.
+# pk_shell learns the backend the same way, from its `webgpu` or `webgl2`
+# feature, which these tables turn on (the kit's D8; D1234).
 [target.'cfg(all(target_arch = "wasm32", not(mp_webgl2)))'.dependencies]
 bevy = { version = "=0.19.1", default-features = false, features = ["web", "webgpu"] }
+pk_shell = { workspace = true, features = ["webgpu"] }
 
 [target.'cfg(all(target_arch = "wasm32", mp_webgl2))'.dependencies]
 bevy = { version = "=0.19.1", default-features = false, features = ["web", "webgl2"] }
+pk_shell = { workspace = true, features = ["webgl2"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # The race's sound on the web: the browser's Web Audio (DECISIONS D513).

@@ -1,54 +1,25 @@
 //! The screens' web glue: the page's touch decision, another level's
 //! scene through the page (`__mp.reload`), the pixel ratio (the screens'
-//! sharper than the race's, over the scene at the race's, D1199),
-//! fullscreen and the landscape lock inside the Race tap (SPEC 8.4), and the test bridge's part for the screens (SPEC 8.5):
-//! `__mp.screen`, `__mp.mode`, `__mp.ui(id)`, `__mp.reveal(id)` and a few
-//! `__mp.stage(cmd)` commands. WP 6.7 owns the full bridge.
+//! sharper than the race's, over the scene at the race's, D1199: Playground
+//! Kit's `pk_shell::web`, D1234), fullscreen and the landscape lock inside
+//! the Race tap (SPEC 8.4), and the test bridge's part for the screens
+//! (SPEC 8.5): `__mp.screen`, `__mp.mode`, `__mp.ui(id)`, `__mp.reveal(id)`
+//! and the `__mp.stage(cmd)` commands. WP 6.7 owns the full bridge.
 
 use super::{Screen, UiState, mode_name, snapshot};
 use crate::play::Play;
 use crate::status::Status;
-use bevy::camera::{ImageRenderTarget, RenderTarget};
 use bevy::prelude::*;
-use bevy::render::render_resource::Extent3d;
-use bevy::window::WindowRef;
-use js_sys::{Object, Reflect};
+use pk_shell::bridge;
+use pk_shell::web::{FullscreenOnTap, PermissionOnTap, PixelRatioSet, StageSet};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU32, Ordering};
+use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen::{JsCast, JsValue};
 
 static START_LEVEL: Mutex<String> = Mutex::new(String::new());
 static REVEAL: Mutex<Option<String>> = Mutex::new(None);
-static STAGE: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-/// The controls that go fullscreen when tapped on a phone (`startRace`
-/// calls `enterFullscreen` inside the tap), in CSS px, and whether the
-/// setting allows it.
-type Rects = Vec<(f32, f32, f32, f32)>;
-static FULLSCREEN: Mutex<(bool, Rects)> = Mutex::new((false, Vec::new()));
-/// The steering drop-down's Tilt option, where a tap asks an iPhone for
-/// motion access (`opt-steer`'s `tilt.enable`, inside the change).
-static TILT_OPTION: Mutex<Rects> = Mutex::new(Vec::new());
-
-fn mr() -> Option<Object> {
-    let w = web_sys::window()?;
-    Reflect::get(&w, &JsValue::from_str("__mp"))
-        .ok()?
-        .dyn_into::<Object>()
-        .ok()
-}
-
-fn set(o: &Object, k: &str, v: impl Into<JsValue>) {
-    let _ = Reflect::set(o, &JsValue::from_str(k), &v.into());
-}
-
-/// `isTouchDevice` as the page decided it (`__mp.touch`).
-pub fn page_touch() -> bool {
-    mr().and_then(|m| Reflect::get(&m, &JsValue::from_str("touch")).ok())
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-}
+pub use pk_shell::web::{copy_text, page_touch, prompt};
 
 /// The level this run builds first (the page downloads its scene).
 pub(crate) fn set_start_level(level: &str) {
@@ -68,270 +39,9 @@ pub fn start_level() -> String {
 pub fn reload(level: &str) {
     let f = js_sys::Function::new_with_args(
         "lv",
-        "const r = window.__mp && window.__mp.reload; if (r) r(lv).catch((e) => console.error('loading ' + lv + ': ' + (e && e.message || e)));",
+        "const r = window.__game && window.__game.reload; if (r) r(lv).catch((e) => console.error('loading ' + lv + ': ' + (e && e.message || e)));",
     );
     let _ = f.call1(&JsValue::NULL, &JsValue::from_str(level));
-}
-
-/// The browser's own prompt, for the lobby's name (no text field is drawn
-/// in the canvas, and a phone's keyboard only comes up for the DOM's).
-/// The answer, trimmed, or `None` if cancelled or empty.
-pub fn prompt(message: &str, current: &str) -> Option<String> {
-    let w = web_sys::window()?;
-    let a = w.prompt_with_message_and_default(message, current).ok()??;
-    let a = a.trim().to_string();
-    (!a.is_empty()).then_some(a)
-}
-
-/// Copies `text` to the clipboard (`navigator.clipboard.writeText`); where
-/// there is none (an insecure page), shows it in the browser's prompt to
-/// copy by hand.
-pub fn copy_text(text: &str) {
-    use wasm_bindgen::JsCast;
-    let Some(w) = web_sys::window() else { return };
-    let nav = w.navigator();
-    let write = js_sys::Reflect::get(&nav, &"clipboard".into())
-        .ok()
-        .filter(|c| !c.is_undefined())
-        .and_then(|c| {
-            let f = js_sys::Reflect::get(&c, &"writeText".into()).ok()?;
-            let f = f.dyn_into::<js_sys::Function>().ok()?;
-            f.call1(&c, &text.into()).ok()
-        });
-    if write.is_none() {
-        let _ = w.prompt_with_message_and_default("Copy this link", text);
-    }
-}
-
-/// Draws the canvas at `pr` pixels per CSS pixel: the window's scale
-/// factor override, so Bevy's logical pixels are CSS pixels, and its size
-/// in pixels, the canvas's CSS box times `pr`, which is what the surface
-/// (and so the canvas's backing store) is configured from. The override
-/// alone changes only the logical size: winit sizes the window from the
-/// canvas's box and the device's ratio, whatever Bevy's factor (D1195).
-/// Called every frame (a window resize puts winit's size back) and at the
-/// race's and the viewer's start; nothing is written when nothing changes.
-pub fn apply_pixel_ratio(w: &mut Window, pr: f32) {
-    if (w.resolution.scale_factor() - pr).abs() > 1e-3 {
-        w.resolution.set_scale_factor_override(Some(pr));
-    }
-    let Some(want) = canvas_pixels(pr) else {
-        return;
-    };
-    if (
-        w.resolution.physical_width(),
-        w.resolution.physical_height(),
-    ) != want
-    {
-        w.resolution.set_physical_resolution(want.0, want.1);
-    }
-}
-
-/// The canvas's CSS box at `pr` pixels per CSS pixel, or `None` before the
-/// page has laid it out.
-fn canvas_pixels(pr: f32) -> Option<(u32, u32)> {
-    let canvas = web_sys::window()
-        .and_then(|w| w.document())
-        .and_then(|d| d.get_element_by_id("game"))?;
-    let (cw, ch) = (canvas.client_width(), canvas.client_height());
-    if cw <= 0 || ch <= 0 {
-        return None;
-    }
-    Some((
-        (cw as f32 * pr).round().max(1.0) as u32,
-        (ch as f32 * pr).round().max(1.0) as u32,
-    ))
-}
-
-/// The pixel ratio the race draws at: `applyQuality`'s, `hq ?
-/// min(devicePixelRatio, 1.5) : 1` (D437), times the render scale
-/// (D1194). The viewer and the race's start apply it as it is.
-pub fn race_pixel_ratio(opts: &crate::Opts) -> f32 {
-    let dpr = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio());
-    ((if opts.hq { dpr.min(1.5) } else { 1.0 }) * opts.scale) as f32
-}
-
-/// The pixel ratio the canvas draws at: the race's; on a screen, at least
-/// `min(devicePixelRatio, 2)`, because the screens' text is drawn into the
-/// same canvas, where the DOM's was always sharp (DECISIONS D575, D1199).
-fn pixel_ratio(opts: &crate::Opts, screen: bool) -> f32 {
-    let race = race_pixel_ratio(opts);
-    if screen {
-        let dpr = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio()) as f32;
-        race.max(dpr.min(2.0))
-    } else {
-        race
-    }
-}
-
-/// The screens' camera (D1199): while a screen draws at a sharper ratio
-/// than the race's, it draws the scene's picture and the UI into the
-/// window; otherwise it is off.
-#[derive(Component)]
-struct ScreenCam;
-
-/// The scene's picture under the screens (D1199), the screens' camera's
-/// lowest node.
-#[derive(Component)]
-struct ScenePicture;
-
-/// The image the scene draws into under a sharper screen (D1199).
-#[derive(Resource)]
-struct SceneImage(Handle<Image>);
-
-/// The screens' camera, off, and the node that shows the scene's picture
-/// on it, hidden (D1199).
-fn spawn_screen_cam(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
-    use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
-    use bevy::image::ImageSampler;
-    use bevy::render::render_resource::TextureFormat;
-    use bevy::render::view::Msaa;
-    let mut image = Image::new_target_texture(1, 1, TextureFormat::Rgba8UnormSrgb, None);
-    // Drawn into, never uploaded: no copy of its pixels in memory.
-    image.data = None;
-    // Drawn afresh every frame, so a resize (a phone turned on a screen)
-    // keeps nothing of the old picture. Bevy's copy of it would need
-    // COPY_SRC, which a target texture lacks: WebGPU rejected the copy and
-    // Bevy quit the app on the validation error (D1204).
-    image.copy_on_resize = false;
-    image.sampler = ImageSampler::linear();
-    let image = images.add(image);
-    let cam = commands
-        .spawn((
-            Camera2d,
-            Camera {
-                order: 1,
-                is_active: false,
-                ..default()
-            },
-            Msaa::Off,
-            Tonemapping::None,
-            DebandDither::Disabled,
-            ScreenCam,
-        ))
-        .id();
-    commands.spawn((
-        ImageNode::new(image.clone()),
-        Node {
-            display: Display::None,
-            position_type: PositionType::Absolute,
-            width: Val::Percent(100.0),
-            height: Val::Percent(100.0),
-            ..default()
-        },
-        GlobalZIndex(i32::MIN),
-        UiTargetCamera(cam),
-        ScenePicture,
-    ));
-    commands.insert_resource(SceneImage(image));
-}
-
-type SceneCams<'w, 's> = Query<
-    'w,
-    's,
-    (Entity, &'static mut RenderTarget, Has<IsDefaultUiCamera>),
-    (With<Camera3d>, Without<ScreenCam>),
->;
-type ScreenCams<'w, 's> = Query<
-    'w,
-    's,
-    (Entity, &'static mut Camera, Has<IsDefaultUiCamera>),
-    (With<ScreenCam>, Without<Camera3d>),
->;
-
-/// Sharp text on the screens, the JS's pixel ratio while driving, and the
-/// scene at the race's ratio under every screen (D1199): a screen draws its
-/// text at the screens' ratio, but the scene behind it (the attract
-/// camera's flight, a paused or finished race) costs what the race does.
-/// While the screens' ratio is the higher, the scene's camera draws into
-/// [`SceneImage`], sized at the race's ratio, and the screens' camera
-/// draws it, stretched, under the UI at the window's. When the two are the
-/// same (driving, or a screen on a desktop at Full) the scene's camera
-/// draws into the window as before and the screens' camera is off, so a
-/// race costs nothing more.
-#[allow(clippy::too_many_arguments)]
-fn screen_pixel_ratio(
-    mut commands: Commands,
-    ui: Res<UiState>,
-    opts: Res<crate::Opts>,
-    scene_image: Option<Res<SceneImage>>,
-    mut images: ResMut<Assets<Image>>,
-    mut windows: Query<&mut Window, With<bevy::window::PrimaryWindow>>,
-    mut scene_cams: SceneCams,
-    mut screen_cams: ScreenCams,
-    mut picture: Query<&mut Node, With<ScenePicture>>,
-) {
-    // Every screen draws its text at the screens' ratio (D575, D1198); the
-    // race's picture under the pause and results screens stays at the
-    // race's (D1199).
-    let want = pixel_ratio(&opts, ui.screen != Screen::None);
-    if let Ok(mut w) = windows.single_mut() {
-        apply_pixel_ratio(&mut w, want);
-    }
-
-    let race = race_pixel_ratio(&opts);
-    let (
-        Some(scene_image),
-        Ok((scene, mut target, scene_default)),
-        Ok((screen, mut cam, screen_default)),
-    ) = (
-        scene_image,
-        scene_cams.single_mut(),
-        screen_cams.single_mut(),
-    )
-    else {
-        return;
-    };
-    let size = canvas_pixels(race).filter(|_| want > race + 1e-3);
-    if let Some((w, h)) = size {
-        let extent = Extent3d {
-            width: w,
-            height: h,
-            depth_or_array_layers: 1,
-        };
-        if images
-            .get(&scene_image.0)
-            .is_some_and(|i| i.texture_descriptor.size != extent)
-            && let Some(mut i) = images.get_mut(&scene_image.0)
-        {
-            i.resize(extent);
-        }
-    }
-    let split = size.is_some();
-    let into = split.then(|| ImageRenderTarget {
-        handle: scene_image.0.clone(),
-        scale_factor: race,
-    });
-    let now = match &*target {
-        RenderTarget::Image(t) => Some(t),
-        _ => None,
-    };
-    if now != into.as_ref() {
-        *target = into.map_or(
-            RenderTarget::Window(WindowRef::Primary),
-            RenderTarget::Image,
-        );
-    }
-    if cam.is_active != split {
-        cam.is_active = split;
-    }
-    if let Ok(mut node) = picture.single_mut() {
-        let display = if split { Display::Flex } else { Display::None };
-        if node.display != display {
-            node.display = display;
-        }
-    }
-    // The UI goes with the camera that draws into the window.
-    for (e, is, should) in [
-        (scene, scene_default, !split),
-        (screen, screen_default, split),
-    ] {
-        if should && !is {
-            commands.entity(e).insert(IsDefaultUiCamera);
-        } else if is && !should {
-            commands.entity(e).remove::<IsDefaultUiCamera>();
-        }
-    }
 }
 
 /// The menu's "Music player" link: the JS game's page. Beside the build at
@@ -363,10 +73,12 @@ pub fn ui_reveal(id: String) {
 /// "finish", "rivalWon": bool}` puts the player 250 m from the line at 45
 /// m/s and the rivals back near the start (one of them already finished
 /// if asked); `{"cmd": "cruise", "score": n, "nearMisses": n}` sets the
-/// cruise score; `{"cmd": "padsetup"}` opens the Controller screen.
+/// cruise score; `{"cmd": "padsetup"}` opens the Controller screen. The
+/// queue and the dispatch are `pk_shell::web`'s; the handlers are
+/// registered in [`plugin`].
 #[wasm_bindgen]
 pub fn stage(cmd: String) {
-    STAGE.lock().unwrap_or_else(|e| e.into_inner()).push(cmd);
+    pk_shell::web::stage(cmd);
 }
 
 /// The page's gesture handlers call this inside the event (SPEC 8.4): a
@@ -376,42 +88,39 @@ pub fn stage(cmd: String) {
 /// (`startRace`'s `tilt.enable(true)`), as a tap on the steering choice's
 /// Tilt does (`opt-steer`'s change). The motion request comes first: a
 /// fullscreen request uses the tap up, and a browser with both would then
-/// refuse the other (DECISIONS D843).
+/// refuse the other (DECISIONS D843). `pk_shell::web::gesture_at` does it
+/// from the controls marked `FullscreenOnTap` and `PermissionOnTap`.
 #[wasm_bindgen]
-pub fn gesture_at(_kind: &str, x: f64, y: f64) {
-    let (on, rects) = FULLSCREEN.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    let (x, y) = (x as f32, y as f32);
-    let inside = |rs: &Rects| {
-        rs.iter()
-            .any(|r| x >= r.0 && x <= r.0 + r.2 && y >= r.1 && y <= r.1 + r.3)
-    };
-    let race = inside(&rects);
-    let picked_tilt = inside(&TILT_OPTION.lock().unwrap_or_else(|e| e.into_inner()));
-    if race || picked_tilt {
-        crate::play::tilt::web::ask_in_gesture(picked_tilt);
-    }
-    if on && race {
-        // One tap brings pointer-up, touch-end and click: ask once.
-        static LAST: Mutex<f64> = Mutex::new(-1e9);
-        let now = js_sys::Date::now();
-        let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
-        if now - *last >= 800.0 {
-            let f = js_sys::Function::new_no_args(
-                "if (document.fullscreenElement) return; const el = document.documentElement; \
-                 const req = el.requestFullscreen || el.webkitRequestFullscreen; if (!req) return; \
-                 try { Promise.resolve(req.call(el, { navigationUI: 'hide' })) \
-                   .then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')) \
-                   .catch(() => {}); } catch (e) { /* not allowed here */ }",
-            );
-            let _ = f.call0(&JsValue::NULL);
-            *last = now;
+pub fn gesture_at(kind: &str, x: f64, y: f64) {
+    pk_shell::web::gesture_at(kind, x, y);
+}
+
+/// Marks the controls whose tap goes fullscreen or asks the motion
+/// permission (`pk_shell::web`), as they are built.
+fn mark_taps(
+    mut commands: Commands,
+    added: Query<(Entity, &super::Control), Added<super::Control>>,
+) {
+    for (e, c) in &added {
+        match c.id.as_str() {
+            "btn-start" | "btn-again" | "btn-restart" => {
+                commands.entity(e).insert(FullscreenOnTap);
+            }
+            "option-tilt" => {
+                commands.entity(e).insert(PermissionOnTap);
+            }
+            _ => {}
         }
     }
 }
 
-/// Stage commands applied so far (`__mp.staged`): the e2e harness waits for
-/// the frame that applied its writes before it reads again (WP 6.7).
-static STAGED: AtomicU32 = AtomicU32::new(0);
+/// Whether a screen is up this frame, for the shell's pixel ratio (D1199).
+fn screen_state(ui: Res<UiState>, mut policy: ResMut<pk_shell::web::PixelRatioPolicy>) {
+    let up = ui.screen != Screen::None;
+    if policy.screen_up != up {
+        policy.screen_up = up;
+    }
+}
 
 /// The test bridge's control commands (WP 6.7): `{"cmd": "choose", "id":
 /// "opt-track", "value": v}` (a select's `value = v` and its `change`),
@@ -481,130 +190,161 @@ fn stage_control(
     true
 }
 
-/// Staging commands and reveals from the page.
-fn take_commands(mut ui: ResMut<UiState>, mut ctx: super::ActCtx, controls: super::ControlQuery) {
-    if let Some(id) = REVEAL.lock().unwrap_or_else(|e| e.into_inner()).take() {
-        ui.reveal = Some(id);
+/// Every stage command the suites send: the controls' (`stage_control`),
+/// the race's (`play::web::stage_race`), and the flow's.
+fn apply_stage(
+    In(v): In<serde_json::Value>,
+    mut ui: ResMut<UiState>,
+    mut ctx: super::ActCtx,
+    controls: super::ControlQuery,
+) {
+    if stage_control(&mut ui, &mut ctx, &controls, &v)
+        || crate::play::web::stage_race(&mut ctx.play, &v)
+    {
+        return;
     }
-    let cmds: Vec<String> = std::mem::take(&mut *STAGE.lock().unwrap_or_else(|e| e.into_inner()));
-    for c in cmds {
-        STAGED.fetch_add(1, Ordering::Relaxed);
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(&c) else {
-            continue;
-        };
-        if stage_control(&mut ui, &mut ctx, &controls, &v)
-            || crate::play::web::stage_race(&mut ctx.play, &v)
-        {
-            continue;
+    let play = &mut ctx.play;
+    match v["cmd"].as_str() {
+        Some("padsetup") => {
+            if ui.screen == Screen::Menu || ui.screen == Screen::Pause {
+                ui.pad_return = ui.screen;
+                ui.screen = Screen::PadSetup;
+                ui.dirty = true;
+            }
         }
-        let play = &mut ctx.play;
-        match v["cmd"].as_str() {
-            Some("padsetup") => {
-                if ui.screen == Screen::Menu || ui.screen == Screen::Pause {
-                    ui.pad_return = ui.screen;
-                    ui.screen = Screen::PadSetup;
-                    ui.dirty = true;
+        Some("finish") => {
+            let won = v["rivalWon"].as_bool().unwrap_or(false);
+            if let Some(r) = play.race.as_mut() {
+                let t = r.session.lr.track.clone();
+                let st = &mut r.session.curr;
+                let s = t.finish_s - 250.0;
+                let p = &mut st.players[0];
+                p.phys.reset(&mut p.v, &t, s, 0.0);
+                let f = t.frame(s);
+                p.v.vx = f.fx * 45.0;
+                p.v.vz = f.fz * 45.0;
+                p.rules.last_s = Some(s);
+                p.rules.odo = Some(s);
+                for (i, a) in st.rivals.iter_mut().enumerate() {
+                    a.k.s = t.start_s + 40.0 - i as f64 * 12.0;
+                    a.k.lat = if i % 2 == 1 { 2.0 } else { -2.0 };
+                    a.k.speed = 0.0;
+                    a.write_pos(&t);
                 }
-            }
-            Some("finish") => {
-                let won = v["rivalWon"].as_bool().unwrap_or(false);
-                if let Some(r) = play.race.as_mut() {
-                    let t = r.session.lr.track.clone();
-                    let st = &mut r.session.curr;
-                    let s = t.finish_s - 250.0;
-                    let p = &mut st.players[0];
-                    p.phys.reset(&mut p.v, &t, s, 0.0);
-                    let f = t.frame(s);
-                    p.v.vx = f.fx * 45.0;
-                    p.v.vz = f.fz * 45.0;
-                    p.rules.last_s = Some(s);
-                    p.rules.odo = Some(s);
-                    for (i, a) in st.rivals.iter_mut().enumerate() {
-                        a.k.s = t.start_s + 40.0 - i as f64 * 12.0;
-                        a.k.lat = if i % 2 == 1 { 2.0 } else { -2.0 };
-                        a.k.speed = 0.0;
-                        a.write_pos(&t);
-                    }
-                    if won && let Some(a) = st.rivals.first_mut() {
-                        a.finished = true;
-                        a.finish_time = Some(1.0);
-                    }
-                    r.session.prev = r.session.curr.clone();
+                if won && let Some(a) = st.rivals.first_mut() {
+                    a.finished = true;
+                    a.finish_time = Some(1.0);
                 }
+                r.session.prev = r.session.curr.clone();
             }
-            Some("cruise") => {
-                if let Some(r) = play.race.as_mut() {
-                    let rules = &mut r.session.curr.players[0].rules;
-                    if let Some(s) = v["score"].as_f64() {
-                        rules.score = s;
-                    }
-                    if let Some(n) = v["nearMisses"].as_i64() {
-                        rules.near_misses = n as i32;
-                    }
-                }
-            }
-            // The controls suites' `placeCar` (and `phys.reset`): on the
-            // road `ahead` m past the start (or `fromFinish` m before the
-            // line) at `lat` (or `latFrac` of the half width), pointing
-            // along it at `speed` m/s, its heading turned by `yaw` radians.
-            Some("place") => {
-                if let Some(r) = play.race.as_mut() {
-                    let t = r.session.lr.track.clone();
-                    let st = &mut r.session.curr;
-                    let p = &mut st.players[0];
-                    let s = match v["fromFinish"].as_f64() {
-                        Some(d) => t.finish_s - d,
-                        None => t.start_s + v["ahead"].as_f64().unwrap_or(40.0),
-                    };
-                    let f = t.frame(s);
-                    let lat = v["latFrac"]
-                        .as_f64()
-                        .map_or(v["lat"].as_f64().unwrap_or(0.0), |k| k * f.hw);
-                    p.phys.reset(&mut p.v, &t, s, lat);
-                    let speed = v["speed"].as_f64().unwrap_or(0.0);
-                    p.v.vx = f.fx * speed;
-                    p.v.vz = f.fz * speed;
-                    p.v.yaw += v["yaw"].as_f64().unwrap_or(0.0);
-                    p.rules.last_s = Some(s);
-                    r.session.prev = r.session.curr.clone();
-                    // `window.__race.cam.snap = true`: the camera behind it now.
-                    r.rig.snap = true;
-                }
-            }
-            // `window.__race.phys.nitro = n`.
-            Some("nitro") => {
-                if let Some(r) = play.race.as_mut() {
-                    r.session.curr.players[0].phys.nitro = v["amount"].as_f64().unwrap_or(1.0);
-                }
-            }
-            // `window.__race.input.touch.autoGas = on`.
-            Some("autogas") => {
-                if let Some(r) = play.race.as_mut() {
-                    r.touch.auto_gas = v["on"].as_bool().unwrap_or(true);
-                }
-            }
-            _ => warn!("__mp.stage: unknown command {c}"),
         }
+        Some("cruise") => {
+            if let Some(r) = play.race.as_mut() {
+                let rules = &mut r.session.curr.players[0].rules;
+                if let Some(s) = v["score"].as_f64() {
+                    rules.score = s;
+                }
+                if let Some(n) = v["nearMisses"].as_i64() {
+                    rules.near_misses = n as i32;
+                }
+            }
+        }
+        // The controls suites' `placeCar` (and `phys.reset`): on the
+        // road `ahead` m past the start (or `fromFinish` m before the
+        // line) at `lat` (or `latFrac` of the half width), pointing
+        // along it at `speed` m/s, its heading turned by `yaw` radians.
+        Some("place") => {
+            if let Some(r) = play.race.as_mut() {
+                let t = r.session.lr.track.clone();
+                let st = &mut r.session.curr;
+                let p = &mut st.players[0];
+                let s = match v["fromFinish"].as_f64() {
+                    Some(d) => t.finish_s - d,
+                    None => t.start_s + v["ahead"].as_f64().unwrap_or(40.0),
+                };
+                let f = t.frame(s);
+                let lat = v["latFrac"]
+                    .as_f64()
+                    .map_or(v["lat"].as_f64().unwrap_or(0.0), |k| k * f.hw);
+                p.phys.reset(&mut p.v, &t, s, lat);
+                let speed = v["speed"].as_f64().unwrap_or(0.0);
+                p.v.vx = f.fx * speed;
+                p.v.vz = f.fz * speed;
+                p.v.yaw += v["yaw"].as_f64().unwrap_or(0.0);
+                p.rules.last_s = Some(s);
+                r.session.prev = r.session.curr.clone();
+                // `window.__race.cam.snap = true`: the camera behind it now.
+                r.rig.snap = true;
+            }
+        }
+        // `window.__race.phys.nitro = n`.
+        Some("nitro") => {
+            if let Some(r) = play.race.as_mut() {
+                r.session.curr.players[0].phys.nitro = v["amount"].as_f64().unwrap_or(1.0);
+            }
+        }
+        // `window.__race.input.touch.autoGas = on`.
+        Some("autogas") => {
+            if let Some(r) = play.race.as_mut() {
+                r.touch.auto_gas = v["on"].as_bool().unwrap_or(true);
+            }
+        }
+        _ => warn!("stage: unknown command {v}"),
     }
 }
 
-/// Publishes the screens' state on `window.__mp`.
+/// The stage commands this game answers (`pk_shell::web::register_stage`).
+const STAGE_COMMANDS: &[&str] = &[
+    "choose",
+    "slide",
+    "focus",
+    "act",
+    "audio",
+    "reset",
+    "set",
+    "aiWritePos",
+    "event",
+    "unit",
+    "hurt",
+    "say",
+    "roadblock",
+    "spikes",
+    "padsetup",
+    "finish",
+    "cruise",
+    "place",
+    "nitro",
+    "autogas",
+];
+
+fn run_stage(world: &mut World, v: &serde_json::Value) {
+    if let Err(e) = world.run_system_cached_with(apply_stage, v.clone()) {
+        warn!("stage: {e}");
+    }
+}
+
+/// Reveals from the page.
+fn take_reveal(mut ui: ResMut<UiState>) {
+    if let Some(id) = REVEAL.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        ui.reveal = Some(id);
+    }
+}
+
+/// Publishes the screens' state on the status global.
 fn publish(
     mut ui: ResMut<UiState>,
     play: Res<Play>,
     status: Res<Status>,
     controls: super::ControlQuery,
     parents: Query<&ChildOf>,
+    mut taps: ResMut<pk_shell::web::TapPolicy>,
 ) {
-    let Some(mr) = mr() else { return };
-    set(&mr, "staged", STAGED.load(Ordering::Relaxed));
     publish_settings(&ui.settings);
-    set(&mr, "screen", ui.screen.name());
-    set(&mr, "mode", mode_name(&ui, &play, &status));
-    set(&mr, "races", ui.races);
-    set(&mr, "touchUi", play.touch_ui);
-    set(
-        &mr,
+    bridge::set("screen", ui.screen.name());
+    bridge::set("mode", mode_name(&ui, &play, &status));
+    bridge::set("races", ui.races);
+    bridge::set("touchUi", play.touch_ui);
+    bridge::set(
         "focus",
         ui.focus.as_deref().map_or(JsValue::NULL, JsValue::from_str),
     );
@@ -612,29 +352,32 @@ fn publish(
         crate::bridge::publish("race", None);
     }
     // The safe-area inset at the top (the rotate hint keeps under it).
-    if let Ok(ins) = Reflect::get(&mr, &JsValue::from_str("insets"))
-        && let Some(top) = Reflect::get(&ins, &JsValue::from_str("top"))
-            .ok()
-            .and_then(|v| v.as_f64())
-        && (top as f32 - ui.inset_top).abs() > 0.5
+    if let Some(ins) = pk_shell::web::insets()
+        && (ins.top as f32 - ui.inset_top).abs() > 0.5
     {
-        ui.inset_top = top as f32;
+        ui.inset_top = ins.top as f32;
         ui.dirty = true;
     }
     // How far the build line reaches up from the bottom (the menu keeps
     // clear of it).
-    if let Some(f) = Reflect::get(&mr, &JsValue::from_str("footer"))
-        .ok()
-        .and_then(|v| v.as_f64())
+    if let Some(f) = pk_shell::web::footer()
         && (f as f32 - ui.footer).abs() > 0.5
     {
         ui.footer = f as f32;
         ui.dirty = true;
     }
+    // A tap on Race, Race again or Restart goes fullscreen on a touch
+    // screen when the setting allows (`FullscreenOnTap`, `mark_taps`); the
+    // Tilt option asks an iPhone for motion access (`PermissionOnTap`).
+    let want = pk_shell::web::TapPolicy {
+        fullscreen: play.touch_ui && ui.settings.fullscreen,
+        permission: play.touch_ui,
+    };
+    if (taps.fullscreen, taps.permission) != (want.fullscreen, want.permission) {
+        *taps = want;
+    }
     let css = play.css_scale.max(0.01);
     let mut nodes = serde_json::Map::new();
-    let mut full = Vec::new();
-    let mut tilt_option = Vec::new();
     let snaps = snapshot(&controls, css);
     let ids: std::collections::BTreeMap<Entity, &str> =
         snaps.iter().map(|s| (s.entity, s.id.as_str())).collect();
@@ -663,12 +406,6 @@ fn publish(
             z,
             ..
         } = s;
-        if matches!(id.as_str(), "btn-start" | "btn-again" | "btn-restart") && vis {
-            full.push(shown);
-        }
-        if id == "option-tilt" && vis && play.touch_ui {
-            tilt_option.push(shown);
-        }
         let value = match value {
             super::Value::None => serde_json::Value::Null,
             super::Value::Bool(b) => serde_json::Value::Bool(b),
@@ -729,17 +466,14 @@ fn publish(
         add("slider", lay.track, slider);
         add("pedal", lay.panel, slider);
     }
-    *FULLSCREEN.lock().unwrap_or_else(|e| e.into_inner()) =
-        (play.touch_ui && ui.settings.fullscreen, full);
-    *TILT_OPTION.lock().unwrap_or_else(|e| e.into_inner()) = tilt_option;
     crate::bridge::publish(
         "uiNodes",
         Some(crate::bridge::V::Json(serde_json::Value::Object(nodes))),
     );
 }
 
-/// `__mp.settings` (the options as the menu holds them, for a control not
-/// on screen) and `__mp.selects` (each drop-down's choices, a `<select>`'s
+/// `settings` (the options as the menu holds them, for a control not
+/// on screen) and `selects` (each drop-down's choices, a `<select>`'s
 /// `options`), when they change.
 fn publish_settings(s: &super::store::Settings) {
     use super::Sel;
@@ -783,8 +517,13 @@ fn publish_settings(s: &super::store::Settings) {
 }
 
 pub fn plugin(app: &mut App) {
-    app.add_systems(Startup, spawn_screen_cam)
-        .add_systems(Update, take_commands.before(super::pointer))
-        .add_systems(Update, screen_pixel_ratio.after(super::build))
+    for c in STAGE_COMMANDS {
+        pk_shell::web::register_stage(c, run_stage);
+    }
+    app.configure_sets(Update, StageSet.before(super::pointer))
+        .configure_sets(Update, PixelRatioSet.after(screen_state))
+        .add_systems(Update, take_reveal.before(super::pointer))
+        .add_systems(Update, screen_state.after(super::build))
+        .add_systems(PostUpdate, mark_taps)
         .add_systems(Last, publish);
 }

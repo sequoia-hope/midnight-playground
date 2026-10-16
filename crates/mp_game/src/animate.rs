@@ -36,7 +36,7 @@ use crate::render::instancing::{self, InstanceStream, Instances};
 use crate::render::lighting::{
     BLOCK_TEXELS, G_BLOCK_MAP, G_BLOCKS, Globals, MAX_BLOCKS, MAX_MAPPED,
 };
-use crate::status::Status;
+use crate::status::{LoadState, Status};
 use crate::{Opts, SkyRes, inbox};
 use bevy::camera::Projection;
 use bevy::math::{DMat4, DQuat, DVec3, Mat4, Vec3};
@@ -1096,7 +1096,7 @@ pub fn run_animators(
         }
         return;
     }
-    if status.state == "waiting" || status.state == "building" {
+    if matches!(status.state, LoadState::Waiting | LoadState::Building) {
         return;
     }
     let index = &mut *index;
