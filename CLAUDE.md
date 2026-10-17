@@ -50,7 +50,7 @@ and carry on with the option that best preserves parity.
 
 | What | Command |
 |---|---|
-| Build and test the workspace | `cargo test --workspace` |
+| Build and test the workspace (nextest kills a test past 5 minutes, `.config/nextest.toml`; plain `cargo test` has no timeout and leaves a hung test binary running when it is killed, so use it only for one test you are watching) | `cargo nextest run --workspace` (`-p <crate>`, `-E 'test(name)'` to narrow) |
 | Lints, as CI runs them | `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings` |
 | Crate dependency rules (SPEC 3.2, `deps.toml`) | `cargo xtask check-deps` |
 | Web build into `dist/next/` | `cargo xtask web` (add `--release` for the optimised build) |

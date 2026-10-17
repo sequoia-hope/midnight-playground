@@ -1,0 +1,14 @@
+# cargo-nextest: the test runner for local runs (`cargo nextest run --workspace`).
+#
+# `cargo test` has no timeout, and a test killed from outside leaves its
+# binary running: when an agent's command timed out on a test that looped,
+# `cargo` died and two `mp_levels` test binaries spun on a core each for four
+# days. nextest kills a test that overruns, and kills its tests when it is
+# killed itself.
+#
+# The slowest test takes about 50 s in a debug build with the whole workspace
+# running (mp_audio's exhaust_game); a test is flagged at 60 s and killed at
+# 5 minutes, room for a busy machine.
+
+[profile.default]
+slow-timeout = { period = "60s", terminate-after = 5 }
