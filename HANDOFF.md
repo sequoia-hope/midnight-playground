@@ -6,10 +6,9 @@
   CI and Pages are green on it. Pages serves the Rust game at
   https://sequoia-hope.github.io/midnight-playground/ with the JS game
   under `legacy/`.
-- Every local branch is merged into `main`, and so is the one remote
-  branch (`origin/claude/optimistic-franklin-ijm0fb`). That includes
-  `hot-pursuit`, the 46 `worktree-agent-*` worktrees and the six other
-  `worktree-agent-*` branches. No work is lost if they are deleted.
+- The agent worktrees and their `worktree-agent-*` branches were removed
+  on 2026-10-18 (all merged). The two branches left, `hot-pursuit` and
+  `origin/claude/optimistic-franklin-ijm0fb`, are merged into `main` too.
 - The last package to land was the Playground Kit carve (D1230 to D1234):
   `pk_math`, `pk_canvas`, `pk_xtask`, `pk_shell`, the patched
   wgpu/wgpu-hal/bevy_ui_render and the headless-Chrome tools now live in
@@ -33,10 +32,9 @@
 
 - `mp_host`'s http test is flaky when the machine is loaded during
   `cargo nextest run --workspace`. It passes when run alone.
-- **Playground Kit has one unpushed commit**, `dca0b2d` (D9: "wgpu destroys
-  dropped buffers and textures on WebGPU"). Local builds include it.
-  CI doesn't, because CI clones the kit from GitHub. Push it or drop it
-  before the move.
+- Playground Kit's `dca0b2d` (D9: "wgpu destroys dropped buffers and
+  textures on WebGPU") was pushed on 2026-10-18, so CI's clone of the kit
+  now matches local builds. The first CI run with it is the check.
 
 ## Concerns about the move
 
@@ -65,12 +63,9 @@
    monorepo becomes the published repo, the workflows have to move and
    the Pages URL changes. If it doesn't, decide which repo is the source
    of truth for pushes to `main`.
-4. **Git worktrees break on a move.** The 46 worktrees under
-   `.claude/worktrees/` (8.5 GB) are registered by absolute path. All of
-   them are merged, and their only changes are `node_modules` and
-   `parity/cache`. Remove them first:
-   `git worktree remove --force` on each, then `git worktree prune`, then
-   delete the merged branches.
+4. **Git worktrees break on a move**, because git registers them by
+   absolute path. None are left now. If an agent creates one before the
+   move, remove it first.
 5. **Ignored local state that a fresh clone won't have.** `target/` is
    194 GB. A moved `target/` mostly rebuilds anyway, because of absolute
    paths. `parity/cache/` (5.4 GB) regenerates, but slowly.
