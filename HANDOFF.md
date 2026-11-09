@@ -49,7 +49,7 @@
 
    Either keep the two repos side by side in the monorepo, or change all
    of these places in one commit. `tools/parity/gen-index.py:10` also
-   hardcodes `/home/sequoia/Software/game-engine/...` as an absolute path.
+   hardcodes the kit's absolute checkout path.
 2. **Cargo workspaces.** This repo is its own workspace, with its own
    `[patch.crates-io]` and `rust-toolchain.toml`. If the monorepo gets a
    root `Cargo.toml` workspace, this one has to be excluded from it or
@@ -74,7 +74,7 @@
    `node_modules/` at the root and in `tools/signal-worker/`. Move these
    with `mv` rather than relying on git.
 6. **Port registry and serving.** `~/scripts/launcher.toml` registers
-   `midnight-playground` with `dir = /home/sequoia/Software/midnight-playground`.
+   `midnight-playground` with `dir = ~/Software/midnight-playground`.
    It owns the web port and the `stream`/`signal` extras, and
    `serve.sh` resolves the port through `proj port` from the current
    directory. After the move:

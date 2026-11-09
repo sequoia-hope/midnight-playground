@@ -112,7 +112,7 @@ mod tests {
         assert!(is_link(&format!("https://x/dist/next/#{}", l.fragment())));
         assert!(is_link(&format!("#{}", l.fragment())));
         assert!(is_link(&l.code()));
-        assert!(!is_link("ws://192.168.1.5/midnight-racer/dist/next/ws"));
+        assert!(!is_link("ws://203.0.113.5/midnight-racer/dist/next/ws"));
         assert!(!is_link("wss://host.example/ws"));
         assert!(!is_link("https://x/dist/next/"));
         assert!(!is_link(""));

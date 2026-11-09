@@ -6,8 +6,17 @@
 #
 # Run it after the kit's template changes; edit the blocks here, not the
 # generated page.
-import re, sys
-tpl = open('/home/sequoia/Software/game-engine/template/web/index.html').read()
+import os, re, sys
+from pathlib import Path
+# This repo's root, and Playground Kit's checkout: $PLAYGROUND_KIT_DIR, or
+# the sibling ../game-engine that the JS tools and CI also expect.
+REPO = Path(__file__).resolve().parents[2]
+KIT = Path(os.environ.get('PLAYGROUND_KIT_DIR') or REPO.parent / 'game-engine')
+TEMPLATE = KIT / 'template/web/index.html'
+if not TEMPLATE.is_file():
+    sys.exit(f'gen-index.py: no kit template at {TEMPLATE}; '
+             'set PLAYGROUND_KIT_DIR to the Playground Kit checkout')
+tpl = TEMPLATE.read_text()
 
 def swap(s, start, end, body):
     i = s.index(start); j = s.index(end) + len(end)
@@ -245,5 +254,5 @@ out = swap(out, '// ===== BRANDING (3 of 3)', '// ===== end BRANDING (3 of 3) ==
 out = swap(out, '// ===== GAME HOOKS', '// ===== end GAME HOOKS =====', HOOKS)
 assert "GLOBAL = '__game'" in out, 'the status global is the kit\'s name (D1234)'
 assert 'New Game' not in out
-open('/home/sequoia/Software/midnight-playground/crates/mp_game/web/index.html', 'w').write(out)
+(REPO / 'crates/mp_game/web/index.html').write_text(out)
 print('written', len(out.splitlines()), 'lines')

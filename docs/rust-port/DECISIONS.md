@@ -9958,7 +9958,7 @@ own `?perf=1` numbers it is not known which side binds there.
 
 ## D1191. The globals as a uniform buffer, and the terrain's samples inside their branches
 
-2026-10-11, after D1190, the owner: "ssh in to sequoia@sequoia-x1 and
+2026-10-11, after D1190, the owner: "ssh in to <user>@<laptop> and
 copy the repo to ~/Software/ so you can test it". BASELINE "The laptop
 itself" has the measurements: on the X1 Carbon's UHD 620 the frame is
 the GPU's, and the Rust game's fragment shaders cost twice the JS's
