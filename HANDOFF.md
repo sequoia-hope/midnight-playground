@@ -86,7 +86,7 @@
    start. The dev server is running now (`tools/serve.py`); stop it
    before moving.
 7. **Agent memory is keyed by path**:
-   `~/.claude/projects/-home-sequoia-Software-midnight-playground/memory/`.
+   `~/.claude/projects/-home-<user>-Software-midnight-playground/memory/`.
    Copy it to the directory for the new path, or later sessions lose the
    handoff notes on the open world, radio voice, profiling, the X1 laptop
    and Seaside data.
